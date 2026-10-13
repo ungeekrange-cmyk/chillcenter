@@ -153,6 +153,15 @@ struct Settings {
     last_address: Option<String>,
     theme: String,
     trust: TrustStore,
+    device_id: Option<String>,
+}
+
+/// Native-host-only snapshot. Never serialized into the webview.
+pub struct PlaybackConnection {
+    pub transport: Transport,
+    pub profile_id: String,
+    pub server_id: String,
+    pub device_id: String,
 }
 struct Pending {
     address: String,
@@ -179,6 +188,36 @@ pub struct UiClient {
     persist_requests: bool,
 }
 impl UiClient {
+    pub fn playback_connection(&mut self) -> Result<PlaybackConnection, UiError> {
+        let profile_id = self.profile()?;
+        let conn = self
+            .connected
+            .as_ref()
+            .ok_or_else(|| invalid("Connectez un serveur."))?;
+        let transport = conn.transport.clone();
+        let server_id = conn.id.clone();
+        let device_id = match &self.settings.device_id {
+            Some(id) => {
+                valid_id(id)?;
+                id.clone()
+            }
+            None => {
+                let id = uuid::Uuid::new_v4().to_string();
+                self.settings.device_id = Some(id.clone());
+                if let Err(error) = self.save() {
+                    self.settings.device_id = None;
+                    return Err(error);
+                }
+                id
+            }
+        };
+        Ok(PlaybackConnection {
+            transport,
+            profile_id,
+            server_id,
+            device_id,
+        })
+    }
     /// Call from the host setup thread, never from an async task (blocking HTTP runtime).
     pub fn open(directory: &Path) -> Result<Self, UiError> {
         use std::os::unix::fs::PermissionsExt;

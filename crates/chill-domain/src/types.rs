@@ -90,6 +90,13 @@ pub struct PlaybackGrant {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybackInfo {
+    pub media: chill_catalog::model::Media,
+    pub preferences: Preferences,
+    pub speed: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaybackControl {
     pub session_id: String,

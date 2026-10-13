@@ -21,6 +21,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/admin/scan", get(scan_status).post(start_scan))
         .route("/api/v1/profiles/{profile}/catalog", get(catalog))
         .route(
+            "/api/v1/profiles/{profile}/media/{media}/playback-info",
+            get(playback_info),
+        )
+        .route(
             "/api/v1/profiles/{profile}/media/{media}/watched",
             put(watched),
         )
@@ -28,6 +32,29 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/profiles/{profile}/media/{media}/rating",
             put(rating),
         )
+}
+
+async fn playback_info(
+    State(state): State<AppState>,
+    Path((profile, media)): Path<(String, String)>,
+) -> Result<Json<chill_domain::PlaybackInfo>, ApiError> {
+    Ok(Json(
+        state
+            .database
+            .call(move |store| {
+                let item = store.media(&profile, &media)?;
+                let speed = match item.series.as_deref() {
+                    Some(series) => store.series_speed(&profile, series)?,
+                    None => 1.0,
+                };
+                Ok(chill_domain::PlaybackInfo {
+                    media: item,
+                    preferences: store.preferences(&profile)?,
+                    speed,
+                })
+            })
+            .await?,
+    ))
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]

@@ -1,7 +1,7 @@
 //! Typed playback operations over the same pinned transport as the catalogue.
 use crate::{ClientError, Transport, is_opaque_id};
 pub use chill_domain::{
-    AcquirePlayback, Lease, PersonalState, PlaybackControl, PlaybackGrant, Progress,
+    AcquirePlayback, Lease, PersonalState, PlaybackControl, PlaybackGrant, PlaybackInfo, Progress,
     ReleasePlayback,
 };
 use reqwest::Method;
@@ -12,6 +12,35 @@ fn profile_path(profile: &str, operation: &str) -> Result<String, ClientError> {
     Ok(format!("/api/v1/profiles/{profile}/playback/{operation}"))
 }
 impl Transport {
+    pub async fn playback_info(
+        &self,
+        profile: &str,
+        media: &str,
+    ) -> Result<PlaybackInfo, ClientError> {
+        profile_path(profile, "info")?;
+        if !is_opaque_id(media) {
+            return Err(ClientError::InvalidRequestPath("média invalide".into()));
+        }
+        self.get_json(&format!(
+            "/api/v1/profiles/{profile}/media/{media}/playback-info"
+        ))
+        .await
+    }
+    pub async fn save_playback_speed(
+        &self,
+        profile: &str,
+        lease: &PlaybackControl,
+        speed: f64,
+    ) -> Result<(), ClientError> {
+        let _: serde_json::Value = self
+            .request_json(
+                Method::POST,
+                &profile_path(profile, "speed")?,
+                Some(&serde_json::json!({"lease":lease,"speed":speed})),
+            )
+            .await?;
+        Ok(())
+    }
     pub async fn acquire_playback(
         &self,
         profile: &str,

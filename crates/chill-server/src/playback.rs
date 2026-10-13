@@ -281,6 +281,10 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/api/v1/profiles/{profile}/playback/release", post(release))
         .route(
+            "/api/v1/profiles/{profile}/playback/speed",
+            post(save_speed),
+        )
+        .route(
             "/api/v1/profiles/{profile}/media/{media}/state",
             get(personal),
         )
@@ -288,6 +292,39 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/media/{media}/stream",
             get(crate::media_stream::stream),
         )
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpeedChange {
+    lease: PlaybackControl,
+    speed: f64,
+}
+async fn save_speed(
+    State(s): State<AppState>,
+    Path(p): Path<String>,
+    Json(change): Json<SpeedChange>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let service = s.playback.clone();
+    if !valid_speed(change.speed) {
+        return Err(failure("PLAYBACK_REQUEST_INVALID"));
+    }
+    s.database
+        .call(move |store| {
+            service
+                .book
+                .lock()
+                .map_err(|_| "INVALID_OPERATION")?
+                .entry(&p, &change.lease, Instant::now())
+                .map_err(str::to_owned)?;
+            let media = store.media(&p, &change.lease.media_id)?;
+            if let Some(series) = media.series {
+                store.set_series_speed(&p, &series, change.speed)?;
+            }
+            Ok(())
+        })
+        .await?;
+    Ok(Json(serde_json::json!({"saved":true})))
 }
 
 async fn acquire(
