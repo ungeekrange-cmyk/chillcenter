@@ -105,17 +105,19 @@
       "label": "Halloween — sombre",
       "file": "halloween-dark.png",
       "svg_file": "vector/halloween-dark.svg",
-      "revision": 5,
+      "revision": 6,
       "status": "DERIVED_FROM_APPROVED_BASE",
-      "sha256": "cb9c4081cfb84dc292c56e22539024f053f6af94ee58119355c962978e608195",
-      "svg_sha256": "f2e49a849675826c79d0335edbd8b449fece1e16d55094a1781521cf9f432ccf",
+      "sha256": "0fbe0fa50fc43998692afa8ee6a384631976735d8dcdedfd9b77ae7cd9fb1ae3",
+      "svg_sha256": "0918b690fe839000d7128144825a27a4b5bc66cefb72573a6736772d89310471",
       "width": 1254,
       "height": 1254,
       "has_alpha": true,
       "generator": "Chromium rasterization of shared SVG; no AI generation",
       "palette_requested": [
         "#30202E",
-        "#EDAE66"
+        "#EDAE66",
+        "#FF922B",
+        "#FFE4A7"
       ]
     },
     {
@@ -771,6 +773,32 @@
       ],
       "original_default_retained": "default.png",
       "rollback": "Previous canonical PNGs are preserved under raster-r4/; repository history retains the complete prior gallery/manifest."
+    },
+    {
+      "id": "branding-r6",
+      "date": "2026-10-13",
+      "request": "la citrouille pour halloween sombre n'est pas très visible",
+      "previous_variant": {
+        "ambience": "halloween",
+        "mode": "dark",
+        "label": "Halloween — sombre",
+        "file": "halloween-dark.png",
+        "svg_file": "vector/halloween-dark.svg",
+        "revision": 5,
+        "status": "DERIVED_FROM_APPROVED_BASE",
+        "sha256": "cb9c4081cfb84dc292c56e22539024f053f6af94ee58119355c962978e608195",
+        "svg_sha256": "f2e49a849675826c79d0335edbd8b449fece1e16d55094a1781521cf9f432ccf",
+        "width": 1254,
+        "height": 1254,
+        "has_alpha": true,
+        "generator": "Chromium rasterization of shared SVG; no AI generation",
+        "palette_requested": [
+          "#30202E",
+          "#EDAE66"
+        ]
+      },
+      "archive": "raster-r5/halloween-dark.png",
+      "result": "Bright orange pumpkin body distinct from the ochre disc; light stem and thin contour. Common paths/sofa/circle unchanged. Four Rust tests pass."
     }
   ],
   "vector": {

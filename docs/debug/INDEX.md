@@ -19,6 +19,8 @@ Révision `CC-DOC-001`. Ce journal sera relu avant chaque nouvelle intervention.
 
 ## Format de tout futur BUG
 
+Branding r6 : [BUG-0011 citrouille Halloween sombre](BUG-0011-halloween-pumpkin-contrast.md), VERIFIED : orange distinct, tige/contour clairs ;4 tests et rendu navigateur, géométrie inchangée.
+
 Suivi r5 de BUG-0010 : base vectorisée validée par l'utilisateur,13 PNG réexportés depuis les SVG communs ; les12 anciens rasters canoniques sont archivés dans `icons/branding/raster-r4/`. Les comparaisons raster r3/r4 restent historiques, pas les assets courants. Sources SVG/générateur inchangés, aucun nouveau défaut applicatif revendiqué.
 
 Assets de marque r3/r4 : [BUG-0010 géométrie du canapé](BUG-0010-branding-geometry.md) : VERIFIED pour les SVG communs autorisés par l'utilisateur, mêmes tracés sur13 variantes ; défaut principal Noël clair corrigé, branches latérales vérifiées. Audit des PNG et leurs écarts résiduels conservés dans `icons/branding/geometry-audit-r3.json`. Méthode vectorielle autorisée, propositions visuelles encore à valider.

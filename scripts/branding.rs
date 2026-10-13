@@ -103,7 +103,7 @@ const THEMES: [Theme; 13] = [
         ink: "#30202E",
         disc: "#EDAE66",
         motif: "pumpkin",
-        detail: "#EDAE66",
+        detail: "#FF922B",
     },
 ];
 
@@ -122,9 +122,19 @@ fn render(theme: Theme) -> String {
         } else {
             theme.ink
         };
+        let stem = if theme.key == "halloween-dark" {
+            "#FFE4A7"
+        } else {
+            outline
+        };
+        let body_outline = if theme.key == "halloween-dark" {
+            " stroke=\"#FFE4A7\" stroke-width=\"3\""
+        } else {
+            ""
+        };
         format!(
-            "<g id=\"event-pumpkin\"><use xlink:href=\"#pumpkin-body\" fill=\"{}\"/><use xlink:href=\"#pumpkin-stem\" fill=\"{}\"/><use xlink:href=\"#pumpkin-ribs\" fill=\"none\" stroke=\"{}\" stroke-width=\"7\" stroke-linecap=\"round\"/></g>",
-            theme.detail, outline, outline
+            "<g id=\"event-pumpkin\"><use xlink:href=\"#pumpkin-body\" fill=\"{}\"{}/><use xlink:href=\"#pumpkin-stem\" fill=\"{}\"/><use xlink:href=\"#pumpkin-ribs\" fill=\"none\" stroke=\"{}\" stroke-width=\"7\" stroke-linecap=\"round\"/></g>",
+            theme.detail, body_outline, stem, outline
         )
     } else {
         String::new()
@@ -156,6 +166,15 @@ fn main() -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dark_pumpkin_stem_and_body_do_not_blend_into_sofa_or_disc() {
+        let theme = THEMES.iter().find(|t| t.key == "halloween-dark").unwrap();
+        assert_ne!(theme.detail, theme.disc);
+        let svg = render(*theme);
+        assert!(svg.contains("#pumpkin-stem\" fill=\"#FFE4A7\""));
+        assert!(svg.contains("#pumpkin-body\" fill=\"#FF922B\" stroke=\"#FFE4A7\""));
+    }
 
     fn definitions(svg: &str) -> &str {
         svg.split_once("<defs>")

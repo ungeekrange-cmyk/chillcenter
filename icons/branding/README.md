@@ -4,6 +4,8 @@
 
 ## Base vectorielle validée et déclinaisons r5
 
+Retouche r6 : citrouille Halloween sombre plus distincte, orange vif `#FF922B`, tige et fin contour crème `#FFE4A7`. Les tracés/espacements restent inchangés. Ancien PNG conservé sous `raster-r5/`, hashes actuels dans le manifeste ; les exports-r5 sont une preuve historique antérieure à cette retouche. Voir BUG-0011.
+
 Validation utilisateur : « nickel, utilise le vectorisé comme base pour refaire les autres ». **Référence actuelle : [vector/default.svg](vector/default.svg), dérivée du gabarit unique [master.svg](vector/master.svg).** Son export PNG est [vector/default.png](vector/default.png). Les douze autres PNG à la racine sont désormais des exports des SVG correspondants, pas des dessins indépendants produits par IA. Les SVG/générateur ont été régénérés à l'identique, sans changement de formes ou de palettes.
 
 Treize exports PNG1254×1254 transparents réalisés dans Chromium avec profil temporaire et réseau bloqué. Sources/hashes de chaque paire dans [exports-r5.json](vector/exports-r5.json) ; manifeste de marque format2 (défaut SVG + export raster, original historique séparé). Les douze anciens PNG sont copiés dans `raster-r4/`, hashes historiques conservés dans `branding-r5`. Le PNG original reste inchangé. Le rapport de provenance r4 est une preuve historique antérieure à cette validation.

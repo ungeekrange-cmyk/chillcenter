@@ -15,6 +15,6 @@
 <circle id="disc" cx="624" cy="652" r="448" fill="#EDAE66"/>
 
 <use xlink:href="#brand-foreground" fill="#30202E"/>
-<g id="event-pumpkin"><use xlink:href="#pumpkin-body" fill="#EDAE66"/><use xlink:href="#pumpkin-stem" fill="#30202E"/><use xlink:href="#pumpkin-ribs" fill="none" stroke="#30202E" stroke-width="7" stroke-linecap="round"/></g>
+<g id="event-pumpkin"><use xlink:href="#pumpkin-body" fill="#FF922B" stroke="#FFE4A7" stroke-width="3"/><use xlink:href="#pumpkin-stem" fill="#FFE4A7"/><use xlink:href="#pumpkin-ribs" fill="none" stroke="#30202E" stroke-width="7" stroke-linecap="round"/></g>
 </g>
 </svg>
