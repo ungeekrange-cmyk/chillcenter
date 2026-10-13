@@ -27,7 +27,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/profiles/{profile}/series/{series}", get(series))
         .route("/api/v1/profiles/{profile}/sagas", get(sagas))
         .route("/api/v1/profiles/{profile}/playlists", get(playlists).post(create_playlist))
-        .route("/api/v1/profiles/{profile}/playlists/{playlist}", get(playlist).delete(delete_playlist))
+        .route("/api/v1/profiles/{profile}/playlists/{playlist}", get(playlist).put(rename_playlist).delete(delete_playlist))
         .route("/api/v1/profiles/{profile}/playlists/{playlist}/members", post(add_members))
         .route("/api/v1/profiles/{profile}/playlists/{playlist}/members/{media}", delete(remove_member))
         .route("/api/v1/profiles/{profile}/playlists/{playlist}/order", put(order_playlist))
@@ -69,6 +69,8 @@ async fn sagas(State(state): State<AppState>, Path(profile): Path<String>) -> Re
 }
 async fn playlists(State(state): State<AppState>, Path(profile): Path<String>) -> Result<Json<Value>, ApiError> { Ok(Json(json!({"items":state.database.call(move|s|s.playlists(&profile)).await?}))) }
 async fn playlist(State(state): State<AppState>, Path((profile,playlist)): Path<(String,String)>) -> Result<Json<Value>, ApiError> { Ok(Json(json!({"playlist":state.database.call(move|s|s.playlist(&profile,&playlist)).await?}))) }
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct RenamePlaylist { expected_revision:u64, name:String }
+async fn rename_playlist(State(state):State<AppState>,Path((profile,playlist)):Path<(String,String)>,Json(body):Json<RenamePlaylist>)->Result<Json<Value>,ApiError>{let view=state.database.call(move|s|{s.rename_playlist_at_revision(&profile,&playlist,&body.name,body.expected_revision)?;s.playlist(&profile,&playlist)}).await?;Ok(Json(json!({"playlist":view})))}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct PlaylistCreate { name:String, media_id:Option<String> }
 async fn create_playlist(State(state): State<AppState>, Path(profile): Path<String>, Json(body): Json<PlaylistCreate>) -> Result<Json<Value>,ApiError> { let view=state.database.call(move|s| s.create_playlist_with_members(&profile,&body.name,&body.media_id.into_iter().collect::<Vec<_>>())).await?; Ok(Json(json!({"playlist":view}))) }
 async fn delete_playlist(State(state): State<AppState>, Path((profile,playlist)): Path<(String,String)>) -> Result<Json<Value>,ApiError> { state.database.call(move|s|s.delete_collection(&profile,&playlist)).await?; Ok(Json(json!({"deleted":true}))) }

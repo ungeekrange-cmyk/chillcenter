@@ -877,6 +877,10 @@ impl Store {
             .map_err(|_| "Une playlist porte déjà ce nom pour ce profil.".to_string())?;
         Ok(())
     }
+    pub fn rename_playlist_at_revision(&self, profile:&str,id:&str,name:&str,expected:u64)->Result<(),String>{
+        self.require_playlist(profile,id)?; let name=valid_collection_name(name)?;
+        if self.personal.execute("UPDATE cc_playlists SET name=?1,revision=revision+1 WHERE id=?2 AND profile_id=?3 AND revision=?4",params![name,id,profile,expected as i64]).map_err(db_error)? != 1 { return Err("La playlist a changé entre-temps.".into()); } Ok(())
+    }
     pub fn delete_collection(&self, profile_id: &str, collection_id: &str) -> Result<(), String> {
         self.require_playlist(profile_id, collection_id)?;
         self.personal
