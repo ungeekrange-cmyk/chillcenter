@@ -1028,6 +1028,10 @@ impl Store {
             .map_err(db_error)?;
         media.watched = state.watched;
         media.rating = state.rating;
+        // Legacy catalogue stores filesystem paths in `poster`. They are never
+        // transport URLs: suppress absolute/local values until artwork is served
+        // through the controlled artwork endpoint.
+        if media.poster.as_deref().is_some_and(|p| Path::new(p).is_absolute() || p.starts_with("file:")) { media.poster=None; }
         Ok(media)
     }
     fn playlist_members(&self, id: &str) -> Result<Vec<String>, String> {
