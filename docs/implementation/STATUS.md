@@ -1,29 +1,39 @@
-# État d'implémentation — ne pas confondre fondation et produit fini
+# État d'implémentation — interface/catalogue livré, produit en cours
 
-2026-10-13 ; G-03 approuvé, G-04 non remis. Candidat source fondation : `3062ffec596c797bf4713433c34d5cf7bc54484f`. Les fichiers de documentation suivants ne changent pas ce SHA source. Les exigences restent celles de CC-STORIES-001, aucun périmètre réduit implicitement. Le workspace de fondation exclut explicitement `apps/desktop` jusqu'à son raccordement ; cela n'en fait pas une application terminée.
+2026-10-13 ; G-03 approuvé, G-04 non remis. Source du lot interface : `c2a9d72d634cc7282eb8a20ca9fa138ed92e2fec`, base `fe85cea00da8a7e1f35abf0a5f057907eb235b47`. Les exigences restent CC-STORIES-001/133 AC. La documentation de remise ne modifie pas le code source revu.
 
-## Disponible dans le code
+## Utilisable dans ce lot
 
-- Workspace Rust ; extraction des parseurs/catalogue/TMDB/affiches/IA Cinéfolio, 64 tests hérités exécutés.
-- Store SQLite personnel : profils, préférences, états et notes, vitesses série, playlists, pagination SQL, réassociation explicitement confirmée.
-- Service HTTPS : identité, profils CRUD, préférences et administration de la racine, config fichier, persistance anti-conflit et renouvellement calendaire à clé stable.
-- Transport Mac : DNS/IP HTTPS éditable, consentement initial, pin SPKI, exception de clé après expiration connue, Range lié session/média/génération.
-- Adaptateur libmpv : décodage client, callbacks de flux, contrôles/pistes/sous-titres, seek et annulation ; preuve headless avec un média généré. libmpv client API ≥2.0 requis pour l'ABI OpenGL à deux champs (0.41/API2.5 testé). Preuve réelle AppKit NSOpenGL/FBO avec vidéo générée, pause/seek et deux tailles réussie ; pas encore de surface Tauri.
+- Application Tauri Mac Silicon avec façade statique sans framework dans `ui/connected/`. Les anciennes sources Cinéfolio dans `ui/` sont préservées.
+- Choix DNS/IP/port HTTPS modifiable, première approbation ou refus SPKI, reconnexion avec dernier profil par serveur/Mac, changement en haut à droite. Le remplacement exceptionnel après expiration est signalé par un bandeau persistant ; une connexion échouée ne mémorise pas de confiance provisoire.
+- Création, renommage CAS et suppression confirmée de profils ; administration accessible avec zéro profil. Changement de profil avec rollback sur erreur ; notes, vu et préférences audio/sous-titres/enchaînement individuels. Langues initiales : anglais.
+- Dossier Linux configurable dans Administration ; scan serveur unique en sous-processus borné. Catalogue et identités stables sont validés atomiquement sur un writer SQLite distinct. Les requêtes interactives annulées ou expirées ne sont pas appliquées tardivement. Aucun montage NAS côté Mac.
+- Catalogue paginé (50 éléments, plafond API100), recherche par titre/catégorie, grille/liste/détails relatifs, notes et vu manuels. **Scan uniquement dans Administration** ; Actualiser recharge la liste sans parcourir le NAS. Affiches provisoires à initiale tant que les routes artwork ne sont pas raccordées.
+- Paquet de développement `artifacts/macos/Chill Center.app` : arm64, signature ad-hoc, aucune dylib Homebrew nécessaire à ce lot sans lecteur. Ce n'est pas une distribution notarized ni le bundle final du lecteur. Reproduction : `bash scripts/package-macos.sh /chemin/absolu/nouveau.app` ; le script refuse d'écraser un paquet existant.
 
-## Pas terminé / pas prouvé
+## Fondations conservées
 
-- L'interface Cinéfolio copiée n'est pas encore adaptée au nouveau transport ; `apps/desktop` est un squelette. Pas d'application `.app` utilisable livrée.
-- Routes scan/catalogue/métadonnées/médias/sous-titres/affiches, arbitrage des baux/transferts et enchaînement : intégration serveur-client à faire. Une méthode Store ne prouve pas la validation du bail côté API.
-- Export ZIP/affiches en streaming et migration Cinéfolio, plan complet de conflits d'import et restauration : à faire. Import mutatif volontairement désactivé plutôt que d'écraser silencieusement des données. JSON de compatibilité borné à 1 MiB, pas l'export final attendu.
-- IA client avec aperçu/révisions et application serveur, ambiances/paramètres UI : à faire.
-- Surface Tauri du lecteur, fullscreen/redimensionnement de la fenêtre, HTTPS vidéo réel de bout en bout, matrice MKV/MP4/AVI/pistes externes, bundle de dépendances : à prouver. Le rendu AppKit/FBO isolé est une preuve limitée, pas cette intégration.
-- Build Linux ARM64/release/systemd, installation Pi, NAS/Wi-Fi/2–3 profils, budgets RSS/CPU/débit : NOT_RUN. Pi non prêt, pas d'accès SSH supposé.
-- Revue sécurité du slice serveur APPROVED à `a06d95f`, avec un LOW ouvert (reconciliation mémoire/disque après fsync de répertoire en échec). Revues code/test des nouvelles corrections en cours ; une compilation n'est pas une approbation indépendante. Restent aussi erreurs API typées/CAS de renommage de profil, export de compatibilité borné seulement après allocation et preuves complètes de transport TLS. Aucun merge de livraison, push distant ou déploiement physique.
+Catalogue/parseurs/TMDB/affiches/IA Cinéfolio extraits ; store SQLite personnel (progression, vitesses par série, playlists et réassociation explicitement confirmée). Transport Rust JSON/Range lié session-média-génération. Adaptateur libmpv : preuve headless et rendu AppKit/NSOpenGL/FBO isolé avec vidéo générée à3062ffe ; pas encore de surface native Tauri raccordée.
 
-## Reprise
+## Vérification du lot
 
-Revues bornées : test-execution APPROVED r2 à `3062ffe` (108 tests, check all-targets et probe AppKit locked) ; code delta worker APPROVED r3 au même SHA, historique HIGH clos ; sécurité serveur APPROVED r2 à `a06d95f`. **Aucune de ces approbations n'est celle de l'application entière ni des 133 AC.** Tous les rapports et leurs limites sont conservés dans `docs/reviews/`.
+Suite locale124/124 (catalogue65, client18, domaine11, lecteur10, serveur20), clippy sans warnings, syntaxe JS/scripts, builds debug/release, plist/signature/dépendances du paquet ; trois vrais parcours webview → Rust → HTTPS loopback. Les rapports indépendants r3 sont liés au SHA c2a9d72 dans `docs/reviews/`. Les rapports r1/r2 défavorables ou limités sont conservés.
 
-Checkpoint local enregistré dans le dossier ChillCenter et sa branche `codex/implementation`, origin GitHub configuré mais **pas de push**. `MANIFEST.sha256` décrit les fichiers suivis de ce checkpoint, hors lui-même ; génération mécanique par `bash scripts/update-manifest.sh` après ajout des fichiers suivis. Les manifestes historiques restent séparés. Ne pas annoncer une continuation en arrière-plan : reprendre le travail de l'étape 4 lors de la prochaine exécution autorisée.
+Détail, commandes et limites : [INTERFACE-EVIDENCE](INTERFACE-EVIDENCE.md). Aucun de ces résultats n'approuve l'application entière ou les133 AC.
 
-Lire les rapports et le journal des bugs. Finir l'enabler de rendu Mac avant d'annoncer le lecteur intégré ; corriger les findings puis intégrer les routes et l'application sur une branche `codex/`. Ne demander G-04 qu'après couverture des AC et remise identifiable des artefacts. Conserver source Cinéfolio et vidéos intacts.
+## Restes / pas prouvé
+
+- Lecteur Tauri, fullscreen/redimensionnement, routes HTTPS médias/sous-titres, arbitrage des baux/transferts, reprise/progression en temps réel/enchaînement : à raccorder. La fixture textuelle .mp4 de ce lot n'est pas une preuve de lecture. Matrice MKV/MP4/AVI/pistes externes et bundle libmpv final non livrés.
+- Métadonnées/TMDB/affiches/édition/groupements/sagas/playlists et UI correspondante : à raccorder. Les méthodes héritées ne prouvent pas ce nouveau parcours.
+- Export ZIP/affiches streaming et migration/import Cinéfolio complet : à faire. Import mutatif désactivé jusqu'à un plan de conflits atomique ; JSON de compatibilité1MiB préliminaire.
+- IA client avec aperçu/validation/révisions, petit bouton et sans dictée ; ambiances auto/manuelles/désactivables : à faire.
+- Build/déploiement Linux ARM/systemd/Pi/NAS/Wi-Fi/2–3 flux/RSS/CPU : NOT_RUN. Pi toujours non prêt ; IP192.168.1.42 et montage/srv/volumes/video restent des exemples configurables. Aucun SSH supposé ou déploiement sur le réseau du foyer.
+- LOW ouverts : UISEC-002 (durabilité fsync parent des réglages client), SRV-SEC-005 (réconciliation serveur mémoire/disque après fsync en échec). Propriétaire /root ; à traiter pour la remise finale, pas présentés comme corrigés. L'export de compatibilité borné seulement après allocation reste un risque de ressources.
+
+## Reprise et retour
+
+Lot enregistré localement dans ChillCenter, branche `codex/interface-server`, origin GitHub inchangé ; pas de push. Source Cinéfolio, données et NAS intacts. `MANIFEST.sha256` régénéré sur les fichiers suivis, manifestes historiques conservés ; bundle ignoré accompagné de son hash dans les preuves.
+
+Prochaine implémentation autorisée : surface lecteur Tauri + routes/baux/transport HTTPS/progression, puis les autres stories selon le DAG. Lire contexte, rapports, bugs et contrats avant reprise. Ne pas recommencer discovery ni demander G-04 avant la livraison complète. Ce checkpoint n'annonce pas de travail en arrière-plan.
+
+Rollback réversible : repartir du checkpoint fe85cea dans une nouvelle branche, relancer le binaire précédent ; sauvegarder base/réglages avant future migration. Ne pas reset/supprimer des changements utilisateur. Aucun format de base irréversible introduit par ce lot.

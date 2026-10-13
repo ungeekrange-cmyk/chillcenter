@@ -8,7 +8,7 @@
 - Étape 1 : `APPROVED_BY_USER`, périmètre `CC-FONC-002`. Preuve : « vise directement un serveur sur linux, on va zapper la version mac, le reste ok ». Cette correction retire le serveur macOS ; le client Mac Apple Silicon validé reste prévu.
 - Étape 2 : `APPROVED_BY_USER`. Preuve : « oui étape suivante », consignée dans `docs/gates/G-02-CC-DOC-001.md` ; sept ADR et contrats acceptés sans modification de conception.
 - Étape 3 : `APPROVED_BY_USER`, dossier `CC-STORIES-001` ; preuve « validé, go implémentation » dans G-03 après revue indépendante APPROVED r2.
-- Étape 4 : `IN_PROGRESS`. Fondations Rust et service configurable implémentés ; pas de remise finale, ni de validation G-04 demandée. Voir `docs/implementation/STATUS.md` avant toute reprise.
+- Étape 4 : `IN_PROGRESS`. Lot interface Mac/serveur HTTPS implémenté et revu à `c2a9d72d634cc7282eb8a20ca9fa138ed92e2fec`, 124 tests et trois parcours GUI ; pas de remise finale ni validation G-04 demandée. Voir `docs/implementation/STATUS.md` avant reprise.
 
 ## Contraintes
 
@@ -16,10 +16,12 @@ Serveur Linux uniquement, matériel de référence Raspberry Pi 3 B (éventuelle
 
 ## État des capacités
 
-Lecture des sources et de l'archive Git : exécutée. Documentation primaire web : consultée le 2026-10-13. `git bundle verify` : réussi. Accès GitHub par connecteur lié : 404 ; `gh repo view` autorisé : succès, dépôt vide. Implémentation sur branches isolées `codex/`, source Cinéfolio préservée. 105 tests de crates passés, workspace fondation vérifié et smoke HTTPS loopback exécuté ; voir preuves exactes. Aucun push distant, accès NAS ou déploiement Pi effectué. Le Pi déclaré non prêt sera prévu à `192.168.1.42`, montage `/srv/volumes/video` ; ces valeurs sont des exemples configurables, comme corrigé explicitement par l'utilisateur.
+Lecture des sources et archive Git vérifiées ; documentation primaire consultée le 2026-10-13. Accès GitHub initial par connecteur : 404, puis CLI autorisée : succès, dépôt vide à l'intake. Implémentation sur branches isolées `codex/`, source Cinéfolio préservée. Lot actuel : 124 tests, revues indépendantes code/test/sécurité r3 approuvées pour son SHA, vraie webview/HTTPS loopback et paquet de développement arm64 vérifiés ; détails dans INTERFACE-EVIDENCE. Aucun push distant, accès NAS ou déploiement Pi effectué. Pi déclaré non prêt, IP prévue `192.168.1.42` et montage `/srv/volumes/video` : exemples configurables, jamais des constantes imposées.
+
+Correction UI utilisateur du 2026-10-13 (capture de la barre Cinéfolio) : scan réservé à Administration. Implémenté dans `ui/connected` ; le bouton Actualiser du catalogue ne fait aucun scan. Aucun nouvel examen de périmètre nécessaire.
 
 Les anciens `docs/PROJECT_CONTEXT.md` et `scripts/agent-context.py` ne sont pas présents dans le dossier Cinéfolio déplacé. Le présent fichier devient le point d'entrée durable du nouveau projet.
 
 ## Prochaine action autorisée
 
-Poursuivre l'implémentation déjà autorisée : rendu AppKit/FBO isolé prouvé, maintenant intégrer Tauri/serveur/lecteur et compléter les stories/tests. Demander G-04 à la remise réelle, pas au présent checkpoint. Ne pas recommencer discovery/architecture/stories. Ne pas affirmer que 108 tests locaux couvrent les 133 AC ni les conditions Pi/Wi-Fi. Les limites/findings de revue non résolus bloquent toute remise finale, pas le travail indépendant sûr.
+Poursuivre l'implémentation autorisée : setup/profils/admin/catalogue Tauri raccordés ; intégrer maintenant surface lecteur Tauri, routes vidéo/sous-titres, baux/progression/enchaînement puis autres stories. Demander G-04 uniquement à la remise complète. Ne pas recommencer discovery/architecture/stories ni affirmer que 124 tests couvrent 133 AC ou le Pi/Wi-Fi. Les LOW et fonctionnalités non terminées restent listés dans STATUS ; ce checkpoint n'annonce pas de travail en arrière-plan.
