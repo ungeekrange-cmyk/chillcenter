@@ -453,13 +453,20 @@ impl Store {
             || progress.duration_ms == 0
             || progress.position_ms > progress.duration_ms
             || !valid_speed(progress.speed)
-            || !progress.playing
-            || progress.buffering
-            || progress.seek
-            || progress.position_ms < progress.duration_ms.saturating_mul(9) / 10
-            || progress.final_elapsed_ms > progress.duration_ms / 10
         {
             return Err("Progression validée invalide.".into());
+        }
+        // A resume position is meaningful for every ordered, lease-validated event,
+        // including pause, seek and early playback. Only uninterrupted playback in
+        // the final tenth may add watched credit.
+        let credit_eligible = progress.playing
+            && !progress.buffering
+            && !progress.seek
+            && progress.position_ms >= progress.duration_ms.saturating_mul(9) / 10;
+        if progress.final_elapsed_ms > progress.duration_ms / 10
+            || (!credit_eligible && progress.final_elapsed_ms != 0)
+        {
+            return Err("Crédit de visionnage final invalide.".into());
         }
         self.legacy_id(stable_id)?;
         let tx = self.personal.unchecked_transaction().map_err(db_error)?;
@@ -474,9 +481,11 @@ impl Store {
         }) {
             return Err("Événement de lecture périmé ou rejoué.".into());
         }
-        let final_watched_ms = old
-            .final_watched_ms
-            .saturating_add(progress.final_elapsed_ms);
+        let final_watched_ms = old.final_watched_ms.saturating_add(if credit_eligible {
+            progress.final_elapsed_ms
+        } else {
+            0
+        });
         let watched = old.watched || final_watched_ms >= WATCHED_THRESHOLD_MS;
         upsert_state(
             &tx,
@@ -1148,6 +1157,58 @@ mod tests {
         assert!(!state.watched);
         assert_eq!(state.final_watched_ms, 0);
         assert_eq!(state.position_ms, 95_000);
+    }
+
+    #[test]
+    fn ordered_nonfinal_pause_and_seek_events_persist_resume_without_credit() {
+        let mut s = store();
+        let p = s.create_profile("A").unwrap();
+        let id = s.catalog(&p.id).unwrap()[0].id.clone();
+        let event = |sequence, position_ms, playing, buffering, seek, final_elapsed_ms| Progress {
+            session_id: "session".into(),
+            generation: 1,
+            media_id: id.clone(),
+            sequence,
+            position_ms,
+            duration_ms: 100_000,
+            speed: 1.0,
+            final_elapsed_ms,
+            playing,
+            buffering,
+            seek,
+        };
+        assert_eq!(
+            s.save_validated_progress(&p.id, &id, &event(1, 10_000, true, false, false, 0))
+                .unwrap()
+                .position_ms,
+            10_000
+        );
+        assert_eq!(
+            s.save_validated_progress(&p.id, &id, &event(2, 12_000, false, false, false, 0))
+                .unwrap()
+                .position_ms,
+            12_000
+        );
+        assert_eq!(
+            s.save_validated_progress(&p.id, &id, &event(3, 20_000, true, false, true, 0))
+                .unwrap()
+                .position_ms,
+            20_000
+        );
+        assert_eq!(
+            s.save_validated_progress(&p.id, &id, &event(4, 20_000, false, false, false, 0))
+                .unwrap()
+                .final_watched_ms,
+            0
+        );
+        assert!(
+            s.save_validated_progress(&p.id, &id, &event(5, 20_000, false, false, false, 1))
+                .is_err()
+        );
+        assert!(
+            s.save_validated_progress(&p.id, &id, &event(4, 30_000, true, false, false, 0))
+                .is_err()
+        );
     }
     #[test]
     fn deleting_profile_is_personal_only() {
