@@ -1,0 +1,6 @@
+{
+  "listen": "0.0.0.0:8443",
+  "data_dir": "/var/lib/chillcenter",
+  "tls_names": ["192.168.1.42"],
+  "video_root": "/srv/volumes/video"
+}
