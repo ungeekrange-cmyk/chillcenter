@@ -21,7 +21,7 @@ Révision `CC-DOC-001`. Ce journal sera relu avant chaque nouvelle intervention.
 
 Lecture HTTPS : [BUG-0012 crédit ×0,5](BUG-0012-slow-playback-final-credit.md), VERIFIED par test RED/GREEN et horloge serveur déterministe ; seuil inchangé de10s réelles.
 
-Revue du slice lecture r1 : [BUG-0013 EOF HTTP](BUG-0013-http-reader-eof.md) et [BUG-0014 capacité des corps non consommés](BUG-0014-unpolled-stream-capacity.md), reproduits RED puis corrigés avec tests ciblés. Revue r2 et smoke étendu requis avant remise ; rapports r1 conservés.
+Revue du slice lecture r1 : [BUG-0013 EOF HTTP](BUG-0013-http-reader-eof.md) et [BUG-0014 capacité des corps non consommés](BUG-0014-unpolled-stream-capacity.md), VERIFIED : RED/GREEN,146 tests, smoke EOF et trois revues r2 APPROVED au SHA b4100a3. Rapports r1 conservés, source et limites dans PLAYBACK-EVIDENCE.
 
 Branding r6 : [BUG-0011 citrouille Halloween sombre](BUG-0011-halloween-pumpkin-contrast.md), VERIFIED : orange distinct, tige/contour clairs ;4 tests et rendu navigateur, géométrie inchangée.
 

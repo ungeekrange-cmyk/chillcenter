@@ -1,4 +1,4 @@
-# État d'implémentation — interface/catalogue livré, produit en cours
+# État d'implémentation — interface/catalogue et flux serveur livrés, produit en cours
 
 2026-10-13 ; G-03 approuvé, G-04 non remis. Source du lot interface : `c2a9d72d634cc7282eb8a20ca9fa138ed92e2fec`, base `fe85cea00da8a7e1f35abf0a5f057907eb235b47`. Les exigences restent CC-STORIES-001/133 AC. La documentation de remise ne modifie pas le code source revu.
 
@@ -13,6 +13,8 @@
 
 ## Fondations conservées
 
+Lot complémentaire CC-PLAY-001, source `b4100a37f985943fa1932bd98a2ec99d70b6c044` : API baux30s/heartbeat, flux Range sans transcodage, progression/reprise par profil et helpers client Rust. Capacité bornée, idle/révocation indépendante de la consommation du flux. 146 tests/build/clippy PASS et vraie MP4 HTTPS/libmpv headless jusqu'à EOF, reprise second appareil simulé ; trois revues indépendantes r2 APPROVED. Détails [PLAYBACK-EVIDENCE](PLAYBACK-EVIDENCE.md). **Pas encore de lecteur visible dans l'application Tauri** ; paquet .app précédent inchangé.
+
 Catalogue/parseurs/TMDB/affiches/IA Cinéfolio extraits ; store SQLite personnel (progression, vitesses par série, playlists et réassociation explicitement confirmée). Transport Rust JSON/Range lié session-média-génération. Adaptateur libmpv : preuve headless et rendu AppKit/NSOpenGL/FBO isolé avec vidéo générée à3062ffe ; pas encore de surface native Tauri raccordée.
 
 ## Vérification du lot
@@ -23,7 +25,7 @@ Détail, commandes et limites : [INTERFACE-EVIDENCE](INTERFACE-EVIDENCE.md). Auc
 
 ## Restes / pas prouvé
 
-- Lecteur Tauri, fullscreen/redimensionnement, routes HTTPS médias/sous-titres, arbitrage des baux/transferts, reprise/progression en temps réel/enchaînement : à raccorder. La fixture textuelle .mp4 de ce lot n'est pas une preuve de lecture. Matrice MKV/MP4/AVI/pistes externes et bundle libmpv final non livrés.
+- Lecteur Tauri, fullscreen/redimensionnement, routes sous-titres externes, transfert confirmé/SSE, progression/heartbeat automatiques et échéance locale/enchaînement : à raccorder. Routes médias et reprise serveur livrées dans CC-PLAY-001, sans UI lecteur. La fixture textuelle historique du lot interface reste sans valeur pour la lecture ; le nouveau smoke utilise une vraie MP4. Matrice MKV/AVI/pistes externes et bundle libmpv final non livrés.
 - Métadonnées/TMDB/affiches/édition/groupements/sagas/playlists et UI correspondante : à raccorder. Les méthodes héritées ne prouvent pas ce nouveau parcours.
 - Export ZIP/affiches streaming et migration/import Cinéfolio complet : à faire. Import mutatif désactivé jusqu'à un plan de conflits atomique ; JSON de compatibilité1MiB préliminaire.
 - IA client avec aperçu/validation/révisions, petit bouton et sans dictée ; ambiances auto/manuelles/désactivables : à faire.
@@ -34,6 +36,6 @@ Détail, commandes et limites : [INTERFACE-EVIDENCE](INTERFACE-EVIDENCE.md). Auc
 
 Lot enregistré localement dans ChillCenter, branche `codex/interface-server`, origin GitHub inchangé ; pas de push. Source Cinéfolio, données et NAS intacts. `MANIFEST.sha256` régénéré sur les fichiers suivis, manifestes historiques conservés ; bundle ignoré accompagné de son hash dans les preuves.
 
-Prochaine implémentation autorisée : surface lecteur Tauri + routes/baux/transport HTTPS/progression, puis les autres stories selon le DAG. Lire contexte, rapports, bugs et contrats avant reprise. Ne pas recommencer discovery ni demander G-04 avant la livraison complète. Ce checkpoint n'annonce pas de travail en arrière-plan.
+Prochaine implémentation autorisée : surface lecteur Tauri et commandes UI sur les nouvelles routes, heartbeat/progression automatiques/échéance locale, puis transfert/SSE/sous-titres/enchaînement et autres stories selon le DAG. Lire contexte, rapports, bugs et contrats avant reprise. Ne pas recommencer discovery ni demander G-04 avant la livraison complète. Ce checkpoint n'annonce pas de travail en arrière-plan.
 
 Rollback réversible : repartir du checkpoint fe85cea dans une nouvelle branche, relancer le binaire précédent ; sauvegarder base/réglages avant future migration. Ne pas reset/supprimer des changements utilisateur. Aucun format de base irréversible introduit par ce lot.
