@@ -23,6 +23,17 @@ const EXPORT_FORMAT_VERSION: u64 = 1;
 const WATCHED_THRESHOLD_MS: u64 = 10_000;
 const MAX_IN_MEMORY_EXPORT_BYTES: usize = 1024 * 1024;
 pub const MAX_CATALOG_PAGE: usize = 100;
+pub const MAX_EXPORT_POSTER_BYTES: u64 = 8 * 1024 * 1024;
+#[derive(Debug, Clone)]
+pub struct ArchivePoster {
+    pub reference: String,
+    pub source: PathBuf,
+}
+#[derive(Debug, Clone)]
+pub struct ArchiveSnapshot {
+    pub document: Value,
+    pub posters: Vec<ArchivePoster>,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct CatalogQuery {
@@ -1226,8 +1237,41 @@ impl Store {
 
     /// Archive staging owns its size limits on disk. The legacy API remains
     /// memory-bounded for compatibility.
-    pub fn export_archive_json(&mut self) -> Result<Value, String> {
-        self.export_json_with_limit(None)
+    pub fn export_archive_snapshot(&mut self) -> Result<ArchiveSnapshot, String> {
+        let mut document = self.export_json_with_limit(None)?;
+        let media = self.catalogue.list()?;
+        let mut posters = Vec::new();
+        let data = document
+            .get_mut("media")
+            .and_then(Value::as_array_mut)
+            .ok_or("Export invalide.")?;
+        for (row, source) in data.iter_mut().zip(media.iter()) {
+            let Some(path) = source
+                .poster
+                .as_ref()
+                .filter(|p| Path::new(p).is_absolute() && !p.starts_with("file:"))
+            else {
+                continue;
+            };
+            let meta =
+                std::fs::symlink_metadata(path).map_err(|_| "Affiche d’export inaccessible.")?;
+            if meta.file_type().is_symlink()
+                || !meta.is_file()
+                || meta.len() > MAX_EXPORT_POSTER_BYTES
+            {
+                return Err("Affiche d’export invalide ou trop volumineuse.".into());
+            }
+            let stable = self.stable_id(&source.id)?;
+            let reference = format!("posters/{stable}.bin");
+            if let Some(object) = row.get_mut("data").and_then(Value::as_object_mut) {
+                object.insert("poster".into(), Value::String(reference.clone()));
+            }
+            posters.push(ArchivePoster {
+                reference,
+                source: PathBuf::from(path),
+            });
+        }
+        Ok(ArchiveSnapshot { document, posters })
     }
 
     fn export_json_with_limit(&mut self, maximum: Option<usize>) -> Result<Value, String> {
