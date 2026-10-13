@@ -112,7 +112,8 @@ fn main() {
             directory
         };
         let client = UiClient::open(&directory).map_err(|e| std::io::Error::other(e.message))?;
-        let player = PlayerHost::default();
+        let mut player = PlayerHost::default();
+        player.cache_dir = directory.join("subtitle-cache");
         let rendering = player.rendering.clone();
         app.manage(Bridge {
             client: Arc::new(Mutex::new(client)),
@@ -202,13 +203,18 @@ fn main() {
             ) {
                 let mode = std::env::var("CHILL_UI_QA_MODE").unwrap_or_default();
                 let _ = webview.eval(format!(
-                    "{}\n{}\n{}({});",
+                    "{}\n{}\n{}\n{}({});",
                     include_str!("../../../ui/connected/qa.js"),
                     include_str!("../../../ui/connected/player-qa.js"),
+                    include_str!("../../../ui/connected/catalog-qa.js"),
                     if mode == "player" {
                         "window.chillPlayerQa"
                     } else {
-                        "window.chillQaSmoke"
+                        if mode == "catalog" {
+                            "window.chillCatalogQa"
+                        } else {
+                            "window.chillQaSmoke"
+                        }
                     },
                     serde_json::json!({"address":address,"root":root,"mode":mode})
                 ));

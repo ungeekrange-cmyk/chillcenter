@@ -13,6 +13,7 @@ window.chillPlayerQa=async config=>{
    await loadPage();
   }
   const catalog=await invoke({action:"catalog",offset:0,category:null,q:null});const m=catalog.items[0];assert(m?.id,"fixture catalog missing");
+  await invoke({action:"set_watched",media_id:m.id,watched:false});
   step="native load";await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);
   await wait(()=>playerState.native?.debug_nonblank===true);assert(playerState.native.tracks.some(t=>t.kind==="Audio"),"audio missing");assert(playerState.native.tracks.some(t=>t.kind==="Subtitle"),"subtitle missing");
   step="pause/save";await call({action:"pause"});assert(playerState.native.paused&&!playerState.active,"pause must release lease");

@@ -41,6 +41,7 @@ function renderNext(){
   if(nextKey!==key){clearNext();nextKey=key;$("player-next").hidden=false;
     $("player-next-title").textContent=media.title;$("player-next-season").textContent=next.new_season?"Nouvelle saison":"À suivre";
     $("player-next-thumb").textContent=media.title.slice(0,1).toUpperCase();
+    if(media.poster&&window.chillArtwork)window.chillArtwork($("player-next-thumb"),media.id);
     $("player-next-now").disabled=!next.available||!media.available;
     if(!next.available||!media.available){$("player-next-count").textContent="Vidéo suivante indisponible.";nextCancelled=true;}
     else if(playerState.autoplay_seconds===null){$("player-next-count").textContent="Lancement automatique désactivé.";}
@@ -65,6 +66,8 @@ function renderPlayer(){
   $("player-progress").disabled=!duration;$("player-time").textContent=timeLabel(position)+" / "+timeLabel(duration);
   const audio=n.tracks.filter(t=>t.kind==="Audio"),subtitles=n.tracks.filter(t=>t.kind==="Subtitle");
   tracksSelect("player-audio",audio,audio.find(t=>t.selected)?.id,false);tracksSelect("player-subtitle",subtitles,subtitles.find(t=>t.selected)?.id,true);
+  const external=playerState.external_subtitles||[],select=$("player-subtitle");
+  for(const t of external){if(!select.querySelector('option[value="'+t.id+'"]')){const o=node("option",["Fichier externe",t.title,t.language,t.ambiguous?"choix manuel":null].filter(Boolean).join(" · "));o.value=t.id;o.disabled=t.unavailable;select.append(o);}}
   $("player-decoder").textContent=n.hardware_decoder&&n.hardware_decoder!=="no"?"Décodage matériel · "+n.hardware_decoder:"Décodage logiciel · "+(n.decoder||"initialisation");
   renderNext();
 }
@@ -75,7 +78,7 @@ $("player-back").onclick=()=>playerCall({action:"jump",seconds:-10});$("player-f
 $("player-speed").onchange=()=>playerCall({action:"speed",speed:Number($("player-speed").value)});
 $("player-progress").onchange=()=>playerCall({action:"seek",position:Number($("player-progress").value)});
 $("player-audio").onchange=()=>playerCall({action:"audio",track_id:Number($("player-audio").value)});
-$("player-subtitle").onchange=()=>playerCall({action:"subtitle",track_id:$("player-subtitle").value==="off"?null:Number($("player-subtitle").value)});
+$("player-subtitle").onchange=()=>{const value=$("player-subtitle").value;playerCall(value.startsWith("sub-")?{action:"external_subtitle",id:value}:{action:"subtitle",track_id:value==="off"?null:Number(value)});};
 $("player-fullscreen").onclick=()=>playerCall({action:"fullscreen"});
 $("player-close").onclick=async()=>{if(await playerCall({action:"stop"})){hidePlayer();await loadPage();}};
 const reposition=()=>{clearTimeout(playerResize);playerResize=setTimeout(()=>{if(!$("player-panel").hidden)playerCall({action:"mount",rect:videoRect()},true);},80);};

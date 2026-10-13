@@ -95,15 +95,36 @@ pub struct NativeRect {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum NativeAction {
-    Mount { rect: NativeRect },
+    Mount {
+        rect: NativeRect,
+    },
     Poll,
-    LeaseDeadline { remaining_ms: u64 },
-    Pause { paused: bool },
-    Seek { seconds: f64 },
-    Speed { speed: f64 },
-    Audio { track_id: i64 },
-    Subtitle { track_id: Option<i64> },
-    Volume { volume: u8 },
+    LeaseDeadline {
+        remaining_ms: u64,
+    },
+    Pause {
+        paused: bool,
+    },
+    Seek {
+        seconds: f64,
+    },
+    Speed {
+        speed: f64,
+    },
+    Audio {
+        track_id: i64,
+    },
+    Subtitle {
+        track_id: Option<i64>,
+    },
+    AddSubtitle {
+        path: std::path::PathBuf,
+        title: String,
+        language: Option<String>,
+    },
+    Volume {
+        volume: u8,
+    },
     Fullscreen,
     Close,
 }
@@ -382,6 +403,17 @@ impl SurfacePlayer {
             }
             NativeAction::Audio { track_id } => self.player.select_audio(track_id)?,
             NativeAction::Subtitle { track_id } => self.player.select_subtitle(track_id)?,
+            NativeAction::AddSubtitle {
+                path,
+                title,
+                language,
+            } => {
+                let path = path.to_str().ok_or_else(|| {
+                    NativePlayerError::Surface("cache sous-titre invalide".into())
+                })?;
+                self.player
+                    .add_subtitle(path, Some(&title), language.as_deref())?;
+            }
             NativeAction::Volume { volume } => {
                 self.volume = volume.min(100);
                 self.player.set_volume(self.volume)?;

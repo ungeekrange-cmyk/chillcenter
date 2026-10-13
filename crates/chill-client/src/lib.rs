@@ -20,9 +20,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use x509_parser::extensions::GeneralName;
 use x509_parser::prelude::*;
+pub mod appearance;
 pub mod playback;
 pub mod ui;
-pub mod appearance;
 pub mod watch_clock;
 pub use reqwest::Method as HttpMethod;
 
@@ -586,6 +586,42 @@ impl Transport {
 
     pub async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T, ClientError> {
         self.request_json::<(), T>(Method::GET, path, None).await
+    }
+
+    /// Native callers only: bounded downloads through the same pinned HTTPS client.
+    /// The Tauri command allowlist never exposes arbitrary paths or headers.
+    pub async fn get_binary(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        limit: usize,
+    ) -> Result<Vec<u8>, ClientError> {
+        let mut response = self
+            .asynchronous
+            .get(self.endpoint.request_url(path)?)
+            .query(query)
+            .send()
+            .await?;
+        let status = response.status();
+        let cap = if status.is_success() { limit } else { 4096 };
+        if response.content_length().is_some_and(|n| n > cap as u64) {
+            return Err(ClientError::InvalidRangeResponse(
+                "Téléchargement trop volumineux".into(),
+            ));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if bytes.len().saturating_add(chunk.len()) > cap {
+                return Err(ClientError::InvalidRangeResponse(
+                    "Téléchargement trop volumineux".into(),
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        if !status.is_success() {
+            return Err(api_response_error(status, &bytes));
+        }
+        Ok(bytes)
     }
 
     pub fn read_range_blocking(

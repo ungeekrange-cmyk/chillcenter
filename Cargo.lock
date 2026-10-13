@@ -516,6 +516,7 @@ dependencies = [
 name = "chill-client"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "chill-domain",
  "rcgen",
  "reqwest",
@@ -598,6 +599,7 @@ dependencies = [
  "tauri-build",
  "thiserror 2.0.21",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

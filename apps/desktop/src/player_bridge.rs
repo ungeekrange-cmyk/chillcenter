@@ -3,8 +3,8 @@ use crate::native_player::{self, LeaseDeadline, NativeAction, NativeRect, Native
 use chill_client::{
     Transport,
     playback::{
-        AcquirePlayback, Lease, NextVideo, PlaybackContext, PlaybackControl, PlaybackInfo,
-        ReleasePlayback,
+        AcquirePlayback, ExternalSubtitle, Lease, NextVideo, PlaybackContext, PlaybackControl,
+        PlaybackInfo, ReleasePlayback,
     },
     ui::{PlaybackConnection, UiError},
     watch_clock::{Observation, WatchClock},
@@ -55,6 +55,9 @@ pub enum PlayerCommand {
     Subtitle {
         track_id: Option<i64>,
     },
+    ExternalSubtitle {
+        id: String,
+    },
     Fullscreen,
 }
 pub fn error(message: &str) -> UiError {
@@ -91,11 +94,16 @@ struct Session {
     note: Option<String>,
     context: PlaybackContext,
     next: Option<NextVideo>,
+    external: Vec<ExternalSubtitle>,
+    selected_external: Option<String>,
+    subtitle_cache: Vec<(String, std::path::PathBuf)>,
+    cache_dir: std::path::PathBuf,
 }
 #[derive(Default)]
 pub struct PlayerHost {
     session: Option<Session>,
     pub rendering: Arc<AtomicBool>,
+    pub cache_dir: std::path::PathBuf,
 }
 impl PlayerHost {
     pub async fn start(
@@ -167,9 +175,20 @@ impl PlayerHost {
                 return Err(native_error(e));
             }
         };
-        native_player::action(w, NativeAction::Mount { rect })
-            .await
-            .map_err(native_error)?;
+        if let Err(e) = native_player::action(w, NativeAction::Mount { rect }).await {
+            let _ = native_player::action(w, NativeAction::Close).await;
+            let _ = c
+                .transport
+                .release_playback(
+                    &c.profile_id,
+                    &ReleasePlayback {
+                        lease: control(&grant.lease),
+                        progress: None,
+                    },
+                )
+                .await;
+            return Err(native_error(e));
+        }
         self.session = Some(Session {
             transport: c.transport,
             profile: c.profile_id,
@@ -186,6 +205,10 @@ impl PlayerHost {
             note: None,
             context,
             next: None,
+            external: Vec::new(),
+            selected_external: None,
+            subtitle_cache: Vec::new(),
+            cache_dir: self.cache_dir.clone(),
         });
         self.view()
     }
@@ -193,7 +216,7 @@ impl PlayerHost {
         Ok(match &self.session {
             None => json!({"stage":"closed"}),
             Some(s) => {
-                json!({"stage":"player","media_id":s.info.media.id,"title":s.info.media.title,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some(),"context":s.context,"next":s.next,"autoplay_seconds":s.info.preferences.autoplay_seconds})
+                json!({"stage":"player","media_id":s.info.media.id,"title":s.info.media.title,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some(),"context":s.context,"next":s.next,"autoplay_seconds":s.info.preferences.autoplay_seconds,"external_subtitles":s.external})
             }
         })
     }
@@ -264,6 +287,44 @@ impl PlayerHost {
         }
         if !s.started && s.snapshot.loaded && s.lease.is_some() {
             renew(s, w).await?;
+            let lease = s.lease.as_ref().unwrap();
+            match s.transport.external_subtitles(&s.profile, lease).await {
+                Ok(external) => {
+                    s.external = external;
+                    let preferred = s.info.preferences.subtitle_language.as_str();
+                    let matched: Vec<_> = s
+                        .external
+                        .iter()
+                        .filter(|t| {
+                            !t.unavailable
+                                && t.language
+                                    .as_deref()
+                                    .is_some_and(|l| language_equal(l, preferred))
+                        })
+                        .map(|t| t.id.clone())
+                        .collect();
+                    let has_integrated = s.snapshot.tracks.iter().any(|t| {
+                        t.kind == TrackKind::Subtitle
+                            && t.language
+                                .as_deref()
+                                .is_some_and(|l| language_equal(l, preferred))
+                    });
+                    let chosen = s.selected_external.clone().or_else(|| {
+                        (!has_integrated && matched.len() == 1).then(|| matched[0].clone())
+                    });
+                    if let Some(id) = chosen {
+                        if add_external(s, w, &id).await.is_err() {
+                            s.note = Some(
+                                "Sous-titre externe indisponible ; choisissez une autre piste."
+                                    .into(),
+                            );
+                        }
+                    } else if !has_integrated && matched.len() > 1 {
+                        s.note=Some("Plusieurs sous-titres correspondent à votre langue : choisissez la piste souhaitée.".into());
+                    }
+                }
+                Err(_) => s.note = Some("Impossible de vérifier les sous-titres externes.".into()),
+            }
             s.snapshot = native_player::action(w, NativeAction::Pause { paused: false })
                 .await
                 .map_err(native_error)?;
@@ -299,7 +360,12 @@ impl PlayerHost {
             }
         }
         if s.lease.is_some() && s.started && s.last_save.elapsed() >= Duration::from_secs(5) {
-            report(s, !s.snapshot.paused, s.desired_position.is_some()).await?;
+            s.last_save = Instant::now();
+            if let Err(e) = report(s, !s.snapshot.paused, s.desired_position.is_some()).await {
+                s.note = Some("Synchronisation de la reprise momentanément indisponible.".into());
+                s.clock.forget_credit();
+                return Err(e);
+            }
         }
         Ok(())
     }
@@ -362,8 +428,10 @@ impl PlayerHost {
                     .map_err(native_error)?;
                 self.rendering.store(false, Ordering::Release);
                 if s.lease.is_some() {
-                    report(s, was_playing, false).await?;
-                    release(s).await?;
+                    let saved = report(s, was_playing, false).await;
+                    let released = release(s).await;
+                    saved?;
+                    released?;
                 }
             }
             PlayerCommand::Resume => {
@@ -381,7 +449,7 @@ impl PlayerHost {
                         )
                         .await?;
                     s.clock = WatchClock::default();
-                    s.snapshot = native_player::load(
+                    let loaded = native_player::load(
                         w,
                         s.transport.clone(),
                         stream(&g.lease),
@@ -393,21 +461,34 @@ impl PlayerHost {
                             remaining: conservative(g.lease.remaining_ms, sent),
                         },
                     )
-                    .await
-                    .map_err(native_error)?;
+                    .await;
                     s.lease = Some(g.lease);
+                    s.snapshot = match loaded {
+                        Ok(snapshot) => snapshot,
+                        Err(e) => {
+                            let _ = release(s).await;
+                            return Err(native_error(e));
+                        }
+                    };
                     s.started = false;
                     s.last_beat = Instant::now();
                     s.desired_position = None;
                     s.next = None;
-                    native_player::action(w, NativeAction::Mount { rect: s.rect })
-                        .await
-                        .map_err(native_error)?;
+                    if let Err(e) =
+                        native_player::action(w, NativeAction::Mount { rect: s.rect }).await
+                    {
+                        let _ = native_player::action(w, NativeAction::Close).await;
+                        let _ = release(s).await;
+                        return Err(native_error(e));
+                    }
                 } else {
                     renew(s, w).await?;
-                    s.snapshot = native_player::action(w, NativeAction::Pause { paused: false })
-                        .await
-                        .map_err(native_error)?;
+                    if s.snapshot.loaded {
+                        s.snapshot =
+                            native_player::action(w, NativeAction::Pause { paused: false })
+                                .await
+                                .map_err(native_error)?;
+                    }
                 }
             }
             PlayerCommand::Mount { rect } => {
@@ -484,6 +565,7 @@ impl PlayerHost {
                     .map_err(native_error)?;
             }
             PlayerCommand::Subtitle { track_id } => {
+                s.selected_external = None;
                 if track_id.is_some_and(|id| {
                     !s.snapshot
                         .tracks
@@ -503,6 +585,31 @@ impl PlayerHost {
                 )
                 .map_err(|_| error("Plein écran indisponible."))?;
             }
+            PlayerCommand::ExternalSubtitle { id } => {
+                if !s.snapshot.loaded {
+                    return Err(error("Attendez le chargement de la vidéo."));
+                }
+                if s.lease.is_some() {
+                    add_external(s, w, &id).await?;
+                } else {
+                    let g = s
+                        .transport
+                        .acquire_playback(
+                            &s.profile,
+                            &AcquirePlayback {
+                                media_id: s.info.media.id.clone(),
+                                device_id: s.device.clone(),
+                                context: s.context.clone(),
+                            },
+                        )
+                        .await?;
+                    s.lease = Some(g.lease);
+                    let added = add_external(s, w, &id).await;
+                    let released = release(s).await;
+                    added?;
+                    released?;
+                }
+            }
             _ => return Err(error("Commande de lecture invalide.")),
         }
         self.view()
@@ -510,15 +617,17 @@ impl PlayerHost {
     pub async fn stop(&mut self, w: &WebviewWindow) -> Result<(), UiError> {
         self.rendering.store(false, Ordering::Release);
         if let Some(mut s) = self.session.take() {
-            let snapshot = native_player::action(w, NativeAction::Poll)
-                .await
-                .map_err(native_error)?;
-            let playing = !snapshot.paused;
-            s.snapshot = snapshot;
+            if let Ok(snapshot) = native_player::action(w, NativeAction::Poll).await {
+                s.snapshot = snapshot;
+            }
+            let playing = !s.snapshot.paused;
             let _ = native_player::action(w, NativeAction::Close).await;
             if s.lease.is_some() {
                 let _ = report(&mut s, playing, false).await;
                 let _ = release(&mut s).await;
+            }
+            for (_, path) in s.subtitle_cache {
+                let _ = tokio::fs::remove_file(path).await;
             }
         }
         Ok(())
@@ -537,11 +646,113 @@ fn conservative(ms: u64, sent: Instant) -> Duration {
         .saturating_sub(Duration::from_millis(250))
 }
 fn uuid_check(s: &str) -> Result<(), UiError> {
-    if s.len() != 36 || s.bytes().any(|b| !b.is_ascii_hexdigit() && b != b'-') {
+    if uuid::Uuid::parse_str(s).is_err() {
         Err(error("Identifiant vidéo invalide."))
     } else {
         Ok(())
     }
+}
+fn language_equal(a: &str, b: &str) -> bool {
+    fn norm(s: &str) -> &str {
+        match s.split(['-', '_']).next().unwrap_or("") {
+            "eng" => "en",
+            "fra" | "fre" => "fr",
+            "deu" | "ger" => "de",
+            "spa" => "es",
+            "ita" => "it",
+            s => s,
+        }
+    }
+    let a = a.to_ascii_lowercase();
+    let b = b.to_ascii_lowercase();
+    norm(&a) == norm(&b) && !b.is_empty()
+}
+async fn add_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<(), UiError> {
+    let candidate = s
+        .external
+        .iter()
+        .find(|t| t.id == id && !t.unavailable)
+        .cloned()
+        .ok_or_else(|| error("Sous-titre absent."))?;
+    if let Some((_, path)) = s.subtitle_cache.iter().find(|(key, _)| key == id) {
+        s.snapshot = native_player::action(
+            w,
+            NativeAction::AddSubtitle {
+                path: path.clone(),
+                title: candidate.title,
+                language: candidate.language,
+            },
+        )
+        .await
+        .map_err(native_error)?;
+        s.selected_external = Some(id.into());
+        return Ok(());
+    }
+    if s.subtitle_cache.len() >= 4 {
+        return Err(error(
+            "Cache de sous-titres plein pour cette lecture. Fermez puis rouvrez la vidéo.",
+        ));
+    }
+    let lease = s
+        .lease
+        .as_ref()
+        .ok_or_else(|| error("Bail de lecture absent."))?;
+    let bytes = s.transport.download_subtitle(&s.profile, lease, id).await?;
+    let dir = s.cache_dir.clone();
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|_| error("Cache indisponible."))?;
+    let mut entries = tokio::fs::read_dir(&dir)
+        .await
+        .map_err(|_| error("Cache indisponible."))?;
+    let mut total = 0u64;
+    let mut count = 0;
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|_| error("Cache indisponible."))?
+    {
+        count += 1;
+        if count > 256 {
+            return Err(error("Cache de sous-titres saturé."));
+        }
+        let meta = entry
+            .metadata()
+            .await
+            .map_err(|_| error("Cache indisponible."))?;
+        total = total.saturating_add(meta.len());
+    }
+    if total.saturating_add(bytes.len() as u64) > 64 * 1024 * 1024 {
+        return Err(error("Cache de sous-titres saturé (64 MiB)."));
+    }
+    let path = dir.join(format!("{}.subtitle", uuid::Uuid::new_v4()));
+    let mut opts = tokio::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    opts.mode(0o600);
+    use tokio::io::AsyncWriteExt;
+    let mut file = opts
+        .open(&path)
+        .await
+        .map_err(|_| error("Cache indisponible."))?;
+    if file.write_all(&bytes).await.is_err() {
+        let _ = tokio::fs::remove_file(&path).await;
+        return Err(error("Cache indisponible."));
+    }
+    drop(file);
+    s.subtitle_cache.push((id.into(), path.clone()));
+    s.snapshot = native_player::action(
+        w,
+        NativeAction::AddSubtitle {
+            path,
+            title: candidate.title,
+            language: candidate.language,
+        },
+    )
+    .await
+    .map_err(native_error)?;
+    s.selected_external = Some(id.into());
+    Ok(())
 }
 async fn renew(s: &mut Session, w: &WebviewWindow) -> Result<(), UiError> {
     let l = s

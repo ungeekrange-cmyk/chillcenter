@@ -1,16 +1,17 @@
 "use strict";
 const $ = id => document.getElementById(id);
 let state = {stage:"server"}, busy=false, offset=0, more=false, deleting=null, timer=null, draftAddress="";
-function message(value="") { $("message").textContent=value; }
+function message(value="") { $("message").textContent=value;document.querySelectorAll(".dialog-message").forEach(n=>n.textContent=value); }
 function node(tag,text,cls) { const n=document.createElement(tag); if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n; }
 async function invoke(command) { return window.__TAURI__.core.invoke("ui_command",{command}); }
 async function run(command, update=true) {
-  if(busy)return null; busy=true;document.body.setAttribute("aria-busy","true");document.querySelectorAll("button,input,select").forEach(n=>n.disabled=true);message();
+  if(busy)return null; busy=true;document.body.setAttribute("aria-busy","true");const disabledBefore=new Map();document.querySelectorAll("button,input,select").forEach(n=>{disabledBefore.set(n,n.disabled);n.disabled=true;});message();
   try { const result=await invoke(command);if(update){state=result;render();}return result; }
   catch(error){$("profile-switch").value=state.profile_id||"";message(error?.message||String(error));if(error?.status===404)setTimeout(async()=>{if(await run({action:"refresh"})){if(!state.profile_id)$("media").replaceChildren();}},0);return null;}
-  finally{busy=false;document.body.removeAttribute("aria-busy");document.querySelectorAll("button,input,select").forEach(n=>n.disabled=false);pager();}
+  finally{busy=false;document.body.removeAttribute("aria-busy");for(const [n,disabled] of disabledBefore)if(n.isConnected)n.disabled=disabled;pager();}
 }
 function render(){
+  if(window.catalogProfileChanged)window.catalogProfileChanged();
   if(window.refreshAppearance)window.refreshAppearance();
   $("connection-notice").textContent=state.notice||"";$("connection-notice").hidden=!state.notice;
   for(const id of ["server-panel","trust-panel","profile-panel","catalog-panel"])$(id).hidden=true;
@@ -47,6 +48,7 @@ async function connect(address){draftAddress=address;state={stage:"server",addre
 async function selectProfile(id){if(!id)return;$("media").replaceChildren();offset=0;const r=await run({action:"select_profile",id});if(r)await loadPage();}
 function pager(){ $("previous").disabled=busy||offset===0;$("next").disabled=busy||!more;$("page-label").textContent="Page "+(Math.floor(offset/50)+1); }
 async function loadPage(){
+  if(window.resetArtwork)window.resetArtwork();
   if(!state.profile_id)return;$("media").replaceChildren();
   const page=await run({action:"catalog",offset,category:$("category").value||null,q:$("search").value||null},false);if(!page)return;
   more=page.has_more;pager();
@@ -60,7 +62,7 @@ async function loadPage(){
     watched.onclick=async()=>{if(await run({action:"set_watched",media_id:m.id,watched:!m.watched},false))await loadPage();};
     rating.onchange=async()=>{if(await run({action:"set_rating",media_id:m.id,rating:rating.value?Number(rating.value):null},false))await loadPage();};
     const play=node("button","Lecture","play-video");play.disabled=!m.available;play.onclick=()=>window.chillPlay(m.id);
-    actions.append(play,watched,rating);watched.classList.add("watched-toggle");info.append(actions);if(!m.available)info.append(node("p","Indisponible au dernier scan","muted"));card.append(poster,info);$("media").append(card);
+    actions.append(play,watched,rating);watched.classList.add("watched-toggle");info.append(actions);if(!m.available)info.append(node("p","Indisponible au dernier scan","muted"));card.append(poster,info);if(window.catalogEnhanceCard)window.catalogEnhanceCard(card,m);$("media").append(card);
   }
 }
 $("connect-form").onsubmit=e=>{e.preventDefault();connect($("address").value);};
@@ -69,7 +71,7 @@ $("reject-trust").onclick=()=>run({action:"disconnect"});
 $("server-switch").onclick=()=>run({action:"disconnect"});
 $("profile-switch").onchange=()=>selectProfile($("profile-switch").value);
 for(const id of ["create-first","create-admin"])$(id).onsubmit=async e=>{e.preventDefault();const name=e.currentTarget.elements.name.value;const r=await run({action:"create_profile",name});if(r)$(id).reset();};
-$("admin-toggle").onclick=async()=>{if(await run({action:"refresh"})){$("admin-panel").hidden=false;await pollScan();}};
+$("admin-toggle").onclick=async()=>{if(typeof playerState!=="undefined"&&playerState.stage==="player")await playerCall({action:"stop"});if(await run({action:"refresh"})){$("admin-panel").hidden=false;await pollScan();}};
 $("admin-close").onclick=()=>{$("admin-panel").hidden=true;clearTimeout(timer);};
 $("library-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_library",video_root:$("video-root").value.trim()||null,expected_revision:state.library.revision}))message("Chemin enregistré sur le serveur.");};
 $("preferences-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_preferences",audio_language:$("audio-language").value,subtitle_language:$("subtitle-language").value,autoplay_seconds:$("autoplay").value==="off"?null:Number($("autoplay").value)}))message("Préférences du profil enregistrées.");};

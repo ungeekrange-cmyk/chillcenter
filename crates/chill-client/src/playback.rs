@@ -5,6 +5,34 @@ pub use chill_domain::{
     PlaybackGrant, PlaybackInfo, Progress, ReleasePlayback,
 };
 use reqwest::Method;
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ExternalSubtitle {
+    pub id: String,
+    pub title: String,
+    pub language: Option<String>,
+    pub ambiguous: bool,
+    pub unavailable: bool,
+}
+#[derive(serde::Deserialize)]
+struct SubtitleList {
+    items: Vec<ExternalSubtitle>,
+}
+fn subtitle_path(profile: &str, lease: &Lease) -> Result<String, ClientError> {
+    profile_path(profile, "subtitles")?;
+    if !is_opaque_id(&lease.media_id) {
+        return Err(ClientError::InvalidRequestPath("média invalide".into()));
+    }
+    Ok(format!(
+        "/api/v1/profiles/{profile}/media/{}/subtitles",
+        lease.media_id
+    ))
+}
+fn subtitle_query(lease: &Lease) -> [(&'static str, String); 2] {
+    [
+        ("session", lease.session_id.clone()),
+        ("generation", lease.generation.to_string()),
+    ]
+}
 fn profile_path(profile: &str, operation: &str) -> Result<String, ClientError> {
     if !is_opaque_id(profile) {
         return Err(ClientError::InvalidRequestPath("profil invalide".into()));
@@ -15,6 +43,55 @@ pub fn valid_speed_value(speed: f64) -> bool {
     chill_domain::valid_speed(speed)
 }
 impl Transport {
+    pub async fn external_subtitles(
+        &self,
+        profile: &str,
+        lease: &Lease,
+    ) -> Result<Vec<ExternalSubtitle>, ClientError> {
+        let list: SubtitleList = self
+            .json_with_options::<(), _>(
+                Method::GET,
+                &subtitle_path(profile, lease)?,
+                None,
+                &subtitle_query(lease),
+                &[],
+            )
+            .await?;
+        if list.items.len() > 64 {
+            return Err(ClientError::InvalidRangeResponse(
+                "Trop de sous-titres".into(),
+            ));
+        }
+        Ok(list.items)
+    }
+    pub async fn download_subtitle(
+        &self,
+        profile: &str,
+        lease: &Lease,
+        id: &str,
+    ) -> Result<Vec<u8>, ClientError> {
+        if id.len() != 20
+            || !id.starts_with("sub-")
+            || !id[4..].bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err(ClientError::InvalidRequestPath(
+                "sous-titre invalide".into(),
+            ));
+        }
+        let bytes = self
+            .get_binary(
+                &format!("{}/{id}", subtitle_path(profile, lease)?),
+                &subtitle_query(lease),
+                16 * 1024 * 1024,
+            )
+            .await?;
+        if bytes.contains(&0) || std::str::from_utf8(&bytes).is_err() {
+            return Err(ClientError::InvalidRangeResponse(
+                "Sous-titre non pris en charge".into(),
+            ));
+        }
+        Ok(bytes)
+    }
     pub async fn next_video(
         &self,
         profile: &str,
