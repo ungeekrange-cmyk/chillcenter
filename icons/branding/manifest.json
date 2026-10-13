@@ -1,0 +1,254 @@
+{
+  "format_version": 1,
+  "created_on": "2026-10-13",
+  "generator": "image_gen built-in",
+  "asset_type": "static-raster-logo",
+  "default": {
+    "file": "default.png",
+    "status": "APPROVED_BY_USER",
+    "selection": "First of the final two proposals, before the last downward translation.",
+    "source_image": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+    "sha256": "45dd0eec618bec968f29c009e9122e74c42081db3bbc462c4bb3176d769b128f",
+    "width": 1254,
+    "height": 1254,
+    "has_alpha": true
+  },
+  "variants": [
+    {
+      "ambience": "autumn",
+      "mode": "dark",
+      "label": "Automne — sombre",
+      "file": "autumn-dark.png",
+      "status": "PROPOSED",
+      "sha256": "e2b5b1388cea96b58d2a41723a74db8d7932df8b971d5a8b3ff8393d89b6e71b",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#4E2528",
+        "#DFAB65"
+      ],
+      "source_image": "exec-60a37760-0423-416a-b8f4-1edb7a497f19.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Autumn DARK variant. Rounded square, sofa silhouette and lettering in deep burgundy-brown #4E2528; circular disc and seat separation in warm golden copper #DFAB65. Strong contrast, autumn leaves color mood, no decorative motifs."
+    },
+    {
+      "ambience": "autumn",
+      "mode": "light",
+      "label": "Automne — clair",
+      "file": "autumn-light.png",
+      "status": "PROPOSED",
+      "sha256": "cd72f88a0e3788d403af39dc5e505bc1e1be9862747c703c95da7afa50705678",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#F3DFC5",
+        "#8D4930"
+      ],
+      "source_image": "exec-d41e1cba-7302-4ca4-954e-5fb2f59e79d7.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Autumn LIGHT variant. Rounded square, sofa silhouette and lettering in pale warm linen #F3DFC5; circular disc and seat separation in rich rust copper #8D4930. Strong contrast and autumn warmth, no decorative motifs."
+    },
+    {
+      "ambience": "christmas",
+      "mode": "dark",
+      "label": "Noël — sombre",
+      "file": "christmas-dark.png",
+      "status": "PROPOSED",
+      "sha256": "63016906a05525988706fbdcbb6c2453975b825036134079679bdddd74967052",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#193D2D",
+        "#F0D6A0",
+        "#92333C"
+      ],
+      "source_image": "exec-2b82e4f7-9472-41c7-9388-a08e5f885c1b.png",
+      "edit_target": "exec-708b6262-fa29-46f5-b905-84e573750b5b.png",
+      "prompt": "Make a Christmas DARK color variant of this logo. Preserve all existing filled shapes and exact typography, geometry, placement, sofa and circle. Rounded-square background, sofa silhouette and 'Chill Center' lettering are deep fir green #193D2D. Inner circular disc and seat separation are warm pale champagne #F0D6A0. Add only one very small two-leaf holly sprig in the same fir green with two tiny burgundy berries #92333C in the blank gap between the text arch and sofa backrest. The square background must be completely clean, uniformly green with no texture, dark stains, ghost images, smudges or extra marks. Keep the fully filled circle, no extra outline or ring. No other objects or words. Real transparency outside the original rounded square."
+    },
+    {
+      "ambience": "christmas",
+      "mode": "light",
+      "label": "Noël — clair",
+      "file": "christmas-light.png",
+      "status": "PROPOSED",
+      "sha256": "4ec51a21bcc761388b1d6e7ea5a4aaacc7846eaaf3388d2fbe4741dcbcf58a9e",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#F5E8CE",
+        "#85313B",
+        "#E1B76E"
+      ],
+      "source_image": "exec-bdc5ccdf-ce13-42ba-bf9d-8317042a20cc.png",
+      "edit_target": "exec-ae012483-287b-4a22-b6b7-47e30ac15fd4.png",
+      "prompt": "Make a Christmas LIGHT color variant of this logo. Preserve all existing filled shapes and the exact typography, geometry, placement, sofa and circle. Rounded-square background, sofa silhouette and 'Chill Center' lettering MUST all be pale warm cream #F5E8CE. The inner circle MUST remain a fully filled solid disc, recolored rich Christmas red #85313B; the seat separation is also red. The outer square MUST stay LIGHT CREAM, NOT red. No outlined ring, no added border, no outline in place of the solid circle. Add only one very small two-leaf holly sprig in cream with two tiny gold berries #E1B76E in the blank gap between the text arch and sofa backrest; no other decorations. Keep clean simple colors, no texture or blotches, no other words. Real transparency outside the original rounded square."
+    },
+    {
+      "ambience": "halloween",
+      "mode": "dark",
+      "label": "Halloween — sombre",
+      "file": "halloween-dark.png",
+      "status": "PROPOSED",
+      "sha256": "df3c279444fbecec0348ee87b5f040228871210c3b64dbd3b59cb70e3af46c4c",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#30202E",
+        "#EDAE66"
+      ],
+      "source_image": "exec-02fd1bc4-deb8-41e6-bcdf-bd86da7babad.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette and add the explicitly requested tiny seasonal motif; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Halloween DARK variant. Rounded square, sofa silhouette and exact lettering in deep aubergine charcoal #30202E; circular disc and seat separation in warm pumpkin orange #EDAE66. Add ONE tiny clean bat silhouette in the same aubergine charcoal centered in the empty space between the text arch and sofa backrest, width at most 10% of circle diameter. Friendly and graphic, not scary or detailed. No other objects, no spiderweb, no new words, no extra ring."
+    },
+    {
+      "ambience": "halloween",
+      "mode": "light",
+      "label": "Halloween — clair",
+      "file": "halloween-light.png",
+      "status": "PROPOSED",
+      "sha256": "a79b30dd85446b786a032ff6afe712bb4f8961ed535ec07f613aeb72a3fb9456",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#FFF0D9",
+        "#9C421E"
+      ],
+      "source_image": "exec-1abdbdfb-8571-4f1a-ad1a-7164149b1afb.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette and add the explicitly requested tiny seasonal motif; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Halloween LIGHT variant. Rounded square, sofa silhouette and exact lettering in pale warm pumpkin cream #FFF0D9; circular disc and seat separation in rich dark pumpkin orange #9C421E. Add ONE tiny clean bat silhouette in the same pale cream centered in the empty space between the text arch and sofa backrest, width at most 10% of the circle diameter. It is friendly and graphic, not scary or detailed. No other objects, no spiderweb, no new words, no extra ring."
+    },
+    {
+      "ambience": "spring",
+      "mode": "dark",
+      "label": "Printemps — sombre",
+      "file": "spring-dark.png",
+      "status": "PROPOSED",
+      "sha256": "103f908848d793cb22522ceafeef1509d950cfb68cb3b89e3e7dff727b5ac736",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#233F32",
+        "#CCDCB4"
+      ],
+      "source_image": "exec-708b6262-fa29-46f5-b905-84e573750b5b.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Spring DARK variant. Rounded square, sofa silhouette and lettering in deep moss green #233F32; circular disc and seat separation in pale fresh sage #CCDCB4. Strong contrast, calm and fresh, no decorative motifs."
+    },
+    {
+      "ambience": "spring",
+      "mode": "light",
+      "label": "Printemps — clair",
+      "file": "spring-light.png",
+      "status": "PROPOSED",
+      "sha256": "49a75e2ccedb246999cc17ab52b8aa9896100e1721b048cbd4b5c143b0e25b51",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#E7EDD9",
+        "#426246"
+      ],
+      "source_image": "exec-ae012483-287b-4a22-b6b7-47e30ac15fd4.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Spring LIGHT variant. Rounded square, sofa silhouette and lettering in very pale sage-cream #E7EDD9; circular disc and seat separation in rich botanical green #426246. Strong contrast, fresh and gentle, no decorative motifs."
+    },
+    {
+      "ambience": "summer",
+      "mode": "dark",
+      "label": "Été — sombre",
+      "file": "summer-dark.png",
+      "status": "PROPOSED",
+      "sha256": "2b66dcb06fe904088b164658bae8e9047a6d5cdfa957a12ebe0e3def6a5a4afa",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#513321",
+        "#EFCA89"
+      ],
+      "source_image": "exec-c828b5e1-1601-403d-aa6b-ead910d11c0f.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Summer DARK variant. Rounded square, sofa silhouette and lettering in deep warm earth brown #513321; circular disc and seat separation in pale apricot sand #EFCA89. Strong contrast, warm evening mood, no decorative motifs."
+    },
+    {
+      "ambience": "summer",
+      "mode": "light",
+      "label": "Été — clair",
+      "file": "summer-light.png",
+      "status": "PROPOSED",
+      "sha256": "c9d5985c0429173873b54ce1b4e8865bcc3734fdbe6840eef7bce55be970d8c4",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#FFF0D2",
+        "#A65C2D"
+      ],
+      "source_image": "exec-e4356c7c-c7a1-4124-9e02-2351b7a974f1.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Summer LIGHT variant. Rounded square, sofa silhouette and lettering in warm pale sand #FFF0D2; circular disc and seat separation in rich sun-baked ochre #A65C2D. High contrast and sunny warmth, no decorative motifs."
+    },
+    {
+      "ambience": "winter",
+      "mode": "dark",
+      "label": "Hiver — sombre",
+      "file": "winter-dark.png",
+      "status": "PROPOSED",
+      "sha256": "af929088b34722813a0c1b1dcfc6fbfdffe4e7f1e0ffb5f48eaf78399adae5ad",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#203548",
+        "#C4DCE8"
+      ],
+      "source_image": "exec-964ae8e1-301f-4a77-9233-64dcc9e096cc.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Winter DARK variant. Rounded square, sofa silhouette and lettering in deep midnight blue #203548; circular disc and seat separation in pale frosted blue #C4DCE8. High contrast, cozy winter night, no decorative motifs."
+    },
+    {
+      "ambience": "winter",
+      "mode": "light",
+      "label": "Hiver — clair",
+      "file": "winter-light.png",
+      "status": "PROPOSED",
+      "sha256": "5b0d8184a3c78271f33c67c8fe20cd3e8b5c87923d9cbf3853f47d463c2ba8b2",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true,
+      "palette_requested": [
+        "#E5EEF3",
+        "#345771"
+      ],
+      "source_image": "exec-a711e224-a7dc-430a-bcc3-6cdfe78ec8b5.png",
+      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
+      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Winter LIGHT variant. Rounded square, sofa silhouette and lettering in pale icy blue-white #E5EEF3; circular disc and seat separation in rich slate blue #345771. High contrast, gentle winter calm, no decorative motifs."
+    }
+  ],
+  "discarded": [
+    {
+      "ambience": "christmas-light",
+      "source_image": "exec-dae131fe-9a7a-48f3-99ab-51921c2f2fb0.png",
+      "reason": "Unrequested outline and dark outer tile."
+    },
+    {
+      "ambience": "christmas-dark",
+      "source_image": "exec-4f9ed1c4-56a2-493f-92bb-9ddfd23a960d.png",
+      "reason": "Unrequested marks in outer background."
+    }
+  ],
+  "integration": {
+    "status": "ASSETS_ONLY_NOT_RUNTIME_CONNECTED",
+    "existing_app_icon_replaced": false,
+    "automatic_calendar_implemented": false,
+    "note": "Use only the active variant at runtime; these files do not prove implemented ambiance switching."
+  }
+}
