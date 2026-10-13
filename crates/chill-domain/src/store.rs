@@ -372,7 +372,7 @@ impl Store {
             _ => None,
         };
         let item = match next { Some(id) => Some(self.media(profile,&id)?), None => None };
-        let new_season = item.as_ref().is_some_and(|m|m.season != current.season);
+        let new_season = context.kind == "series" && current.season.is_some() && item.as_ref().is_some_and(|m|m.season != current.season);
         let available = item.as_ref().is_some_and(|m|m.available);
         Ok(NextVideo { media:item, new_season, available })
     }
@@ -483,10 +483,19 @@ impl Store {
     }
 
     pub fn update_media_at_revision(&mut self, profile: &str, stable_id: &str, expected: u64, patch: &MediaPatch) -> Result<(Media,u64), String> {
-        if self.media_revision(stable_id)? != expected { return Err("La fiche a changé entre-temps.".into()); }
-        let updated=self.update_media(profile,stable_id,patch)?;
-        self.personal.execute("UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1", [stable_id]).map_err(db_error)?;
-        Ok((updated,self.media_revision(stable_id)?))
+        self.require_profile(profile)?;
+        if patch.rating.is_some() || patch.watched.is_some() { return Err("La note et le vu sont propres au profil.".into()); }
+        let legacy=self.legacy_id(stable_id)?;
+        let tx=self.personal.unchecked_transaction().map_err(db_error)?;
+        let revision:i64=tx.query_row("SELECT revision FROM cc_media_revision WHERE stable_id=?1",[stable_id],|r|r.get(0)).map_err(db_error)?;
+        if revision as u64 != expected { return Err("La fiche a changé entre-temps.".into()); }
+        let data:String=tx.query_row("SELECT data FROM media WHERE id=?1",[&legacy],|r|r.get(0)).map_err(db_error)?;
+        let mut updated:Media=serde_json::from_str(&data).map_err(|_|"Catalogue local endommagé : aucune donnée remplacée.".to_string())?;
+        patch.apply(&mut updated)?;
+        tx.execute("UPDATE media SET data=?1 WHERE id=?2",params![serde_json::to_string(&updated).map_err(|_|"Métadonnées invalides.")?,legacy]).map_err(db_error)?;
+        tx.execute("UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",[stable_id]).map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        Ok((self.profile_view(profile,updated)?,revision as u64+1))
     }
 
     pub fn set_rating(
