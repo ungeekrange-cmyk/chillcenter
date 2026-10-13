@@ -27,7 +27,7 @@ pub const MAX_EXPORT_POSTER_BYTES: u64 = 8 * 1024 * 1024;
 #[derive(Debug, Clone)]
 pub struct ArchivePoster {
     pub reference: String,
-    pub source: PathBuf,
+    pub relative: PathBuf,
 }
 #[derive(Debug, Clone)]
 pub struct ArchiveSnapshot {
@@ -1268,10 +1268,93 @@ impl Store {
             }
             posters.push(ArchivePoster {
                 reference,
-                source: PathBuf::from(path),
+                relative: PathBuf::from(
+                    Path::new(path)
+                        .file_name()
+                        .ok_or("Affiche d’export invalide.")?,
+                ),
             });
         }
         Ok(ArchiveSnapshot { document, posters })
+    }
+
+    /// Writes the portable document incrementally.  It deliberately never
+    /// builds a JSON `Value` containing the full library.
+    pub fn write_archive_json<W: std::io::Write>(
+        &mut self,
+        out: &mut W,
+        export_id: &str,
+        poster_root: &Path,
+    ) -> Result<Vec<ArchivePoster>, String> {
+        self.ensure_identities(&self.catalogue.list()?)?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&self.personal, TransactionBehavior::Immediate)
+                .map_err(db_error)?;
+        let media = self.catalogue.list()?;
+        let profiles = self.profiles()?;
+        let mut posters = Vec::new();
+        out.write_all(br#"{"format_version":1,"export_id":"#)
+            .map_err(|_| "Export de staging inaccessible.")?;
+        serde_json::to_writer(&mut *out, export_id).map_err(|_| "Export invalide.")?;
+        out.write_all(b",\"profiles\":")
+            .map_err(|_| "Export de staging inaccessible.")?;
+        write_json_array(out, profiles.iter(), |out, profile| {
+            serde_json::to_writer(out, profile).map_err(|_| "Export invalide.".into())
+        })?;
+        out.write_all(b",\"media\":[")
+            .map_err(|_| "Export de staging inaccessible.")?;
+        for (index, item) in media.iter().enumerate() {
+            if index != 0 {
+                out.write_all(b",")
+                    .map_err(|_| "Export de staging inaccessible.")?;
+            }
+            let stable = self.stable_id(&item.id)?;
+            let mut data = scrub_media(item);
+            if let Some(path) = item
+                .poster
+                .as_ref()
+                .and_then(|p| Path::new(p).strip_prefix(poster_root).ok())
+            {
+                if path
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_)))
+                {
+                    let reference = format!("posters/{stable}.bin");
+                    if let Some(object) = data.as_object_mut() {
+                        object.insert("poster".into(), Value::String(reference.clone()));
+                    }
+                    posters.push(ArchivePoster {
+                        reference,
+                        relative: path.to_path_buf(),
+                    });
+                }
+            } else if let Some(object) = data.as_object_mut() {
+                object.remove("poster");
+            }
+            serde_json::to_writer(
+                &mut *out,
+                &json!({"id":stable,"relative_path":item.id,"data":data}),
+            )
+            .map_err(|_| "Export invalide.")?;
+        }
+        out.write_all(b"],\"sagas\":")
+            .map_err(|_| "Export de staging inaccessible.")?;
+        serde_json::to_writer(&mut *out, &saga_export(&self.personal, self)?)
+            .map_err(|_| "Export invalide.")?;
+        out.write_all(b",\"personal\":[")
+            .map_err(|_| "Export de staging inaccessible.")?;
+        for (index, profile) in profiles.iter().enumerate() {
+            if index != 0 {
+                out.write_all(b",")
+                    .map_err(|_| "Export de staging inaccessible.")?;
+            }
+            serde_json::to_writer(&mut *out, &self.export_profile(profile)?)
+                .map_err(|_| "Export invalide.")?;
+        }
+        out.write_all(b"],\"leases\":[]}")
+            .map_err(|_| "Export de staging inaccessible.")?;
+        tx.commit().map_err(db_error)?;
+        Ok(posters)
     }
 
     fn export_json_with_limit(&mut self, maximum: Option<usize>) -> Result<Value, String> {
@@ -1599,6 +1682,23 @@ fn scrub_media(media: &Media) -> Value {
         object.remove("rating");
     }
     value
+}
+fn write_json_array<W: std::io::Write, T>(
+    out: &mut W,
+    values: impl Iterator<Item = T>,
+    mut write: impl FnMut(&mut W, T) -> Result<(), String>,
+) -> Result<(), String> {
+    out.write_all(b"[")
+        .map_err(|_| "Export de staging inaccessible.")?;
+    for (index, value) in values.enumerate() {
+        if index != 0 {
+            out.write_all(b",")
+                .map_err(|_| "Export de staging inaccessible.")?;
+        }
+        write(out, value)?;
+    }
+    out.write_all(b"]")
+        .map_err(|_| "Export de staging inaccessible.".to_string())
 }
 
 fn saga_export(connection: &Connection, store: &Store) -> Result<Vec<Collection>, String> {

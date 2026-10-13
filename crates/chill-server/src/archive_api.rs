@@ -41,19 +41,38 @@ fn export_dir(state: &AppState) -> Result<PathBuf, ApiError> {
 }
 
 async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiError> {
-    let snapshot = state
-        .database
-        .call(|store| store.export_archive_snapshot())
-        .await?;
-    let data = serde_json::to_vec(&snapshot.document)
-        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "EXPORT_INVALID"))?;
-    if data.len() > MAX_MANIFEST || data.len() as u64 > MAX_DECOMPRESSED {
-        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "EXPORT_TOO_LARGE"));
-    }
     let id = uuid::Uuid::new_v4().to_string();
     let dir = export_dir(&state)?;
     let partial = dir.join(format!("{id}.partial"));
     let ready = dir.join(format!("{id}.zip"));
+    let data_stage = dir.join(format!("{id}.data.partial"));
+    let poster_root = state.config.data_dir.join("posters");
+    let writer_path = data_stage.clone();
+    let export_id = id.clone();
+    let writer_poster_root = poster_root.clone();
+    let posters = state
+        .database
+        .call(move |store| {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&writer_path)
+                .map_err(|_| "Export de staging inaccessible.".to_string())?;
+            let posters = store.write_archive_json(&mut file, &export_id, &writer_poster_root)?;
+            file.flush()
+                .map_err(|_| "Export de staging inaccessible.")?;
+            file.sync_all()
+                .map_err(|_| "Export de staging inaccessible.")?;
+            Ok(posters)
+        })
+        .await?;
+    let data_size = fs::metadata(&data_stage)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?
+        .len();
+    if data_size > MAX_DECOMPRESSED {
+        let _ = fs::remove_file(&data_stage);
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "EXPORT_TOO_LARGE"));
+    }
     let result = (|| -> Result<(u64, u64), ApiError> {
         let file = fs::OpenOptions::new()
             .write(true)
@@ -62,12 +81,12 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
-        let mut checksums = vec![
-            serde_json::json!({"reference":"data.json","sha256":format!("{:x}",Sha256::digest(&data))}),
-        ];
+        let mut checksums =
+            vec![serde_json::json!({"reference":"data.json","sha256":hash_file(&data_stage)?})];
         let mut poster_bytes = Vec::new();
-        for poster in &snapshot.posters {
-            let bytes = fs::read(&poster.source)
+        for poster in &posters {
+            let source = poster_root.join(&poster.relative);
+            let bytes = fs::read(&source)
                 .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_POSTER"))?;
             if bytes.len() as u64 > chill_domain::store::MAX_EXPORT_POSTER_BYTES {
                 return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "EXPORT_TOO_LARGE"));
@@ -85,7 +104,9 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
         zip.start_file("data.json", options)
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
-        zip.write_all(&data)
+        let mut data_file = fs::File::open(&data_stage)
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
+        std::io::copy(&mut data_file, &mut zip)
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
         for (reference, bytes) in poster_bytes {
             zip.start_file(reference, options)
@@ -104,10 +125,10 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
             .metadata()
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?
             .len();
-        if size > MAX_COMPRESSED || (2 + snapshot.posters.len() as u64) > MAX_ENTRIES {
+        if size > MAX_COMPRESSED || (2 + posters.len() as u64) > MAX_ENTRIES {
             return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "EXPORT_TOO_LARGE"));
         }
-        Ok((size, 2 + snapshot.posters.len() as u64))
+        Ok((size, 2 + posters.len() as u64))
     })();
     match result {
         Ok((bytes, entries)) => {
@@ -116,6 +137,7 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
             fs::File::open(&dir)
                 .and_then(|directory| directory.sync_all())
                 .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
+            let _ = fs::remove_file(&data_stage);
             Ok(Json(ExportReady {
                 export_id: id,
                 bytes,
@@ -125,9 +147,26 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
         }
         Err(error) => {
             let _ = fs::remove_file(&partial);
+            let _ = fs::remove_file(&data_stage);
             Err(error)
         }
     }
+}
+
+fn hash_file(path: &std::path::Path) -> Result<String, ApiError> {
+    let mut file = fs::File::open(path)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let n = std::io::Read::read(&mut file, &mut buffer)
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
+        if n == 0 {
+            break;
+        };
+        hash.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", hash.finalize()))
 }
 
 async fn download(
