@@ -20,6 +20,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use x509_parser::extensions::GeneralName;
 use x509_parser::prelude::*;
+pub mod ui;
+pub use reqwest::Method as HttpMethod;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -509,12 +511,16 @@ impl Transport {
         let tls = tls_config(verifier);
         let timeout = timeout.unwrap_or(DEFAULT_TIMEOUT);
         let asynchronous = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .timeout(timeout)
-            .use_preconfigured_tls(tls.clone())
+            .tls_backend_preconfigured(tls.as_ref().clone())
             .build()?;
         let blocking = reqwest::blocking::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .timeout(timeout)
-            .use_preconfigured_tls(tls)
+            .tls_backend_preconfigured(tls.as_ref().clone())
             .build()?;
         Ok(Self {
             endpoint,
@@ -534,17 +540,42 @@ impl Transport {
         path: &str,
         body: Option<&B>,
     ) -> Result<T, ClientError> {
+        self.json_with_options(method, path, body, &[], &[]).await
+    }
+
+    pub async fn json_with_options<B: Serialize + ?Sized, T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&B>,
+        query: &[(&str, String)],
+        headers: &[(&str, String)],
+    ) -> Result<T, ClientError> {
         let mut request = self
             .asynchronous
-            .request(method, self.endpoint.request_url(path)?);
+            .request(method, self.endpoint.request_url(path)?)
+            .query(query);
+        for (key, value) in headers {
+            request = request.header(*key, value);
+        }
         if let Some(body) = body {
             request = request.json(body);
         }
-        let response = request.send().await?;
+        let mut response = request.send().await?;
         if !response.status().is_success() {
             return Err(ClientError::Http(response.status()));
         }
-        Ok(response.json().await?)
+        const MAX_JSON: usize = 4 * 1024 * 1024;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if bytes.len().saturating_add(chunk.len()) > MAX_JSON {
+                return Err(ClientError::InvalidRangeResponse(
+                    "Réponse JSON trop volumineuse".into(),
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
     pub async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T, ClientError> {
@@ -779,6 +810,12 @@ fn validate_range_body_length(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pinned_transport_can_be_constructed_without_http_or_approval_bypass() {
+        let endpoint = super::ServerEndpoint::parse("fixture", "https://localhost:19443").unwrap();
+        let trust = std::sync::Arc::new(std::sync::RwLock::new(super::TrustStore::default()));
+        assert!(super::Transport::new(endpoint, trust, None).is_ok());
+    }
     use super::*;
 
     fn certificate_for(host: &str) -> PresentedCertificate {

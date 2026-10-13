@@ -65,7 +65,13 @@ impl DatabaseActor {
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
         rx.await
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "DATABASE_OFFLINE"))?
-            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "INVALID_OPERATION"))
+            .map_err(|error| match error.as_str() {
+                "PROFILE_NOT_FOUND" | "Profil introuvable." => {
+                    ApiError(StatusCode::NOT_FOUND, "PROFILE_NOT_FOUND")
+                }
+                "PROFILE_CONFLICT" => ApiError(StatusCode::CONFLICT, "PROFILE_CONFLICT"),
+                _ => ApiError(StatusCode::BAD_REQUEST, "INVALID_OPERATION"),
+            })
     }
 }
 
@@ -75,6 +81,7 @@ pub struct AppState {
     pub library: Arc<Mutex<LibrarySettings>>,
     pub database: DatabaseActor,
     pub certificate: Arc<Mutex<CertificateSchedule>>,
+    pub scan: Arc<Mutex<crate::catalog_api::ScanStatus>>,
 }
 
 #[derive(Debug)]
@@ -87,6 +94,7 @@ impl IntoResponse for ApiError {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .merge(crate::catalog_api::routes())
         .route("/api/v1/server", get(server))
         .route("/api/v1/admin/library", get(library).put(update_library))
         .route("/api/v1/profiles", get(profiles).post(create_profile))
@@ -178,6 +186,14 @@ async fn update_library(
             .library
             .lock()
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
+        if state
+            .scan
+            .lock()
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?
+            .running
+        {
+            return Err(ApiError(StatusCode::CONFLICT, "SCAN_ACTIVE"));
+        }
         settings
             .update(&state.config, body.video_root, body.expected_revision)
             .map_err(|error| {
@@ -218,14 +234,22 @@ async fn create_profile(
 async fn rename_profile(
     State(state): State<AppState>,
     Path(profile): Path<String>,
-    Json(body): Json<Name>,
+    Json(body): Json<Rename>,
 ) -> Result<Json<Profile>, ApiError> {
     Ok(Json(
         state
             .database
-            .call(move |store| store.rename_profile(&profile, &body.name))
+            .call(move |store| {
+                store.rename_profile_at_revision(&profile, &body.name, body.expected_revision)
+            })
             .await?,
     ))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Rename {
+    name: String,
+    expected_revision: u64,
 }
 async fn delete_profile(
     State(state): State<AppState>,
@@ -287,6 +311,7 @@ mod tests {
         };
         let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
         let state = AppState {
+            scan: Arc::new(Mutex::new(crate::catalog_api::ScanStatus::default())),
             database: DatabaseActor::open(dir.path().join("catalog.sqlite")).unwrap(),
             library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
             config: Arc::new(config),
@@ -383,5 +408,143 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         assert_eq!(app.oneshot(request).await.unwrap().status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn profile_rename_requires_current_revision_and_missing_profiles_are_404() {
+        let (_dir, app) = setup();
+        let response = app
+            .clone()
+            .oneshot(request("POST", "/api/v1/profiles", json!({"name":"A"})))
+            .await
+            .unwrap();
+        let p: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        let path = format!("/api/v1/profiles/{}", p["id"].as_str().unwrap());
+        assert_eq!(
+            app.clone()
+                .oneshot(request(
+                    "PUT",
+                    &path,
+                    json!({"name":"B","expected_revision":1})
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            app.clone()
+                .oneshot(request(
+                    "PUT",
+                    &path,
+                    json!({"name":"C","expected_revision":1})
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            app.oneshot(request(
+                "GET",
+                "/api/v1/profiles/missing/preferences",
+                Value::Null
+            ))
+            .await
+            .unwrap()
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test]
+    async fn http_catalog_queries_are_paged_and_personal_state_is_isolated() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = ServerConfig {
+            data_dir: dir.path().to_owned(),
+            ..ServerConfig::default()
+        };
+        let certificate = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
+        let database = DatabaseActor::open(dir.path().join("test.sqlite")).unwrap();
+        let (a, b) = database
+            .call(|store| {
+                let a = store.create_profile("A")?;
+                let b = store.create_profile("B")?;
+                let media = (0..51)
+                    .map(|n| {
+                        chill_catalog::scanner::parse_file(
+                            std::path::Path::new("/nas"),
+                            &std::path::PathBuf::from(format!("/nas/Film{n:03}.2020.mp4")),
+                        )
+                    })
+                    .collect();
+                store.snapshot(media)?;
+                Ok((a.id, b.id))
+            })
+            .await
+            .unwrap();
+        let state = AppState {
+            database,
+            config: Arc::new(config),
+            library: Arc::new(Mutex::new(LibrarySettings::default())),
+            certificate: Arc::new(Mutex::new(certificate.schedule)),
+            scan: Arc::new(Mutex::new(crate::catalog_api::ScanStatus::default())),
+        };
+        let app = router(state);
+        let page = app
+            .clone()
+            .oneshot(request(
+                "GET",
+                &format!("/api/v1/profiles/{a}/catalog?limit=50&offset=0&category=film&q=Film"),
+                Value::Null,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(page.status(), StatusCode::OK);
+        let page: Value =
+            serde_json::from_slice(&page.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        assert_eq!(page["items"].as_array().unwrap().len(), 50);
+        assert_eq!(page["has_more"], true);
+        assert!(!page["items"][0]["path"].as_str().unwrap().starts_with('/'));
+        let id = page["items"][0]["id"].as_str().unwrap();
+        assert_eq!(
+            app.clone()
+                .oneshot(request(
+                    "PUT",
+                    &format!("/api/v1/profiles/{a}/media/{id}/watched"),
+                    json!({"watched":true})
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        let other = app
+            .clone()
+            .oneshot(request(
+                "GET",
+                &format!("/api/v1/profiles/{b}/catalog?limit=50&offset=0"),
+                Value::Null,
+            ))
+            .await
+            .unwrap();
+        let other: Value =
+            serde_json::from_slice(&other.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        assert_eq!(other["items"][0]["id"], id);
+        assert_eq!(other["items"][0]["watched"], false);
+        let last = app
+            .oneshot(request(
+                "GET",
+                &format!("/api/v1/profiles/{b}/catalog?limit=50&offset=50"),
+                Value::Null,
+            ))
+            .await
+            .unwrap();
+        let last: Value =
+            serde_json::from_slice(&last.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        assert_eq!(last["items"].as_array().unwrap().len(), 1);
+        assert_eq!(last["has_more"], false);
     }
 }

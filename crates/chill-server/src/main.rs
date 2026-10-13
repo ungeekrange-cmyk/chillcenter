@@ -19,6 +19,11 @@ async fn main() {
 
 async fn run() -> Result<(), String> {
     let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    if arguments.len() == 2 && arguments[0] == "--scan-worker" {
+        let discovered = chill_catalog::scanner::discover(std::path::Path::new(&arguments[1]))?;
+        return serde_json::to_writer(std::io::stdout().lock(), &discovered)
+            .map_err(|_| "Scan interrompu.".into());
+    }
     if arguments.len() != 2 || arguments[0] != "--config" {
         return Err("Usage : chill-server --config /chemin/config.json".into());
     }
@@ -32,6 +37,7 @@ async fn run() -> Result<(), String> {
     let certificates = tls::ensure(&config, time::OffsetDateTime::now_utc())?;
     let rustls = tls::load(&certificates).await?;
     let state = AppState {
+        scan: Arc::new(Mutex::new(chill_server::catalog_api::ScanStatus::default())),
         database: DatabaseActor::open(config.data_dir.join("catalog.sqlite"))?,
         library: Arc::new(Mutex::new(LibrarySettings::load(&config)?)),
         certificate: Arc::new(Mutex::new(certificates.schedule)),

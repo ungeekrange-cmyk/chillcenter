@@ -139,17 +139,33 @@ impl Store {
     }
 
     pub fn rename_profile(&self, id: &str, name: &str) -> Result<Profile, String> {
+        let revision = self.profile(id)?.ok_or("PROFILE_NOT_FOUND")?.revision;
+        self.rename_profile_at_revision(id, name, revision)
+    }
+
+    pub fn rename_profile_at_revision(
+        &self,
+        id: &str,
+        name: &str,
+        revision: u64,
+    ) -> Result<Profile, String> {
+        let revision = i64::try_from(revision).map_err(|_| "PROFILE_CONFLICT")?;
         let name = valid_profile_name(name)?;
         if self
             .personal
             .execute(
-                "UPDATE cc_profiles SET name=?1,revision=revision+1 WHERE id=?2",
-                params![name, id],
+                "UPDATE cc_profiles SET name=?1,revision=revision+1 WHERE id=?2 AND revision=?3",
+                params![name, id, revision],
             )
             .map_err(profile_collision)?
             != 1
         {
-            return Err("Profil introuvable.".into());
+            return Err(if self.profile(id)?.is_some() {
+                "PROFILE_CONFLICT"
+            } else {
+                "PROFILE_NOT_FOUND"
+            }
+            .into());
         }
         self.profile(id)?
             .ok_or_else(|| "Profil introuvable.".into())
