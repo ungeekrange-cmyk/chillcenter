@@ -255,6 +255,10 @@ impl PlaybackService {
             .map(|e| e.stream.clone())
             .ok_or(failure("LEASE_INVALID"))
     }
+    pub(crate) fn stream_lease_for_profile(&self, profile: &str, session: &str, generation: u64, media: &str) -> Result<StreamLease, ApiError> {
+        let b = self.book.lock().map_err(|_| failure("MEDIA_BUSY"))?;
+        b.entries.get(profile).filter(|e| e.lease.session_id==session && e.lease.generation==generation && e.lease.media_id==media && Instant::now()<e.deadline).map(|e|e.stream.clone()).ok_or(failure("LEASE_INVALID"))
+    }
     pub(crate) fn check_stream(&self, s: &StreamLease) -> Result<(), ApiError> {
         self.stream_lease(&s.session, s.generation, &s.media)
             .map(|_| ())

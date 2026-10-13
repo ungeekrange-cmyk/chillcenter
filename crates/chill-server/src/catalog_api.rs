@@ -22,6 +22,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/admin/scan", get(scan_status).post(start_scan))
         .route("/api/v1/profiles/{profile}/catalog", get(catalog))
         .route("/api/v1/profiles/{profile}/media/{media}", get(detail).put(update_media))
+        .route("/api/v1/profiles/{profile}/media/{media}/subtitles", get(crate::media_stream::subtitles))
+        .route("/api/v1/profiles/{profile}/media/{media}/subtitles/{id}", get(crate::media_stream::subtitle))
         .route("/api/v1/profiles/{profile}/series/{series}", get(series))
         .route("/api/v1/profiles/{profile}/sagas", get(sagas))
         .route("/api/v1/profiles/{profile}/playlists", get(playlists).post(create_playlist))
