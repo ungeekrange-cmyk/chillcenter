@@ -1,0 +1,928 @@
+{
+  "revision": "CC-STORIES-001",
+  "author": "/root",
+  "inputs": [
+    "CC-FONC-002",
+    "CC-DOC-001"
+  ],
+  "implementation_started": false,
+  "user_gate": "PENDING",
+  "nodes": [
+    {
+      "id": "US-001",
+      "title": "Choisir et connecter un serveur",
+      "epic": "EPIC-001",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "ENABLER-002",
+        "ENABLER-003"
+      ],
+      "requirements": [
+        "F-02",
+        "F-03",
+        "F-18",
+        "F-19"
+      ],
+      "path": "stories/US-001/story.md",
+      "blocks": [
+        "US-002",
+        "US-005",
+        "US-006",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Créer et renommer les profils du foyer",
+      "epic": "EPIC-001",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-001",
+        "ENABLER-004"
+      ],
+      "requirements": [
+        "F-05",
+        "F-18"
+      ],
+      "path": "stories/US-002/story.md",
+      "blocks": [
+        "US-003",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Choisir et retrouver son profil",
+      "epic": "EPIC-001",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-002",
+        "ENABLER-005"
+      ],
+      "requirements": [
+        "F-05",
+        "F-06"
+      ],
+      "path": "stories/US-003/story.md",
+      "blocks": [
+        "US-004",
+        "US-007",
+        "US-016",
+        "US-018",
+        "US-031",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Supprimer un profil sans toucher à la bibliothèque",
+      "epic": "EPIC-001",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-003",
+        "ENABLER-005"
+      ],
+      "requirements": [
+        "F-05",
+        "F-06",
+        "F-18"
+      ],
+      "path": "stories/US-004/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Rester connecté lors du renouvellement du certificat",
+      "epic": "EPIC-001",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-001"
+      ],
+      "requirements": [
+        "F-19"
+      ],
+      "path": "stories/US-005/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Indexer les vidéos du NAS",
+      "epic": "EPIC-002",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-001",
+        "ENABLER-004"
+      ],
+      "requirements": [
+        "F-03",
+        "F-14",
+        "F-16",
+        "F-18"
+      ],
+      "path": "stories/US-006/story.md",
+      "blocks": [
+        "US-007",
+        "US-012",
+        "US-026",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Parcourir et rechercher le catalogue",
+      "epic": "EPIC-002",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-003",
+        "US-006"
+      ],
+      "requirements": [
+        "F-14",
+        "F-06"
+      ],
+      "path": "stories/US-007/story.md",
+      "blocks": [
+        "US-008",
+        "US-009",
+        "US-011",
+        "US-012",
+        "US-013",
+        "US-014",
+        "US-016",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Explorer une série par saisons et épisodes",
+      "epic": "EPIC-002",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-007"
+      ],
+      "requirements": [
+        "F-14",
+        "F-12"
+      ],
+      "path": "stories/US-008/story.md",
+      "blocks": [
+        "US-009",
+        "US-013",
+        "US-020",
+        "US-024",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Corriger les informations du catalogue",
+      "epic": "EPIC-002",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-007",
+        "US-008"
+      ],
+      "requirements": [
+        "F-14"
+      ],
+      "path": "stories/US-009/story.md",
+      "blocks": [
+        "US-010",
+        "US-030",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "Enrichir les fiches et personnaliser les affiches",
+      "epic": "EPIC-002",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-009"
+      ],
+      "requirements": [
+        "F-14"
+      ],
+      "path": "stories/US-010/story.md",
+      "blocks": [
+        "US-011",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-011",
+      "title": "Organiser les films en sagas communes",
+      "epic": "EPIC-002",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-007",
+        "US-010"
+      ],
+      "requirements": [
+        "F-14",
+        "F-12"
+      ],
+      "path": "stories/US-011/story.md",
+      "blocks": [
+        "US-024",
+        "US-030",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-012",
+      "title": "Gérer les références devenues indisponibles",
+      "epic": "EPIC-002",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-006",
+        "US-007"
+      ],
+      "requirements": [
+        "F-14",
+        "F-16"
+      ],
+      "path": "stories/US-012/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-013",
+      "title": "Noter les vidéos avec son profil",
+      "epic": "EPIC-003",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-007",
+        "US-008"
+      ],
+      "requirements": [
+        "F-06",
+        "F-14"
+      ],
+      "path": "stories/US-013/story.md",
+      "blocks": [
+        "US-026",
+        "US-027",
+        "US-030",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-014",
+      "title": "Créer et remplir ses playlists",
+      "epic": "EPIC-003",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-007"
+      ],
+      "requirements": [
+        "F-06",
+        "F-14"
+      ],
+      "path": "stories/US-014/story.md",
+      "blocks": [
+        "US-015",
+        "US-026",
+        "US-030",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-015",
+      "title": "Réordonner une playlist",
+      "epic": "EPIC-003",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-014"
+      ],
+      "requirements": [
+        "F-06",
+        "F-14",
+        "F-12"
+      ],
+      "path": "stories/US-015/story.md",
+      "blocks": [
+        "US-024",
+        "US-027",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-016",
+      "title": "Lire une vidéo dans l'application Mac",
+      "epic": "EPIC-004",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-003",
+        "US-007",
+        "ENABLER-001",
+        "ENABLER-003",
+        "ENABLER-005"
+      ],
+      "requirements": [
+        "F-02",
+        "F-03",
+        "F-09",
+        "F-22"
+      ],
+      "path": "stories/US-016/story.md",
+      "blocks": [
+        "US-017",
+        "US-019",
+        "US-020",
+        "US-021",
+        "US-024",
+        "ENABLER-006",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-017",
+      "title": "Naviguer dans la vidéo",
+      "epic": "EPIC-004",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-016"
+      ],
+      "requirements": [
+        "F-09"
+      ],
+      "path": "stories/US-017/story.md",
+      "blocks": [
+        "ENABLER-006",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-018",
+      "title": "Configurer ses langues de lecture",
+      "epic": "EPIC-004",
+      "type": "US",
+      "points": 2,
+      "depends_on": [
+        "US-003"
+      ],
+      "requirements": [
+        "F-10",
+        "F-11",
+        "F-06"
+      ],
+      "path": "stories/US-018/story.md",
+      "blocks": [
+        "US-019",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-019",
+      "title": "Choisir audio et sous-titres dans le lecteur",
+      "epic": "EPIC-004",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-016",
+        "US-018"
+      ],
+      "requirements": [
+        "F-09",
+        "F-10",
+        "F-11",
+        "F-22"
+      ],
+      "path": "stories/US-019/story.md",
+      "blocks": [
+        "ENABLER-006",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-020",
+      "title": "Choisir et mémoriser la vitesse d'une série",
+      "epic": "EPIC-004",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-016",
+        "US-008"
+      ],
+      "requirements": [
+        "F-09",
+        "F-10",
+        "F-06"
+      ],
+      "path": "stories/US-020/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-021",
+      "title": "Reprendre au dernier moment regardé",
+      "epic": "EPIC-005",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-016",
+        "ENABLER-005"
+      ],
+      "requirements": [
+        "F-06",
+        "F-07"
+      ],
+      "path": "stories/US-021/story.md",
+      "blocks": [
+        "US-022",
+        "US-023",
+        "US-026",
+        "US-027",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-022",
+      "title": "Marquer vu selon le visionnage final",
+      "epic": "EPIC-005",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-021"
+      ],
+      "requirements": [
+        "F-08",
+        "F-06",
+        "F-14"
+      ],
+      "path": "stories/US-022/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-023",
+      "title": "Transférer la lecture entre appareils",
+      "epic": "EPIC-005",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-021",
+        "ENABLER-005"
+      ],
+      "requirements": [
+        "F-07",
+        "F-06",
+        "F-04"
+      ],
+      "path": "stories/US-023/story.md",
+      "blocks": [
+        "US-025",
+        "ENABLER-006",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-024",
+      "title": "Proposer la bonne vidéo suivante",
+      "epic": "EPIC-006",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-008",
+        "US-011",
+        "US-015",
+        "US-016"
+      ],
+      "requirements": [
+        "F-12"
+      ],
+      "path": "stories/US-024/story.md",
+      "blocks": [
+        "US-025",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-025",
+      "title": "Contrôler le lancement automatique",
+      "epic": "EPIC-006",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-024",
+        "US-023"
+      ],
+      "requirements": [
+        "F-12",
+        "F-13",
+        "F-06"
+      ],
+      "path": "stories/US-025/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-026",
+      "title": "Retrouver l'historique après déplacement",
+      "epic": "EPIC-007",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-006",
+        "US-013",
+        "US-014",
+        "US-021"
+      ],
+      "requirements": [
+        "F-16",
+        "F-06"
+      ],
+      "path": "stories/US-026/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-027",
+      "title": "Exporter les informations de sa bibliothèque",
+      "epic": "EPIC-007",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-013",
+        "US-015",
+        "US-021",
+        "ENABLER-004"
+      ],
+      "requirements": [
+        "F-17",
+        "F-16",
+        "F-18"
+      ],
+      "path": "stories/US-027/story.md",
+      "blocks": [
+        "US-028",
+        "US-029",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-028",
+      "title": "Importer les données de Cinéfolio ou Chill Center",
+      "epic": "EPIC-007",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-027",
+        "MIG-001"
+      ],
+      "requirements": [
+        "F-17",
+        "F-16",
+        "F-18"
+      ],
+      "path": "stories/US-028/story.md",
+      "blocks": [
+        "US-029",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-029",
+      "title": "Restaurer la bibliothèque depuis une sauvegarde",
+      "epic": "EPIC-007",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-027",
+        "US-028",
+        "MIG-002"
+      ],
+      "requirements": [
+        "F-16",
+        "F-18"
+      ],
+      "path": "stories/US-029/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-030",
+      "title": "Organiser le catalogue avec l'IA",
+      "epic": "EPIC-008",
+      "type": "US",
+      "points": 5,
+      "depends_on": [
+        "US-009",
+        "US-011",
+        "US-013",
+        "US-014",
+        "ENABLER-003"
+      ],
+      "requirements": [
+        "F-15",
+        "F-14",
+        "F-06"
+      ],
+      "path": "stories/US-030/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-031",
+      "title": "Choisir clair, sombre ou automatique",
+      "epic": "EPIC-009",
+      "type": "US",
+      "points": 2,
+      "depends_on": [
+        "US-003"
+      ],
+      "requirements": [
+        "F-20"
+      ],
+      "path": "stories/US-031/story.md",
+      "blocks": [
+        "US-032",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-032",
+      "title": "Activer les ambiances de saison et d'événement",
+      "epic": "EPIC-009",
+      "type": "US",
+      "points": 3,
+      "depends_on": [
+        "US-031"
+      ],
+      "requirements": [
+        "F-20",
+        "F-21"
+      ],
+      "path": "stories/US-032/story.md",
+      "blocks": [
+        "US-033",
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "US-033",
+      "title": "Choisir ou désactiver une ambiance",
+      "epic": "EPIC-009",
+      "type": "US",
+      "points": 2,
+      "depends_on": [
+        "US-032"
+      ],
+      "requirements": [
+        "F-20",
+        "F-21"
+      ],
+      "path": "stories/US-033/story.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "ENABLER-001",
+      "title": "Prouver le lecteur Mac et le flux sécurisé",
+      "type": "ENABLER",
+      "points": 8,
+      "depends_on": [],
+      "requirements": [
+        "F-02",
+        "F-03",
+        "F-09",
+        "F-19",
+        "F-22"
+      ],
+      "path": "work-items/ENABLER-001.md",
+      "blocks": [
+        "US-016"
+      ]
+    },
+    {
+      "id": "ENABLER-002",
+      "title": "Préparer le service Linux et sa distribution",
+      "type": "ENABLER",
+      "points": 3,
+      "depends_on": [
+        "ENABLER-004"
+      ],
+      "requirements": [
+        "F-01",
+        "F-03",
+        "F-18",
+        "F-19"
+      ],
+      "path": "work-items/ENABLER-002.md",
+      "blocks": [
+        "US-001",
+        "ENABLER-003",
+        "ENABLER-005",
+        "ENABLER-006"
+      ]
+    },
+    {
+      "id": "ENABLER-003",
+      "title": "Relier le client Mac au serveur en HTTPS",
+      "type": "ENABLER",
+      "points": 5,
+      "depends_on": [
+        "ENABLER-002"
+      ],
+      "requirements": [
+        "F-02",
+        "F-03",
+        "F-19"
+      ],
+      "path": "work-items/ENABLER-003.md",
+      "blocks": [
+        "US-001",
+        "US-016",
+        "US-030",
+        "ENABLER-005"
+      ]
+    },
+    {
+      "id": "ENABLER-004",
+      "title": "Préparer le modèle partagé et personnel",
+      "type": "ENABLER",
+      "points": 5,
+      "depends_on": [],
+      "requirements": [
+        "F-05",
+        "F-06",
+        "F-14",
+        "F-16",
+        "F-17"
+      ],
+      "path": "work-items/ENABLER-004.md",
+      "blocks": [
+        "US-002",
+        "US-006",
+        "US-027",
+        "ENABLER-002",
+        "ENABLER-005",
+        "MIG-001",
+        "MIG-002"
+      ]
+    },
+    {
+      "id": "ENABLER-005",
+      "title": "Coordonner lecture, progression et transfert",
+      "type": "ENABLER",
+      "points": 5,
+      "depends_on": [
+        "ENABLER-002",
+        "ENABLER-003",
+        "ENABLER-004"
+      ],
+      "requirements": [
+        "F-06",
+        "F-07",
+        "F-08",
+        "F-12",
+        "F-13"
+      ],
+      "path": "work-items/ENABLER-005.md",
+      "blocks": [
+        "US-003",
+        "US-004",
+        "US-016",
+        "US-021",
+        "US-023"
+      ]
+    },
+    {
+      "id": "MIG-001",
+      "title": "Exporter Cinéfolio et importer l'archive portable",
+      "type": "MIG",
+      "points": 8,
+      "depends_on": [
+        "ENABLER-004"
+      ],
+      "requirements": [
+        "F-16",
+        "F-17"
+      ],
+      "path": "work-items/MIG-001.md",
+      "blocks": [
+        "US-028"
+      ]
+    },
+    {
+      "id": "MIG-002",
+      "title": "Assurer sauvegarde, migration et rollback",
+      "type": "MIG",
+      "points": 5,
+      "depends_on": [
+        "ENABLER-004"
+      ],
+      "requirements": [
+        "F-16",
+        "F-18"
+      ],
+      "path": "work-items/MIG-002.md",
+      "blocks": [
+        "US-029"
+      ]
+    },
+    {
+      "id": "ENABLER-006",
+      "title": "Mesurer ressources et trois lectures sur le Pi",
+      "type": "ENABLER",
+      "points": 5,
+      "depends_on": [
+        "US-016",
+        "US-017",
+        "US-019",
+        "US-023",
+        "ENABLER-002"
+      ],
+      "requirements": [
+        "F-01",
+        "F-03",
+        "F-04"
+      ],
+      "path": "work-items/ENABLER-006.md",
+      "blocks": [
+        "ENABLER-007"
+      ]
+    },
+    {
+      "id": "ENABLER-007",
+      "title": "Intégrer, distribuer et vérifier la version complète",
+      "type": "ENABLER",
+      "points": 5,
+      "depends_on": [
+        "US-001",
+        "US-002",
+        "US-003",
+        "US-004",
+        "US-005",
+        "US-006",
+        "US-007",
+        "US-008",
+        "US-009",
+        "US-010",
+        "US-011",
+        "US-012",
+        "US-013",
+        "US-014",
+        "US-015",
+        "US-016",
+        "US-017",
+        "US-018",
+        "US-019",
+        "US-020",
+        "US-021",
+        "US-022",
+        "US-023",
+        "US-024",
+        "US-025",
+        "US-026",
+        "US-027",
+        "US-028",
+        "US-029",
+        "US-030",
+        "US-031",
+        "US-032",
+        "US-033",
+        "ENABLER-006"
+      ],
+      "requirements": [
+        "F-01",
+        "F-02",
+        "F-03",
+        "F-04"
+      ],
+      "path": "work-items/ENABLER-007.md",
+      "blocks": []
+    }
+  ]
+}
+

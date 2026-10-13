@@ -1,0 +1,19 @@
+[package]
+name = "chillcenter-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+chill-client.workspace = true
+chill-player.workspace = true
+chill-domain.workspace = true
+chill-catalog.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tauri = { version = "2", features = ["protocol-asset"] }
+
+[build-dependencies]
+tauri-build = "2"

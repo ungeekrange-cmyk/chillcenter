@@ -1,0 +1,563 @@
+use crate::model::{Media, SeriesPatch, SeriesProvider};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::{path::Path, time::Duration};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Candidate {
+    pub id: i64,
+    pub title: String,
+    pub year: Option<i32>,
+    pub overview: String,
+    pub poster: Option<String>,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtworkCandidate {
+    pub title: String,
+    pub source: String,
+    pub poster_path: String,
+    pub poster: String,
+}
+
+fn image_path_valid(path: &str) -> bool {
+    let Some(leaf) = path.strip_prefix('/') else {
+        return false;
+    };
+    path.len() <= 200
+        && leaf.ends_with(".jpg")
+        && leaf.len() > 4
+        && leaf
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b".-_".contains(&b))
+        && !leaf.contains("..")
+}
+
+fn artwork_results(results: &Value, source: &str, output: &mut Vec<ArtworkCandidate>) {
+    for r in results["results"].as_array().into_iter().flatten().take(20) {
+        if r["adult"].as_bool() == Some(true) || text(r, "media_type") == "person" {
+            continue;
+        }
+        let title = r["title"]
+            .as_str()
+            .or_else(|| r["name"].as_str())
+            .unwrap_or("");
+        if title.is_empty() || title.len() > 500 {
+            continue;
+        }
+        for key in ["poster_path", "backdrop_path"] {
+            if output.len() >= 24 {
+                return;
+            }
+            let Some(path) = r[key].as_str().filter(|p| image_path_valid(p)) else {
+                continue;
+            };
+            if output.iter().any(|item| item.poster_path == path) {
+                continue;
+            }
+            output.push(ArtworkCandidate {
+                title: title.to_owned(),
+                source: format!(
+                    "{source} · {}",
+                    if key == "poster_path" {
+                        "affiche"
+                    } else {
+                        "visuel"
+                    }
+                ),
+                poster_path: path.to_owned(),
+                poster: format!("https://image.tmdb.org/t/p/w342{path}"),
+            });
+        }
+    }
+}
+
+pub struct Tmdb {
+    client: reqwest::Client,
+    token: String,
+}
+async fn body_limited(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>, String> {
+    if response.content_length().is_some_and(|n| n > limit as u64) {
+        return Err("Fiche TMDB trop volumineuse.".into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "Réponse TMDB interrompue.")?
+    {
+        if bytes.len().saturating_add(chunk.len()) > limit {
+            return Err("Réponse TMDB trop volumineuse.".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+fn text<'a>(value: &'a Value, key: &str) -> &'a str {
+    value.get(key).and_then(Value::as_str).unwrap_or("")
+}
+fn search_query<'a>(media: &'a Media, query: &'a str) -> &'a str {
+    if !query.trim().is_empty() {
+        query.trim()
+    } else if media.category == "serie" {
+        media.series.as_deref().unwrap_or(&media.title)
+    } else {
+        &media.title
+    }
+}
+
+fn names(values: impl Iterator<Item = String>) -> Vec<String> {
+    let mut result = Vec::new();
+    for name in values {
+        let name = name.trim();
+        if !name.is_empty() && name.len() <= 200 && !result.iter().any(|n| n == name) {
+            result.push(name.to_owned());
+        }
+        if result.len() == 100 {
+            break;
+        }
+    }
+    result
+}
+
+fn presentation(media: &mut Media, details: &Value, episode: Option<&Value>, kind: &str) {
+    if kind == "tv" {
+        media.series_overview = text(details, "overview").to_owned();
+    }
+    let source = episode.unwrap_or(details);
+    media.runtime_minutes = if kind == "movie" || episode.is_some() {
+        source["runtime"]
+            .as_i64()
+            .filter(|n| (1..=10000).contains(n))
+            .map(|n| n as i32)
+    } else {
+        None
+    };
+    let episode_cast = source["credits"]["cast"]
+        .as_array()
+        .filter(|a| !a.is_empty());
+    let cast = episode_cast.or_else(|| details["credits"]["cast"].as_array());
+    media.cast = names(
+        cast.into_iter()
+            .flatten()
+            .chain(source["guest_stars"].as_array().into_iter().flatten())
+            .filter_map(|person| person["name"].as_str().map(str::to_owned)),
+    );
+    // TV creators are not necessarily episode directors; do not label them as such.
+    media.directors = names(
+        source["credits"]["crew"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|person| text(person, "job") == "Director")
+            .filter_map(|person| person["name"].as_str().map(str::to_owned)),
+    );
+}
+
+impl Tmdb {
+    pub fn new(token: String) -> Result<Self, String> {
+        if token.trim().is_empty() {
+            return Err("Ajoutez votre jeton de lecture TMDB dans les réglages.".into());
+        }
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::none())
+            .user_agent(concat!(
+                "Cinefolio/",
+                env!("CARGO_PKG_VERSION"),
+                " (local media catalog)"
+            ))
+            .build()
+            .map_err(|_| "Client TMDB indisponible.")?;
+        Ok(Self { client, token })
+    }
+
+    async fn get(&self, endpoint: &str, query: &[(&str, &str)]) -> Result<Value, String> {
+        let response = self
+            .client
+            .get(format!("https://api.themoviedb.org/3/{endpoint}"))
+            .bearer_auth(&self.token)
+            .query(&[("language", "fr-FR")])
+            .query(query)
+            .send()
+            .await
+            .map_err(|_| "TMDB inaccessible. Les métadonnées précédentes sont conservées.")?;
+        if response.status().as_u16() == 401 {
+            return Err(
+                "Jeton TMDB refusé. Vérifiez le jeton de lecture API dans les réglages.".into(),
+            );
+        }
+        if !response.status().is_success() {
+            return Err("TMDB n’a pas pu répondre. Réessayez plus tard.".into());
+        }
+        serde_json::from_slice(&body_limited(response, 2 * 1024 * 1024).await?)
+            .map_err(|_| "Réponse TMDB invalide.".into())
+    }
+
+    pub async fn candidates(&self, media: &Media, query: &str) -> Result<Vec<Candidate>, String> {
+        let kind = if media.category == "serie" {
+            "tv"
+        } else {
+            "movie"
+        };
+        let query = search_query(media, query);
+        if query.is_empty() || query.len() > 500 {
+            return Err("Recherche TMDB trop longue.".into());
+        }
+        let results = self
+            .get(
+                &format!("search/{kind}"),
+                &[("query", query), ("include_adult", "false")],
+            )
+            .await?;
+        Ok(results["results"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(10)
+            .filter_map(|r| {
+                Some(Candidate {
+                    id: r["id"].as_i64()?,
+                    title: text(r, if kind == "tv" { "name" } else { "title" }).into(),
+                    year: text(
+                        r,
+                        if kind == "tv" {
+                            "first_air_date"
+                        } else {
+                            "release_date"
+                        },
+                    )
+                    .get(..4)
+                    .and_then(|y| y.parse().ok()),
+                    overview: text(r, "overview").into(),
+                    poster: r["poster_path"]
+                        .as_str()
+                        .map(|p| format!("https://image.tmdb.org/t/p/w342{p}")),
+                    kind: kind.into(),
+                })
+            })
+            .collect())
+    }
+
+    pub async fn artwork_candidates(&self, query: &str) -> Result<Vec<ArtworkCandidate>, String> {
+        let query = query.trim();
+        if query.is_empty() || query.len() > 500 {
+            return Err("Saisissez un thème de 500 caractères maximum.".into());
+        }
+        let params = [("query", query), ("include_adult", "false")];
+        let keyword_params = [("query", query)];
+        let (collections, titles, keywords) = tokio::try_join!(
+            self.get("search/collection", &params),
+            self.get("search/multi", &params),
+            self.get("search/keyword", &keyword_params),
+        )?;
+        let mut output = Vec::new();
+        artwork_results(&collections, "Collection TMDB", &mut output);
+        artwork_results(&titles, "Film / série TMDB", &mut output);
+        let ids = keywords["results"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|k| k["id"].as_i64().filter(|id| *id > 0))
+            .take(3)
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join("|");
+        if !ids.is_empty() && output.len() < 24 {
+            let params = [("with_keywords", ids.as_str()), ("include_adult", "false")];
+            let (movies, series) = tokio::try_join!(
+                self.get("discover/movie", &params),
+                self.get("discover/tv", &params),
+            )?;
+            artwork_results(&movies, "Thème TMDB", &mut output);
+            artwork_results(&series, "Thème TMDB", &mut output);
+        }
+        Ok(output)
+    }
+
+    pub async fn download_artwork(
+        &self,
+        poster_path: &str,
+        cache: &Path,
+    ) -> Result<String, String> {
+        if !image_path_valid(poster_path) {
+            return Err("Image TMDB invalide.".into());
+        }
+        let response = self
+            .client
+            .get(format!("https://image.tmdb.org/t/p/w342{poster_path}"))
+            .send()
+            .await
+            .map_err(|_| "Image TMDB inaccessible. L’image précédente est conservée.")?;
+        if !response.status().is_success() {
+            return Err("Image TMDB indisponible.".into());
+        }
+        let bytes = body_limited(response, 5 * 1024 * 1024).await?;
+        if !bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+            return Err("Image TMDB invalide.".into());
+        }
+        crate::poster::store(&bytes, cache)
+    }
+
+    pub async fn enrich(
+        &self,
+        mut media: Media,
+        id: i64,
+        kind: &str,
+        cache: &Path,
+    ) -> Result<Media, String> {
+        if id <= 0 || !["movie", "tv"].contains(&kind) {
+            return Err("Identifiant TMDB invalide.".into());
+        }
+        if (media.category == "serie") != (kind == "tv") {
+            return Err("Cette correspondance ne convient pas à la catégorie de la vidéo.".into());
+        }
+        let details = self
+            .get(
+                &format!("{kind}/{id}"),
+                &[("append_to_response", "credits")],
+            )
+            .await?;
+        let name = text(&details, if kind == "tv" { "name" } else { "title" });
+        if name.is_empty() {
+            return Err("Fiche TMDB sans titre.".into());
+        }
+        if kind == "tv" {
+            media.series = Some(name.into());
+        } else {
+            media.title = name.into();
+        }
+        media.year = text(
+            &details,
+            if kind == "tv" {
+                "first_air_date"
+            } else {
+                "release_date"
+            },
+        )
+        .get(..4)
+        .and_then(|y| y.parse().ok());
+        media.overview = text(&details, "overview").into();
+        media.genres = details["genres"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|g| g["name"].as_str().map(str::to_owned))
+            .collect();
+        if let Some(saga) = details["belongs_to_collection"]["name"].as_str() {
+            media.saga = Some(saga.to_owned());
+        }
+        media.tmdb_id = Some(id);
+        let mut episode_details = None;
+        if kind == "tv"
+            && let (Some(season), Some(episode)) = (media.season, media.episode)
+        {
+            // An unavailable episode does not discard valid series metadata.
+            if let Ok(ep) = self
+                .get(
+                    &format!("tv/{id}/season/{season}/episode/{episode}"),
+                    &[("append_to_response", "credits")],
+                )
+                .await
+            {
+                if !text(&ep, "name").is_empty() {
+                    media.title = text(&ep, "name").into();
+                }
+                if !text(&ep, "overview").is_empty() {
+                    media.overview = text(&ep, "overview").into();
+                }
+                episode_details = Some(ep);
+            }
+        }
+        presentation(&mut media, &details, episode_details.as_ref(), kind);
+        if !media.poster_custom {
+            media.poster = None;
+        }
+        if !media.poster_custom
+            && let Some(poster_path) = details["poster_path"].as_str()
+        {
+            // A changed association must not keep an unrelated old TMDB poster.
+            // Only TMDB's fixed image host; no URL or filesystem path supplied by AI.
+            if poster_path.starts_with('/')
+                && !poster_path.contains("..")
+                && !poster_path.contains(['?', '#'])
+            {
+                let file = cache.join(format!("{kind}-{id}.jpg"));
+                if file.exists() {
+                    media.poster = Some(file.to_string_lossy().into_owned());
+                } else if let Ok(response) = self
+                    .client
+                    .get(format!("https://image.tmdb.org/t/p/w342{poster_path}"))
+                    .send()
+                    .await
+                    && response.status().is_success()
+                    && let Ok(bytes) = body_limited(response, 5 * 1024 * 1024).await
+                    && bytes.starts_with(&[0xff, 0xd8])
+                {
+                    std::fs::create_dir_all(cache)
+                        .map_err(|_| "Impossible de créer le cache des jaquettes.")?;
+                    let temp = file.with_extension("pending");
+                    std::fs::write(&temp, bytes)
+                        .map_err(|_| "Impossible d’enregistrer la jaquette.")?;
+                    std::fs::rename(&temp, &file)
+                        .map_err(|_| "Impossible d’enregistrer la jaquette.")?;
+                    media.poster = Some(file.to_string_lossy().into_owned());
+                }
+            }
+        }
+        Ok(media)
+    }
+
+    pub async fn best(&self, media: &Media) -> Result<Option<Candidate>, String> {
+        let query = media.series.as_deref().unwrap_or(&media.title);
+        let candidates = self.candidates(media, query).await?;
+        let normalized = crate::scanner::normalized(query);
+        Ok(candidates.into_iter().find(|c| {
+            crate::scanner::normalized(&c.title) == normalized
+                && (media.year.is_none() || media.year == c.year)
+        }))
+    }
+
+    /// Fetch only the TV series, never episode-specific data.
+    pub async fn series_metadata(
+        &self,
+        sample: &Media,
+        id: i64,
+        cache: &Path,
+    ) -> Result<SeriesProvider, String> {
+        let mut series = sample.clone();
+        series.category = "serie".into();
+        series.season = None;
+        series.episode = None;
+        series.poster_custom = false;
+        series.poster = None;
+        let enriched = self.enrich(series, id, "tv", cache).await?;
+        series_provider(&enriched)
+    }
+}
+
+fn series_provider(enriched: &Media) -> Result<SeriesProvider, String> {
+    let name = enriched.series.clone().ok_or("Fiche de série sans nom.")?;
+    let tmdb_id = enriched
+        .tmdb_id
+        .filter(|id| *id > 0)
+        .ok_or("Identifiant de série invalide.")?;
+    let patch = SeriesPatch {
+        name: name.clone(),
+        year: enriched.year.unwrap_or(0),
+        genres: enriched.genres.clone(),
+        overview: enriched.series_overview.clone(),
+        cast: enriched.cast.clone(),
+        directors: enriched.directors.clone(),
+    };
+    Ok(SeriesProvider {
+        name,
+        metadata: patch.validate(enriched)?,
+        tmdb_id,
+        poster: enriched.poster.clone(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn theme_artwork_is_bounded_deduplicated_and_rejects_people_adult_and_unsafe_paths() {
+        let mut output = Vec::new();
+        let results = serde_json::json!({"results":[
+            {"name":"Marvel Cinematic Universe","poster_path":"/marvel.jpg","backdrop_path":"/marvel-wide.jpg"},
+            {"title":"Film","poster_path":"/marvel.jpg"},
+            {"name":"Person","media_type":"person","poster_path":"/person.jpg"},
+            {"title":"Adult","adult":true,"poster_path":"/adult.jpg"},
+            {"name":"Unsafe","poster_path":"/../evil.jpg","backdrop_path":"//evil.jpg"}
+        ]});
+        artwork_results(&results, "Thème TMDB", &mut output);
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[0].title, "Marvel Cinematic Universe");
+        assert_eq!(
+            output[0].poster,
+            "https://image.tmdb.org/t/p/w342/marvel.jpg"
+        );
+        assert_eq!(output[1].poster_path, "/marvel-wide.jpg");
+        let many = serde_json::json!({"results":(0..30).map(|i|serde_json::json!({"name":"Film","poster_path":format!("/a{i}.jpg"),"backdrop_path":format!("/b{i}.jpg")})).collect::<Vec<_>>()});
+        artwork_results(&many, "Film", &mut output);
+        assert_eq!(output.len(), 24);
+        for bad in [
+            "https://evil/x.jpg",
+            "/x.jpg?token=x",
+            "/x%2f.jpg",
+            "/x#y.jpg",
+            "/x.png",
+            "/x/evil.jpg",
+            "/..jpg",
+            "/.jpg",
+        ] {
+            assert!(!image_path_valid(bad), "accepted {bad}");
+        }
+        assert!(!image_path_valid(&format!("/{}.jpg", "x".repeat(200))));
+    }
+    fn movie() -> Media {
+        crate::scanner::parse_file(Path::new("/nas"), Path::new("/nas/Alien.mkv"))
+    }
+    #[test]
+    fn explicit_query_can_correct_a_series_association() {
+        let mut media = movie();
+        media.category = "serie".into();
+        media.series = Some("Wrong association".into());
+        assert_eq!(search_query(&media, " New association "), "New association");
+        assert_eq!(search_query(&media, ""), "Wrong association");
+    }
+    #[test]
+    fn movie_presentation_reads_runtime_cast_and_only_directors() {
+        let mut media = movie();
+        let details = serde_json::json!({"runtime":117,"credits":{"cast":[{"name":"Sigourney Weaver"},{"name":"Sigourney Weaver"}],"crew":[{"name":"Ridley Scott","job":"Director"},{"name":"Someone","job":"Producer"}]}});
+        presentation(&mut media, &details, None, "movie");
+        assert_eq!(media.runtime_minutes, Some(117));
+        assert_eq!(media.cast, ["Sigourney Weaver"]);
+        assert_eq!(media.directors, ["Ridley Scott"]);
+    }
+    #[test]
+    fn episode_uses_its_own_runtime_and_director_with_series_cast_fallback() {
+        let mut media = movie();
+        let details = serde_json::json!({"overview":"Whole series synopsis","episode_run_time":[60],"credits":{"cast":[{"name":"Series actor"}],"crew":[{"name":"Series director","job":"Director"}]}});
+        let episode = serde_json::json!({"runtime":42,"guest_stars":[{"name":"Guest"}],"credits":{"crew":[{"name":"Episode director","job":"Director"}]}});
+        presentation(&mut media, &details, Some(&episode), "tv");
+        assert_eq!(media.runtime_minutes, Some(42));
+        assert_eq!(media.cast, ["Series actor", "Guest"]);
+        assert_eq!(media.directors, ["Episode director"]);
+        assert_eq!(media.series_overview, "Whole series synopsis");
+        presentation(&mut media, &details, None, "tv");
+        assert_eq!(media.runtime_minutes, None);
+    }
+    #[test]
+    fn absent_or_invalid_presentation_is_not_invented() {
+        let mut media = movie();
+        presentation(
+            &mut media,
+            &serde_json::json!({"runtime":-1}),
+            None,
+            "movie",
+        );
+        assert_eq!(media.runtime_minutes, None);
+        assert!(media.cast.is_empty());
+        assert!(media.directors.is_empty());
+    }
+
+    #[test]
+    fn series_provider_uses_shared_synopsis_and_rejects_invalid_fields() {
+        let mut media = movie();
+        media.category = "serie".into();
+        media.series = Some("Dark".into());
+        media.tmdb_id = Some(42);
+        media.overview = "Episode summary".into();
+        media.series_overview = "Whole series".into();
+        media.cast = vec!["Actor".into()];
+        let p = series_provider(&media).unwrap();
+        assert_eq!(p.name, "Dark");
+        assert_eq!(p.metadata.overview, "Whole series");
+        assert_eq!(p.metadata.cast, ["Actor"]);
+        media.series = Some("x".repeat(501));
+        assert!(series_provider(&media).is_err());
+    }
+}

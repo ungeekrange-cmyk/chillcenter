@@ -1,0 +1,9 @@
+target/
+dist/
+.DS_Store
+*.pem
+*.key
+*.sqlite*
+*.log
+.env
+test-artifacts/

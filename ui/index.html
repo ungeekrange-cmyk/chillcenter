@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cinéfolio</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navigation principale">
+        <div class="brand">
+          <span class="brand-mark">C</span><span>CINÉFOLIO</span>
+        </div>
+        <nav class="library-nav" aria-label="Bibliothèque">
+          <button class="nav-item active" data-category="all">
+            <span>◉</span> Toute la collection <b id="allCount">0</b>
+          </button>
+          <button class="nav-item" data-category="film">
+            <span>▣</span> Films <b id="filmCount">0</b>
+          </button>
+          <button class="nav-item" data-category="serie">
+            <span>▤</span> Séries <b id="serieCount">0</b>
+          </button>
+          <button class="nav-item" data-category="spectacle">
+            <span>◈</span> Spectacles <b id="spectacleCount">0</b>
+          </button>
+          <button class="nav-item" data-category="documentaire">
+            <span>◌</span> Documentaires <b id="documentaireCount">0</b>
+          </button>
+        </nav>
+        <section class="side-section" id="unavailableSection" hidden>
+          <button class="nav-item" id="unavailableButton">
+            <span>⊘</span> Indisponibles <b id="unavailableCount">0</b>
+          </button>
+        </section>
+        <section class="side-section">
+          <p class="eyebrow">Collections</p>
+          <button class="nav-item" id="sagasButton">
+            <span>⌘</span> Sagas <b id="sagaCount">0</b>
+          </button>
+          <button class="nav-item collection-create" id="createSagaButton">
+            ＋ Créer une saga
+          </button>
+        </section>
+        <section class="side-section playlist-section">
+          <p class="eyebrow">Playlists</p>
+          <button class="nav-item" id="playlistsButton">
+            ☷ Toutes les playlists
+          </button>
+          <div id="playlistList" class="collection-nav"></div>
+          <button class="nav-item collection-create" id="createPlaylistButton">
+            ＋ Créer une playlist
+          </button>
+        </section>
+        <div class="sidebar-bottom">
+          <button class="nav-item" id="settingsButton">
+            <span>⚙</span> Réglages <kbd>⌘,</kbd>
+          </button>
+          <p class="scan-status" id="scanStatus">Prêt à cataloguer</p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="sectionEyebrow">MA COLLECTION</p>
+            <h1 id="pageTitle">Toute la collection</h1>
+          </div>
+          <div class="topbar-actions">
+            <button
+              class="icon-button"
+              id="refreshButton"
+              title="Actualiser le catalogue"
+              aria-label="Actualiser"
+            >
+              ↻</button
+            ><button
+              class="secondary-button"
+              id="enrichCatalogueButton"
+              title="Compléter automatiquement les correspondances TMDB exactes"
+            >
+              Compléter les fiches</button
+            ><button class="primary-button" id="assistantButton">
+              <span>✦</span> Organiser avec l’IA
+            </button>
+          </div>
+        </header>
+
+        <section class="toolbar" aria-label="Filtres de collection">
+          <label class="search"
+            ><span>⌕</span
+            ><input
+              id="searchInput"
+              type="search"
+              placeholder="Rechercher un titre…"
+              aria-label="Rechercher"
+            /><kbd>⌘F</kbd></label
+          >
+          <label class="select-label"
+            >Genre<select id="genreFilter">
+              <option value="">Tous les genres</option>
+            </select></label
+          >
+          <label class="select-label"
+            >Année<select id="yearFilter">
+              <option value="">Toutes les années</option>
+            </select></label
+          >
+          <label class="select-label"
+            >Vu<select id="watchedFilter" aria-label="État de visionnage">
+              <option value="all">Tous</option>
+              <option value="unseen">Non vus</option>
+              <option value="seen">Vus</option>
+            </select></label
+          >
+          <label class="select-label"
+            >Trier<select id="sortFilter" aria-label="Trier la collection">
+              <option value="title">Nom</option>
+              <option value="year-desc">Année récente</option>
+              <option value="year-asc">Année ancienne</option>
+              <option value="genre">Genre</option>
+              <option value="playlist" hidden>Ordre de la liste</option>
+            </select></label
+          >
+          <button class="filter-toggle" id="clearAssistantFilter" hidden>
+            Effacer résultats IA
+          </button>
+          <div class="toolbar-spacer"></div>
+          <div class="thumb-control">
+            <span>A</span
+            ><input
+              id="thumbnailSize"
+              type="range"
+              min="150"
+              max="310"
+              step="10"
+              aria-label="Taille des affiches"
+            /><span class="large-a">A</span>
+          </div>
+          <div class="view-toggle" aria-label="Affichage">
+            <button class="active" data-view="grid" title="Grille">▦</button
+            ><button data-view="list" title="Liste">☷</button>
+          </div>
+        </section>
+
+        <section class="catalogue" id="catalogue" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <template id="cardTemplate">
+      <article class="media-card" tabindex="0" role="button">
+        <div class="poster">
+          <img alt="" /><span class="poster-fallback"></span
+          ><button class="play-button" aria-label="Lire">▶</button>
+        </div>
+        <div class="card-copy">
+          <h2></h2>
+          <p class="metadata"></p>
+          <div class="card-footer">
+            <span class="tag"></span
+            ><button class="details-button">Voir la fiche</button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <dialog id="detailsDialog" class="dialog details-dialog">
+      <button
+        class="dialog-close"
+        data-close="detailsDialog"
+        aria-label="Fermer"
+      >
+        ×
+      </button>
+      <div id="detailsContent"></div>
+    </dialog>
+    <dialog id="settingsDialog" class="dialog settings-dialog">
+      <button
+        class="dialog-close"
+        data-close="settingsDialog"
+        aria-label="Fermer"
+      >
+        ×
+      </button>
+      <form id="settingsForm">
+        <p class="eyebrow">PRÉFÉRENCES LOCALES</p>
+        <h2>Réglages</h2>
+        <section class="settings-section">
+          <h3>Catalogue</h3>
+          <label
+            >Dossier du NAS / disque monté
+            <div class="folder-row">
+              <input name="root" placeholder="/Volumes/Vidéos" /><button
+                type="button"
+                class="secondary-button"
+                id="folderButton"
+              >
+                Choisir…
+              </button>
+            </div></label
+          ><label class="switch-row"
+            ><input name="auto_refresh" type="checkbox" /><span
+              >Actualiser automatiquement au démarrage</span
+            ></label
+          ><label
+            >Lecteur par défaut<input
+              name="player"
+              list="players"
+              placeholder="Vide : lecteur système"
+            /><datalist id="players">
+              <option value="VLC"></option>
+              <option value="IINA"></option>
+              <option value="QuickTime Player"></option></datalist
+            ><small
+              >Nom de l’application ou chemin complet vers son fichier
+              .app.</small
+            ></label
+          >
+        </section>
+        <section class="settings-section">
+          <h3>Apparence</h3>
+          <div class="segmented" role="radiogroup">
+            <label
+              ><input type="radio" name="theme" value="system" />Système</label
+            ><label
+              ><input type="radio" name="theme" value="dark" />Sombre</label
+            ><label
+              ><input type="radio" name="theme" value="light" />Clair</label
+            >
+          </div>
+        </section>
+        <section class="settings-section">
+          <h3>Métadonnées</h3>
+          <label
+            >Jeton de lecture API TMDB
+            <input
+              name="tmdb_token"
+              type="password"
+              autocomplete="off"
+              placeholder="Non configuré"
+            /><small id="tokenHelp"
+              >Enregistré dans le Trousseau macOS.</small
+            ></label
+          >
+          <p class="hint">
+            Créez un jeton dans votre compte themoviedb.org → Paramètres → API.
+            Les fiches sont complétées sur correspondance exacte ; choisissez
+            les résultats ambigus dans Détails.
+          </p>
+          <label class="switch-row"
+            ><input name="clear_tmdb" type="checkbox" /><span
+              >Supprimer le jeton TMDB enregistré</span
+            ></label
+          >
+          <p class="hint">
+            Ce produit utilise l’API TMDB mais n’est ni approuvé ni certifié par
+            TMDB.
+          </p>
+        </section>
+        <section class="settings-section">
+          <h3>Organisation IA</h3>
+          <label
+            >Fournisseur<select name="ai_provider">
+              <option value="codex">Codex / ChatGPT</option>
+              <option value="claude">Claude Code</option>
+            </select></label
+          ><label
+            >Chemin de l’exécutable Codex<input
+              name="codex_path"
+              placeholder="codex" /></label
+          ><label
+            >Chemin de l’exécutable Claude<input
+              name="claude_path"
+              placeholder="claude"
+          /></label>
+          <p class="hint">
+            Connectez le CLI dans le Terminal avec « codex login » ou « claude
+            auth login ». L’IA reçoit les titres et métadonnées du catalogue —
+            jamais les vidéos. Elle utilise cette connexion et ses quotas. Les
+            changements sont appliqués seulement après votre validation, dans le
+            catalogue local.
+          </p>
+          <p class="hint">
+            La dictée française dure 12 secondes et demande les autorisations
+            macOS. Elle utilise les services de reconnaissance Apple, sur
+            l’appareil lorsque disponibles.
+          </p>
+        </section>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            data-close="settingsDialog"
+          >
+            Annuler</button
+          ><button class="primary-button" type="submit">Enregistrer</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="assistantDialog" class="dialog assistant-dialog">
+      <button
+        class="dialog-close"
+        data-close="assistantDialog"
+        aria-label="Fermer"
+      >
+        ×
+      </button>
+      <div id="assistantContent"></div>
+    </dialog>
+    <dialog id="removeUnavailableDialog" class="dialog">
+      <h2>Supprimer du catalogue ?</h2>
+      <p id="removeUnavailableSummary"></p>
+      <p>
+        Les fiches, notes et associations aux sagas/listes de ces vidéos seront
+        supprimées de la base locale. Aucun fichier ne sera supprimé du NAS. Si
+        les vidéos réapparaissent lors d’un prochain scan, elles seront indexées
+        à nouveau sans ces informations.
+      </p>
+      <div class="form-actions">
+        <button class="secondary-button" data-close="removeUnavailableDialog">
+          Annuler</button
+        ><button class="primary-button" id="confirmRemoveUnavailable">
+          Supprimer les références
+        </button>
+      </div>
+    </dialog>
+    <dialog id="deleteCollectionDialog" class="dialog">
+      <h2>Supprimer <span id="deleteCollectionName"></span> ?</h2>
+      <p>
+        Seule cette collection et ses associations seront retirées. Les vidéos,
+        les autres collections et les fichiers du NAS seront conservés.
+      </p>
+      <div class="form-actions">
+        <button class="secondary-button" data-close="deleteCollectionDialog">
+          Annuler</button
+        ><button class="primary-button" id="confirmCollectionDelete">
+          Supprimer la collection
+        </button>
+      </div>
+    </dialog>
+    <dialog id="collectionDialog" class="dialog">
+      <form id="collectionForm">
+        <h2 id="collectionDialogTitle">Créer une collection</h2>
+        <label>Nom<input id="collectionName" required /></label>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            data-close="collectionDialog"
+          >
+            Annuler</button
+          ><button class="primary-button" type="submit">Créer</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="collectionPickerDialog" class="dialog collection-picker-dialog">
+      <button
+        type="button"
+        class="dialog-close"
+        data-close="collectionPickerDialog"
+        aria-label="Fermer"
+      >
+        ×
+      </button>
+      <h2 id="collectionPickerTitle">Ajouter des vidéos</h2>
+      <p class="hint" id="collectionPickerHint"></p>
+      <div class="collection-picker-filters">
+        <label class="wide"
+          >Recherche<input
+            id="collectionPickerSearch"
+            type="search"
+            placeholder="Titre, série, genre…"
+        /></label>
+        <label
+          >Type<select id="collectionPickerCategory">
+            <option value="">Tous les types</option>
+          </select></label
+        >
+        <label
+          >Genre<select id="collectionPickerGenre">
+            <option value="">Tous les genres</option>
+          </select></label
+        >
+        <label
+          >Année<select id="collectionPickerYear">
+            <option value="">Toutes les années</option>
+          </select></label
+        >
+        <label
+          >Vu<select id="collectionPickerWatched">
+            <option value="">Tous</option>
+            <option value="unseen">Non vus</option>
+            <option value="seen">Vus</option>
+          </select></label
+        >
+      </div>
+      <p id="collectionPickerCount" class="hint" aria-live="polite"></p>
+      <div id="collectionPickerCards" class="collection-picker-cards"></div>
+      <div class="collection-picker-pages">
+        <button
+          type="button"
+          class="secondary-button"
+          id="collectionPickerPrevious"
+        >
+          ← Précédent
+        </button>
+        <span id="collectionPickerPage"></span>
+        <button
+          type="button"
+          class="secondary-button"
+          id="collectionPickerNext"
+        >
+          Suivant →
+        </button>
+      </div>
+      <div class="form-actions">
+        <button
+          type="button"
+          class="secondary-button"
+          id="collectionPickerClear"
+        >
+          Effacer la sélection
+        </button>
+        <button
+          type="button"
+          class="secondary-button"
+          data-close="collectionPickerDialog"
+        >
+          Annuler
+        </button>
+        <button
+          type="button"
+          class="primary-button"
+          id="collectionPickerConfirm"
+          data-busy="collections"
+        >
+          Ajouter la sélection
+        </button>
+      </div>
+    </dialog>
+    <dialog id="sagaEditorDialog" class="dialog saga-editor-dialog">
+      <button
+        type="button"
+        class="dialog-close"
+        data-close="sagaEditorDialog"
+        aria-label="Fermer"
+      >
+        ×
+      </button>
+      <h2>Modifier la saga</h2>
+      <form id="sagaRenameForm" class="folder-row">
+        <label
+          >Nom de la saga<input id="sagaName" required maxlength="200"
+        /></label>
+        <button type="submit" class="primary-button" data-busy="collections">
+          Renommer
+        </button>
+      </form>
+      <div class="saga-image-current">
+        <img id="sagaImagePreview" alt="Image de la saga" />
+        <p class="hint" id="sagaImageStatus"></p>
+      </div>
+      <div class="form-actions">
+        <button
+          type="button"
+          class="secondary-button"
+          id="sagaImageImport"
+          data-busy="collections"
+        >
+          Importer une image…
+        </button>
+        <button
+          type="button"
+          class="secondary-button"
+          id="sagaImageReset"
+          data-busy="collections"
+        >
+          Revenir à l’image automatique
+        </button>
+      </div>
+      <h3>Images des films de cette saga</h3>
+      <div id="sagaMemberImages" class="artwork-choices"></div>
+      <h3>Rechercher une image par thème</h3>
+      <p class="hint">
+        Collections, films et séries liés au thème sur TMDB. Le jeton TMDB des
+        réglages est requis.
+      </p>
+      <form id="sagaImageSearchForm" class="folder-row">
+        <label
+          >Thème<input
+            id="sagaImageQuery"
+            required
+            maxlength="500"
+            placeholder="Marvel Cinematic Universe"
+        /></label>
+        <button type="submit" class="primary-button" id="sagaImageSearchButton">
+          Rechercher des images
+        </button>
+      </form>
+      <div
+        id="sagaImageResults"
+        class="artwork-choices"
+        aria-live="polite"
+      ></div>
+    </dialog>
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
