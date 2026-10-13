@@ -8,7 +8,7 @@ license.workspace = true
 chill-client.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-libloading = "0.8"
+libloading = "0.9"
 thiserror.workspace = true
 
 [dev-dependencies]

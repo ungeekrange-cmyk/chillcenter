@@ -67,7 +67,7 @@ mod tests {
     fn imports_a_copy_without_changing_source_and_rejects_active_content() {
         let folder = tempfile::tempdir().unwrap();
         let source = folder.path().join("chosen.png");
-        let bytes = include_bytes!("../icons/icon.png");
+        let bytes = include_bytes!("../../../icons/icon.png");
         std::fs::write(&source, bytes).unwrap();
         let copied = import(&source, &folder.path().join("posters")).unwrap();
         assert_ne!(Path::new(&copied), source);
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn downloaded_images_use_distinct_immutable_cache_files() {
         let folder = tempfile::tempdir().unwrap();
-        let bytes = include_bytes!("../icons/icon.png");
+        let bytes = include_bytes!("../../../icons/icon.png");
         let first = store(bytes, folder.path()).unwrap();
         let second = store(bytes, folder.path()).unwrap();
         assert_ne!(first, second);
