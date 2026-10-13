@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Profile {
     pub id: String,
     pub name: String,
@@ -16,20 +16,29 @@ pub struct Preferences {
 }
 impl Default for Preferences {
     fn default() -> Self {
-        Self { audio_language: "en".into(), subtitle_language: "en".into(), autoplay_seconds: Some(10) }
+        Self {
+            audio_language: "en".into(),
+            subtitle_language: "en".into(),
+            autoplay_seconds: Some(10),
+        }
     }
 }
 impl Preferences {
     pub fn validate(&self) -> Result<(), String> {
-        if self.audio_language.is_empty() || self.audio_language.len() > 32 || self.subtitle_language.len() > 32
-            || self.autoplay_seconds.is_some_and(|s| ![0, 5, 10, 20, 30].contains(&s)) {
+        if self.audio_language.is_empty()
+            || self.audio_language.len() > 32
+            || self.subtitle_language.len() > 32
+            || self
+                .autoplay_seconds
+                .is_some_and(|s| ![0, 5, 10, 20, 30].contains(&s))
+        {
             return Err("Préférences invalides.".into());
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PersonalState {
     pub position_ms: u64,
     pub final_watched_ms: u64,
@@ -43,7 +52,12 @@ pub struct PlaybackContext {
     pub id: Option<String>,
 }
 impl Default for PlaybackContext {
-    fn default() -> Self { Self { kind: "standalone".into(), id: None } }
+    fn default() -> Self {
+        Self {
+            kind: "standalone".into(),
+            id: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
