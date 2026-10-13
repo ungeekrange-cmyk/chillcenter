@@ -151,19 +151,36 @@ pub async fn load<R: Runtime>(
     lease: LeaseDeadline,
 ) -> Result<NativeSnapshot, NativePlayerError> {
     on_main(window, move |view| {
-        let mut state = SurfacePlayer::new(view, transport, playback, lease)?;
-        state
-            .player
-            .load(&format!("chill-media://{}", state.media_id))?;
-        state.pending = Some(PendingLoad {
-            resume_seconds,
-            audio_language,
-            subtitle_language,
-            speed,
-        });
-        let state = Rc::new(RefCell::new(state));
-        PLAYER.with(|slot| *slot.borrow_mut() = Some(state.clone()));
-        state.borrow_mut().snapshot()
+        PLAYER.with(|slot| {
+            let existing = slot.borrow().clone();
+            if let Some(state) = existing {
+                let mut state = state.borrow_mut();
+                state.reload(
+                    transport,
+                    playback,
+                    resume_seconds,
+                    audio_language,
+                    subtitle_language,
+                    speed,
+                    lease,
+                )?;
+                state.snapshot()
+            } else {
+                let mut state = SurfacePlayer::new(view, transport, playback, lease)?;
+                state
+                    .player
+                    .load(&format!("chill-media://{}", state.media_id))?;
+                state.pending = Some(PendingLoad {
+                    resume_seconds,
+                    audio_language,
+                    subtitle_language,
+                    speed,
+                });
+                let state = Rc::new(RefCell::new(state));
+                *slot.borrow_mut() = Some(state.clone());
+                state.borrow_mut().snapshot()
+            }
+        })
     })
     .await
 }
@@ -239,6 +256,7 @@ where
 
 struct SurfacePlayer {
     player: Player,
+    factory: HttpMediaFactory,
     renderer: OpenGlRenderer,
     view: Retained<NSOpenGLView>,
     context: Retained<NSOpenGLContext>,
@@ -278,11 +296,12 @@ impl SurfacePlayer {
         player.pause(true)?;
         let factory = HttpMediaFactory::new(transport);
         factory.set_playback(playback.clone());
-        player.register_stream("chill-media", std::sync::Arc::new(factory))?;
+        player.register_stream("chill-media", std::sync::Arc::new(factory.clone()))?;
         let renderer = player.create_opengl_renderer(gl_proc)?;
         let now = SystemTime::now();
         Ok(Self {
             player,
+            factory,
             renderer,
             view,
             context,
@@ -298,6 +317,39 @@ impl SurfacePlayer {
             deadline_instant: Instant::now() + lease.remaining,
             deadline_wall: now + lease.remaining,
         })
+    }
+    fn reload(
+        &mut self,
+        transport: Transport,
+        playback: PlaybackStream,
+        resume_seconds: Option<f64>,
+        audio_language: Option<String>,
+        subtitle_language: Option<String>,
+        speed: f64,
+        lease: LeaseDeadline,
+    ) -> Result<(), NativePlayerError> {
+        // The registered callback observes this factory; replacing the active grant does not
+        // destroy libmpv or its existing HTTP worker on the AppKit main thread.
+        self.player.pause(true)?;
+        self.paused = true;
+        self.factory.clear_playback();
+        self.factory.set_transport(transport);
+        self.factory.set_playback(playback.clone());
+        self.media_id = playback.media_id;
+        self.ended = false;
+        self.error = None;
+        self.loaded = false;
+        self.pending = Some(PendingLoad {
+            resume_seconds,
+            audio_language,
+            subtitle_language,
+            speed,
+        });
+        self.deadline_instant = Instant::now() + lease.remaining;
+        self.deadline_wall = SystemTime::now() + lease.remaining;
+        self.player
+            .load(&format!("chill-media://{}", self.media_id))?;
+        Ok(())
     }
     fn apply(&mut self, action: NativeAction) -> Result<NativeSnapshot, NativePlayerError> {
         self.expire_if_needed()?;
@@ -325,6 +377,7 @@ impl SurfacePlayer {
             NativeAction::Subtitle { track_id } => self.player.select_subtitle(track_id)?,
             NativeAction::Volume { volume } => {
                 self.volume = volume.min(100);
+                self.player.set_volume(self.volume)?;
             }
             NativeAction::Fullscreen => {}
             NativeAction::Close => {
@@ -493,7 +546,7 @@ impl SurfacePlayer {
             position: self.player.position_seconds()?,
             duration: self.player.duration_seconds()?,
             paused: self.paused,
-            buffering: false, // replaced by Player::is_buffering once root lands the bounded property helper
+            buffering: self.player.is_buffering()?,
             speed: self.speed,
             tracks: self.player.tracks()?,
             ended: self.ended,
