@@ -63,11 +63,25 @@ pub enum UiCommand {
         media_id: String,
         rating: Option<u8>,
     },
+    MediaDetail {media_id:String},
+    EditMedia {media_id:String,expected_revision:u64,patch:Value},
+    Series {name:String},
+    Sagas,
+    Playlists,
+    Playlist {id:String},
+    CreatePlaylist {name:String,media_id:Option<String>},
+    AddPlaylist {id:String,expected_revision:u64,media_ids:Vec<String>},
+    RemovePlaylistMember {id:String,media_id:String,expected_revision:u64},
+    ReorderPlaylist {id:String,expected_revision:u64,expected_order:Vec<String>,media_ids:Vec<String>},
+    DeletePlaylist {id:String},
+    GroupRating {media_id:String,rating:Option<u8>,scope:String},
     StartScan,
     ScanStatus,
     Theme {
         theme: String,
     },
+    SaveAppearance {appearance:crate::appearance::Appearance},
+    ResolveAppearance {year:i32,month:u8,day:u8},
 }
 #[derive(Debug, Serialize)]
 pub struct UiError {
@@ -154,6 +168,7 @@ struct Settings {
     theme: String,
     trust: TrustStore,
     device_id: Option<String>,
+    appearance:crate::appearance::Appearance,
 }
 
 /// Native-host-only snapshot. Never serialized into the webview.
@@ -318,7 +333,7 @@ impl UiClient {
     fn view(&mut self) -> Result<Value, UiError> {
         if self.connected.is_none() {
             return Ok(
-                json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"theme":self.theme()}),
+                json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"theme":self.theme(),"appearance":self.settings.appearance}),
             );
         }
         let profiles = self.request(HttpMethod::GET, "/api/v1/profiles", None, &[], &[])?;
@@ -349,7 +364,7 @@ impl UiClient {
             None => Value::Null,
         };
         Ok(
-            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"theme":self.theme(),"notice":self.connected.as_ref().unwrap().notice}),
+            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"theme":self.theme(),"appearance":self.settings.appearance,"notice":self.connected.as_ref().unwrap().notice}),
         )
     }
     fn theme(&self) -> &str {
@@ -551,6 +566,30 @@ impl UiClient {
     }
     pub fn dispatch(&mut self, command: UiCommand) -> Result<Value, UiError> {
         match command {
+            UiCommand::MediaDetail{media_id}=>{valid_id(&media_id)?;let p=self.profile()?;self.request(HttpMethod::GET,&format!("/api/v1/profiles/{p}/media/{media_id}"),None,&[],&[])},
+            UiCommand::EditMedia{media_id,expected_revision,patch}=>{
+                valid_id(&media_id)?;
+                let allowed=["title","category","year","genres","series","season","episode","saga","overview","runtime_minutes","cast","directors","series_overview"];
+                let mut object=patch.as_object().filter(|o|o.keys().all(|k|allowed.contains(&k.as_str()))).ok_or_else(||invalid("Champs de fiche invalides."))?.clone();
+                object.insert("expected_revision".into(),json!(expected_revision));let p=self.profile()?;
+                self.request(HttpMethod::PUT,&format!("/api/v1/profiles/{p}/media/{media_id}"),Some(&Value::Object(object)),&[],&[])
+            },
+            UiCommand::Series{name}=>{if name.is_empty()||name.len()>500{return Err(invalid("Série invalide."));}let p=self.profile()?;let segment=percent_segment(&name);self.request(HttpMethod::GET,&format!("/api/v1/profiles/{p}/series/{segment}"),None,&[],&[])},
+            UiCommand::Sagas=>{let p=self.profile()?;self.request(HttpMethod::GET,&format!("/api/v1/profiles/{p}/sagas"),None,&[],&[])},
+            UiCommand::Playlists=>{let p=self.profile()?;self.request(HttpMethod::GET,&format!("/api/v1/profiles/{p}/playlists"),None,&[],&[])},
+            UiCommand::Playlist{id}=>{valid_id(&id)?;let p=self.profile()?;self.request(HttpMethod::GET,&format!("/api/v1/profiles/{p}/playlists/{id}"),None,&[],&[])},
+            UiCommand::CreatePlaylist{name,media_id}=>{if let Some(id)=&media_id{valid_id(id)?;}let p=self.profile()?;self.request(HttpMethod::POST,&format!("/api/v1/profiles/{p}/playlists"),Some(&json!({"name":name,"media_id":media_id})),&[],&[])},
+            UiCommand::AddPlaylist{id,expected_revision,media_ids}=>{valid_id(&id)?;validate_media_ids(&media_ids)?;let p=self.profile()?;self.request(HttpMethod::POST,&format!("/api/v1/profiles/{p}/playlists/{id}/members"),Some(&json!({"expected_revision":expected_revision,"media_ids":media_ids})),&[],&[])},
+            UiCommand::RemovePlaylistMember{id,media_id,expected_revision}=>{valid_id(&id)?;valid_id(&media_id)?;let p=self.profile()?;self.request(HttpMethod::DELETE,&format!("/api/v1/profiles/{p}/playlists/{id}/members/{media_id}"),Some(&json!({"expected_revision":expected_revision})),&[],&[])},
+            UiCommand::ReorderPlaylist{id,expected_revision,expected_order,media_ids}=>{valid_id(&id)?;validate_media_ids(&media_ids)?;validate_media_ids(&expected_order)?;let p=self.profile()?;self.request(HttpMethod::PUT,&format!("/api/v1/profiles/{p}/playlists/{id}/order"),Some(&json!({"expected_revision":expected_revision,"expected_order":expected_order,"media_ids":media_ids})),&[],&[])},
+            UiCommand::DeletePlaylist{id}=>{valid_id(&id)?;let p=self.profile()?;self.request(HttpMethod::DELETE,&format!("/api/v1/profiles/{p}/playlists/{id}"),None,&[],&[])},
+            UiCommand::GroupRating{media_id,rating,scope}=>{valid_id(&media_id)?;if !["video","season","series"].contains(&scope.as_str()){return Err(invalid("Portée de note invalide."));}let p=self.profile()?;self.request(HttpMethod::PUT,&format!("/api/v1/profiles/{p}/media/{media_id}/rating"),Some(&json!({"rating":rating,"scope":scope})),&[],&[])},
+            UiCommand::SaveAppearance{appearance}=>{
+                let previous=self.settings.appearance.clone();self.settings.appearance=appearance;
+                if let Err(e)=self.save(){self.settings.appearance=previous;return Err(e);}
+                Ok(json!({"appearance":self.settings.appearance}))
+            }
+            UiCommand::ResolveAppearance{year,month,day}=>Ok(json!({"ambiance":self.settings.appearance.resolve(year,month,day).map_err(|e|invalid(&e))?,"appearance":self.settings.appearance})),
             UiCommand::Boot => {
                 if let Some(address) = self.settings.last_address.clone() {
                     return match self.connect(&address) {
@@ -777,6 +816,8 @@ fn valid_id(id: &str) -> Result<(), UiError> {
         .map(|_| ())
         .map_err(|_| invalid("Identifiant invalide."))
 }
+fn validate_media_ids(ids:&[String])->Result<(),UiError> {if ids.len()>3000{return Err(invalid("Liste trop longue."));}for id in ids{valid_id(id)?;}Ok(())}
+fn percent_segment(s:&str)->String {s.bytes().map(|b|if b.is_ascii_alphanumeric()||b"-_.~".contains(&b){(b as char).to_string()}else{format!("%{b:02X}")}).collect()}
 fn has_profile(profiles: &Value, id: &str) -> bool {
     profiles
         .as_array()
