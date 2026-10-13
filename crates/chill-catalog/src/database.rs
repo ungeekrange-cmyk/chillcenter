@@ -44,6 +44,11 @@ impl Database {
             CREATE TABLE IF NOT EXISTS imported_sagas (media_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(media_id,name));
             CREATE TABLE IF NOT EXISTS collection_artwork (collection_id INTEGER PRIMARY KEY, poster TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS collection_positions (collection_id INTEGER NOT NULL, media_id TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0), PRIMARY KEY(collection_id,media_id));
+            -- Common collections predate the API revision contract.  Keep the
+            -- revision beside them in the same SQLite database so every CAS
+            -- mutation can be one IMMEDIATE transaction.
+            CREATE TABLE IF NOT EXISTS collection_revisions (collection_id INTEGER PRIMARY KEY REFERENCES collections(id) ON DELETE CASCADE, revision INTEGER NOT NULL DEFAULT 1);
+            INSERT OR IGNORE INTO collection_revisions(collection_id,revision) SELECT id,1 FROM collections;
             CREATE TRIGGER IF NOT EXISTS remove_collection_position AFTER DELETE ON collection_members BEGIN DELETE FROM collection_positions WHERE collection_id=OLD.collection_id AND media_id=OLD.media_id; END;
             PRAGMA user_version=1;",
             )
@@ -475,8 +480,34 @@ impl Database {
                 params![name, kind],
             )
             .map_err(|_| "Une collection de ce nom existe déjà.".to_string())?;
+        let id = self.connection.last_insert_rowid();
+        self.connection.execute("INSERT INTO collection_revisions(collection_id,revision) VALUES(?1,1)", [id]).map_err(db_error)?;
         self.collections()
     }
+
+    pub fn saga_revision(&self, collection_id: &str) -> Result<u64, String> {
+        let id: i64=collection_id.parse().map_err(|_| "Saga introuvable.")?;
+        self.connection.query_row("SELECT revision FROM collection_revisions WHERE collection_id=?1",[id],|r|r.get::<_,i64>(0)).optional().map_err(db_error)?.map(|n|n as u64).ok_or_else(||"Saga introuvable.".into())
+    }
+    fn require_saga_revision(&self, tx:&rusqlite::Transaction<'_>, id:i64, expected:u64)->Result<(),String>{
+        let kind:String=tx.query_row("SELECT kind FROM collections WHERE id=?1",[id],|r|r.get(0)).map_err(|_|"Saga introuvable.")?;
+        if kind!="saga" { return Err("Cette action est réservée aux sagas.".into()); }
+        let changed=tx.execute("UPDATE collection_revisions SET revision=revision+1 WHERE collection_id=?1 AND revision=?2",params![id,expected as i64]).map_err(db_error)?;
+        if changed!=1 { return Err("La saga a changé entre-temps.".into()); } Ok(())
+    }
+    pub fn rename_saga_at_revision(&mut self,id:&str,name:&str,expected:u64)->Result<(),String>{
+        let name=name.trim(); if name.is_empty()||name.len()>200{return Err("Nom de saga invalide (200 caractères maximum).".into())}; let id:i64=id.parse().map_err(|_|"Saga introuvable.")?; let tx=rusqlite::Transaction::new_unchecked(&self.connection,rusqlite::TransactionBehavior::Immediate).map_err(db_error)?;
+        self.require_saga_revision(&tx,id,expected)?;
+        if tx.query_row("SELECT EXISTS(SELECT 1 FROM collections WHERE kind='saga' AND name=?1 AND id<>?2)",params![name,id],|r|r.get::<_,bool>(0)).map_err(db_error)? {return Err("Une saga de ce nom existe déjà.".into())};
+        tx.execute("UPDATE collections SET name=?1 WHERE id=?2",params![name,id]).map_err(db_error)?; tx.commit().map_err(db_error)
+    }
+    pub fn saga_members_at_revision(&mut self,id:&str,media_ids:&[String],expected:u64,add:bool)->Result<(),String>{
+        if media_ids.is_empty()||media_ids.len()>1000{return Err("Sélectionnez de 1 à 1 000 vidéos par ajout.".into())}; let idn:i64=id.parse().map_err(|_|"Saga introuvable.")?; let tx=rusqlite::Transaction::new_unchecked(&self.connection,rusqlite::TransactionBehavior::Immediate).map_err(db_error)?; self.require_saga_revision(&tx,idn,expected)?;
+        let mut seen=HashSet::new(); for media in media_ids {if !seen.insert(media){return Err("Sélection invalide : vidéo dupliquée.".into())}; if add && self.get(media)?.category!="film" {return Err("Une saga ne peut contenir que des films.".into())}}
+        for media in media_ids {if add {tx.execute("INSERT OR IGNORE INTO collection_members(collection_id,media_id) VALUES(?1,?2)",params![idn,media]).map_err(db_error)?;} else {tx.execute("DELETE FROM collection_members WHERE collection_id=?1 AND media_id=?2",params![idn,media]).map_err(db_error)?;}}
+        tx.commit().map_err(db_error)
+    }
+    pub fn delete_saga_at_revision(&mut self,id:&str,expected:u64)->Result<(),String>{let id:i64=id.parse().map_err(|_|"Saga introuvable.")?;let tx=rusqlite::Transaction::new_unchecked(&self.connection,rusqlite::TransactionBehavior::Immediate).map_err(db_error)?;self.require_saga_revision(&tx,id,expected)?;tx.execute("DELETE FROM collections WHERE id=?1",[id]).map_err(db_error)?;tx.commit().map_err(db_error)}
 
     pub fn saga(&self, collection_id: &str) -> Result<Option<String>, String> {
         let id: i64 = collection_id.parse().map_err(|_| "Saga introuvable.")?;

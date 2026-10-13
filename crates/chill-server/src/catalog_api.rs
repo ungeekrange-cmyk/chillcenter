@@ -25,7 +25,9 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/profiles/{profile}/media/{media}/subtitles", get(crate::media_stream::subtitles))
         .route("/api/v1/profiles/{profile}/media/{media}/subtitles/{id}", get(crate::media_stream::subtitle))
         .route("/api/v1/profiles/{profile}/series/{series}", get(series))
-        .route("/api/v1/profiles/{profile}/sagas", get(sagas))
+        .route("/api/v1/profiles/{profile}/sagas", get(sagas).post(create_saga))
+        .route("/api/v1/profiles/{profile}/sagas/{saga}", get(saga).put(rename_saga).delete(delete_saga))
+        .route("/api/v1/profiles/{profile}/sagas/{saga}/members", post(add_saga_members).delete(remove_saga_members))
         .route("/api/v1/profiles/{profile}/playlists", get(playlists).post(create_playlist))
         .route("/api/v1/profiles/{profile}/playlists/{playlist}", get(playlist).put(rename_playlist).delete(delete_playlist))
         .route("/api/v1/profiles/{profile}/playlists/{playlist}/members", post(add_members))
@@ -65,9 +67,19 @@ async fn series(State(state): State<AppState>, Path((profile, series)): Path<(St
     Ok(Json(json!({"name":series,"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}})))
 }
 async fn sagas(State(state): State<AppState>, Path(profile): Path<String>) -> Result<Json<Value>, ApiError> {
-    let collections=state.database.call(move |store| store.collections(&profile)).await?;
-    Ok(Json(json!({"items":collections.into_iter().filter(|c|c.kind=="saga").collect::<Vec<_>>()})))
+    let items=state.database.call(move |store| { store.preferences(&profile)?; store.sagas() }).await?;
+    Ok(Json(json!({"items":items})))
 }
+async fn saga(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>)->Result<Json<Value>,ApiError>{Ok(Json(json!({"saga":state.database.call(move|s|{s.preferences(&profile)?;s.saga(&id)}).await?})))}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct SagaCreate { name:String }
+async fn create_saga(State(state):State<AppState>,Path(profile):Path<String>,Json(body):Json<SagaCreate>)->Result<Json<Value>,ApiError>{Ok(Json(json!({"saga":state.database.call(move|s|{s.preferences(&profile)?;s.create_saga(&body.name)}).await?})))}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct SagaRename { expected_revision:u64,name:String }
+async fn rename_saga(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>,Json(body):Json<SagaRename>)->Result<Json<Value>,ApiError>{Ok(Json(json!({"saga":state.database.call(move|s|{s.preferences(&profile)?;s.rename_saga_at_revision(&id,&body.name,body.expected_revision)}).await?})))}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct SagaMembers { expected_revision:u64,media_ids:Vec<String> }
+async fn add_saga_members(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>,Json(body):Json<SagaMembers>)->Result<Json<Value>,ApiError>{Ok(Json(json!({"saga":state.database.call(move|s|{s.preferences(&profile)?;s.saga_members_at_revision(&id,&body.media_ids,body.expected_revision,true)}).await?})))}
+async fn remove_saga_members(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>,Json(body):Json<SagaMembers>)->Result<Json<Value>,ApiError>{Ok(Json(json!({"saga":state.database.call(move|s|{s.preferences(&profile)?;s.saga_members_at_revision(&id,&body.media_ids,body.expected_revision,false)}).await?})))}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct SagaDelete { expected_revision:u64 }
+async fn delete_saga(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>,Json(body):Json<SagaDelete>)->Result<Json<Value>,ApiError>{state.database.call(move|s|{s.preferences(&profile)?;s.delete_saga_at_revision(&id,body.expected_revision)}).await?;Ok(Json(json!({"deleted":true})))}
 async fn playlists(State(state): State<AppState>, Path(profile): Path<String>) -> Result<Json<Value>, ApiError> { Ok(Json(json!({"items":state.database.call(move|s|s.playlists(&profile)).await?}))) }
 async fn playlist(State(state): State<AppState>, Path((profile,playlist)): Path<(String,String)>) -> Result<Json<Value>, ApiError> { Ok(Json(json!({"playlist":state.database.call(move|s|s.playlist(&profile,&playlist)).await?}))) }
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct RenamePlaylist { expected_revision:u64, name:String }

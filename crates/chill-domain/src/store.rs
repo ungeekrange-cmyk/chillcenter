@@ -45,6 +45,8 @@ pub struct PlaylistView {
     pub revision: u64,
     pub media_ids: Vec<String>,
 }
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SagaView { pub id:String, pub name:String, pub revision:u64, pub media_ids:Vec<String>, pub poster:Option<String> }
 
 pub struct Store {
     catalogue: Database,
@@ -687,6 +689,14 @@ impl Store {
         stmt.query_map([profile_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))
             .map_err(db_error)?.map(|row| { let (id,name,revision)=row.map_err(db_error)?; Ok(PlaylistView { media_ids: self.playlist_members(&id)?, id, name, revision: revision as u64 }) }).collect()
     }
+    pub fn sagas(&mut self) -> Result<Vec<SagaView>, String> {
+        self.catalogue.collections()?.into_iter().filter(|c|c.kind=="saga").map(|c| Ok(SagaView { revision:self.catalogue.saga_revision(&c.id)?, id:c.id,name:c.name,media_ids:c.media_ids,poster:c.poster })).collect()
+    }
+    pub fn saga(&mut self,id:&str)->Result<SagaView,String>{self.sagas()?.into_iter().find(|s|s.id==id).ok_or_else(||"Saga introuvable.".into())}
+    pub fn create_saga(&mut self,name:&str)->Result<SagaView,String>{let id=self.catalogue.create_collection(name,"saga")?.into_iter().find(|c|c.kind=="saga"&&c.name==name.trim()).ok_or("Saga introuvable.")?.id;self.saga(&id)}
+    pub fn rename_saga_at_revision(&mut self,id:&str,name:&str,revision:u64)->Result<SagaView,String>{self.catalogue.rename_saga_at_revision(id,name,revision)?;self.saga(id)}
+    pub fn saga_members_at_revision(&mut self,id:&str,media:&[String],revision:u64,add:bool)->Result<SagaView,String>{self.catalogue.saga_members_at_revision(id,media,revision,add)?;self.saga(id)}
+    pub fn delete_saga_at_revision(&mut self,id:&str,revision:u64)->Result<(),String>{self.catalogue.delete_saga_at_revision(id,revision)}
 
     pub fn playlist(&self, profile_id: &str, id: &str) -> Result<PlaylistView, String> {
         self.require_playlist(profile_id, id)?;
