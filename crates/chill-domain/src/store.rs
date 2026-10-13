@@ -721,6 +721,15 @@ impl Store {
         })
     }
 
+    pub fn create_playlist_with_members(&self, profile_id:&str, name:&str, media_ids:&[String]) -> Result<PlaylistView,String> {
+        self.require_profile(profile_id)?;
+        if media_ids.len()>1000 { return Err("Sélectionnez au plus 1 000 vidéos.".into()); }
+        let name=valid_collection_name(name)?; let id=Uuid::new_v4().to_string(); let tx=self.personal.unchecked_transaction().map_err(db_error)?;
+        tx.execute("INSERT INTO cc_playlists(id,profile_id,name) VALUES(?1,?2,?3)",params![id,profile_id,name]).map_err(|_|"Une playlist porte déjà ce nom pour ce profil.".to_string())?;
+        let mut seen=HashSet::new(); for (position,media) in media_ids.iter().enumerate() { if !seen.insert(media) { return Err("Sélection invalide : vidéo dupliquée.".into()); } ensure_identity_in(&tx,media)?; tx.execute("INSERT INTO cc_playlist_members(playlist_id,stable_media_id,position) VALUES(?1,?2,?3)",params![id,media,position as i64]).map_err(db_error)?; }
+        tx.commit().map_err(db_error)?; self.playlist(profile_id,&id)
+    }
+
     pub fn collection_member_add_bulk(
         &self,
         profile_id: &str,
