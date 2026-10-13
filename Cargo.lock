@@ -516,6 +516,7 @@ dependencies = [
 name = "chill-client"
 version = "0.1.0"
 dependencies = [
+ "chill-domain",
  "rcgen",
  "reqwest",
  "rustls",
@@ -552,6 +553,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]

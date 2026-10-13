@@ -69,7 +69,7 @@ impl DatabaseActor {
     ) -> Result<T, ApiError> {
         self.call_with_budget(Duration::from_secs(10), job).await
     }
-    async fn call_with_budget<T: Send + 'static>(
+    pub(crate) async fn call_with_budget<T: Send + 'static>(
         &self,
         budget: Duration,
         job: impl FnOnce(&mut Store) -> Result<T, String> + Send + 'static,
@@ -117,6 +117,7 @@ impl DatabaseActor {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub playback: crate::playback::PlaybackService,
     pub config: Arc<ServerConfig>,
     pub library: Arc<Mutex<LibrarySettings>>,
     pub database: DatabaseActor,
@@ -149,6 +150,7 @@ impl IntoResponse for ApiError {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(crate::catalog_api::routes())
+        .merge(crate::playback::routes())
         .route("/api/v1/server", get(server))
         .route("/api/v1/admin/library", get(library).put(update_library))
         .route("/api/v1/profiles", get(profiles).post(create_profile))
@@ -212,7 +214,7 @@ async fn server(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?
         .clone();
     Ok(Json(
-        json!({"server_id":certificate.server_id,"api_version":1,"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","catalog_pages","manual_personal_state","scan"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
+        json!({"server_id":certificate.server_id,"api_version":1,"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","catalog_pages","manual_personal_state","scan","playback_leases","media_range","progress"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
     ))
 }
 
@@ -257,6 +259,7 @@ async fn update_library(
                     ApiError(StatusCode::BAD_REQUEST, "CONFIG_INVALID_OR_UNWRITABLE")
                 }
             })?;
+        state.playback.clear();
         Ok(Json(settings.clone()))
     })
     .await
@@ -320,9 +323,14 @@ async fn delete_profile(
             "DELETE_CONFIRMATION_REQUIRED",
         ));
     }
+    let playback = state.playback.clone();
     state
         .database
-        .call(move |store| store.delete_profile(&profile))
+        .call(move |store| {
+            store.delete_profile(&profile)?;
+            playback.revoke_profile(&profile);
+            Ok(())
+        })
         .await?;
     Ok(Json(json!({"deleted":true})))
 }
@@ -365,6 +373,7 @@ mod tests {
         };
         let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
         let state = AppState {
+            playback: Default::default(),
             scan: Arc::new(Mutex::new(crate::catalog_api::ScanStatus::default())),
             database: DatabaseActor::open(dir.path().join("catalog.sqlite")).unwrap(),
             library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
@@ -657,6 +666,7 @@ mod tests {
             .await
             .unwrap();
         let state = AppState {
+            playback: Default::default(),
             database,
             config: Arc::new(config),
             library: Arc::new(Mutex::new(LibrarySettings::default())),

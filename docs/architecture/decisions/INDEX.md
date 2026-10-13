@@ -15,3 +15,5 @@ Révision `CC-DOC-001`, 2026-10-13. Auteur et propriétaire : `/root`. Tous les 
 Déclencheurs : frontière serveur/client, persistance, identité, contrat de session, dépendance native, chiffrement/exception, migration et fournisseur externe. Le calendrier et les palettes statiques sont des règles fonctionnelles déjà approuvées, documentées dans l'architecture, sans ADR distinct supplémentaire.
 
 Après acceptation, changer une décision par un nouvel ADR avec `supersedes`, pas par une réécriture. Invalider les stories ou preuves qui consomment une décision modifiée.
+
+Complément d'implémentation, distinct des sept décisions approuvées en G-02 : [ADR-0008](ADR-0008-bounded-media-io.md), `IMPLEMENTED_DETAIL`, I/O NAS bornées et ouverture par descripteurs, CC-PLAY-001. Ne remplace aucun ADR accepté ; pas de nouvelle validation utilisateur revendiquée.

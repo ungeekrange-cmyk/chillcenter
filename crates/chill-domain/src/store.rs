@@ -304,6 +304,16 @@ impl Store {
         Ok(PathBuf::from(self.catalogue.get(&legacy)?.path))
     }
 
+    pub fn personal_state(
+        &self,
+        profile_id: &str,
+        stable_id: &str,
+    ) -> Result<PersonalState, String> {
+        self.require_profile(profile_id)?;
+        self.legacy_id(stable_id)?;
+        state(&self.personal, profile_id, stable_id)
+    }
+
     pub fn snapshot(&mut self, discovered: Vec<Media>) -> Result<i64, String> {
         self.catalogue.snapshot_with(discovered, insert_identities)
     }
@@ -504,8 +514,13 @@ impl Store {
         let credit_eligible = progress.playing
             && !progress.buffering
             && !progress.seek
-            && progress.position_ms >= progress.duration_ms.saturating_mul(9) / 10;
-        if progress.final_elapsed_ms > progress.duration_ms / 10
+            && progress.position_ms >= crate::final_tenth_start(progress.duration_ms);
+        // Real time in the final tenth can be twice the media time at ×0.5.
+        // The server separately bounds each credit by its monotonic clock.
+        let maximum_final_time = (progress.duration_ms
+            - crate::final_tenth_start(progress.duration_ms))
+        .saturating_mul(2);
+        if progress.final_elapsed_ms > maximum_final_time
             || (!credit_eligible && progress.final_elapsed_ms != 0)
         {
             return Err("Crédit de visionnage final invalide.".into());
@@ -1187,6 +1202,31 @@ mod tests {
         s
     }
     #[test]
+    fn validated_slow_playback_credit_is_real_time_not_video_duration() {
+        let mut s = store();
+        let p = s.create_profile("Slow").unwrap();
+        let id = s.catalog(&p.id).unwrap()[0].id.clone();
+        let event = Progress {
+            session_id: "session".into(),
+            generation: 1,
+            media_id: id.clone(),
+            media_revision: 1,
+            sequence: 1,
+            position_ms: 100_000,
+            duration_ms: 100_000,
+            speed: 0.5,
+            final_elapsed_ms: 20_000,
+            playing: true,
+            buffering: false,
+            seek: false,
+        };
+        assert!(
+            s.save_validated_progress(&p.id, &id, &event)
+                .unwrap()
+                .watched
+        );
+    }
+    #[test]
     fn profiles_are_isolated_and_renaming_keeps_identity() {
         let mut s = store();
         let a = s.create_profile("A").unwrap();
@@ -1227,6 +1267,7 @@ mod tests {
         let id = s.catalog(&p.id).unwrap()[0].id.clone();
         assert!(s.save_progress(&p.id, &id, 50, 9999, 100000).is_err());
         let progress = |sequence, final_elapsed_ms| Progress {
+            media_revision: 1,
             session_id: "session".into(),
             generation: 1,
             media_id: id.clone(),
@@ -1266,6 +1307,7 @@ mod tests {
         let p = s.create_profile("A").unwrap();
         let id = s.catalog(&p.id).unwrap()[0].id.clone();
         let event = |sequence, position_ms, playing, buffering, seek, final_elapsed_ms| Progress {
+            media_revision: 1,
             session_id: "session".into(),
             generation: 1,
             media_id: id.clone(),

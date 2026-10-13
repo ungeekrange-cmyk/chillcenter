@@ -62,6 +62,7 @@ impl Default for PlaybackContext {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lease {
+    pub server_epoch: String,
     pub session_id: String,
     pub profile_id: String,
     pub device_id: String,
@@ -75,10 +76,42 @@ pub struct Lease {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct AcquirePlayback {
+    pub media_id: String,
+    pub device_id: String,
+    #[serde(default)]
+    pub context: PlaybackContext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybackGrant {
+    pub lease: Lease,
+    pub personal: PersonalState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlaybackControl {
+    pub session_id: String,
+    pub generation: u64,
+    pub media_id: String,
+    pub media_revision: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleasePlayback {
+    pub lease: PlaybackControl,
+    pub progress: Option<Progress>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Progress {
     pub session_id: String,
     pub generation: u64,
     pub media_id: String,
+    pub media_revision: u64,
     pub sequence: u64,
     pub position_ms: u64,
     pub duration_ms: u64,
@@ -98,4 +131,24 @@ pub struct NextVideo {
 
 pub fn valid_speed(speed: f64) -> bool {
     [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].contains(&speed)
+}
+
+/// Start of the final tenth, without overflowing for long durations.
+pub fn final_tenth_start(duration_ms: u64) -> u64 {
+    (duration_ms / 10) * 9 + (duration_ms % 10) * 9 / 10
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn final_tenth_boundary_handles_large_durations() {
+        for duration in [0, 9, 10, 101, i64::MAX as u64, u64::MAX] {
+            assert_eq!(
+                final_tenth_start(duration) as u128,
+                duration as u128 * 9 / 10
+            );
+        }
+    }
 }

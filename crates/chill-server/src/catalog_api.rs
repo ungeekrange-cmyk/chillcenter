@@ -68,9 +68,16 @@ async fn watched(
     Path((profile, media)): Path<(String, String)>,
     Json(body): Json<Watched>,
 ) -> Result<Json<Value>, ApiError> {
+    let playback = state.playback.clone();
     state
         .database
-        .call(move |store| store.set_watched(&profile, &media, body.watched))
+        .call(move |store| {
+            store.set_watched(&profile, &media, body.watched)?;
+            if !body.watched {
+                playback.reset_final(&profile, &media);
+            }
+            Ok(())
+        })
         .await?;
     Ok(Json(json!({"saved":true})))
 }

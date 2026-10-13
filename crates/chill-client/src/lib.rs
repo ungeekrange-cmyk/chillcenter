@@ -20,6 +20,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use x509_parser::extensions::GeneralName;
 use x509_parser::prelude::*;
+pub mod playback;
 pub mod ui;
 pub use reqwest::Method as HttpMethod;
 
