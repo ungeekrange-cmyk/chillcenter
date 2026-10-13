@@ -19,6 +19,8 @@ Révision `CC-DOC-001`. Ce journal sera relu avant chaque nouvelle intervention.
 
 ## Format de tout futur BUG
 
+Assets de marque, 2026-10-13 : [BUG-0009 marques fantômes](BUG-0009-branding-artifacts.md) : VERIFIED par inspection directe des PNG avant/après pour été clair et automne sombre. Pas un défaut de la galerie ou du runtime ; aucun test applicatif revendiqué pour ces retouches. Le logo approuvé et les six variantes non concernées sont inchangés.
+
 Implémentation 2026-10-13 : [BUG-0001 fournisseur TLS](BUG-0001-tls-provider.md) et [BUG-0002 autorité HTTP/2](BUG-0002-http2-authority.md) : corrections vérifiées par tests et smoke réel de configuration ; [BUG-0003 fixture extraite](BUG-0003-extracted-fixture.md) : VERIFIED par 64 tests catalogue. Les défauts de revue du candidat domaine initial ne sont pas effacés ; nouvelles preuves dans `docs/implementation/` et rapports à consulter avant intégration finale.
 
 Lot interface, source `c2a9d72` : [BUG-0004 type TLS reqwest](BUG-0004-reqwest-tls-type.md), [BUG-0005 rollback profil](BUG-0005-profile-context.md), [BUG-0006 mutations tardives](BUG-0006-late-scan-mutations.md), [BUG-0007 snapshot/identités](BUG-0007-scan-identity-atomicity.md), [BUG-0008 lecture SQLite](BUG-0008-api-read-errors.md) : VERIFIED par régressions, 124 tests et revues indépendantes r3. Preuves exactes dans INTERFACE-EVIDENCE ; rapports précédents conservés. Remplacement exceptionnel de clé affiché dans un bandeau persistant, erreurs API sûres/typées ; confiance provisoire annulée après connexion initiale échouée.

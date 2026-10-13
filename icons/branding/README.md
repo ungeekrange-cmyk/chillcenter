@@ -19,13 +19,21 @@ Choix utilisateur : « oui on garde celui-ci par défaut », corrigé par « le 
 | Noël | <img src="christmas-light.png" width="180" alt="Noël clair"> | <img src="christmas-dark.png" width="180" alt="Noël sombre"> |
 | Halloween | <img src="halloween-light.png" width="180" alt="Halloween clair"> | <img src="halloween-dark.png" width="180" alt="Halloween sombre"> |
 
-Palette : sauge/vert pour printemps, sable/ocre pour été, cuivre/bordeaux pour automne, bleu givré/bleu nuit pour hiver. Noël : crème/rouge ou sapin/champagne avec houx ; Halloween : crème/citrouille ou aubergine/citrouille avec chauve-souris. Motifs uniquement pour les événements. Tous gardent le canapé et le lettrage gourmand en arc.
+Palette : sauge/vert pour printemps, sable/ocre pour été, cuivre/bordeaux pour automne, bleu givré/bleu nuit pour hiver. Noël : crème/rouge ou sapin/champagne, avec un sapin sauge derrière le canapé et le lettrage ; Halloween : crème/citrouille ou aubergine/citrouille, avec une citrouille posée sur l'assise. Motifs uniquement pour les événements. Tous gardent le canapé et le lettrage gourmand en arc.
+
+### Retouches r2 demandées par l'utilisateur
+
+Été clair : trace fantôme au centre du disque supprimée. Automne sombre : marque fantôme dans le fond extérieur supprimée. Les défauts étaient visibles directement dans les PNG, indépendamment du navigateur : [BUG-0009](../../docs/debug/BUG-0009-branding-artifacts.md).
+
+Noël clair/sombre : houx remplacé par un sapin qui dépasse du dossier et passe derrière le « C » de Chill Center. Premier essai clair écarté car le sapin s'arrêtait sous les lettres ; une retouche de hauteur conserve la palette claire. Halloween clair/sombre : chauve-souris retirée, citrouille avec tige et nervures posée sur l'assise, devant le dossier. Les six autres déclinaisons et `default.png` restent identiques octet par octet.
+
+Les six fichiers conservent leurs noms ; la galerie utilise `?v=2` sur leurs références pour éviter le cache de la version précédente après rechargement. Anciennes versions et prompts conservés dans la révision `branding-r2` du manifeste et le commit Git `135d78c029cde269434186e4a0b8432962739665`. Les propositions r2 restent à valider visuellement par l'utilisateur.
 
 [Galerie de comparaison](gallery.html) — page locale sans JavaScript, animation, réseau ou service externe.
 
 ## Fichiers et provenance
 
-Treize PNG statiques (logo retenu +12 propositions),1254×1254, canal alpha, environ14MiB au total. `manifest.json` référence tous les fichiers, hashes, palettes **demandées** (pas des mesures des pixels) et prompts complets. Les deux premiers rendus Noël non retenus restent seulement dans l'historique de génération, identifiés dans le manifeste ; les fichiers livrés sont les versions corrigées. Les sources générées ne sont pas supprimées.
+Treize PNG statiques (logo retenu +12 propositions),1254×1254, canal alpha. `manifest.json` référence tous les fichiers, hashes, palettes **demandées** (pas des mesures des pixels), prompts complets et historique des retouches. Les rendus non retenus restent dans l'historique de génération, identifiés dans le manifeste ; les fichiers livrés sont les versions corrigées. Les sources générées ne sont pas supprimées.
 
 Vérification : identité binaire du défaut avec le choix utilisateur ; lecture PNG, dimensions/alpha, hashes et présence des six paires. Inspection visuelle : texte, formes, équilibre clair/sombre, correction de l'outline Noël et marques de fond. Pas de mesure quantitative de contraste, audit d'icône à16px ou vectorisation finale ; ce sont des propositions raster de branding.
 
