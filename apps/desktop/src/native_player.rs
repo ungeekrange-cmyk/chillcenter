@@ -268,6 +268,7 @@ struct SurfacePlayer {
     error: Option<String>,
     notice: Option<String>,
     loaded: bool,
+    load_phase: LoadPhase,
     pending: Option<PendingLoad>,
     speed: f64,
     volume: u8,
@@ -314,6 +315,7 @@ impl SurfacePlayer {
             error: None,
             notice: None,
             loaded: false,
+            load_phase: LoadPhase::Loading,
             pending: None,
             speed: 1.,
             volume: 100,
@@ -343,6 +345,7 @@ impl SurfacePlayer {
         self.error = None;
         self.notice = None;
         self.loaded = false;
+        self.load_phase = LoadPhase::Loading;
         self.pending = Some(PendingLoad {
             resume_seconds,
             audio_language,
@@ -469,25 +472,25 @@ impl SurfacePlayer {
     fn poll_and_render(&mut self) -> Result<(), NativePlayerError> {
         self.expire_if_needed()?;
         for _ in 0..32 {
-            let event=self.player.poll_event(Duration::ZERO);
-            #[cfg(debug_assertions)]
-            if std::env::var_os("CHILL_UI_QA_URL").is_some() && matches!(&event,PlayerEvent::Started|PlayerEvent::FileLoaded|PlayerEvent::Ended{..}) {
-                println!("NATIVE_QA_EVENT {:?} loaded={} pending={}",event,self.loaded,self.pending.is_some());
-            }
-            match event {
-                PlayerEvent::None => break,
-                PlayerEvent::FileLoaded => self.apply_pending()?,
-                PlayerEvent::Ended { reason, error } => {
-                    self.ended = true;
-                    if reason != 0 || error != 0 {
-                        self.error = Some(format!("lecture interrompue ({reason}/{error})"));
+            let event = self.player.poll_event(Duration::ZERO);
+            match self.load_phase.observe(&event) {
+                EventDisposition::Ignore => continue,
+                EventDisposition::Started => continue,
+                EventDisposition::FileLoaded => self.apply_pending()?,
+                EventDisposition::Process => match event {
+                    PlayerEvent::None => break,
+                    PlayerEvent::Ended { reason, error } => {
+                        self.ended = true;
+                        if reason != 0 || error != 0 {
+                            self.error = Some(format!("lecture interrompue ({reason}/{error})"));
+                        }
                     }
-                }
-                PlayerEvent::Shutdown => {
-                    self.ended = true;
-                    self.error = Some("moteur arrêté".into());
-                }
-                _ => {}
+                    PlayerEvent::Shutdown => {
+                        self.ended = true;
+                        self.error = Some("moteur arrêté".into());
+                    }
+                    _ => {}
+                },
             }
         }
         self.render_tick()
@@ -540,12 +543,14 @@ impl SurfacePlayer {
                 self.player.select_subtitle(Some(track.id))?;
             } else {
                 self.player.select_subtitle(None)?;
-                self.notice = Some("Sous-titres préférés indisponibles : sous-titres désactivés.".into());
+                self.notice =
+                    Some("Sous-titres préférés indisponibles : sous-titres désactivés.".into());
             }
         } else {
             self.player.select_subtitle(None)?;
         }
         self.loaded = true;
+        self.load_phase = LoadPhase::Steady;
         Ok(())
     }
     fn snapshot(&mut self) -> Result<NativeSnapshot, NativePlayerError> {
@@ -566,6 +571,116 @@ impl SurfacePlayer {
             #[cfg(debug_assertions)]
             debug_nonblank: Some(self.framebuffer.nonblank()),
         })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoadPhase {
+    Loading,
+    WaitingForFile,
+    Steady,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventDisposition {
+    Ignore,
+    Started,
+    FileLoaded,
+    Process,
+}
+impl LoadPhase {
+    /// An Ended before this load's Started belongs to the superseded file.
+    fn observe(&mut self, event: &PlayerEvent) -> EventDisposition {
+        match (*self, event) {
+            (Self::Loading, PlayerEvent::Started) => {
+                *self = Self::WaitingForFile;
+                EventDisposition::Started
+            }
+            (Self::Loading, PlayerEvent::Ended { .. } | PlayerEvent::FileLoaded) => {
+                EventDisposition::Ignore
+            }
+            (Self::WaitingForFile, PlayerEvent::FileLoaded) => EventDisposition::FileLoaded,
+            (Self::WaitingForFile, PlayerEvent::Ended { .. }) => EventDisposition::Process,
+            (_, _) => EventDisposition::Process,
+        }
+    }
+}
+
+#[cfg(test)]
+mod reload_phase_tests {
+    use super::*;
+    #[test]
+    fn old_stop_before_new_started_is_ignored() {
+        let mut phase = LoadPhase::Loading;
+        assert_eq!(
+            phase.observe(&PlayerEvent::Ended {
+                reason: 2,
+                error: 0
+            }),
+            EventDisposition::Ignore
+        );
+        assert_eq!(
+            phase.observe(&PlayerEvent::Started),
+            EventDisposition::Started
+        );
+        assert_eq!(
+            phase.observe(&PlayerEvent::FileLoaded),
+            EventDisposition::FileLoaded
+        );
+    }
+    #[test]
+    fn new_load_failure_is_not_masked() {
+        let mut phase = LoadPhase::Loading;
+        assert_eq!(
+            phase.observe(&PlayerEvent::Started),
+            EventDisposition::Started
+        );
+        assert_eq!(
+            phase.observe(&PlayerEvent::Ended {
+                reason: 2,
+                error: -13
+            }),
+            EventDisposition::Process
+        );
+    }
+    #[test]
+    fn normal_eof_after_loaded_is_processed() {
+        let mut phase = LoadPhase::Steady;
+        assert_eq!(
+            phase.observe(&PlayerEvent::Ended {
+                reason: 0,
+                error: 0
+            }),
+            EventDisposition::Process
+        );
+    }
+    #[test]
+    fn repeated_reloads_each_ignore_only_pre_start_stop() {
+        for _ in 0..3 {
+            let mut phase = LoadPhase::Loading;
+            assert_eq!(
+                phase.observe(&PlayerEvent::Ended {
+                    reason: 2,
+                    error: 0
+                }),
+                EventDisposition::Ignore
+            );
+            assert_eq!(
+                phase.observe(&PlayerEvent::Started),
+                EventDisposition::Started
+            );
+            assert_eq!(
+                phase.observe(&PlayerEvent::FileLoaded),
+                EventDisposition::FileLoaded
+            );
+            phase = LoadPhase::Steady;
+            assert_eq!(
+                phase.observe(&PlayerEvent::Ended {
+                    reason: 0,
+                    error: 0
+                }),
+                EventDisposition::Process
+            );
+        }
     }
 }
 
