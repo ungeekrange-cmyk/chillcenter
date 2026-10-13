@@ -1412,6 +1412,24 @@ mod tests {
         assert_eq!(got.media_ids, vec![ids[1].clone(), ids[0].clone()]);
     }
     #[test]
+    fn saga_boundary_roundtrips_scanned_stable_ids_without_touching_personal_state() {
+        let mut s=store(); let p=s.create_profile("Saga").unwrap();
+        let ids:Vec<_>=s.catalog(&p.id).unwrap().into_iter().map(|m|m.id).collect();
+        // Snapshot stores relative legacy IDs, whereas all public APIs below use UUIDs.
+        assert!(ids.iter().all(|id| id!="Films/A.mkv" && id!="Films/B.mkv"));
+        s.set_watched(&p.id,&ids[0],true).unwrap(); s.set_rating(&p.id,&ids[0],Some(4),"video").unwrap();
+        let saga=s.create_saga("Saga stable").unwrap();
+        let saga=s.saga_members_at_revision(&saga.id,&ids,saga.revision,true).unwrap();
+        assert_eq!(saga.media_ids,ids);
+        assert!(s.validate_playback_context(&p.id,&ids[0],&PlaybackContext{kind:"saga".into(),id:Some(saga.id.clone())}).is_ok());
+        let before=saga.clone(); assert!(s.saga_members_at_revision(&before.id,&[ids[0].clone()],before.revision-1,false).is_err());
+        assert_eq!(s.saga(&before.id).unwrap().media_ids,ids);
+        let saga=s.reorder_saga_at_revision(&before.id,before.revision,&ids,&[ids[1].clone(),ids[0].clone()]).unwrap();
+        assert_eq!(saga.media_ids,vec![ids[1].clone(),ids[0].clone()]);
+        let saga=s.saga_members_at_revision(&saga.id,&[ids[1].clone()],saga.revision,false).unwrap(); assert_eq!(saga.media_ids,vec![ids[0].clone()]);
+        let view=s.media(&p.id,&ids[0]).unwrap(); assert!(view.watched); assert_eq!(view.rating,Some(4));
+    }
+    #[test]
     fn media_cas_context_and_next_are_profile_bound() {
         let mut s = store();
         let p = s.create_profile("A").unwrap();
