@@ -1041,8 +1041,16 @@ impl Store {
         // Legacy catalogue stores filesystem paths in `poster`. They are never
         // transport URLs: suppress absolute/local values until artwork is served
         // through the controlled artwork endpoint.
-        if media.poster.as_deref().is_some_and(|p| Path::new(p).is_absolute() || p.starts_with("file:")) { media.poster=None; }
+        // The file location/provider URL is storage-private.  The client gets a
+        // stable opaque endpoint only; the handler resolves and validates it.
+        if media.poster.is_some() { media.poster=Some(format!("/api/v1/profiles/{profile}/media/{}/artwork", media.id)); }
         Ok(media)
+    }
+    pub fn artwork_path(&mut self, profile:&str, stable:&str)->Result<PathBuf,String>{
+        self.require_profile(profile)?; let legacy=self.legacy_id(stable)?; let media=self.catalogue.get(&legacy)?;
+        let poster=media.poster.ok_or("Affiche introuvable.")?;
+        if !Path::new(&poster).is_absolute() || poster.starts_with("file:") { return Err("Affiche introuvable.".into()); }
+        Ok(PathBuf::from(poster))
     }
     fn playlist_members(&self, id: &str) -> Result<Vec<String>, String> {
         playlist_members(&self.personal, id)

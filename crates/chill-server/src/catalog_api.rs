@@ -2,7 +2,7 @@ use crate::api::{ApiError, AppState};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{StatusCode, header}, response::{Response, IntoResponse},
     routing::{delete, get, post, put},
 };
 use chill_domain::{PlaybackContext, store::CatalogQuery};
@@ -22,6 +22,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/admin/scan", get(scan_status).post(start_scan))
         .route("/api/v1/profiles/{profile}/catalog", get(catalog))
         .route("/api/v1/profiles/{profile}/media/{media}", get(detail).put(update_media))
+        .route("/api/v1/profiles/{profile}/media/{media}/artwork", get(artwork))
         .route("/api/v1/profiles/{profile}/media/{media}/subtitles", get(crate::media_stream::subtitles))
         .route("/api/v1/profiles/{profile}/media/{media}/subtitles/{id}", get(crate::media_stream::subtitle))
         .route("/api/v1/profiles/{profile}/series/{series}", get(series))
@@ -47,6 +48,20 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/profiles/{profile}/media/{media}/rating",
             put(rating),
         )
+}
+
+/// Resolves only a catalogue-owned cached artwork path.  The reference exposed
+/// by DTOs is this endpoint, never a local path or third-party URL.
+async fn artwork(State(state):State<AppState>,Path((profile,media)):Path<(String,String)>)->Result<Response,ApiError>{
+    let path=state.database.call(move|s|s.artwork_path(&profile,&media)).await?;
+    let cache=state.config.data_dir.join("posters");
+    let canonical=std::fs::canonicalize(&path).map_err(|_|ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"))?;
+    let root=std::fs::canonicalize(&cache).map_err(|_|ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"))?;
+    if !canonical.starts_with(&root) { return Err(ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND")); }
+    let bytes=std::fs::read(&canonical).map_err(|_|ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"))?;
+    if bytes.len()>8*1024*1024 {return Err(ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"));}
+    let kind=if bytes.starts_with(&[0xff,0xd8,0xff]){"image/jpeg"}else if bytes.starts_with(b"\x89PNG\r\n\x1a\n"){"image/png"}else if bytes.len()>=12&&&bytes[..4]==b"RIFF"&&&bytes[8..12]==b"WEBP"{"image/webp"}else{return Err(ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"));};
+    Ok(([(header::CONTENT_TYPE,kind),(header::CACHE_CONTROL,"private, max-age=31536000, immutable")],bytes).into_response())
 }
 
 async fn detail(State(state): State<AppState>, Path((profile, media)): Path<(String, String)>) -> Result<Json<Value>, ApiError> {
