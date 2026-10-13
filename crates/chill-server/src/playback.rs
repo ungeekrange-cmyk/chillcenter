@@ -5,8 +5,9 @@ use crate::{
 };
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
+    response::sse::{Event, KeepAlive, Sse},
     routing::{get, post},
 };
 use chill_domain::{
@@ -19,7 +20,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, broadcast};
 
 const LEASE_TIME: Duration = Duration::from_secs(30);
 #[allow(dead_code)]
@@ -34,13 +35,26 @@ pub struct PlaybackService {
     book: Arc<Mutex<LeaseBook>>,
     pub(crate) io: Arc<Semaphore>,
     pub(crate) streams: Arc<Semaphore>,
+    events: broadcast::Sender<PauseEvent>,
+    event_subscribers: Arc<Semaphore>,
+}
+#[derive(Clone)]
+struct PauseEvent {
+    profile: String,
+    session: String,
+    generation: u64,
+    token: String,
+    remaining_ms: u64,
 }
 impl Default for PlaybackService {
     fn default() -> Self {
+        let (events, _) = broadcast::channel(MAX_TRANSFER_TOKENS);
         Self {
             book: Arc::new(Mutex::new(LeaseBook::new())),
             io: Arc::new(Semaphore::new(4)),
             streams: Arc::new(Semaphore::new(8)),
+            events,
+            event_subscribers: Arc::new(Semaphore::new(MAX_TRANSFER_TOKENS)),
         }
     }
 }
@@ -281,11 +295,17 @@ impl LeaseBook {
         })
     }
 
-    fn confirm(&mut self, token: &str, now: Instant) -> Result<TransferStatus, Failure> {
-        let offer = self.offers.remove(token).ok_or("TRANSFER_INVALID")?;
-        if now >= offer.expires {
+    fn confirm(
+        &mut self,
+        profile: &str,
+        token: &str,
+        now: Instant,
+    ) -> Result<(TransferStatus, PlaybackControl), Failure> {
+        let offer = self.offers.get(token).cloned().ok_or("TRANSFER_INVALID")?;
+        if offer.profile != profile || now >= offer.expires {
             return Err("TRANSFER_INVALID");
         }
+        self.offers.remove(token);
         let entry = self
             .entries
             .get_mut(&offer.profile)
@@ -308,12 +328,22 @@ impl LeaseBook {
         });
         self.offers
             .retain(|_, o| o.profile != offer.profile || o.generation != offer.generation);
-        Ok(TransferStatus {
-            token: token.into(),
-            phase: TransferPhase::AwaitingAck,
-            remaining_ms: deadline.saturating_duration_since(now).as_millis() as u64,
-            lease: None,
-        })
+        let control = PlaybackControl {
+            session_id: entry.lease.session_id.clone(),
+            generation: entry.lease.generation,
+            media_id: entry.lease.media_id.clone(),
+            media_revision: entry.lease.media_revision,
+        };
+        Ok((
+            TransferStatus {
+                token: token.into(),
+                phase: TransferPhase::AwaitingAck,
+                remaining_ms: deadline.saturating_duration_since(now).as_millis() as u64,
+                lease: None,
+                personal: None,
+            },
+            control,
+        ))
     }
 
     fn ack(&mut self, profile: &str, ack: &TransferAck, now: Instant) -> Result<Progress, Failure> {
@@ -382,6 +412,7 @@ impl LeaseBook {
                 phase,
                 remaining_ms: lease.remaining_ms,
                 lease: Some(lease.clone()),
+                personal: None,
             },
         );
         while self.completed.len() > MAX_TRANSFER_TOKENS {
@@ -391,14 +422,26 @@ impl LeaseBook {
         Ok(lease)
     }
 
-    fn status(&mut self, token: &str, now: Instant) -> Result<TransferStatus, Failure> {
+    fn status(
+        &mut self,
+        profile: &str,
+        token: &str,
+        now: Instant,
+    ) -> Result<TransferStatus, Failure> {
         if let Some(status) = self.completed.get(token) {
+            if status
+                .lease
+                .as_ref()
+                .is_none_or(|lease| lease.profile_id != profile)
+            {
+                return Err("TRANSFER_INVALID");
+            }
             return Ok(status.clone());
         }
         let pending = self
             .entries
-            .values()
-            .find_map(|entry| entry.pending.as_ref().filter(|p| p.token == token).cloned())
+            .get(profile)
+            .and_then(|entry| entry.pending.as_ref().filter(|p| p.token == token).cloned())
             .ok_or("TRANSFER_INVALID")?;
         if now >= pending.deadline {
             self.activate(token, now)?;
@@ -409,6 +452,7 @@ impl LeaseBook {
             phase: TransferPhase::AwaitingAck,
             remaining_ms: pending.deadline.saturating_duration_since(now).as_millis() as u64,
             lease: None,
+            personal: None,
         })
     }
 }
@@ -525,19 +569,36 @@ impl PlaybackService {
             .map_err(failure)
     }
     #[allow(dead_code)]
-    pub(crate) fn confirm_transfer(&self, token: &str) -> Result<TransferStatus, ApiError> {
-        self.book
+    pub(crate) fn confirm_transfer(
+        &self,
+        profile: &str,
+        token: &str,
+    ) -> Result<TransferStatus, ApiError> {
+        let (status, old) = self
+            .book
             .lock()
             .map_err(|_| failure("MEDIA_BUSY"))?
-            .confirm(token, Instant::now())
-            .map_err(failure)
+            .confirm(profile, token, Instant::now())
+            .map_err(failure)?;
+        let _ = self.events.send(PauseEvent {
+            profile: profile.into(),
+            session: old.session_id,
+            generation: old.generation,
+            token: token.into(),
+            remaining_ms: status.remaining_ms,
+        });
+        Ok(status)
     }
     #[allow(dead_code)]
-    pub(crate) fn transfer_status(&self, token: &str) -> Result<TransferStatus, ApiError> {
+    pub(crate) fn transfer_status(
+        &self,
+        profile: &str,
+        token: &str,
+    ) -> Result<TransferStatus, ApiError> {
         self.book
             .lock()
             .map_err(|_| failure("MEDIA_BUSY"))?
-            .status(token, Instant::now())
+            .status(profile, token, Instant::now())
             .map_err(failure)
     }
     /// The caller persists the returned final event in the serialized actor,
@@ -572,11 +633,75 @@ impl PlaybackService {
             .activate(token, Instant::now())
             .map_err(failure)
     }
+    fn event_receiver(
+        &self,
+        profile: &str,
+        session: &str,
+        generation: u64,
+    ) -> Result<
+        (
+            broadcast::Receiver<PauseEvent>,
+            tokio::sync::OwnedSemaphorePermit,
+        ),
+        ApiError,
+    > {
+        let b = self.book.lock().map_err(|_| failure("MEDIA_BUSY"))?;
+        let control = PlaybackControl {
+            session_id: session.into(),
+            generation,
+            media_id: String::new(),
+            media_revision: 0,
+        };
+        let entry = b.entries.get(profile).ok_or(failure("LEASE_INVALID"))?;
+        if entry.lease.session_id != control.session_id
+            || entry.lease.generation != control.generation
+            || Instant::now() >= entry.deadline
+        {
+            return Err(failure("LEASE_INVALID"));
+        }
+        drop(b);
+        let permit = self
+            .event_subscribers
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| failure("MEDIA_BUSY"))?;
+        Ok((self.events.subscribe(), permit))
+    }
+    fn event_alive(&self, profile: &str, session: &str, generation: u64) -> bool {
+        self.book
+            .lock()
+            .ok()
+            .and_then(|b| {
+                b.entries.get(profile).map(|entry| {
+                    entry.lease.session_id == session
+                        && entry.lease.generation == generation
+                        && Instant::now() < entry.deadline
+                })
+            })
+            .unwrap_or(false)
+    }
 }
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/profiles/{profile}/playback/acquire", post(acquire))
+        .route(
+            "/api/v1/profiles/{profile}/playback/transfer/propose",
+            post(propose_transfer),
+        )
+        .route(
+            "/api/v1/profiles/{profile}/playback/transfer/confirm",
+            post(confirm_transfer),
+        )
+        .route(
+            "/api/v1/profiles/{profile}/playback/transfer/status",
+            get(transfer_status),
+        )
+        .route(
+            "/api/v1/profiles/{profile}/playback/transfer/ack",
+            post(transfer_ack),
+        )
+        .route("/api/v1/profiles/{profile}/playback/events", get(events))
         .route(
             "/api/v1/profiles/{profile}/playback/heartbeat",
             post(heartbeat),
@@ -598,6 +723,211 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/media/{media}/stream",
             get(crate::media_stream::stream),
         )
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TokenQuery {
+    token: String,
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EventsQuery {
+    session: String,
+    generation: u64,
+}
+
+async fn propose_transfer(
+    State(s): State<AppState>,
+    Path(profile): Path<String>,
+    Json(body): Json<chill_domain::TransferProposal>,
+) -> Result<Json<TransferOffer>, ApiError> {
+    let target = body.target;
+    if uuid::Uuid::parse_str(&profile).is_err()
+        || uuid::Uuid::parse_str(&target.media_id).is_err()
+        || uuid::Uuid::parse_str(&target.device_id).is_err()
+    {
+        return Err(failure("PLAYBACK_REQUEST_INVALID"));
+    }
+    let p = profile.clone();
+    let media = target.media_id.clone();
+    let context = target.context.clone();
+    let path = s
+        .database
+        .call(move |store| {
+            store.validate_playback_context(&p, &media, &context)?;
+            if !store.media(&p, &media)?.available {
+                return Ok(None);
+            }
+            store.media_path(&media).map(Some)
+        })
+        .await?
+        .ok_or(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "MEDIA_UNAVAILABLE",
+        ))?;
+    let settings = s.library.lock().map_err(|_| failure("MEDIA_BUSY"))?.clone();
+    let root = settings
+        .video_root
+        .clone()
+        .ok_or(ApiError(StatusCode::BAD_REQUEST, "ROOT_REQUIRED"))?;
+    let r = root.clone();
+    let f = path.clone();
+    let (_, version) = io_job(&s.playback, move || open_indexed(&r, &f)).await?;
+    if version.size == 0 {
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "MEDIA_UNAVAILABLE",
+        ));
+    }
+    let service = s.playback.clone();
+    let library = s.library.clone();
+    let offer = s
+        .database
+        .call(move |store| {
+            if store.media_path(&target.media_id)? != path
+                || !store.media(&profile, &target.media_id)?.available
+            {
+                return Ok(Err("MEDIA_CHANGED"));
+            }
+            let current = library.lock().map_err(|_| "INVALID_OPERATION")?;
+            if current.revision != settings.revision {
+                return Ok(Err("MEDIA_CHANGED"));
+            }
+            Ok(service
+                .propose_transfer(
+                    &profile,
+                    target.clone(),
+                    StreamLease {
+                        session: String::new(),
+                        generation: 0,
+                        media: target.media_id.clone(),
+                        root,
+                        path,
+                        root_revision: settings.revision,
+                        version,
+                    },
+                )
+                .map_err(|e| e.1))
+        })
+        .await?;
+    Ok(Json(offer.map_err(failure)?))
+}
+
+async fn confirm_transfer(
+    State(s): State<AppState>,
+    Path(profile): Path<String>,
+    Json(body): Json<chill_domain::TransferConfirmation>,
+) -> Result<Json<TransferStatus>, ApiError> {
+    Ok(Json(s.playback.confirm_transfer(&profile, &body.token)?))
+}
+
+async fn transfer_status(
+    State(s): State<AppState>,
+    Path(profile): Path<String>,
+    Query(query): Query<TokenQuery>,
+) -> Result<Json<TransferStatus>, ApiError> {
+    let mut status = s.playback.transfer_status(&profile, &query.token)?;
+    if let Some(lease) = &status.lease {
+        status.personal = Some(
+            s.database
+                .call({
+                    let p = profile.clone();
+                    let m = lease.media_id.clone();
+                    move |store| store.personal_state(&p, &m)
+                })
+                .await?,
+        );
+    }
+    Ok(Json(status))
+}
+
+async fn transfer_ack(
+    State(s): State<AppState>,
+    Path(profile): Path<String>,
+    Json(ack): Json<TransferAck>,
+) -> Result<Json<TransferStatus>, ApiError> {
+    let service = s.playback.clone();
+    let token = ack.token.clone();
+    let p = profile.clone();
+    let status = s
+        .database
+        .call(move |store| {
+            let final_event = match service.acknowledge_transfer(&p, &ack) {
+                Ok(event) => event,
+                Err(error) => return Ok(Err(error.1)),
+            };
+            if let Err(error) =
+                store.save_validated_progress(&p, &final_event.media_id, &final_event)
+            {
+                let _ = service.abort_transfer_ack(&token);
+                return Err(error);
+            }
+            let lease = service
+                .activate_transfer(&token)
+                .map_err(|e| e.1.to_string())?;
+            let personal = store.personal_state(&p, &lease.media_id)?;
+            Ok(Ok(TransferStatus {
+                token,
+                phase: TransferPhase::Activated,
+                remaining_ms: lease.remaining_ms,
+                lease: Some(lease),
+                personal: Some(personal),
+            }))
+        })
+        .await?;
+    Ok(Json(status.map_err(failure)?))
+}
+
+async fn events(
+    State(s): State<AppState>,
+    Path(profile): Path<String>,
+    Query(query): Query<EventsQuery>,
+) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError>
+{
+    let (receiver, permit) =
+        s.playback
+            .event_receiver(&profile, &query.session, query.generation)?;
+    let service = s.playback.clone();
+    let stream = futures_util::stream::unfold(
+        (
+            receiver,
+            permit,
+            service,
+            profile,
+            query.session,
+            query.generation,
+        ),
+        |(mut receiver, permit, service, profile, session, generation)| async move {
+            if !service.event_alive(&profile, &session, generation) {
+                return None;
+            }
+            let next = match tokio::time::timeout(Duration::from_secs(10), receiver.recv()).await {
+                Ok(Ok(event))
+                    if event.profile == profile
+                        && event.session == session
+                        && event.generation == generation =>
+                {
+                    Some(Ok(Event::default().event("pause").data(
+                        serde_json::json!({"token":event.token,"remaining_ms":event.remaining_ms})
+                            .to_string(),
+                    )))
+                }
+                Ok(Ok(_)) | Ok(Err(broadcast::error::RecvError::Lagged(_))) => {
+                    Some(Ok(Event::default().comment("keepalive")))
+                }
+                Ok(Err(broadcast::error::RecvError::Closed)) => None,
+                Err(_) => Some(Ok(Event::default().comment("keepalive"))),
+            };
+            next.map(|item| {
+                (
+                    item,
+                    (receiver, permit, service, profile, session, generation),
+                )
+            })
+        },
+    );
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(10))))
 }
 
 #[derive(serde::Deserialize)]
@@ -1045,15 +1375,17 @@ mod tests {
             .offer("p", request, stream, t + Duration::from_secs(29))
             .unwrap();
         let waiting = b
-            .confirm(&offer.token, t + Duration::from_secs(29))
+            .confirm("p", &offer.token, t + Duration::from_secs(29))
             .unwrap();
-        assert_eq!(waiting.remaining_ms, 30_000);
+        assert_eq!(waiting.0.remaining_ms, 30_000);
         assert_eq!(
             b.heartbeat("p", &ctrl(&old), t + Duration::from_secs(30))
                 .unwrap_err(),
             "TRANSFER_PENDING"
         );
-        let status = b.status(&offer.token, t + Duration::from_secs(59)).unwrap();
+        let status = b
+            .status("p", &offer.token, t + Duration::from_secs(59))
+            .unwrap();
         let successor = status
             .lease
             .expect("successor activates at frozen deadline");
@@ -1064,7 +1396,7 @@ mod tests {
                 .is_err()
         );
         assert_eq!(
-            b.status(&offer.token, t + Duration::from_secs(60))
+            b.status("p", &offer.token, t + Duration::from_secs(60))
                 .unwrap()
                 .lease
                 .unwrap()
@@ -1080,7 +1412,7 @@ mod tests {
             .acquire("p".into(), request.clone(), stream.clone(), t)
             .unwrap();
         let offer = b.offer("p", request, stream, t).unwrap();
-        b.confirm(&offer.token, t).unwrap();
+        b.confirm("p", &offer.token, t).unwrap();
         let ack = TransferAck {
             token: offer.token.clone(),
             lease: ctrl(&old),
@@ -1114,9 +1446,9 @@ mod tests {
             .unwrap();
         let a = b.offer("a", request.clone(), stream.clone(), t).unwrap();
         let b_offer = b.offer("b", request.clone(), stream.clone(), t).unwrap();
-        b.confirm(&a.token, t).unwrap();
+        b.confirm("a", &a.token, t).unwrap();
         // Confirming A removes only offers tied to A's generation.
-        assert!(b.confirm(&b_offer.token, t).is_ok());
+        assert!(b.confirm("b", &b_offer.token, t).is_ok());
         assert_eq!(
             b.heartbeat("a", &ctrl(&first), t).unwrap_err(),
             "TRANSFER_PENDING"

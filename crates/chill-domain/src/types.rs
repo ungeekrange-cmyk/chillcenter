@@ -126,6 +126,8 @@ pub struct TransferStatus {
     pub remaining_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lease: Option<Lease>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub personal: Option<PersonalState>,
 }
 
 /// The sole final progress event accepted from the old generation while a

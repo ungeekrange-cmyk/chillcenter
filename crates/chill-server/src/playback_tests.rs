@@ -7,7 +7,10 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use chill_domain::{AcquirePlayback, PlaybackControl, PlaybackGrant, Progress, ReleasePlayback};
+use chill_domain::{
+    AcquirePlayback, PlaybackControl, PlaybackGrant, Progress, ReleasePlayback, TransferAck,
+    TransferConfirmation, TransferProposal,
+};
 use futures_util::StreamExt;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -439,6 +442,109 @@ async fn two_profiles_range_and_active_conflict() {
     assert_eq!(
         f.app.clone().oneshot(bad).await.unwrap().status(),
         StatusCode::PRECONDITION_FAILED
+    );
+}
+
+#[tokio::test]
+async fn transfer_endpoints_require_confirmation_then_ack_once() {
+    let f = fixture().await;
+    let old = grant(&f, 0, 0).await;
+    let base = format!("/api/v1/profiles/{}/playback/transfer", f.profiles[0]);
+    let proposal = TransferProposal {
+        target: AcquirePlayback {
+            media_id: f.media[1].clone(),
+            device_id: uuid::Uuid::new_v4().to_string(),
+            context: Default::default(),
+        },
+    };
+    let (status, offer) = json_reply(
+        &f.app,
+        "POST",
+        &format!("{base}/propose"),
+        serde_json::to_value(proposal).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{offer}");
+    // A proposal is refusal-safe: A remains active until confirmation.
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("/api/v1/profiles/{}/playback/heartbeat", f.profiles[0]),
+            serde_json::to_value(ctrl(&old)).unwrap(),
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let token = offer["token"].as_str().unwrap().to_owned();
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!(
+                "/api/v1/profiles/{}/playback/transfer/confirm",
+                f.profiles[1]
+            ),
+            serde_json::to_value(TransferConfirmation {
+                token: token.clone()
+            })
+            .unwrap(),
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("{base}/confirm"),
+            serde_json::to_value(TransferConfirmation {
+                token: token.clone()
+            })
+            .unwrap(),
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("/api/v1/profiles/{}/playback/heartbeat", f.profiles[0]),
+            serde_json::to_value(ctrl(&old)).unwrap(),
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let ack = TransferAck {
+        token: token.clone(),
+        lease: ctrl(&old),
+        progress: event(&old, 1, 12_345),
+    };
+    let (status, activated) = json_reply(
+        &f.app,
+        "POST",
+        &format!("{base}/ack"),
+        serde_json::to_value(&ack).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{activated}");
+    assert_eq!(activated["phase"], "activated");
+    assert!(activated["personal"].is_object());
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("{base}/ack"),
+            serde_json::to_value(ack).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
     );
 }
 
