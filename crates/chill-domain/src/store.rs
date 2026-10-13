@@ -1356,6 +1356,32 @@ mod tests {
         assert_eq!(got.media_ids, vec![ids[1].clone(), ids[0].clone()]);
     }
     #[test]
+    fn media_cas_context_and_next_are_profile_bound() {
+        let mut s = store();
+        let p = s.create_profile("A").unwrap();
+        let other = s.create_profile("B").unwrap();
+        let ids: Vec<_> = s.catalog(&p.id).unwrap().into_iter().map(|m|m.id).collect();
+        let revision=s.media_revision(&ids[0]).unwrap();
+        let (changed,next_revision)=s.update_media_at_revision(&p.id,&ids[0],revision,&MediaPatch { title:Some("Nouveau".into()), ..Default::default() }).unwrap();
+        assert_eq!(changed.title,"Nouveau");
+        assert!(s.update_media_at_revision(&p.id,&ids[0],revision,&MediaPatch::default()).is_err());
+        assert_eq!(next_revision,revision+1);
+        let list=s.create_collection(&p.id,"Liste","playlist").unwrap();
+        s.collection_member_add_bulk(&p.id,&list.id,&ids).unwrap();
+        let context=PlaybackContext {kind:"playlist".into(),id:Some(list.id.clone())};
+        assert_eq!(s.next_video(&p.id,&ids[0],&context).unwrap().media.unwrap().id,ids[1]);
+        assert!(s.validate_playback_context(&other.id,&ids[0],&context).is_err());
+    }
+    #[test]
+    fn group_ratings_only_touch_present_targeted_episodes() {
+        let mut s=store(); let p=s.create_profile("A").unwrap();
+        let mut a=media("S/a.mkv","/nas/S/a.mkv"); a.category="serie".into(); a.series=Some("S".into()); a.season=Some(1); a.episode=Some(1);
+        let mut b=media("S/b.mkv","/nas/S/b.mkv"); b.category="serie".into(); b.series=Some("S".into()); b.season=Some(2); b.episode=Some(1);
+        s.snapshot(vec![a,b]).unwrap(); let ids:Vec<_>=s.catalog(&p.id).unwrap().into_iter().filter(|m|m.series.as_deref()==Some("S")).map(|m|m.id).collect();
+        s.set_rating(&p.id,&ids[0],Some(4),"season").unwrap();
+        assert_eq!(s.media(&p.id,&ids[0]).unwrap().rating,Some(4)); assert_eq!(s.media(&p.id,&ids[1]).unwrap().rating,None);
+    }
+    #[test]
     fn watch_threshold_and_manual_reset_preserve_resume() {
         let mut s = store();
         let p = s.create_profile("A").unwrap();
