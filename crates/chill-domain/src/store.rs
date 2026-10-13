@@ -4,21 +4,37 @@
 //! module deliberately never opens or walks a media path: `media_path` is the
 //! narrow server-side escape hatch and all catalogue views expose relative paths.
 
-use crate::{PersonalState, Preferences, Profile, valid_speed};
+use crate::{PersonalState, Preferences, Profile, Progress, valid_speed};
 use chill_catalog::{
     database::Database,
     model::{Collection, Media, MediaPatch},
 };
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde_json::{Value, json};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
 
 const EXPORT_FORMAT_VERSION: u64 = 1;
 const WATCHED_THRESHOLD_MS: u64 = 10_000;
+const MAX_IN_MEMORY_EXPORT_BYTES: usize = 1024 * 1024;
+pub const MAX_CATALOG_PAGE: usize = 100;
+
+#[derive(Debug, Clone, Default)]
+pub struct CatalogQuery {
+    pub offset: usize,
+    pub limit: usize,
+    pub category: Option<String>,
+    pub title_contains: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogPage {
+    pub items: Vec<Media>,
+    pub has_more: bool,
+}
 
 pub struct Store {
     catalogue: Database,
@@ -49,6 +65,9 @@ impl Store {
                 final_watched_ms INTEGER NOT NULL DEFAULT 0 CHECK(final_watched_ms >= 0),
                 watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN (0,1)),
                 rating INTEGER CHECK(rating BETWEEN 1 AND 5),
+                last_session_id TEXT,
+                last_generation INTEGER,
+                last_sequence INTEGER,
                 PRIMARY KEY(profile_id, stable_media_id)
              );
              CREATE TABLE IF NOT EXISTS cc_preferences (
@@ -73,8 +92,12 @@ impl Store {
                 PRIMARY KEY(playlist_id, stable_media_id), UNIQUE(playlist_id, position)
              );
              CREATE TABLE IF NOT EXISTS cc_imports (export_id TEXT PRIMARY KEY);
-             PRAGMA user_version=2;"
+             PRAGMA user_version=3;"
         ).map_err(db_error)?;
+        // Existing development databases may predate ordered progress guards.
+        add_column_if_missing(&personal, "cc_profile_state", "last_session_id TEXT")?;
+        add_column_if_missing(&personal, "cc_profile_state", "last_generation INTEGER")?;
+        add_column_if_missing(&personal, "cc_profile_state", "last_sequence INTEGER")?;
         Ok(Self {
             catalogue,
             personal,
@@ -200,6 +223,59 @@ impl Store {
             .collect()
     }
 
+    /// Bounded server query seam. The HTTP layer must use this rather than
+    /// `catalog`, which remains a compatibility/admin helper.
+    pub fn catalog_page(
+        &mut self,
+        profile_id: &str,
+        query: &CatalogQuery,
+    ) -> Result<CatalogPage, String> {
+        self.require_profile(profile_id)?;
+        let limit = if query.limit == 0 {
+            MAX_CATALOG_PAGE
+        } else {
+            query.limit
+        };
+        if limit > MAX_CATALOG_PAGE || query.title_contains.as_ref().is_some_and(|v| v.len() > 500)
+        {
+            return Err("Filtre ou page catalogue invalide.".into());
+        }
+        let category = query.category.as_deref();
+        if category.is_some_and(|v| !chill_catalog::model::CATEGORIES.contains(&v)) {
+            return Err("Catégorie inconnue.".into());
+        }
+        let title = query.title_contains.as_deref().unwrap_or("");
+        let mut statement = self
+            .personal
+            .prepare(
+                "SELECT data FROM media
+             WHERE (?1 IS NULL OR json_extract(data,'$.category')=?1)
+             AND (?2='' OR json_extract(data,'$.title') LIKE '%' || ?2 || '%')
+             ORDER BY id LIMIT ?3 OFFSET ?4",
+            )
+            .map_err(db_error)?;
+        let rows = statement
+            .query_map(
+                params![category, title, (limit + 1) as i64, query.offset as i64],
+                |r| r.get::<_, String>(0),
+            )
+            .map_err(db_error)?;
+        let found = rows
+            .map(|row| {
+                serde_json::from_str::<Media>(&row?).map_err(|_| rusqlite::Error::InvalidQuery)
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_error)?;
+        self.ensure_identities(&found)?;
+        let has_more = found.len() > limit;
+        let items = found
+            .into_iter()
+            .take(limit)
+            .map(|m| self.profile_view(profile_id, m))
+            .collect::<Result<_, _>>()?;
+        Ok(CatalogPage { items, has_more })
+    }
+
     pub fn media(&mut self, profile_id: &str, stable_id: &str) -> Result<Media, String> {
         self.require_profile(profile_id)?;
         let legacy = self.legacy_id(stable_id)?;
@@ -217,6 +293,58 @@ impl Store {
         let scan = self.catalogue.snapshot(discovered)?;
         self.ensure_identities(&self.catalogue.list()?)?;
         Ok(scan)
+    }
+
+    /// Explicit administrator-confirmed reassociation. This never guesses from
+    /// title/metadata and does not touch NAS files; it moves the stable identity
+    /// to a new already-scanned relative location.
+    pub fn confirm_media_reassociation(
+        &self,
+        stable_id: &str,
+        new_relative_path: &str,
+    ) -> Result<(), String> {
+        if new_relative_path.is_empty()
+            || Path::new(new_relative_path).is_absolute()
+            || new_relative_path.split('/').any(|part| part == "..")
+        {
+            return Err("Nouvelle localisation relative invalide.".into());
+        }
+        // Prove the target was discovered; no title-based fallback is allowed.
+        self.catalogue.get(new_relative_path)?;
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let target_identity: Option<String> = tx
+            .query_row(
+                "SELECT stable_id FROM cc_media_identity WHERE legacy_id=?1 AND stable_id<>?2",
+                params![new_relative_path, stable_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        if let Some(target_identity) = target_identity {
+            let referenced: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM cc_profile_state WHERE stable_media_id=?1) OR EXISTS(SELECT 1 FROM cc_playlist_members WHERE stable_media_id=?1)",
+                [&target_identity], |r| r.get(0)
+            ).map_err(db_error)?;
+            if referenced {
+                return Err("Cette localisation possède déjà une identité stable utilisée.".into());
+            }
+            tx.execute(
+                "DELETE FROM cc_media_identity WHERE stable_id=?1",
+                [&target_identity],
+            )
+            .map_err(db_error)?;
+        }
+        if tx
+            .execute(
+                "UPDATE cc_media_identity SET legacy_id=?1,relative_path=?1 WHERE stable_id=?2",
+                params![new_relative_path, stable_id],
+            )
+            .map_err(db_error)?
+            != 1
+        {
+            return Err("Vidéo introuvable dans le catalogue.".into());
+        }
+        tx.commit().map_err(db_error)
     }
 
     pub fn update_media(
@@ -301,30 +429,68 @@ impl Store {
         final_elapsed_ms: u64,
         duration_ms: u64,
     ) -> Result<PersonalState, String> {
+        let _ = (
+            profile_id,
+            stable_id,
+            position_ms,
+            final_elapsed_ms,
+            duration_ms,
+        );
+        Err("La progression doit être validée par le bail de lecture actif.".into())
+    }
+
+    /// Persists a progress event only after the server actor has verified the
+    /// active lease, media revision and timing against its monotonic clock.
+    /// This store additionally rejects replayed/out-of-order events.
+    pub fn save_validated_progress(
+        &self,
+        profile_id: &str,
+        stable_id: &str,
+        progress: &Progress,
+    ) -> Result<PersonalState, String> {
         self.require_profile(profile_id)?;
-        self.legacy_id(stable_id)?;
-        if duration_ms == 0
-            || position_ms > duration_ms
-            || final_elapsed_ms > duration_ms.saturating_add(WATCHED_THRESHOLD_MS)
+        if progress.media_id != stable_id
+            || progress.duration_ms == 0
+            || progress.position_ms > progress.duration_ms
+            || !valid_speed(progress.speed)
+            || !progress.playing
+            || progress.buffering
+            || progress.seek
+            || progress.position_ms < progress.duration_ms.saturating_mul(9) / 10
+            || progress.final_elapsed_ms > progress.duration_ms / 10
         {
-            return Err("Progression invalide.".into());
+            return Err("Progression validée invalide.".into());
         }
+        self.legacy_id(stable_id)?;
         let tx = self.personal.unchecked_transaction().map_err(db_error)?;
         let old = state_in(&tx, profile_id, stable_id)?;
-        let final_watched_ms = old.final_watched_ms.saturating_add(final_elapsed_ms);
+        let previous: Option<(String, u64, u64)> = tx.query_row(
+            "SELECT last_session_id,last_generation,last_sequence FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2 AND last_session_id IS NOT NULL",
+            params![profile_id,stable_id], |r| Ok((r.get(0)?, r.get::<_,i64>(1)? as u64, r.get::<_,i64>(2)? as u64))
+        ).optional().map_err(db_error)?;
+        if previous.is_some_and(|(session, generation, sequence)| {
+            session == progress.session_id
+                && (generation != progress.generation || progress.sequence <= sequence)
+        }) {
+            return Err("Événement de lecture périmé ou rejoué.".into());
+        }
+        let final_watched_ms = old
+            .final_watched_ms
+            .saturating_add(progress.final_elapsed_ms);
         let watched = old.watched || final_watched_ms >= WATCHED_THRESHOLD_MS;
         upsert_state(
             &tx,
             profile_id,
             stable_id,
-            Some(position_ms),
+            Some(progress.position_ms),
             Some(Some(final_watched_ms)),
             Some(watched),
             None,
         )?;
+        tx.execute("UPDATE cc_profile_state SET last_session_id=?1,last_generation=?2,last_sequence=?3 WHERE profile_id=?4 AND stable_media_id=?5",params![progress.session_id,progress.generation as i64,progress.sequence as i64,profile_id,stable_id]).map_err(db_error)?;
         tx.commit().map_err(db_error)?;
         Ok(PersonalState {
-            position_ms,
+            position_ms: progress.position_ms,
             final_watched_ms,
             watched,
             rating: old.rating,
@@ -432,15 +598,44 @@ impl Store {
         collection_id: &str,
         stable_id: &str,
     ) -> Result<(), String> {
+        self.collection_member_remove_at_revision(profile_id, collection_id, stable_id, None)
+    }
+
+    pub fn collection_member_remove_at_revision(
+        &self,
+        profile_id: &str,
+        collection_id: &str,
+        stable_id: &str,
+        expected_revision: Option<u64>,
+    ) -> Result<(), String> {
         self.require_playlist(profile_id, collection_id)?;
         self.legacy_id(stable_id)?;
-        self.personal
-            .execute(
-                "DELETE FROM cc_playlist_members WHERE playlist_id=?1 AND stable_media_id=?2",
-                params![collection_id, stable_id],
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let revision: u64 = tx
+            .query_row(
+                "SELECT revision FROM cc_playlists WHERE id=?1",
+                [collection_id],
+                |r| r.get::<_, i64>(0),
             )
-            .map_err(db_error)?;
-        self.normalize_playlist(collection_id)
+            .map_err(db_error)? as u64;
+        if expected_revision.is_some_and(|value| value != revision) {
+            return Err("La playlist a changé entre-temps.".into());
+        }
+        tx.execute(
+            "DELETE FROM cc_playlist_members WHERE playlist_id=?1 AND stable_media_id=?2",
+            params![collection_id, stable_id],
+        )
+        .map_err(db_error)?;
+        let members = playlist_members_in(&tx, collection_id)?;
+        for (position, member) in members.iter().enumerate() {
+            tx.execute("UPDATE cc_playlist_members SET position=?1 WHERE playlist_id=?2 AND stable_media_id=?3",params![position as i64,collection_id,member]).map_err(db_error)?;
+        }
+        tx.execute(
+            "UPDATE cc_playlists SET revision=revision+1 WHERE id=?1",
+            [collection_id],
+        )
+        .map_err(db_error)?;
+        tx.commit().map_err(db_error)
     }
 
     pub fn reorder_playlist(
@@ -513,17 +708,33 @@ impl Store {
     }
 
     pub fn export_json(&mut self) -> Result<Value, String> {
-        let profiles = self.profiles()?;
+        // Reserve the single SQLite writer while both legacy and personal rows
+        // are read. This is a coherent, bounded compatibility export; callers
+        // needing a larger archive must use the future staging/streaming API.
+        self.ensure_identities(&self.catalogue.list()?)?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&self.personal, TransactionBehavior::Immediate)
+                .map_err(db_error)?;
         let media = self.catalogue.list()?;
-        self.ensure_identities(&media)?;
+        let sagas = saga_export(&self.personal, self)?;
+        let profiles = self.profiles()?;
         let identities: Vec<Value> = media.iter().map(|m| Ok(json!({"id": self.stable_id(&m.id)?, "relative_path": m.id, "data": scrub_media(m)}))).collect::<Result<_, String>>()?;
         let personal = profiles
             .iter()
             .map(|p| self.export_profile(p))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(
-            json!({"format_version": EXPORT_FORMAT_VERSION, "export_id": Uuid::new_v4().to_string(), "profiles": profiles, "media": identities, "personal": personal, "leases": []}),
-        )
+        let document = json!({"format_version": EXPORT_FORMAT_VERSION, "export_id": Uuid::new_v4().to_string(), "profiles": profiles, "media": identities, "sagas": sagas, "personal": personal, "leases": []});
+        if serde_json::to_vec(&document)
+            .map_err(|_| "Export invalide.")?
+            .len()
+            > MAX_IN_MEMORY_EXPORT_BYTES
+        {
+            return Err(
+                "Export trop volumineux pour l’API mémoire ; utilisez l’export de staging.".into(),
+            );
+        }
+        tx.commit().map_err(db_error)?;
+        Ok(document)
     }
 
     /// Cheap structural preview. Applying imported records is intentionally left to the
@@ -550,137 +761,17 @@ impl Store {
         Ok((export_id.to_owned(), profiles, media))
     }
 
-    /// Applies only data whose profile and relative-location mappings were explicitly
-    /// prepared by the administrator. It deliberately does not restore leases or
-    /// infer a NAS root. Repeating an `export_id` is a no-op.
+    /// Import application is intentionally disabled until the administrator layer
+    /// supplies a complete, injective profile/root mapping and a reviewed conflict
+    /// plan covering common metadata, sagas, and every personal record. Preview is
+    /// read-only; callers must not treat it as authorization to mutate a library.
     pub fn import_prepared_json(
         &mut self,
         document: &Value,
-        profile_map: &HashMap<String, String>,
+        _profile_map: &std::collections::HashMap<String, String>,
     ) -> Result<bool, String> {
-        let (export_id, _, _) = self.preview_import(document)?;
-        if self
-            .personal
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM cc_imports WHERE export_id=?1)",
-                [&export_id],
-                |r| r.get(0),
-            )
-            .map_err(db_error)?
-        {
-            return Ok(false);
-        }
-        self.ensure_identities(&self.catalogue.list()?)?;
-        let mut imported_media = HashMap::new();
-        for item in document["media"]
-            .as_array()
-            .ok_or("Médias d’import invalides.")?
-        {
-            let old_id = item["id"].as_str().ok_or("Média d’import invalide.")?;
-            let relative = item["relative_path"]
-                .as_str()
-                .ok_or("Localisation d’import invalide.")?;
-            let local: Option<String> = self
-                .personal
-                .query_row(
-                    "SELECT stable_id FROM cc_media_identity WHERE relative_path=?1",
-                    [relative],
-                    |r| r.get(0),
-                )
-                .optional()
-                .map_err(db_error)?;
-            if let Some(local) = local {
-                imported_media.insert(old_id.to_owned(), local);
-            }
-        }
-        let personal = document["personal"]
-            .as_array()
-            .ok_or("Données personnelles d’import invalides.")?;
-        // Validate all mappings before opening the write transaction.
-        for entry in personal {
-            let source_profile = entry["profile_id"]
-                .as_str()
-                .ok_or("Profil d’import invalide.")?;
-            let destination = profile_map
-                .get(source_profile)
-                .ok_or("Correspondance de profil requise.")?;
-            self.require_profile(destination)?;
-            for state in entry["states"]
-                .as_array()
-                .ok_or("États d’import invalides.")?
-            {
-                let old_media = state["media_id"]
-                    .as_str()
-                    .ok_or("État d’import invalide.")?;
-                if !imported_media.contains_key(old_media) {
-                    return Err("Correspondance de racine ou média requise.".into());
-                }
-            }
-        }
-        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
-        for entry in personal {
-            let source_profile = entry["profile_id"].as_str().unwrap();
-            let destination = profile_map.get(source_profile).unwrap();
-            let preferences: Preferences = serde_json::from_value(entry["preferences"].clone())
-                .map_err(|_| "Préférences d’import invalides.")?;
-            preferences.validate()?;
-            tx.execute("INSERT INTO cc_preferences(profile_id,audio_language,subtitle_language,autoplay_seconds) VALUES(?1,?2,?3,?4) ON CONFLICT(profile_id) DO UPDATE SET audio_language=excluded.audio_language,subtitle_language=excluded.subtitle_language,autoplay_seconds=excluded.autoplay_seconds", params![destination,preferences.audio_language,preferences.subtitle_language,preferences.autoplay_seconds]).map_err(db_error)?;
-            for state in entry["states"].as_array().unwrap() {
-                let local_media = imported_media
-                    .get(state["media_id"].as_str().unwrap())
-                    .unwrap();
-                let position = state["position_ms"]
-                    .as_u64()
-                    .ok_or("État d’import invalide.")?;
-                let final_ms = state["final_watched_ms"]
-                    .as_u64()
-                    .ok_or("État d’import invalide.")?;
-                let watched = state["watched"]
-                    .as_bool()
-                    .ok_or("État d’import invalide.")?;
-                let rating = state["rating"].as_u64().map(|v| v as u8);
-                if rating.is_some_and(|v| !(1..=5).contains(&v)) {
-                    return Err("Note d’import invalide.".into());
-                }
-                tx.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms,final_watched_ms,watched,rating) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET position_ms=excluded.position_ms,final_watched_ms=excluded.final_watched_ms,watched=excluded.watched,rating=excluded.rating", params![destination,local_media,position as i64,final_ms as i64,watched,rating]).map_err(db_error)?;
-            }
-            for playlist in entry["playlists"]
-                .as_array()
-                .ok_or("Playlists d’import invalides.")?
-            {
-                let name = valid_collection_name(
-                    playlist["name"]
-                        .as_str()
-                        .ok_or("Playlist d’import invalide.")?,
-                )?;
-                let id = Uuid::new_v4().to_string();
-                tx.execute(
-                    "INSERT INTO cc_playlists(id,profile_id,name) VALUES(?1,?2,?3)",
-                    params![id, destination, name],
-                )
-                .map_err(|_| {
-                    "Conflit de playlist : choisissez une correspondance avant import.".to_string()
-                })?;
-                let members = playlist["media_ids"]
-                    .as_array()
-                    .ok_or("Membres d’import invalides.")?;
-                let mut seen = HashSet::new();
-                for (position, old_media) in members.iter().enumerate() {
-                    let old_media = old_media.as_str().ok_or("Membre d’import invalide.")?;
-                    let local = imported_media
-                        .get(old_media)
-                        .ok_or("Correspondance de racine ou média requise.")?;
-                    if !seen.insert(local) {
-                        return Err("Playlist d’import dupliquée.".into());
-                    }
-                    tx.execute("INSERT INTO cc_playlist_members(playlist_id,stable_media_id,position) VALUES(?1,?2,?3)",params![id,local,position as i64]).map_err(db_error)?;
-                }
-            }
-        }
-        tx.execute("INSERT INTO cc_imports(export_id) VALUES(?1)", [&export_id])
-            .map_err(db_error)?;
-        tx.commit().map_err(db_error)?;
-        Ok(true)
+        self.preview_import(document)?;
+        Err("Application d’import indisponible : préparez un plan complet de correspondances et conflits.".into())
     }
 
     fn profile(&self, id: &str) -> Result<Option<Profile>, String> {
@@ -761,20 +852,23 @@ impl Store {
     fn playlist_members(&self, id: &str) -> Result<Vec<String>, String> {
         playlist_members(&self.personal, id)
     }
-    fn normalize_playlist(&self, id: &str) -> Result<(), String> {
-        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
-        for (index, media) in playlist_members_in(&tx, id)?.iter().enumerate() {
-            tx.execute("UPDATE cc_playlist_members SET position=?1 WHERE playlist_id=?2 AND stable_media_id=?3",params![index as i64,id,media]).map_err(db_error)?;
-        }
-        tx.commit().map_err(db_error)
-    }
     fn export_profile(&self, p: &Profile) -> Result<Value, String> {
         let prefs = self.preferences(&p.id)?;
+        let mut speeds = Vec::new();
+        let mut speed_query = self.personal.prepare("SELECT series_key,speed FROM cc_series_speed WHERE profile_id=?1 ORDER BY series_key").map_err(db_error)?;
+        for row in speed_query
+            .query_map([&p.id], |r| {
+                Ok(json!({"series_key": r.get::<_,String>(0)?, "speed":r.get::<_,f64>(1)?}))
+            })
+            .map_err(db_error)?
+        {
+            speeds.push(row.map_err(db_error)?);
+        }
         let mut states = Vec::new();
         let mut q=self.personal.prepare("SELECT stable_media_id,position_ms,final_watched_ms,watched,rating FROM cc_profile_state WHERE profile_id=?1").map_err(db_error)?;
         for r in q.query_map([&p.id],|r|Ok(json!({"media_id":r.get::<_,String>(0)?,"position_ms":r.get::<_,i64>(1)?,"final_watched_ms":r.get::<_,i64>(2)?,"watched":r.get::<_,bool>(3)?,"rating":r.get::<_,Option<i64>>(4)?}))).map_err(db_error)? { states.push(r.map_err(db_error)?); }
         Ok(
-            json!({"profile_id":p.id,"preferences":prefs,"states":states,"playlists":self.export_playlists(&p.id)?}),
+            json!({"profile_id":p.id,"preferences":prefs,"speeds":speeds,"states":states,"playlists":self.export_playlists(&p.id)?}),
         )
     }
     fn export_playlists(&self, profile: &str) -> Result<Vec<Value>, String> {
@@ -792,6 +886,33 @@ impl Store {
         })
         .collect()
     }
+}
+
+fn add_column_if_missing(
+    connection: &Connection,
+    table: &str,
+    definition: &str,
+) -> Result<(), String> {
+    let column = definition
+        .split_whitespace()
+        .next()
+        .ok_or("Migration invalide.")?;
+    let mut stmt = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(db_error)?;
+    let present = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(db_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(db_error)?
+        .iter()
+        .any(|name| name == column);
+    if !present {
+        connection
+            .execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {definition}"))
+            .map_err(db_error)?;
+    }
+    Ok(())
 }
 
 fn db_error(_: rusqlite::Error) -> String {
@@ -844,7 +965,11 @@ fn upsert_state(
     rating: Option<Option<u8>>,
 ) -> Result<(), String> {
     let old = state_in(tx, p, m)?;
-    tx.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms,final_watched_ms,watched,rating) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET position_ms=excluded.position_ms,final_watched_ms=excluded.final_watched_ms,watched=excluded.watched,rating=excluded.rating",params![p,m,position.unwrap_or(old.position_ms) as i64,final_ms.flatten().unwrap_or(old.final_watched_ms) as i64,watched.unwrap_or(old.watched),rating.flatten().or(old.rating)]).map_err(db_error)?;
+    let rating = match rating {
+        Some(value) => value,
+        None => old.rating,
+    };
+    tx.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms,final_watched_ms,watched,rating) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET position_ms=excluded.position_ms,final_watched_ms=excluded.final_watched_ms,watched=excluded.watched,rating=excluded.rating",params![p,m,position.unwrap_or(old.position_ms) as i64,final_ms.flatten().unwrap_or(old.final_watched_ms) as i64,watched.unwrap_or(old.watched),rating]).map_err(db_error)?;
     Ok(())
 }
 fn playlist_members(conn: &Connection, id: &str) -> Result<Vec<String>, String> {
@@ -871,9 +996,46 @@ fn scrub_media(media: &Media) -> Value {
     value
 }
 
+fn saga_export(connection: &Connection, store: &Store) -> Result<Vec<Collection>, String> {
+    let mut collections = connection
+        .prepare("SELECT id,name FROM collections WHERE kind='saga' ORDER BY name,id")
+        .map_err(db_error)?;
+    let rows = collections
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(db_error)?;
+    let mut result = Vec::new();
+    for row in rows {
+        let (id, name) = row.map_err(db_error)?;
+        let mut members = connection
+            .prepare(
+                "SELECT media_id FROM collection_members WHERE collection_id=?1 ORDER BY rowid",
+            )
+            .map_err(db_error)?;
+        let legacy = members
+            .query_map([id], |row| row.get::<_, String>(0))
+            .map_err(db_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_error)?;
+        result.push(Collection {
+            id: id.to_string(),
+            name,
+            kind: "saga".into(),
+            media_ids: legacy
+                .iter()
+                .map(|id| store.stable_id(id))
+                .collect::<Result<_, _>>()?,
+            poster: None,
+        });
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use tempfile::tempdir;
     fn media(id: &str, path: &str) -> Media {
         Media {
@@ -953,17 +1115,39 @@ mod tests {
         let mut s = store();
         let p = s.create_profile("A").unwrap();
         let id = s.catalog(&p.id).unwrap()[0].id.clone();
+        assert!(s.save_progress(&p.id, &id, 50, 9999, 100000).is_err());
+        let progress = |sequence, final_elapsed_ms| Progress {
+            session_id: "session".into(),
+            generation: 1,
+            media_id: id.clone(),
+            sequence,
+            position_ms: 95_000,
+            duration_ms: 100_000,
+            speed: 1.0,
+            final_elapsed_ms,
+            playing: true,
+            buffering: false,
+            seek: false,
+        };
         assert!(
-            !s.save_progress(&p.id, &id, 50, 9999, 100000)
+            !s.save_validated_progress(&p.id, &id, &progress(1, 9_999))
                 .unwrap()
                 .watched
         );
-        assert!(s.save_progress(&p.id, &id, 60, 1, 100000).unwrap().watched);
+        assert!(
+            s.save_validated_progress(&p.id, &id, &progress(2, 1))
+                .unwrap()
+                .watched
+        );
+        assert!(
+            s.save_validated_progress(&p.id, &id, &progress(2, 1))
+                .is_err()
+        );
         s.set_watched(&p.id, &id, false).unwrap();
         let state = state(&s.personal, &p.id, &id).unwrap();
         assert!(!state.watched);
         assert_eq!(state.final_watched_ms, 0);
-        assert_eq!(state.position_ms, 60);
+        assert_eq!(state.position_ms, 95_000);
     }
     #[test]
     fn deleting_profile_is_personal_only() {
@@ -986,7 +1170,7 @@ mod tests {
         assert_eq!(s.preview_import(&doc).unwrap().1, 1);
     }
     #[test]
-    fn prepared_import_round_trips_personal_state_and_is_idempotent() {
+    fn mutable_import_is_disabled_until_a_complete_conflict_plan_exists() {
         let mut source = store();
         let source_profile = source.create_profile("Source").unwrap();
         let source_id = source.catalog(&source_profile.id).unwrap()[0].id.clone();
@@ -1002,7 +1186,7 @@ mod tests {
         assert!(
             destination
                 .import_prepared_json(&document, &mapping)
-                .unwrap()
+                .is_err()
         );
         let destination_id = destination.catalog(&destination_profile.id).unwrap()[0]
             .id
@@ -1012,12 +1196,74 @@ mod tests {
                 .media(&destination_profile.id, &destination_id)
                 .unwrap()
                 .rating,
-            Some(4)
+            None
         );
+    }
+
+    #[test]
+    fn rating_can_be_removed_and_playlist_removal_revisions_atomically() {
+        let mut s = store();
+        let p = s.create_profile("A").unwrap();
+        let ids: Vec<_> = s
+            .catalog(&p.id)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        s.set_rating(&p.id, &ids[0], Some(5), "video").unwrap();
+        s.set_rating(&p.id, &ids[0], None, "video").unwrap();
+        assert_eq!(s.media(&p.id, &ids[0]).unwrap().rating, None);
+        let list = s.create_collection(&p.id, "Liste", "playlist").unwrap();
+        s.collection_member_add_bulk(&p.id, &list.id, &ids).unwrap();
+        s.collection_member_remove_at_revision(&p.id, &list.id, &ids[0], Some(2))
+            .unwrap();
         assert!(
-            !destination
-                .import_prepared_json(&document, &mapping)
-                .unwrap()
+            s.collection_member_remove_at_revision(&p.id, &list.id, &ids[1], Some(2))
+                .is_err()
         );
+        assert_eq!(
+            s.collections(&p.id)
+                .unwrap()
+                .into_iter()
+                .find(|c| c.id == list.id)
+                .unwrap()
+                .media_ids,
+            vec![ids[1].clone()]
+        );
+    }
+
+    #[test]
+    fn reassociation_requires_explicit_confirmation_and_keeps_personal_history() {
+        let mut s = store();
+        let p = s.create_profile("A").unwrap();
+        let original = s.catalog(&p.id).unwrap()[0].id.clone();
+        s.set_rating(&p.id, &original, Some(5), "video").unwrap();
+        s.snapshot(vec![
+            media("Films/Renommé.mkv", "/nas/Films/Renommé.mkv"),
+            media("Films/B.mkv", "/nas/Films/B.mkv"),
+        ])
+        .unwrap();
+        s.confirm_media_reassociation(&original, "Films/Renommé.mkv")
+            .unwrap();
+        assert_eq!(s.media(&p.id, &original).unwrap().rating, Some(5));
+        assert_eq!(s.media(&p.id, &original).unwrap().path, "Films/Renommé.mkv");
+    }
+
+    #[test]
+    fn catalogue_page_is_bounded_and_filters_in_sqlite() {
+        let mut s = store();
+        let p = s.create_profile("A").unwrap();
+        let page = s
+            .catalog_page(
+                &p.id,
+                &CatalogQuery {
+                    limit: 1,
+                    category: Some("film".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert!(page.has_more);
     }
 }
