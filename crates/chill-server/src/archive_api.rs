@@ -10,7 +10,11 @@ use axum::{
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::{fs, io::Write, path::PathBuf};
+use std::{
+    fs,
+    io::{Read, Write},
+    path::PathBuf,
+};
 use tokio_util::io::ReaderStream;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
@@ -86,10 +90,31 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
         let mut poster_bytes = Vec::new();
         for poster in &posters {
             let source = poster_root.join(&poster.relative);
-            let bytes = fs::read(&source)
-                .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_POSTER"))?;
-            if bytes.len() as u64 > chill_domain::store::MAX_EXPORT_POSTER_BYTES {
+            let (mut source_file, expected) =
+                crate::media_stream::open_indexed(&poster_root, &source)
+                    .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_POSTER"))?;
+            if expected.size > chill_domain::store::MAX_EXPORT_POSTER_BYTES {
                 return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "EXPORT_TOO_LARGE"));
+            }
+            let mut bytes = Vec::with_capacity(expected.size as usize);
+            Read::by_ref(&mut source_file)
+                .take(chill_domain::store::MAX_EXPORT_POSTER_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_POSTER"))?;
+            if bytes.len() as u64 != expected.size
+                || crate::media_stream::FileVersion::from_metadata(
+                    &source_file
+                        .metadata()
+                        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_POSTER"))?,
+                )
+                .ok()
+                .as_ref()
+                    != Some(&expected)
+            {
+                return Err(ApiError(
+                    StatusCode::PRECONDITION_FAILED,
+                    "EXPORT_POSTER_CHANGED",
+                ));
             }
             checksums.push(serde_json::json!({"reference":poster.reference,"sha256":format!("{:x}",Sha256::digest(&bytes))}));
             poster_bytes.push((poster.reference.clone(), bytes));
