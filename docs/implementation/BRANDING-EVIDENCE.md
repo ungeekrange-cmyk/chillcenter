@@ -24,6 +24,12 @@ Revue indépendante `/root/svg_review` : [BRANDING-SVG-REVIEW](../reviews/BRANDI
 
 ## Limites et rollback
 
+### Suite r5 — base validée et exports uniformisés
+
+« nickel, utilise le vectorisé comme base pour refaire les autres » valide la base vectorielle. Base du lot d'exports : `f1452fd009d5c58ec34ee5d53d5ff8b66c03b76d`. Générateur Rust relancé, SVG/générateur conservés à l'identique ;13 PNG1254×1254 exportés dans Chromium avec profil isolé, réseau bloqué, aucune génération IA. Les12 PNG canoniques d'ambiance sont remplacés par ces exports, leurs versions antérieures étant copiées dans `raster-r4/` et tracées dans le manifeste. `default.png` original reste intact ; export courant du défaut sous `vector/default.png`, défaut courant SVG sous `vector/default.svg`. Hashes et détails dans `vector/exports-r5.json` ; statut du rapport r4 ci-dessus historique, la base est maintenant validée.
+
+Rollback r5 : reprendre la branche/les fichiers du SHA de base ou copier les PNG de `raster-r4/` vers les chemins canoniques, dans une branche isolée puis régénérer le manifeste racine. Aucune suppression de donnée/média ou modification du runtime. Pas de revue de code supplémentaire revendiquée puisque SVG/générateur revus sont inchangés ; le nouveau lot est une opération d'exports et de métadonnées.
+
 Méthode SVG approuvée ; rendu visuel encore PROPOSED. Pas d'audit quantitatif de contraste ou d'icône16px. Aucun raccordement du calendrier/des logos au runtime. Les anciens PNG conservent leurs petits écarts ; la garantie d'espacements identiques concerne la géométrie partagée des SVG.
 
 Remise locale par fast-forward sur branche `codex/`, uniquement si le dossier cible est propre et reste au SHA de base attendu. Retour arrière : sélectionner la branche précédente `codex/branding-refinements` sur checkout propre, ou réappliquer les fichiers de base dans une branche isolée ; les snapshots et nouvelles sources restent récupérables dans Git. Aucun média ni donnée supprimé.

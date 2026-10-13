@@ -1,0 +1,147 @@
+{
+  "revision": 5,
+  "date": "2026-10-13",
+  "approved_reference": "master.svg",
+  "approval": "nickel, utilise le vectorisé comme base pour refaire les autres",
+  "base_commit": "f1452fd009d5c58ec34ee5d53d5ff8b66c03b76d",
+  "renderer": "Chromium through bundled Playwright; isolated temporary profile, network requests blocked",
+  "ai_regeneration": false,
+  "source_geometry_unchanged": true,
+  "default_svg": "default.svg",
+  "default_png": "default.png",
+  "exports": [
+    {
+      "key": "default",
+      "svg": "vector/default.svg",
+      "png": "vector/default.png",
+      "svg_sha256": "2be0dba22d10d9ee335f6d38c3b7041b61e702b5c258e901d55cac9594b66d3e",
+      "png_sha256": "d31e63b9734abffba2b9f7608ee6bf88964ad824013a441cd7a675ad8cb49b6f",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "autumn-dark",
+      "svg": "vector/autumn-dark.svg",
+      "png": "autumn-dark.png",
+      "svg_sha256": "9246b19f844f3db216108b1dd4c36ed9ce985fb1a03b315f9d9f7a13a505b40c",
+      "png_sha256": "f57d00e41e4ec9eca5bc05c01e71bb647925f1821149fa479bc0e0f6aa516942",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "autumn-light",
+      "svg": "vector/autumn-light.svg",
+      "png": "autumn-light.png",
+      "svg_sha256": "25f8fb3cc7cd62bdfe091ebe033fc7742ad6321b26aee931372a9129d2124669",
+      "png_sha256": "c758224638dc23a6383479cd1a2e3aeb1f4b4f0a1ca10103a5a7c03f4aa25542",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "christmas-dark",
+      "svg": "vector/christmas-dark.svg",
+      "png": "christmas-dark.png",
+      "svg_sha256": "da387d24590e2b0bea2a90dd6facd8a1fdf2182627253ffc6c5686057b53b880",
+      "png_sha256": "11bf4088b5f9bfa1337a2de6d7cff34ccf44b80cf1e630e1bf1091170f925ed2",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "christmas-light",
+      "svg": "vector/christmas-light.svg",
+      "png": "christmas-light.png",
+      "svg_sha256": "85c20ff508e7e1789eb839773150141de2d4817d07c8db34422d7d84de354168",
+      "png_sha256": "38f41de4f32f1e76e0f4241b2cdf26cfe1e382127b0f6f053440e62f1fd5911d",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "halloween-dark",
+      "svg": "vector/halloween-dark.svg",
+      "png": "halloween-dark.png",
+      "svg_sha256": "f2e49a849675826c79d0335edbd8b449fece1e16d55094a1781521cf9f432ccf",
+      "png_sha256": "cb9c4081cfb84dc292c56e22539024f053f6af94ee58119355c962978e608195",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "halloween-light",
+      "svg": "vector/halloween-light.svg",
+      "png": "halloween-light.png",
+      "svg_sha256": "3b543b6b4fc6c3a95de4358ffb7a90b12c41111cc894b877d4f880544ab82ea9",
+      "png_sha256": "ce31130bcc3c15bf8f464d256f109fdf5de80ffeeb939aa0499d49350460b28f",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "spring-dark",
+      "svg": "vector/spring-dark.svg",
+      "png": "spring-dark.png",
+      "svg_sha256": "ed77f097e10fd39bcee3e45f2fa8dcce48db127a15cdcaf3400c83897254595d",
+      "png_sha256": "f9071d21d05bf62f72da77b205ac0b449bb5201df3783929caf7d894f55183d3",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "spring-light",
+      "svg": "vector/spring-light.svg",
+      "png": "spring-light.png",
+      "svg_sha256": "be5c43dcb74e61ff6ee4e356fe7bb83f40ffee97fc68734f00d5042e191d558b",
+      "png_sha256": "23580eefd275504aa11d31570119ed550d277d8b4f08915d269cdc0d835738f6",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "summer-dark",
+      "svg": "vector/summer-dark.svg",
+      "png": "summer-dark.png",
+      "svg_sha256": "a2ac47652291de3c4cd100fbb9d9cc9c64b5340e13e5cc7b265eae98c110eca7",
+      "png_sha256": "a0bb8a43ff8aaadf7bfdf2146692a506f152cf59d9082295653ed9de165bc842",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "summer-light",
+      "svg": "vector/summer-light.svg",
+      "png": "summer-light.png",
+      "svg_sha256": "b2ab7456071983715beb94cea3b3b8433cae648f3fc7fc95d24e3952ea0cb814",
+      "png_sha256": "6a3d84aab8bbb1eef51ab6767ff6aef7ac7bcf0179b9d871e9a10ed345f8be50",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "winter-dark",
+      "svg": "vector/winter-dark.svg",
+      "png": "winter-dark.png",
+      "svg_sha256": "b4a7a4554cf1da97147297a72bd6553a88e93d6d0928b9091f5090e37ae97522",
+      "png_sha256": "c82e8ea42df36b97647ab0fa8ebf663c84c64f450686748c79705323b71f098d",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    },
+    {
+      "key": "winter-light",
+      "svg": "vector/winter-light.svg",
+      "png": "winter-light.png",
+      "svg_sha256": "f2e1e263cf78f8ee398769aa7c0191402272c1b2adcf0603a0ec72a4f4a9bbb9",
+      "png_sha256": "ecb81f28a22402f6a1e0611ee423483d1910a29aa24809b3a66dfef077926921",
+      "width": 1254,
+      "height": 1254,
+      "has_alpha": true
+    }
+  ],
+  "archive": "../raster-r4/ contains the12 previous canonical PNGs",
+  "original_png": "../default.png remains the first retained bitmap, unchanged",
+  "integration": "Assets only; runtime logo/theme switching not wired by this export"
+}

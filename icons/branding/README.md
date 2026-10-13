@@ -2,7 +2,15 @@
 
 2026-10-13. Génération et retouches avec l'outil intégré image_gen, sans CLI/API à configurer.
 
-## Logo par défaut approuvé
+## Base vectorielle validée et déclinaisons r5
+
+Validation utilisateur : « nickel, utilise le vectorisé comme base pour refaire les autres ». **Référence actuelle : [vector/default.svg](vector/default.svg), dérivée du gabarit unique [master.svg](vector/master.svg).** Son export PNG est [vector/default.png](vector/default.png). Les douze autres PNG à la racine sont désormais des exports des SVG correspondants, pas des dessins indépendants produits par IA. Les SVG/générateur ont été régénérés à l'identique, sans changement de formes ou de palettes.
+
+Treize exports PNG1254×1254 transparents réalisés dans Chromium avec profil temporaire et réseau bloqué. Sources/hashes de chaque paire dans [exports-r5.json](vector/exports-r5.json) ; manifeste de marque format2 (défaut SVG + export raster, original historique séparé). Les douze anciens PNG sont copiés dans `raster-r4/`, hashes historiques conservés dans `branding-r5`. Le PNG original reste inchangé. Le rapport de provenance r4 est une preuve historique antérieure à cette validation.
+
+Toute prochaine modification part de `vector/master.svg`, puis du générateur Rust. Les différences d'espacement des anciens rasters ne sont donc plus réintroduites. Ce lot d'assets n'intègre pas encore le sélecteur de logos dans l'application.
+
+## Logo bitmap historique approuvé, conservé
 
 <img src="default.png" width="240" alt="Logo Chill Center par défaut, bordeaux et ocre">
 
@@ -10,7 +18,7 @@ Choix utilisateur : « oui on garde celui-ci par défaut », corrigé par « le 
 
 ## Source SVG commune r4
 
-Méthode autorisée par l'utilisateur : « Oui, créer le gabarit SVG commun ». [master.svg](vector/master.svg) est construit à partir des contours du PNG retenu : tracé unique du carré, du lettrage et du canapé, couleurs unies, contours légèrement lissés. **L'original PNG approuvé reste inchangé ; la nouvelle source vectorielle attend validation visuelle.**
+Méthode autorisée par l'utilisateur : « Oui, créer le gabarit SVG commun ». [master.svg](vector/master.svg) est construit à partir des contours du PNG retenu : tracé unique du carré, du lettrage et du canapé, couleurs unies, contours légèrement lissés. **L'original PNG approuvé reste inchangé ; la nouvelle source vectorielle est validée par la réponse r5 ci-dessus.**
 
 [Générateur Rust](../../scripts/branding.rs), sans dépendance supplémentaire : mêmes définitions et transformations dans les13 SVG autonomes. Le sapin est commun aux deux modes et passe derrière les lettres et le dossier, avec débordement latéral symétrique. La citrouille et ses nervures sont communes aux deux modes et reposent sur l'assise. Seuls palette et motif actif changent ; les écarts d'espacement entre variantes SVG sont supprimés par construction.
 
@@ -20,7 +28,7 @@ Reproduction avec le Rust déjà épinglé du projet : compiler `scripts/brandin
 
 Les trois PNG antérieurs àr3 sont aussi copiés dans `raster-r2/`. Le défaut, les neuf PNG non retouchés, les nouvelles propositions raster r3 et tous les historiques Git sont conservés. La galerie présente désormais les SVG r4, avec l'original et le gabarit côte à côte.
 
-## Douze déclinaisons SVG proposées
+## Douze déclinaisons SVG issues de la base validée
 
 | Ambiance | Claire | Sombre |
 | --- | --- | --- |
@@ -55,13 +63,13 @@ Les13 PNG (défaut +12 variantes) ont été inspectés ; largeurs/positions des 
 
 Défaut et neuf variantes non retouchées conservés octet par octet ; trois références de galerie en `?v=3`. Historique antérieur complet au commit `61f6cd68dae7b2562c4e6d535269f0e0fd8bf2c9` ; les données r2 du manifeste ne sont pas supprimées. Aucun raccordement runtime ou paquet .app modifié.
 
-Treize PNG statiques actuels (logo retenu +12 propositions),1254×1254, canal alpha, plus trois PNG r2 conservés et14 SVG (maître +13 variantes). `manifest.json` référence les fichiers, hashes raster, palettes **demandées** (pas des mesures des pixels), prompts complets et historique des retouches ; le manifeste racine couvre aussi les SVG. Les rendus non retenus restent dans l'historique de génération, identifiés dans le manifeste ; les sources générées ne sont pas supprimées.
+Treize PNG exportés de la source SVG (défaut vector/default.png +12 ambiances),1254×1254, canal alpha ; original default.png, trois PNG r2 et douze PNG r4 conservés, plus14 SVG (maître +13 variantes). `manifest.json` référence les fichiers, hashes raster, palettes **demandées** (pas des mesures des pixels), prompts complets et historique des retouches ; le manifeste racine couvre aussi les SVG. Les rendus non retenus restent dans l'historique de génération, identifiés dans le manifeste ; les sources générées ne sont pas supprimées.
 
 Vérification : identité binaire du défaut avec le choix utilisateur ; lecture PNG, dimensions/alpha, hashes et présence des six paires. Inspection visuelle : texte, formes, équilibre clair/sombre, correction de l'outline Noël et marques de fond. Pas de mesure quantitative de contraste, audit d'icône à16px ou vectorisation finale ; ce sont des propositions raster de branding.
 
 ## Intégration et limites
 
-Le logo retenu est la référence de marque par défaut ; les déclinaisons attendent validation visuelle. **Ce lot livre les assets, pas le sélecteur d'ambiances de l'application.** L'ancien `icons/icon.png`, le frontend et le paquet .app ne sont pas remplacés ici. Pas de build/déploiement ou push GitHub. Charger seulement la variante active, prévoir les exports d'icône optimisés au raccordement ; ne pas précharger13 images dans la webview.
+La base vectorielle validée est la référence de marque ; les déclinaisons SVG et leurs PNG sont dérivés de cette même source. **Ce lot livre les assets, pas le sélecteur d'ambiances de l'application.** L'ancien `icons/icon.png`, le frontend et le paquet .app ne sont pas remplacés ici. Pas de build/déploiement ou push GitHub. Charger seulement la variante active, prévoir les exports d'icône optimisés au raccordement ; ne pas précharger13 images dans la webview.
 
 Règles déjà approuvées, inchangées : saisons Nord aux1mars/juin/septembre/décembre ; Halloween1–31octobre ; Noël25novembre–25décembre ; événements prioritaires, retour saison le lendemain, modes clair/sombre/système indépendants du choix auto/manuel/désactivé. Voir F-20/F-21 et US-032/033. Aucune animation ni règle de calendrier implémentée par une image.
 
