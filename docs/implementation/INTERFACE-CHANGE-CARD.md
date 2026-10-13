@@ -10,3 +10,11 @@
 - QA debug : explicitement activée par env, stockage obligatoire isolé, hook résultat absent de release. Dev app n'est pas le bundle libmpv final ; en release le parcours QA n'est pas lancé. Aucun service utilisateur/NAS/routeur/Pi modifié.
 - Restes : lecteur Tauri + baux/flux/progression/enchâinement, TMDB/affiches/édition/groupements/collections, import/export complet, IA, ambiances et mesuresLinux/Pi. Aucun AC de lecture ni G-04 global clôturé par ce lot.
 - Revue triple indépendante du SHA figé avant remise du lot ; précédentes revues fondation historiques conservées. Rollback : retour à la branche/checkpoint précédent et au binaire précédent, aucune migration irréversible ni vidéo touchée.
+
+## Delta de revue et applicabilité ADR
+
+Les rapports initiaux b8737bb sont conservés et CHANGES_REQUESTED. Corrections : sélection atomique/rollback (BUG-0005), annulation/deadline SQLite et writer de scan séparé (BUG-0006), snapshot+identités atomiques (BUG-0007), codes d'erreur sûrs et avis visible de remplacement de clé après expiration. Tests HTTP discriminants film/série/recherche/namespaces ajoutés. Le dossier de preuve final lie les nouvelles revues au SHA exact corrigé.
+
+Application d'architecture-decision-recorder : pas de nouvel ADR pour ces détails locaux réversibles. Runtime, framework, SQLite/WAL, modèle de persistance, frontières service, confiance/exception et contrats fonctionnels restent ceux des ADR0001/0002/0004/0005 acceptés. Les nouveaux endpoints implémentent les contrats déjà approuvés ; la transaction commune corrige une violation, le worker SQLite évite un blocage sans ajouter de service. Aucun nouveau fournisseur, migration, risque accepté ou changement de politique. Les anciennes décisions ne sont pas réécrites.
+
+Le bundle ad-hoc Mac est un artefact de développement pour ce lot interface/catalogue, pas le paquet final lecteur/libmpv ou une distribution notarized.

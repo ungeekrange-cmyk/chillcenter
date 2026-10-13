@@ -813,6 +813,16 @@ impl Database {
     }
 
     pub fn snapshot(&mut self, discovered: Vec<Media>) -> Result<i64, String> {
+        self.snapshot_with(discovered, |_, _| Ok(()))
+    }
+
+    /// Extend a snapshot inside its transaction (e.g. stable identities). Any
+    /// extension failure rolls back media, last_scan and the extension together.
+    pub fn snapshot_with(
+        &mut self,
+        discovered: Vec<Media>,
+        extend: impl FnOnce(&rusqlite::Transaction<'_>, &[Media]) -> Result<(), String>,
+    ) -> Result<i64, String> {
         let previous = self.list()?;
         if discovered.is_empty() && previous.iter().any(|m| m.available) {
             return Err("Le dossier ne contient aucune vidéo. Par sécurité, le catalogue précédent est conservé. Vérifiez le montage NFS.".into());
@@ -832,14 +842,47 @@ impl Database {
                 all.insert(new.id.clone(), new);
             }
         }
+        let all: Vec<Media> = all.into_values().collect();
+        // Serialization/merge work stays outside the SQLite write lock.
+        let serialized = all
+            .iter()
+            .map(|m| serde_json::to_string(m).map_err(|_| "Métadonnées invalides.".to_string()))
+            .collect::<Result<Vec<_>, _>>()?;
         let time = now();
         let tx = self.connection.transaction().map_err(db_error)?;
-        for m in all.values() {
-            tx.execute("INSERT INTO media(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data", params![m.id, serde_json::to_string(m).map_err(|_| "Métadonnées invalides.")?]).map_err(db_error)?;
+        for (m, data) in all.iter().zip(serialized) {
+            tx.execute("INSERT INTO media(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data", params![m.id, data]).map_err(db_error)?;
         }
         tx.execute("INSERT INTO settings(key,value) VALUES('last_scan',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [time.to_string()]).map_err(db_error)?;
+        extend(&tx, &all)?;
         tx.commit().map_err(db_error)?;
         Ok(time)
+    }
+
+    pub fn cancellation_probe(
+        &self,
+        probe: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    ) -> Result<(), String> {
+        match probe {
+            Some(probe) => {
+                let commit = probe.clone();
+                self.connection
+                    .commit_hook(Some(move || commit()))
+                    .map_err(db_error)?;
+                self.connection
+                    .progress_handler(1000, Some(move || probe()))
+                    .map_err(db_error)?;
+            }
+            None => {
+                self.connection
+                    .commit_hook(None::<fn() -> bool>)
+                    .map_err(db_error)?;
+                self.connection
+                    .progress_handler(0, None::<fn() -> bool>)
+                    .map_err(db_error)?;
+            }
+        }
+        Ok(())
     }
 
     /// Validate all changes first, then commit the entire preview atomically.

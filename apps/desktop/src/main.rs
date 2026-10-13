@@ -18,6 +18,7 @@ async fn ui_command(state: tauri::State<'_, Bridge>, command: UiCommand) -> Resu
         .map_err(|_| UiError {
             message: "Une opération est déjà en cours.".into(),
             status: None,
+            code: "CLIENT_BUSY".into(),
         })?;
     tauri::async_runtime::spawn_blocking(move || {
         let _permit = permit;
@@ -27,6 +28,7 @@ async fn ui_command(state: tauri::State<'_, Bridge>, command: UiCommand) -> Resu
             .map_err(|_| UiError {
                 message: "Client indisponible.".into(),
                 status: None,
+                code: "CLIENT_UNAVAILABLE".into(),
             })?
             .dispatch(command)
     })
@@ -34,6 +36,7 @@ async fn ui_command(state: tauri::State<'_, Bridge>, command: UiCommand) -> Resu
     .map_err(|_| UiError {
         message: "Opération interrompue.".into(),
         status: None,
+        code: "CLIENT_INTERRUPTED".into(),
     })?
 }
 fn main() {

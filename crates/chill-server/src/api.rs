@@ -17,7 +17,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -25,6 +29,12 @@ type Job = Box<dyn FnOnce(&mut Store) + Send>;
 #[derive(Clone)]
 pub struct DatabaseActor {
     sender: mpsc::Sender<Job>,
+}
+struct Cancellation(Arc<AtomicBool>);
+impl Drop for Cancellation {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
 }
 impl DatabaseActor {
     pub fn open(path: PathBuf) -> Result<Self, String> {
@@ -57,21 +67,51 @@ impl DatabaseActor {
         &self,
         job: impl FnOnce(&mut Store) -> Result<T, String> + Send + 'static,
     ) -> Result<T, ApiError> {
+        self.call_with_budget(Duration::from_secs(10), job).await
+    }
+    async fn call_with_budget<T: Send + 'static>(
+        &self,
+        budget: Duration,
+        job: impl FnOnce(&mut Store) -> Result<T, String> + Send + 'static,
+    ) -> Result<T, ApiError> {
         let (tx, rx) = oneshot::channel();
+        // Shorter than both the native client's 20s and middleware's 30s budget.
+        let deadline = Instant::now() + budget;
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let guard = Cancellation(cancelled.clone());
         self.sender
             .try_send(Box::new(move |store| {
-                let _ = tx.send(job(store));
+                if tx.is_closed() {
+                    return;
+                }
+                if Instant::now() >= deadline {
+                    let _ = tx.send(Err("REQUEST_TIMEOUT".into()));
+                    return;
+                }
+                let probe: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(move || {
+                    cancelled.load(Ordering::Acquire) || Instant::now() >= deadline
+                });
+                let result = store
+                    .cancellation_probe(Some(probe.clone()))
+                    .and_then(|()| job(store));
+                let result = match store.cancellation_probe(None) {
+                    Ok(()) => result,
+                    Err(error) => Err(error),
+                };
+                let _ = tx.send(if probe() {
+                    Err("REQUEST_TIMEOUT".into())
+                } else {
+                    result
+                });
             }))
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
-        rx.await
+        let result = tokio::time::timeout(budget, rx)
+            .await
+            .map_err(|_| ApiError(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"))?
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "DATABASE_OFFLINE"))?
-            .map_err(|error| match error.as_str() {
-                "PROFILE_NOT_FOUND" | "Profil introuvable." => {
-                    ApiError(StatusCode::NOT_FOUND, "PROFILE_NOT_FOUND")
-                }
-                "PROFILE_CONFLICT" => ApiError(StatusCode::CONFLICT, "PROFILE_CONFLICT"),
-                _ => ApiError(StatusCode::BAD_REQUEST, "INVALID_OPERATION"),
-            })
+            .map_err(|error| ApiError::from(chill_domain::StoreFailure::from(error)));
+        drop(guard);
+        result
     }
 }
 
@@ -86,6 +126,20 @@ pub struct AppState {
 
 #[derive(Debug)]
 pub struct ApiError(pub StatusCode, pub &'static str);
+impl From<chill_domain::StoreFailure> for ApiError {
+    fn from(error: chill_domain::StoreFailure) -> Self {
+        use chill_domain::StoreFailure::*;
+        match error {
+            ProfileNotFound => Self(StatusCode::NOT_FOUND, "PROFILE_NOT_FOUND"),
+            MediaNotFound => Self(StatusCode::NOT_FOUND, "MEDIA_NOT_FOUND"),
+            ProfileConflict => Self(StatusCode::CONFLICT, "PROFILE_CONFLICT"),
+            ProfileNameTaken => Self(StatusCode::CONFLICT, "PROFILE_NAME_TAKEN"),
+            DatabaseOffline => Self(StatusCode::SERVICE_UNAVAILABLE, "DATABASE_OFFLINE"),
+            RequestTimeout => Self(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"),
+            InvalidOperation => Self(StatusCode::UNPROCESSABLE_ENTITY, "INVALID_OPERATION"),
+        }
+    }
+}
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.0, Json(json!({"code":self.1,"message":"Opération refusée ou temporairement indisponible.","request_id":uuid::Uuid::new_v4().to_string()}))).into_response()
@@ -158,7 +212,7 @@ async fn server(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?
         .clone();
     Ok(Json(
-        json!({"server_id":certificate.server_id,"api_version":1,"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
+        json!({"server_id":certificate.server_id,"api_version":1,"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","catalog_pages","manual_personal_state","scan"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
     ))
 }
 
@@ -329,6 +383,117 @@ mod tests {
             .unwrap()
     }
     #[tokio::test]
+    async fn cancelled_queued_and_started_mutations_never_commit_late() {
+        for started in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let actor = DatabaseActor::open(dir.path().join("test.sqlite")).unwrap();
+            let (entered_tx, entered_rx) = oneshot::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let worker = actor.clone();
+            let task = tokio::spawn(async move {
+                worker
+                    .call_with_budget(Duration::from_millis(100), move |store| {
+                        let _ = entered_tx.send(());
+                        release_rx.recv().unwrap();
+                        if started {
+                            store.create_profile("Must not appear")?;
+                        }
+                        Ok(())
+                    })
+                    .await
+            });
+            entered_rx.await.unwrap();
+            if !started {
+                let error = actor
+                    .call_with_budget(Duration::from_millis(10), |store| {
+                        store.create_profile("Queued deletion/retry hazard")
+                    })
+                    .await
+                    .unwrap_err();
+                assert_eq!(error.1, "REQUEST_TIMEOUT");
+            } else {
+                let error = task.await.unwrap().unwrap_err();
+                assert_eq!(error.1, "REQUEST_TIMEOUT");
+                release_tx.send(()).unwrap();
+                assert!(
+                    actor
+                        .call(|store| store.profiles())
+                        .await
+                        .unwrap()
+                        .is_empty()
+                );
+                continue;
+            }
+            release_tx.send(()).unwrap();
+            task.await.unwrap().unwrap();
+            assert!(
+                actor
+                    .call(|store| store.profiles())
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
+    #[tokio::test]
+    async fn typed_errors_distinguish_configuration_database_and_invalid_values() {
+        let (_dir, app) = setup();
+        let response = app
+            .oneshot(request("POST", "/api/v1/admin/scan", json!({})))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(body["code"], "ROOT_REQUIRED");
+        assert_eq!(
+            ApiError::from(chill_domain::StoreFailure::DatabaseOffline).0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            ApiError::from(chill_domain::StoreFailure::InvalidOperation).0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    #[tokio::test]
+    async fn interactive_reads_remain_responsive_during_large_snapshot_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.sqlite");
+        let actor = DatabaseActor::open(path.clone()).unwrap();
+        actor
+            .call(|store| store.create_profile("Available during scan"))
+            .await
+            .unwrap();
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let writer = tokio::task::spawn_blocking(move || {
+            let mut database = chill_catalog::database::Database::open(&path).unwrap();
+            let media = (0..2_000)
+                .map(|n| {
+                    chill_catalog::scanner::parse_file(
+                        std::path::Path::new("/nas"),
+                        &std::path::PathBuf::from(format!("/nas/Film{n}.mp4")),
+                    )
+                })
+                .collect();
+            database
+                .snapshot_with(media, |_, _| {
+                    let _ = entered_tx.send(());
+                    release_rx.recv().unwrap();
+                    Ok(())
+                })
+                .unwrap();
+        });
+        entered_rx.await.unwrap();
+        let response =
+            tokio::time::timeout(Duration::from_secs(1), actor.call(|store| store.profiles()))
+                .await;
+        release_tx.send(()).unwrap();
+        assert_eq!(response.unwrap().unwrap().len(), 1);
+        writer.await.unwrap();
+    }
+    #[tokio::test]
     async fn configurable_root_is_persisted_through_admin_api() {
         let (dir, app) = setup();
         let response = app
@@ -472,7 +637,7 @@ mod tests {
             .call(|store| {
                 let a = store.create_profile("A")?;
                 let b = store.create_profile("B")?;
-                let media = (0..51)
+                let mut media: Vec<_> = (0..51)
                     .map(|n| {
                         chill_catalog::scanner::parse_file(
                             std::path::Path::new("/nas"),
@@ -480,6 +645,12 @@ mod tests {
                         )
                     })
                     .collect();
+                for name in ["Series.S01E01.Needle.mkv", "Series.S01E02.Different.mkv"] {
+                    media.push(chill_catalog::scanner::parse_file(
+                        std::path::Path::new("/nas"),
+                        &std::path::PathBuf::from(format!("/nas/{name}")),
+                    ));
+                }
                 store.snapshot(media)?;
                 Ok((a.id, b.id))
             })
@@ -493,6 +664,61 @@ mod tests {
             scan: Arc::new(Mutex::new(crate::catalog_api::ScanStatus::default())),
         };
         let app = router(state);
+        for (query, expected_count, expected_title) in [
+            ("category=film&q=Film000", 1, Some("Film000")),
+            ("category=serie&q=Needle", 1, Some("Needle")),
+            ("category=film&q=Needle", 0, None),
+            ("category=serie&q=DoesNotExist", 0, None),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(request(
+                    "GET",
+                    &format!("/api/v1/profiles/{a}/catalog?{query}"),
+                    Value::Null,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let page: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(page["items"].as_array().unwrap().len(), expected_count);
+            if let Some(title) = expected_title {
+                assert!(page["items"][0]["title"].as_str().unwrap().contains(title));
+            }
+        }
+        for (method, path, body, code) in [
+            (
+                "PUT",
+                format!("/api/v1/profiles/{a}/media/{b}/watched"),
+                json!({"watched":true}),
+                "MEDIA_NOT_FOUND",
+            ),
+            (
+                "PUT",
+                format!("/api/v1/profiles/{a}/media/{b}/rating"),
+                json!({"rating":5}),
+                "MEDIA_NOT_FOUND",
+            ),
+            (
+                "GET",
+                format!("/api/v1/profiles/{}/catalog", uuid::Uuid::new_v4()),
+                Value::Null,
+                "PROFILE_NOT_FOUND",
+            ),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(request(method, &path, body))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(body["code"], code);
+        }
         let page = app
             .clone()
             .oneshot(request(
@@ -537,7 +763,7 @@ mod tests {
         let last = app
             .oneshot(request(
                 "GET",
-                &format!("/api/v1/profiles/{b}/catalog?limit=50&offset=50"),
+                &format!("/api/v1/profiles/{b}/catalog?limit=50&offset=50&category=film"),
                 Value::Null,
             ))
             .await

@@ -157,10 +157,13 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
             let media: Vec<chill_catalog::model::Media> =
                 serde_json::from_slice(&bytes).map_err(|_| ())?;
             let count = media.len();
-            state
-                .database
-                .call(move |store| store.snapshot(media))
+            // Catalogue merge/serialization does not occupy the interactive actor.
+            // WAL readers remain usable; only the final atomic write owns SQLite's
+            // write lock, and interactive writes have a shorter request deadline.
+            let path = state.config.data_dir.join("catalog.sqlite");
+            tokio::task::spawn_blocking(move || chill_domain::Store::open(&path)?.snapshot(media))
                 .await
+                .map_err(|_| ())?
                 .map_err(|_| ())?;
             Ok(count)
         }

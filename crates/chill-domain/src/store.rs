@@ -305,10 +305,36 @@ impl Store {
     }
 
     pub fn snapshot(&mut self, discovered: Vec<Media>) -> Result<i64, String> {
-        // Legacy snapshot is all-or-nothing and specifically preserves a prior catalogue on an empty scan.
-        let scan = self.catalogue.snapshot(discovered)?;
-        self.ensure_identities(&self.catalogue.list()?)?;
-        Ok(scan)
+        self.catalogue.snapshot_with(discovered, insert_identities)
+    }
+
+    /// SQLite checks before commit, including autocommit statements, prevent a
+    /// cancelled/deadline-expired interactive job from committing late writes.
+    pub fn cancellation_probe(
+        &self,
+        probe: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    ) -> Result<(), String> {
+        self.catalogue.cancellation_probe(probe.clone())?;
+        match probe {
+            Some(probe) => {
+                let commit = probe.clone();
+                self.personal
+                    .commit_hook(Some(move || commit()))
+                    .map_err(db_error)?;
+                self.personal
+                    .progress_handler(1000, Some(move || probe()))
+                    .map_err(db_error)?;
+            }
+            None => {
+                self.personal
+                    .commit_hook(None::<fn() -> bool>)
+                    .map_err(db_error)?;
+                self.personal
+                    .progress_handler(0, None::<fn() -> bool>)
+                    .map_err(db_error)?;
+            }
+        }
+        Ok(())
     }
 
     /// Explicit administrator-confirmed reassociation. This never guesses from
@@ -835,9 +861,7 @@ impl Store {
     }
     fn ensure_identities(&self, media: &[Media]) -> Result<(), String> {
         let tx = self.personal.unchecked_transaction().map_err(db_error)?;
-        for m in media {
-            tx.execute("INSERT OR IGNORE INTO cc_media_identity(stable_id,legacy_id,relative_path) VALUES(?1,?2,?3)",params![Uuid::new_v4().to_string(),m.id,m.id]).map_err(db_error)?;
-        }
+        insert_identities(&tx, media)?;
         tx.commit().map_err(db_error)
     }
     fn stable_id(&self, legacy: &str) -> Result<String, String> {
@@ -847,7 +871,7 @@ impl Store {
                 [legacy],
                 |r| r.get(0),
             )
-            .map_err(|_| "Vidéo introuvable dans le catalogue.".into())
+            .map_err(media_lookup_error)
     }
     fn legacy_id(&self, stable: &str) -> Result<String, String> {
         self.personal
@@ -856,7 +880,7 @@ impl Store {
                 [stable],
                 |r| r.get(0),
             )
-            .map_err(|_| "Vidéo introuvable dans le catalogue.".into())
+            .map_err(media_lookup_error)
     }
     fn profile_view(&self, profile: &str, mut media: Media) -> Result<Media, String> {
         let stable = self.stable_id(&media.id)?;
@@ -940,11 +964,29 @@ fn add_column_if_missing(
     Ok(())
 }
 
+fn insert_identities(tx: &rusqlite::Transaction<'_>, media: &[Media]) -> Result<(), String> {
+    for m in media {
+        tx.execute("INSERT OR IGNORE INTO cc_media_identity(stable_id,legacy_id,relative_path) VALUES(?1,?2,?3)",params![Uuid::new_v4().to_string(),m.id,m.id]).map_err(db_error)?;
+    }
+    Ok(())
+}
 fn db_error(_: rusqlite::Error) -> String {
     "Erreur de base locale. Vos données n’ont pas été remplacées.".into()
 }
-fn profile_collision(_: rusqlite::Error) -> String {
-    "Ce nom de profil est déjà utilisé.".into()
+fn media_lookup_error(error: rusqlite::Error) -> String {
+    if matches!(error, rusqlite::Error::QueryReturnedNoRows) {
+        "Vidéo introuvable dans le catalogue.".into()
+    } else {
+        db_error(error)
+    }
+}
+fn profile_collision(error: rusqlite::Error) -> String {
+    if matches!(&error, rusqlite::Error::SqliteFailure(code, _) if code.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE)
+    {
+        "Ce nom de profil est déjà utilisé.".into()
+    } else {
+        db_error(error)
+    }
 }
 fn valid_profile_name(name: &str) -> Result<String, String> {
     let name = name.trim();
@@ -1062,6 +1104,49 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use tempfile::tempdir;
+    #[test]
+    fn failed_identity_extension_rolls_back_catalogue_scan_marker_and_mapping() {
+        let mut s = store();
+        let before = serde_json::to_value(s.catalogue.list().unwrap()).unwrap();
+        let marker: String = s
+            .personal
+            .query_row(
+                "SELECT value FROM settings WHERE key='last_scan'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let identities: i64 = s
+            .personal
+            .query_row("SELECT COUNT(*) FROM cc_media_identity", [], |r| r.get(0))
+            .unwrap();
+        s.personal.execute_batch("CREATE TRIGGER fail_identity BEFORE INSERT ON cc_media_identity WHEN NEW.legacy_id='Films/C.mkv' BEGIN SELECT RAISE(ABORT,'injected identity failure'); END;").unwrap();
+        assert!(
+            s.snapshot(vec![media("Films/C.mkv", "/nas/Films/C.mkv")])
+                .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(s.catalogue.list().unwrap()).unwrap(),
+            before
+        );
+        assert_eq!(
+            s.personal
+                .query_row(
+                    "SELECT value FROM settings WHERE key='last_scan'",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+            marker
+        );
+        assert_eq!(
+            s.personal
+                .query_row("SELECT COUNT(*) FROM cc_media_identity", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            identities
+        );
+    }
     fn media(id: &str, path: &str) -> Media {
         Media {
             id: id.into(),

@@ -1,7 +1,7 @@
 //! Allowlisted UI operations. No JS-supplied HTTP paths, headers or local/NAS paths.
 use crate::{
-    ClientError, HttpMethod, PresentedCertificate, ServerEndpoint, Transport, TrustStore,
-    inspect_certificate,
+    ClientError, HttpMethod, PresentedCertificate, ServerEndpoint, Transport, TrustEventKind,
+    TrustStore, inspect_certificate,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -73,23 +73,58 @@ pub enum UiCommand {
 pub struct UiError {
     pub message: String,
     pub status: Option<u16>,
+    pub code: String,
 }
 impl From<ClientError> for UiError {
     fn from(error: ClientError) -> Self {
-        let status = if let ClientError::Http(status) = &error {
-            Some(status.as_u16())
-        } else {
-            None
+        let (status, code) = match &error {
+            ClientError::Api { status, code } => (Some(status.as_u16()), code.clone()),
+            ClientError::Http(status) => (Some(status.as_u16()), "HTTP_ERROR".into()),
+            ClientError::InvalidServerUrl(_) => (None, "ADDRESS_INVALID".into()),
+            ClientError::Network(error) if error.is_timeout() => (None, "NETWORK_TIMEOUT".into()),
+            ClientError::Certificate(_)
+            | ClientError::Tls(_)
+            | ClientError::ApprovalRequired
+            | ClientError::KeyChangedBeforeExpiry => (None, "TLS_REFUSED".into()),
+            _ => (None, "CONNECTION_FAILED".into()),
         };
-        let message = match error {
-            ClientError::Http(status) if status.as_u16() == 409 => {
+        let message = match code.as_str() {
+            "SCAN_ACTIVE" => {
+                "Un scan est déjà en cours. Attendez sa fin avant de relancer ou de modifier le dossier."
+            }
+            "ROOT_REQUIRED" => {
+                "Configurez le dossier vidéo du serveur dans Administration avant de scanner."
+            }
+            "CONFIG_INVALID_OR_UNWRITABLE" => {
+                "Chemin invalide ou réglages non enregistrables. Vérifiez le chemin et les droits du serveur."
+            }
+            "PROFILE_NAME_TAKEN" => "Ce nom de profil est déjà utilisé. Choisissez un autre nom.",
+            "PROFILE_NOT_FOUND" => {
+                "Ce profil a été supprimé. Rechargez et choisissez un profil existant."
+            }
+            "MEDIA_NOT_FOUND" => "Cet élément n'existe plus. Rechargez le catalogue.",
+            "BUSY" | "DATABASE_OFFLINE" => {
+                "Serveur occupé ou base indisponible. Réessayez dans quelques instants."
+            }
+            "REQUEST_TIMEOUT" | "NETWORK_TIMEOUT" => {
+                "Délai dépassé. Rechargez pour vérifier le résultat avant de réessayer."
+            }
+            "ADDRESS_INVALID" => {
+                "Adresse invalide. Saisissez un DNS ou une IP, éventuellement avec le port HTTPS."
+            }
+            "INVALID_OPERATION" => "Valeur invalide. Vérifiez les champs avant de réessayer.",
+            "PROFILE_CONFLICT" | "CONFIG_CONFLICT" => {
                 "Modification concurrente : rechargez les données avant de réessayer."
             }
-            ClientError::Http(status) if status.as_u16() == 404 => {
+            _ if status == Some(404) => {
                 "Profil ou élément supprimé : reconnectez/rechargez le serveur."
             }
-            ClientError::Http(status) if status.as_u16() == 400 => {
+            _ if status == Some(400) || status == Some(422) => {
                 "Valeur invalide ou nom déjà utilisé. Vérifiez les champs."
+            }
+            _ if status == Some(409) => "Modification concurrente : rechargez les données.",
+            _ if status.is_some() => {
+                "Le serveur a refusé l'opération. Rechargez puis vérifiez sa disponibilité."
             }
             _ => {
                 "Connexion HTTPS impossible ou réponse invalide. Vérifiez le serveur et son certificat."
@@ -98,6 +133,7 @@ impl From<ClientError> for UiError {
         Self {
             message: message.into(),
             status,
+            code,
         }
     }
 }
@@ -105,10 +141,11 @@ fn invalid(message: &str) -> UiError {
     UiError {
         message: message.into(),
         status: None,
+        code: "CLIENT_INVALID".into(),
     }
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
     servers: BTreeMap<String, String>,
@@ -130,6 +167,7 @@ struct Connected {
     transport: Transport,
     profiles: Value,
     active: Option<String>,
+    notice: Option<String>,
 }
 pub struct UiClient {
     directory: PathBuf,
@@ -138,6 +176,7 @@ pub struct UiClient {
     runtime: tokio::runtime::Runtime,
     pending: Option<Pending>,
     connected: Option<Connected>,
+    persist_requests: bool,
 }
 impl UiClient {
     /// Call from the host setup thread, never from an async task (blocking HTTP runtime).
@@ -176,6 +215,7 @@ impl UiClient {
             runtime,
             pending: None,
             connected: None,
+            persist_requests: true,
         })
     }
     fn save(&mut self) -> Result<(), UiError> {
@@ -219,7 +259,15 @@ impl UiClient {
         let result = self
             .runtime
             .block_on(transport.json_with_options(method, path, body, query, headers))?;
-        self.save()?;
+        if self.persist_requests
+            && *self
+                .trust
+                .read()
+                .map_err(|_| invalid("Confiance indisponible."))?
+                != self.settings.trust
+        {
+            self.save()?;
+        }
         Ok(result)
     }
     fn profile(&self) -> Result<String, UiError> {
@@ -262,7 +310,7 @@ impl UiClient {
             None => Value::Null,
         };
         Ok(
-            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"theme":self.theme()}),
+            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"theme":self.theme(),"notice":self.connected.as_ref().unwrap().notice}),
         )
     }
     fn theme(&self) -> &str {
@@ -310,6 +358,36 @@ impl UiClient {
         address: String,
         provisional_id: String,
     ) -> Result<Value, UiError> {
+        let previous = self.settings.clone();
+        let trust = self
+            .trust
+            .read()
+            .map_err(|_| invalid("Confiance indisponible."))?
+            .clone();
+        self.persist_requests = false;
+        let result = self.finish_connect_inner(address, provisional_id);
+        self.persist_requests = true;
+        if result.is_err() {
+            self.connected = None;
+            self.settings = previous;
+            *self
+                .trust
+                .write()
+                .map_err(|_| invalid("Confiance indisponible."))? = trust;
+        }
+        result
+    }
+    fn finish_connect_inner(
+        &mut self,
+        address: String,
+        provisional_id: String,
+    ) -> Result<Value, UiError> {
+        let events_before = self
+            .trust
+            .read()
+            .map_err(|_| invalid("Confiance indisponible."))?
+            .events
+            .len();
         let endpoint = ServerEndpoint::parse(&provisional_id, &address)?;
         let transport = Transport::new(endpoint, self.trust.clone(), None)?;
         // Transport lives outside block_on so its blocking runtime never drops in an async context.
@@ -385,9 +463,52 @@ impl UiClient {
             transport,
             profiles,
             active,
+            notice: renewal_notice(
+                &*self
+                    .trust
+                    .read()
+                    .map_err(|_| invalid("Confiance indisponible."))?,
+                events_before,
+            ),
         });
+        let view = self.view()?;
         self.save()?;
-        self.view()
+        Ok(view)
+    }
+    fn commit_selected_view(
+        &mut self,
+        server_id: String,
+        previous: Option<String>,
+        view: Result<Value, UiError>,
+    ) -> Result<Value, UiError> {
+        let view = match view {
+            Ok(view) => view,
+            Err(error) => {
+                self.connected.as_mut().unwrap().active = previous;
+                return Err(error);
+            }
+        };
+        let old_choice = self.settings.last_profiles.get(&server_id).cloned();
+        if let Some(active) = self.connected.as_ref().unwrap().active.clone() {
+            self.settings
+                .last_profiles
+                .insert(server_id.clone(), active);
+        } else {
+            self.settings.last_profiles.remove(&server_id);
+        }
+        if let Err(error) = self.save() {
+            self.connected.as_mut().unwrap().active = previous;
+            match old_choice {
+                Some(choice) => {
+                    self.settings.last_profiles.insert(server_id, choice);
+                }
+                None => {
+                    self.settings.last_profiles.remove(&server_id);
+                }
+            }
+            return Err(error);
+        }
+        Ok(view)
     }
     pub fn dispatch(&mut self, command: UiCommand) -> Result<Value, UiError> {
         match command {
@@ -418,6 +539,11 @@ impl UiClient {
                 let key = pending
                     .known_id
                     .unwrap_or_else(|| format!("pending:{}", pending.token));
+                let previous_trust = self
+                    .trust
+                    .read()
+                    .map_err(|_| invalid("Confiance indisponible."))?
+                    .clone();
                 if self
                     .trust
                     .read()
@@ -440,7 +566,14 @@ impl UiClient {
                         .map_err(|_| invalid("Confiance indisponible."))?
                         .approve_initial(&key, &host, pending.certificate);
                 }
-                self.finish_connect(pending.address, key)
+                let result = self.finish_connect(pending.address, key);
+                if result.is_err() {
+                    *self
+                        .trust
+                        .write()
+                        .map_err(|_| invalid("Confiance indisponible."))? = previous_trust;
+                }
+                result
             }
             UiCommand::Disconnect => {
                 self.pending = None;
@@ -457,10 +590,12 @@ impl UiClient {
                 if !has_profile(&conn.profiles, &id) {
                     return Err(invalid("Profil absent ; rechargez la liste."));
                 }
-                conn.active = Some(id.clone());
-                self.settings.last_profiles.insert(conn.id.clone(), id);
-                self.save()?;
-                self.view()
+                let server_id = conn.id.clone();
+                let previous = conn.active.replace(id.clone());
+                // Fetch the prospective view before persisting its identity. Requests
+                // may persist trust events, but must not remember an unrendered profile.
+                let view = self.view();
+                self.commit_selected_view(server_id, previous, view)
             }
             UiCommand::CreateProfile { name } => {
                 self.request(
@@ -587,6 +722,10 @@ impl UiClient {
         }
     }
 }
+fn renewal_notice(trust: &TrustStore, after: usize) -> Option<String> {
+    trust.events.iter().skip(after).any(|e| e.kind == TrustEventKind::KeyReplacedAfterKnownExpiry)
+        .then(|| "Le certificat précédemment approuvé était expiré : la nouvelle clé de ce serveur a été acceptée automatiquement, conformément au réglage du foyer. Vérifiez le serveur si ce changement est inattendu.".into())
+}
 fn fingerprint(bytes: &[u8; 32]) -> String {
     bytes
         .iter()
@@ -630,6 +769,95 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn expired_key_replacement_is_visible_but_same_key_renewal_is_not_mislabelled() {
+        let mut trust = TrustStore::default();
+        trust.events.push(crate::TrustEvent {
+            server_id: "server".into(),
+            at_unix: 1,
+            kind: TrustEventKind::CertificateRenewedWithSameKey,
+        });
+        assert!(renewal_notice(&trust, 0).is_none());
+        trust.events.push(crate::TrustEvent {
+            server_id: "server".into(),
+            at_unix: 2,
+            kind: TrustEventKind::KeyReplacedAfterKnownExpiry,
+        });
+        assert!(
+            renewal_notice(&trust, 1)
+                .unwrap()
+                .contains("acceptée automatiquement")
+        );
+        assert!(renewal_notice(&trust, 2).is_none());
+    }
+    #[test]
+    fn safe_api_codes_have_operation_specific_recovery() {
+        for (code, text) in [
+            ("SCAN_ACTIVE", "scan"),
+            ("ROOT_REQUIRED", "dossier"),
+            ("PROFILE_CONFLICT", "concurrente"),
+            ("MEDIA_NOT_FOUND", "élément"),
+            ("DATABASE_OFFLINE", "base"),
+            ("BUSY", "occupé"),
+        ] {
+            let error = UiError::from(ClientError::Api {
+                status: reqwest::StatusCode::CONFLICT,
+                code: code.into(),
+            });
+            assert_eq!(error.code, code);
+            assert!(error.message.contains(text));
+        }
+    }
+    #[test]
+    fn failed_profile_switch_preserves_displayed_context_and_last_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut client = UiClient::open(dir.path()).unwrap();
+        let a = uuid::Uuid::new_v4().to_string();
+        let b = uuid::Uuid::new_v4().to_string();
+        let transport = Transport::new(
+            ServerEndpoint::parse("server", "https://127.0.0.1:1").unwrap(),
+            client.trust.clone(),
+            Some(Duration::from_millis(1)),
+        )
+        .unwrap();
+        client
+            .settings
+            .last_profiles
+            .insert("server".into(), a.clone());
+        client.save().unwrap();
+        client.connected = Some(Connected {
+            address: "https://127.0.0.1:1/".into(),
+            id: "server".into(),
+            transport,
+            profiles: json!([{"id":a,"name":"A","revision":1},{"id":b,"name":"B","revision":1}]),
+            active: Some(a.clone()),
+            notice: None,
+        });
+        assert!(client.dispatch(UiCommand::SelectProfile { id: b }).is_err());
+        assert_eq!(client.profile().unwrap(), a);
+        assert_eq!(client.settings.last_profiles["server"], a);
+        let saved = UiClient::open(dir.path()).unwrap();
+        assert_eq!(saved.settings.last_profiles["server"], a);
+        // Also exercise failure after a successful prospective GET/view, at the
+        // persistence boundary, without a mock HTTP stack or production test hook.
+        client.connected.as_mut().unwrap().active = Some(uuid::Uuid::new_v4().to_string());
+        client.directory = dir.path().join("unavailable-settings-directory");
+        assert!(
+            client
+                .commit_selected_view(
+                    "server".into(),
+                    Some(a.clone()),
+                    Ok(json!({"stage":"connected"}))
+                )
+                .is_err()
+        );
+        assert_eq!(client.profile().unwrap(), a);
+        assert_eq!(client.settings.last_profiles["server"], a);
+        assert_eq!(
+            UiClient::open(dir.path()).unwrap().settings.last_profiles["server"],
+            a
+        );
+    }
     #[test]
     fn addresses_are_editable_but_not_arbitrary_urls() {
         assert_eq!(

@@ -47,6 +47,8 @@ pub enum ClientError {
     Io(#[from] io::Error),
     #[error("réponse HTTP inattendue: {0}")]
     Http(StatusCode),
+    #[error("opération serveur refusée: {code} ({status})")]
+    Api { status: StatusCode, code: String },
     #[error("réponse Range invalide: {0}")]
     InvalidRangeResponse(String),
     #[error("réponse JSON invalide: {0}")]
@@ -562,9 +564,7 @@ impl Transport {
             request = request.json(body);
         }
         let mut response = request.send().await?;
-        if !response.status().is_success() {
-            return Err(ClientError::Http(response.status()));
-        }
+        let status = response.status();
         const MAX_JSON: usize = 4 * 1024 * 1024;
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await? {
@@ -574,6 +574,9 @@ impl Transport {
                 ));
             }
             bytes.extend_from_slice(&chunk);
+        }
+        if !status.is_success() {
+            return Err(api_response_error(status, &bytes));
         }
         Ok(serde_json::from_slice(&bytes)?)
     }
@@ -693,6 +696,28 @@ impl Transport {
             total_size: Some(content_range.total),
             etag: response_etag,
         })
+    }
+}
+
+fn api_response_error(status: StatusCode, bytes: &[u8]) -> ClientError {
+    #[derive(Deserialize)]
+    struct Envelope {
+        code: String,
+    }
+    match serde_json::from_slice::<Envelope>(bytes) {
+        Ok(envelope)
+            if envelope.code.len() <= 80
+                && envelope
+                    .code
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_') =>
+        {
+            ClientError::Api {
+                status,
+                code: envelope.code,
+            }
+        }
+        _ => ClientError::Http(status),
     }
 }
 
@@ -817,6 +842,16 @@ mod tests {
         assert!(super::Transport::new(endpoint, trust, None).is_ok());
     }
     use super::*;
+    #[test]
+    fn api_errors_keep_only_bounded_safe_codes_not_server_details() {
+        assert!(
+            matches!(api_response_error(StatusCode::NOT_FOUND, br#"{"code":"MEDIA_NOT_FOUND","message":"/nas/private"}"#), ClientError::Api {code, ..} if code == "MEDIA_NOT_FOUND")
+        );
+        assert!(matches!(
+            api_response_error(StatusCode::BAD_REQUEST, br#"{"code":"/nas/private"}"#),
+            ClientError::Http(_)
+        ));
+    }
 
     fn certificate_for(host: &str) -> PresentedCertificate {
         let generated = rcgen::generate_simple_self_signed(vec![host.to_owned()]).unwrap();

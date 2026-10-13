@@ -11,7 +11,7 @@ async function run(command, update=true) {
   finally{busy=false;document.body.removeAttribute("aria-busy");document.querySelectorAll("button,input,select").forEach(n=>n.disabled=false);pager();}
 }
 function render(){
-  if(state.notice)message(state.notice);
+  $("connection-notice").textContent=state.notice||"";$("connection-notice").hidden=!state.notice;
   for(const id of ["server-panel","trust-panel","profile-panel","catalog-panel"])$(id).hidden=true;
   const connected=state.stage==="connected";
   $("admin-toggle").hidden=!connected;$("server-switch").hidden=!connected;$("profile-switch").hidden=!connected||!(state.profiles?.length);
