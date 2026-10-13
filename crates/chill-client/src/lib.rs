@@ -45,6 +45,8 @@ pub enum ClientError {
     Io(#[from] io::Error),
     #[error("réponse HTTP inattendue: {0}")]
     Http(StatusCode),
+    #[error("réponse Range invalide: {0}")]
+    InvalidRangeResponse(String),
     #[error("réponse JSON invalide: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -635,22 +637,29 @@ impl Transport {
                 "le contenu média a changé pendant la lecture".into(),
             ));
         }
-        let total_size = response
+        let content_range_value = response
             .headers()
             .get(header::CONTENT_RANGE)
             .and_then(|value| value.to_str().ok())
-            .and_then(parse_content_range_total);
+            .ok_or_else(|| {
+                ClientError::InvalidRangeResponse("en-tête Content-Range absent".into())
+            })?;
+        let content_range = validate_content_range(content_range_value, start, end)?;
+        let expected_length = expected_range_body_length(content_range, response.content_length())?;
         let mut bytes_read = 0;
-        while bytes_read < buffer.len() {
-            let count = io::Read::read(&mut response, &mut buffer[bytes_read..])?;
+        while bytes_read < expected_length {
+            let count = io::Read::read(&mut response, &mut buffer[bytes_read..expected_length])?;
             if count == 0 {
                 break;
             }
             bytes_read += count;
         }
+        let mut extra = [0_u8; 1];
+        let has_extra = io::Read::read(&mut response, &mut extra)? != 0;
+        validate_range_body_length(expected_length, bytes_read, has_extra)?;
         Ok(RangeRead {
             bytes_read,
-            total_size,
+            total_size: Some(content_range.total),
             etag: response_etag,
         })
     }
@@ -671,8 +680,101 @@ pub struct RangeRead {
     pub etag: Option<String>,
 }
 
-fn parse_content_range_total(value: &str) -> Option<u64> {
-    value.rsplit_once('/')?.1.parse().ok()
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ContentRange {
+    start: u64,
+    end: u64,
+    total: u64,
+}
+
+impl ContentRange {
+    fn length(self) -> Result<u64, ClientError> {
+        self.end
+            .checked_sub(self.start)
+            .and_then(|length| length.checked_add(1))
+            .ok_or_else(|| ClientError::InvalidRangeResponse("bornes incohérentes".into()))
+    }
+}
+
+fn validate_content_range(
+    value: &str,
+    requested_start: u64,
+    requested_end: u64,
+) -> Result<ContentRange, ClientError> {
+    let (unit, remainder) = value
+        .split_once(' ')
+        .ok_or_else(|| ClientError::InvalidRangeResponse("format Content-Range invalide".into()))?;
+    if unit != "bytes" {
+        return Err(ClientError::InvalidRangeResponse(
+            "unité Content-Range différente de bytes".into(),
+        ));
+    }
+    let (bounds, total) = remainder
+        .split_once('/')
+        .ok_or_else(|| ClientError::InvalidRangeResponse("total Content-Range absent".into()))?;
+    if total.contains('/') || bounds == "*" || total == "*" {
+        return Err(ClientError::InvalidRangeResponse(
+            "plage ou total Content-Range indéterminé".into(),
+        ));
+    }
+    let (start, end) = bounds
+        .split_once('-')
+        .ok_or_else(|| ClientError::InvalidRangeResponse("bornes Content-Range absentes".into()))?;
+    let parsed = ContentRange {
+        start: start.parse().map_err(|_| {
+            ClientError::InvalidRangeResponse("début Content-Range invalide".into())
+        })?,
+        end: end
+            .parse()
+            .map_err(|_| ClientError::InvalidRangeResponse("fin Content-Range invalide".into()))?,
+        total: total.parse().map_err(|_| {
+            ClientError::InvalidRangeResponse("total Content-Range invalide".into())
+        })?,
+    };
+    if parsed.start != requested_start
+        || parsed.end < parsed.start
+        || parsed.end > requested_end
+        || parsed.end >= parsed.total
+    {
+        return Err(ClientError::InvalidRangeResponse(
+            "plage retournée différente de la plage demandée".into(),
+        ));
+    }
+    parsed.length()?;
+    Ok(parsed)
+}
+
+fn expected_range_body_length(
+    range: ContentRange,
+    declared_length: Option<u64>,
+) -> Result<usize, ClientError> {
+    let expected = range.length()?;
+    if declared_length.is_some_and(|length| length != expected) {
+        return Err(ClientError::InvalidRangeResponse(
+            "Content-Length ne correspond pas à Content-Range".into(),
+        ));
+    }
+    usize::try_from(expected).map_err(|_| {
+        ClientError::InvalidRangeResponse("plage trop grande pour cette plateforme".into())
+    })
+}
+
+fn validate_range_body_length(
+    expected: usize,
+    observed: usize,
+    has_extra: bool,
+) -> Result<(), ClientError> {
+    if observed != expected {
+        return Err(ClientError::InvalidRangeResponse(
+            "corps tronqué par rapport à Content-Range".into(),
+        ));
+    }
+    if has_extra {
+        return Err(ClientError::InvalidRangeResponse(
+            "corps plus long que Content-Range".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -723,9 +825,36 @@ mod tests {
     }
 
     #[test]
-    fn content_range_extracts_total() {
-        assert_eq!(parse_content_range_total("bytes 0-9/42"), Some(42));
-        assert_eq!(parse_content_range_total("bytes */42"), Some(42));
+    fn content_range_must_match_requested_interval() {
+        assert_eq!(
+            validate_content_range("bytes 10-19/42", 10, 19).unwrap(),
+            ContentRange {
+                start: 10,
+                end: 19,
+                total: 42
+            }
+        );
+        assert!(validate_content_range("items 10-19/42", 10, 19).is_err());
+        assert!(validate_content_range("bytes 9-19/42", 10, 19).is_err());
+        assert!(validate_content_range("bytes 10-20/42", 10, 19).is_err());
+        assert!(validate_content_range("bytes 10-9/42", 10, 19).is_err());
+        assert!(validate_content_range("bytes 10-19/19", 10, 19).is_err());
+        assert!(validate_content_range("bytes */42", 10, 19).is_err());
+        assert!(validate_content_range("bytes 10-19/*", 10, 19).is_err());
+    }
+
+    #[test]
+    fn content_range_body_must_be_exactly_the_declared_length() {
+        let range = ContentRange {
+            start: 10,
+            end: 19,
+            total: 42,
+        };
+        assert_eq!(expected_range_body_length(range, Some(10)).unwrap(), 10);
+        assert!(expected_range_body_length(range, Some(9)).is_err());
+        assert!(validate_range_body_length(10, 9, false).is_err());
+        assert!(validate_range_body_length(10, 10, true).is_err());
+        assert!(validate_range_body_length(10, 10, false).is_ok());
     }
 
     #[test]

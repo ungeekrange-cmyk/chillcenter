@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char, c_double, c_int, c_void};
 use std::path::{Path, PathBuf};
 use std::ptr::{self, NonNull};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, RwLock};
@@ -19,6 +20,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 const MPV_ERROR_LOADING_FAILED: i32 = -13;
+const MAX_STREAM_READ_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum PlayerError {
@@ -26,7 +28,7 @@ pub enum PlayerError {
     LibraryNotFound,
     #[error("symbole libmpv absent: {0}")]
     MissingSymbol(String),
-    #[error("API client libmpv {major}.{minor} trop ancienne (minimum 1.106)")]
+    #[error("API client libmpv {major}.{minor} trop ancienne (minimum 2.0)")]
     UnsupportedApi { major: u64, minor: u64 },
     #[error("libmpv a refusé l'opération ({0})")]
     Mpv(i32),
@@ -196,8 +198,7 @@ impl MediaFactory for HttpMediaFactory {
             ));
         }
         Ok(Box::new(HttpMediaSource {
-            transport: self.transport.clone(),
-            playback: active,
+            worker: HttpReadWorker::start(self.transport.clone(), active)?,
             etag: None,
             size: None,
         }))
@@ -205,10 +206,75 @@ impl MediaFactory for HttpMediaFactory {
 }
 
 struct HttpMediaSource {
-    transport: Transport,
-    playback: PlaybackStream,
+    worker: HttpReadWorker,
     etag: Option<String>,
     size: Option<u64>,
+}
+
+enum HttpReadCommand {
+    Read {
+        offset: u64,
+        length: usize,
+        etag: Option<String>,
+        response: mpsc::SyncSender<(Result<chill_client::RangeRead, ClientError>, Vec<u8>)>,
+    },
+    Shutdown,
+}
+
+struct HttpReadWorker {
+    sender: mpsc::SyncSender<HttpReadCommand>,
+    join: Option<thread::JoinHandle<()>>,
+}
+
+impl HttpReadWorker {
+    fn start(transport: Transport, playback: PlaybackStream) -> Result<Self, PlayerError> {
+        let (sender, receiver) = mpsc::sync_channel(0);
+        let (ready_sender, ready_receiver) = mpsc::sync_channel(0);
+        let join = thread::Builder::new()
+            .name("chill-media-read".into())
+            .spawn(move || {
+                let _ = ready_sender.send(());
+                while let Ok(command) = receiver.recv() {
+                    match command {
+                        HttpReadCommand::Read {
+                            offset,
+                            length,
+                            etag,
+                            response,
+                        } => {
+                            let mut bytes = vec![0; length];
+                            let result = transport.read_media_range_blocking(
+                                &playback.media_id,
+                                &playback.session_id,
+                                playback.generation,
+                                offset,
+                                &mut bytes,
+                                etag.as_deref(),
+                            );
+                            let _ = response.send((result, bytes));
+                        }
+                        HttpReadCommand::Shutdown => break,
+                    }
+                }
+            })
+            .map_err(|error| PlayerError::Stream(error.to_string()))?;
+        ready_receiver
+            .recv()
+            .map_err(|_| PlayerError::Stream("worker HTTP non démarré".into()))?;
+        Ok(Self {
+            sender,
+            join: Some(join),
+        })
+    }
+}
+
+impl Drop for HttpReadWorker {
+    fn drop(&mut self) {
+        let _ = self.sender.send(HttpReadCommand::Shutdown);
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
 }
 
 impl MediaSource for HttpMediaSource {
@@ -221,26 +287,27 @@ impl MediaSource for HttpMediaSource {
         if cancellation.is_cancelled() {
             return Err(PlayerError::Stream("lecture annulée".into()));
         }
-        // A reqwest blocking body cannot be interrupted externally. Keep it
-        // on a bounded worker so libmpv's cancel callback wakes this callback;
-        // the worker owns its state and exits no later than Transport's timeout.
-        let transport = self.transport.clone();
-        let playback = self.playback.clone();
-        let etag = self.etag.clone();
-        let length = buffer.len();
+        // Exactly one worker and no queued request exist per open stream. A
+        // cancelled reqwest request may live until Transport's timeout, but
+        // repeated seeks cannot accumulate threads or request buffers.
+        let length = capped_stream_read_length(buffer.len());
         let (sender, receiver) = mpsc::sync_channel(1);
-        thread::spawn(move || {
-            let mut bytes = vec![0; length];
-            let result = transport.read_media_range_blocking(
-                &playback.media_id,
-                &playback.session_id,
-                playback.generation,
+        self.worker
+            .sender
+            .try_send(HttpReadCommand::Read {
                 offset,
-                &mut bytes,
-                etag.as_deref(),
-            );
-            let _ = sender.send((result, bytes));
-        });
+                length,
+                etag: self.etag.clone(),
+                response: sender,
+            })
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => {
+                    PlayerError::Stream("une lecture HTTP précédente est encore active".into())
+                }
+                mpsc::TrySendError::Disconnected(_) => {
+                    PlayerError::Stream("worker HTTP interrompu".into())
+                }
+            })?;
         let (read, bytes) = loop {
             if cancellation.is_cancelled() {
                 return Err(PlayerError::Stream("lecture annulée".into()));
@@ -312,6 +379,8 @@ struct MpvRenderParam {
 }
 #[repr(C)]
 struct MpvOpenGlInitParams {
+    // API 2.x layout from mpv 0.41 render_gl.h. Supporting 1.x would require
+    // the removed trailing `extra_exts` field, so Player rejects API < 2.0.
     get_proc_address: GetProcAddress,
     get_proc_address_ctx: *mut c_void,
 }
@@ -365,11 +434,15 @@ struct StreamCookie {
 }
 
 pub struct Player {
+    core: Rc<PlayerCore>,
+    native_window: Option<NativeWindowHandle>,
+}
+
+struct PlayerCore {
     handle: NonNull<MpvHandle>,
     api: Api,
     _library: Library,
-    registries: Vec<*const Registry>,
-    native_window: Option<NativeWindowHandle>,
+    registries: Mutex<Vec<usize>>,
 }
 
 impl Player {
@@ -380,7 +453,7 @@ impl Player {
             let api_version: MpvClientApiVersion = symbol(&library, b"mpv_client_api_version\0")?;
             let version = api_version();
             let (major, minor) = (version >> 16, version & 0xffff);
-            if major < 1 || (major == 1 && minor < 106) {
+            if !supported_client_api(version) {
                 return Err(PlayerError::UnsupportedApi { major, minor });
             }
             let api = Api {
@@ -398,11 +471,14 @@ impl Player {
                 render_context_free: optional_symbol(&library, b"mpv_render_context_free\0"),
             };
             let handle = NonNull::new(create()).ok_or(PlayerError::Mpv(-2))?;
-            let player = Self {
+            let core = Rc::new(PlayerCore {
                 handle,
                 api,
                 _library: library,
-                registries: Vec::new(),
+                registries: Mutex::new(Vec::new()),
+            });
+            let player = Self {
+                core,
                 native_window: options.native_window,
             };
             player.set_option("terminal", "no")?;
@@ -456,8 +532,8 @@ impl Player {
         let scheme = CString::new(scheme).map_err(|_| PlayerError::InvalidCString)?;
         let raw = Arc::into_raw(Arc::new(Registry { factory }));
         let result = unsafe {
-            (self.api.stream_cb_add_ro)(
-                self.handle.as_ptr(),
+            (self.core.api.stream_cb_add_ro)(
+                self.core.handle.as_ptr(),
                 scheme.as_ptr(),
                 raw.cast_mut().cast(),
                 open_callback,
@@ -469,7 +545,11 @@ impl Player {
             }
             return Err(PlayerError::Mpv(result));
         }
-        self.registries.push(raw);
+        self.core
+            .registries
+            .lock()
+            .expect("registry lock poisoned")
+            .push(raw as usize);
         Ok(())
     }
 
@@ -557,7 +637,8 @@ impl Player {
     }
 
     pub fn poll_event(&self, timeout: Duration) -> PlayerEvent {
-        let pointer = unsafe { (self.api.wait_event)(self.handle.as_ptr(), timeout.as_secs_f64()) };
+        let pointer =
+            unsafe { (self.core.api.wait_event)(self.core.handle.as_ptr(), timeout.as_secs_f64()) };
         if pointer.is_null() {
             return PlayerEvent::None;
         }
@@ -596,14 +677,17 @@ impl Player {
         F: Fn(&CStr) -> *mut c_void + Send + Sync + 'static,
     {
         let create = self
+            .core
             .api
             .render_context_create
             .ok_or(PlayerError::RenderApiUnavailable)?;
         let render = self
+            .core
             .api
             .render_context_render
             .ok_or(PlayerError::RenderApiUnavailable)?;
         let free = self
+            .core
             .api
             .render_context_free
             .ok_or(PlayerError::RenderApiUnavailable)?;
@@ -629,7 +713,8 @@ impl Player {
             },
         ];
         let mut context = ptr::null_mut();
-        let result = unsafe { create(&mut context, self.handle.as_ptr(), params.as_mut_ptr()) };
+        let result =
+            unsafe { create(&mut context, self.core.handle.as_ptr(), params.as_mut_ptr()) };
         if result < 0 || context.is_null() {
             unsafe {
                 drop(Arc::from_raw(resolver_raw));
@@ -641,23 +726,40 @@ impl Player {
             render,
             free,
             resolver: resolver_raw,
+            _core: self.core.clone(),
         })
     }
 
     fn set_option(&self, name: &str, value: &str) -> Result<(), PlayerError> {
-        unsafe { call_string_pair(self.handle, self.api.set_option_string, name, value) }
+        unsafe {
+            call_string_pair(
+                self.core.handle,
+                self.core.api.set_option_string,
+                name,
+                value,
+            )
+        }
     }
     fn set_property(&self, name: &str, value: &str) -> Result<(), PlayerError> {
-        unsafe { call_string_pair(self.handle, self.api.set_property_string, name, value) }
+        unsafe {
+            call_string_pair(
+                self.core.handle,
+                self.core.api.set_property_string,
+                name,
+                value,
+            )
+        }
     }
     fn property(&self, name: &str) -> Result<Option<String>, PlayerError> {
         let name = CString::new(name).map_err(|_| PlayerError::InvalidCString)?;
-        let raw = unsafe { (self.api.get_property_string)(self.handle.as_ptr(), name.as_ptr()) };
+        let raw = unsafe {
+            (self.core.api.get_property_string)(self.core.handle.as_ptr(), name.as_ptr())
+        };
         if raw.is_null() {
             return Ok(None);
         }
         let value = unsafe { CStr::from_ptr(raw).to_string_lossy().into_owned() };
-        unsafe { (self.api.free)(raw.cast()) };
+        unsafe { (self.core.api.free)(raw.cast()) };
         Ok(Some(value))
     }
     fn command(&self, parts: &[&str]) -> Result<(), PlayerError> {
@@ -667,18 +769,23 @@ impl Player {
             .collect::<Result<Vec<_>, _>>()?;
         let mut pointers = strings.iter().map(|part| part.as_ptr()).collect::<Vec<_>>();
         pointers.push(ptr::null());
-        check(unsafe { (self.api.command)(self.handle.as_ptr(), pointers.as_ptr()) })
+        check(unsafe { (self.core.api.command)(self.core.handle.as_ptr(), pointers.as_ptr()) })
     }
 }
 
-impl Drop for Player {
+impl Drop for PlayerCore {
     fn drop(&mut self) {
         unsafe {
             (self.api.terminate_destroy)(self.handle.as_ptr());
         }
-        for registry in self.registries.drain(..) {
+        for registry in self
+            .registries
+            .get_mut()
+            .expect("registry lock poisoned")
+            .drain(..)
+        {
             unsafe {
-                drop(Arc::from_raw(registry));
+                drop(Arc::from_raw(registry as *const Registry));
             }
         }
     }
@@ -692,6 +799,7 @@ pub struct OpenGlRenderer {
     render: MpvRenderContextRender,
     free: MpvRenderContextFree,
     resolver: *const GlResolver,
+    _core: Rc<PlayerCore>,
 }
 
 impl OpenGlRenderer {
@@ -865,6 +973,12 @@ fn check(result: i32) -> Result<(), PlayerError> {
         Ok(())
     }
 }
+fn supported_client_api(version: u64) -> bool {
+    version >> 16 >= 2
+}
+fn capped_stream_read_length(requested: usize) -> usize {
+    requested.min(MAX_STREAM_READ_BYTES)
+}
 fn property_bool(value: Option<String>) -> bool {
     matches!(value.as_deref(), Some("yes" | "true" | "1"))
 }
@@ -929,6 +1043,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::process::Command;
+    use std::sync::atomic::AtomicUsize;
     use std::thread;
     use std::time::Instant;
 
@@ -983,6 +1098,130 @@ mod tests {
         let player =
             Player::new(PlayerOptions::default()).expect("installed libmpv should initialize");
         assert!(player.decoder().is_ok());
+    }
+
+    #[test]
+    fn client_api_requires_the_two_field_opengl_abi() {
+        assert!(!supported_client_api((1 << 16) | 106));
+        assert!(supported_client_api(2 << 16));
+        assert!(supported_client_api((2 << 16) | 5));
+    }
+
+    #[test]
+    fn stream_callback_request_allocation_is_capped() {
+        assert_eq!(capped_stream_read_length(4096), 4096);
+        assert_eq!(
+            capped_stream_read_length(MAX_STREAM_READ_BYTES * 4),
+            MAX_STREAM_READ_BYTES
+        );
+    }
+
+    static DROP_STAGE: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe extern "C" fn fake_initialize(_: *mut MpvHandle) -> c_int {
+        0
+    }
+    unsafe extern "C" fn fake_terminate(_: *mut MpvHandle) {
+        assert_eq!(
+            DROP_STAGE.load(Ordering::SeqCst),
+            1,
+            "core destroyed before renderer"
+        );
+        DROP_STAGE.store(2, Ordering::SeqCst);
+    }
+    unsafe extern "C" fn fake_set(_: *mut MpvHandle, _: *const c_char, _: *const c_char) -> c_int {
+        0
+    }
+    unsafe extern "C" fn fake_get(_: *mut MpvHandle, _: *const c_char) -> *mut c_char {
+        ptr::null_mut()
+    }
+    unsafe extern "C" fn fake_command(_: *mut MpvHandle, _: *const *const c_char) -> c_int {
+        0
+    }
+    unsafe extern "C" fn fake_wait(_: *mut MpvHandle, _: c_double) -> *const MpvEvent {
+        ptr::null()
+    }
+    unsafe extern "C" fn fake_free(_: *mut c_void) {}
+    unsafe extern "C" fn fake_stream(
+        _: *mut MpvHandle,
+        _: *const c_char,
+        _: *mut c_void,
+        _: OpenFn,
+    ) -> c_int {
+        0
+    }
+    unsafe extern "C" fn fake_render(_: *mut MpvRenderContext, _: *mut MpvRenderParam) -> c_int {
+        assert_eq!(
+            DROP_STAGE.load(Ordering::SeqCst),
+            0,
+            "render used after core destruction"
+        );
+        0
+    }
+    unsafe extern "C" fn fake_render_free(_: *mut MpvRenderContext) {
+        assert_eq!(
+            DROP_STAGE.load(Ordering::SeqCst),
+            0,
+            "renderer freed after core destruction"
+        );
+        DROP_STAGE.store(1, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn renderer_keeps_core_and_library_alive_until_renderer_drop() {
+        let Ok((library, _)) = load_library() else {
+            return;
+        };
+        DROP_STAGE.store(0, Ordering::SeqCst);
+        let core = Rc::new(PlayerCore {
+            handle: NonNull::dangling(),
+            api: Api {
+                initialize: fake_initialize,
+                terminate_destroy: fake_terminate,
+                set_option_string: fake_set,
+                set_property_string: fake_set,
+                get_property_string: fake_get,
+                command: fake_command,
+                wait_event: fake_wait,
+                free: fake_free,
+                stream_cb_add_ro: fake_stream,
+                render_context_create: None,
+                render_context_render: Some(fake_render),
+                render_context_free: Some(fake_render_free),
+            },
+            _library: library,
+            registries: Mutex::new(Vec::new()),
+        });
+        let player = Player {
+            core: core.clone(),
+            native_window: None,
+        };
+        let resolver = Arc::into_raw(Arc::new(GlResolver {
+            callback: Box::new(|_| ptr::null_mut()),
+        }));
+        let mut renderer = OpenGlRenderer {
+            context: NonNull::dangling(),
+            render: fake_render,
+            free: fake_render_free,
+            resolver,
+            _core: core.clone(),
+        };
+        drop(core);
+        drop(player);
+        assert_eq!(DROP_STAGE.load(Ordering::SeqCst), 0);
+        renderer
+            .render(
+                &mut OpenGlFramebuffer {
+                    fbo: 0,
+                    width: 1,
+                    height: 1,
+                    internal_format: 0,
+                },
+                false,
+            )
+            .unwrap();
+        drop(renderer);
+        assert_eq!(DROP_STAGE.load(Ordering::SeqCst), 2);
     }
 
     struct MemoryFactory(Vec<u8>);
