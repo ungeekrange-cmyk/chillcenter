@@ -89,6 +89,55 @@ pub struct PlaybackGrant {
     pub personal: PersonalState,
 }
 
+/// A validated successor requested for a lease held by another device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransferProposal {
+    pub target: AcquirePlayback,
+}
+
+/// Short-lived confirmation capability.  It is bound to the active lease
+/// generation rather than being a reusable playback credential.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransferOffer {
+    pub token: String,
+    pub active: Lease,
+    pub expires_in_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransferConfirmation {
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TransferPhase {
+    AwaitingAck,
+    Activated,
+    Expired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransferStatus {
+    pub token: String,
+    pub phase: TransferPhase,
+    pub remaining_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease: Option<Lease>,
+}
+
+/// The sole final progress event accepted from the old generation while a
+/// confirmed transfer is waiting for it to pause.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransferAck {
+    pub token: String,
+    pub lease: PlaybackControl,
+    pub progress: Progress,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaybackInfo {
     pub media: chill_catalog::model::Media,

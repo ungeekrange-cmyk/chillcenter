@@ -11,7 +11,7 @@ use axum::{
 };
 use chill_domain::{
     AcquirePlayback, Lease, PersonalState, PlaybackControl, PlaybackGrant, Progress,
-    ReleasePlayback, valid_speed,
+    ReleasePlayback, TransferAck, TransferOffer, TransferPhase, TransferStatus, valid_speed,
 };
 use std::{
     collections::BTreeMap,
@@ -22,6 +22,10 @@ use std::{
 use tokio::sync::Semaphore;
 
 const LEASE_TIME: Duration = Duration::from_secs(30);
+#[allow(dead_code)]
+const TRANSFER_OFFER_TIME: Duration = Duration::from_secs(120);
+#[allow(dead_code)]
+const MAX_TRANSFER_TOKENS: usize = 6;
 const MAX_ACTIVE_PROFILES: usize = 3;
 type Failure = &'static str;
 
@@ -56,18 +60,43 @@ struct Entry {
     deadline: Instant,
     sequence: u64,
     sample: Option<(Progress, Instant)>,
+    pending: Option<PendingTransfer>,
+}
+#[allow(dead_code)]
+#[derive(Clone)]
+struct PendingTransfer {
+    token: String,
+    target: AcquirePlayback,
+    stream: StreamLease,
+    deadline: Instant,
+    acknowledged: bool,
+}
+#[allow(dead_code)]
+#[derive(Clone)]
+struct Offer {
+    profile: String,
+    generation: u64,
+    target: AcquirePlayback,
+    stream: StreamLease,
+    expires: Instant,
 }
 struct LeaseBook {
     epoch: String,
     generation: u64,
     entries: BTreeMap<String, Entry>,
+    offers: BTreeMap<String, Offer>,
+    #[allow(dead_code)]
+    completed: BTreeMap<String, TransferStatus>,
 }
+#[allow(dead_code)]
 impl LeaseBook {
     fn new() -> Self {
         Self {
             epoch: uuid::Uuid::new_v4().to_string(),
             generation: 0,
             entries: BTreeMap::new(),
+            offers: BTreeMap::new(),
+            completed: BTreeMap::new(),
         }
     }
     fn acquire(
@@ -78,6 +107,7 @@ impl LeaseBook {
         now: Instant,
     ) -> Result<Lease, Failure> {
         self.entries.retain(|_, e| now < e.deadline);
+        self.offers.retain(|_, offer| now < offer.expires);
         if self.entries.contains_key(&profile) {
             return Err("PLAYBACK_ACTIVE");
         }
@@ -113,11 +143,17 @@ impl LeaseBook {
                 deadline: now + LEASE_TIME,
                 sequence: 0,
                 sample: None,
+                pending: None,
             },
         );
         Ok(lease)
     }
-    fn entry(&self, profile: &str, c: &PlaybackControl, now: Instant) -> Result<&Entry, Failure> {
+    fn entry_current(
+        &self,
+        profile: &str,
+        c: &PlaybackControl,
+        now: Instant,
+    ) -> Result<&Entry, Failure> {
         let e = self.entries.get(profile).ok_or("LEASE_INVALID")?;
         if now >= e.deadline
             || e.lease.session_id != c.session_id
@@ -128,6 +164,13 @@ impl LeaseBook {
             return Err("LEASE_INVALID");
         }
         Ok(e)
+    }
+    fn entry(&self, profile: &str, c: &PlaybackControl, now: Instant) -> Result<&Entry, Failure> {
+        let entry = self.entry_current(profile, c, now)?;
+        if entry.pending.is_some() {
+            return Err("TRANSFER_PENDING");
+        }
+        Ok(entry)
     }
     fn heartbeat(&mut self, p: &str, c: &PlaybackControl, now: Instant) -> Result<Lease, Failure> {
         self.entry(p, c, now)?;
@@ -143,7 +186,20 @@ impl LeaseBook {
         event: &Progress,
         now: Instant,
     ) -> Result<Duration, Failure> {
-        let e = self.entry(p, &control(event), now)?;
+        self.validate_progress_with_pending(p, event, now, false)
+    }
+    fn validate_progress_with_pending(
+        &self,
+        p: &str,
+        event: &Progress,
+        now: Instant,
+        allow_pending: bool,
+    ) -> Result<Duration, Failure> {
+        let e = if allow_pending {
+            self.entry_current(p, &control(event), now)?
+        } else {
+            self.entry(p, &control(event), now)?
+        };
         if event.sequence <= e.sequence
             || event.sequence > i64::MAX as u64
             || event.duration_ms == 0
@@ -191,6 +247,170 @@ impl LeaseBook {
             e.sample = Some((event, now));
         }
     }
+
+    fn offer(
+        &mut self,
+        profile: &str,
+        target: AcquirePlayback,
+        stream: StreamLease,
+        now: Instant,
+    ) -> Result<TransferOffer, Failure> {
+        self.offers.retain(|_, offer| now < offer.expires);
+        let active = self.entries.get(profile).ok_or("LEASE_INVALID")?;
+        if now >= active.deadline || active.pending.is_some() {
+            return Err("PLAYBACK_ACTIVE");
+        }
+        if self.offers.len() >= MAX_TRANSFER_TOKENS {
+            return Err("TRANSFER_CAPACITY");
+        }
+        let token = uuid::Uuid::new_v4().to_string();
+        self.offers.insert(
+            token.clone(),
+            Offer {
+                profile: profile.into(),
+                generation: active.lease.generation,
+                target: target.clone(),
+                stream,
+                expires: now + TRANSFER_OFFER_TIME,
+            },
+        );
+        Ok(TransferOffer {
+            token,
+            active: active.lease.clone(),
+            expires_in_ms: TRANSFER_OFFER_TIME.as_millis() as u64,
+        })
+    }
+
+    fn confirm(&mut self, token: &str, now: Instant) -> Result<TransferStatus, Failure> {
+        let offer = self.offers.remove(token).ok_or("TRANSFER_INVALID")?;
+        if now >= offer.expires {
+            return Err("TRANSFER_INVALID");
+        }
+        let entry = self
+            .entries
+            .get_mut(&offer.profile)
+            .ok_or("LEASE_INVALID")?;
+        if now >= entry.deadline
+            || entry.lease.generation != offer.generation
+            || entry.pending.is_some()
+        {
+            return Err("TRANSFER_INVALID");
+        }
+        let deadline = entry.deadline;
+        entry.lease.transferring = true;
+        entry.lease.remaining_ms = deadline.saturating_duration_since(now).as_millis() as u64;
+        entry.pending = Some(PendingTransfer {
+            token: token.into(),
+            target: offer.target,
+            stream: offer.stream,
+            deadline,
+            acknowledged: false,
+        });
+        self.offers
+            .retain(|_, o| o.profile != offer.profile || o.generation != offer.generation);
+        Ok(TransferStatus {
+            token: token.into(),
+            phase: TransferPhase::AwaitingAck,
+            remaining_ms: deadline.saturating_duration_since(now).as_millis() as u64,
+            lease: None,
+        })
+    }
+
+    fn ack(&mut self, profile: &str, ack: &TransferAck, now: Instant) -> Result<Progress, Failure> {
+        let entry = self.entry_current(profile, &ack.lease, now)?;
+        let pending = entry.pending.as_ref().ok_or("TRANSFER_INVALID")?;
+        if pending.token != ack.token || pending.acknowledged || now >= pending.deadline {
+            return Err("TRANSFER_INVALID");
+        }
+        // The final ACK preserves the normal sequence/media/range validation.
+        self.validate_progress_with_pending(profile, &ack.progress, now, true)?;
+        let pending = self
+            .entries
+            .get_mut(profile)
+            .and_then(|e| e.pending.as_mut())
+            .expect("checked pending");
+        pending.acknowledged = true;
+        Ok(ack.progress.clone())
+    }
+
+    fn abort_ack(&mut self, token: &str) -> Result<(), Failure> {
+        let pending = self
+            .entries
+            .values_mut()
+            .find_map(|entry| entry.pending.as_mut().filter(|p| p.token == token))
+            .ok_or("TRANSFER_INVALID")?;
+        if !pending.acknowledged {
+            return Err("TRANSFER_INVALID");
+        }
+        pending.acknowledged = false;
+        Ok(())
+    }
+
+    fn activate(&mut self, token: &str, now: Instant) -> Result<Lease, Failure> {
+        let profile = self
+            .entries
+            .iter()
+            .find_map(|(profile, entry)| {
+                entry
+                    .pending
+                    .as_ref()
+                    .filter(|p| p.token == token)
+                    .map(|_| profile.clone())
+            })
+            .ok_or("TRANSFER_INVALID")?;
+        let entry = self
+            .entries
+            .get(&profile)
+            .expect("located pending transfer");
+        let pending = entry.pending.as_ref().expect("located pending transfer");
+        if !pending.acknowledged && now < pending.deadline {
+            return Err("TRANSFER_PENDING");
+        }
+        let pending = self
+            .entries
+            .remove(&profile)
+            .and_then(|e| e.pending)
+            .expect("located pending transfer");
+        // The predecessor may have expired, but the successor is nevertheless
+        // activated exactly once; consumers need not infer that from a timeout.
+        let phase = TransferPhase::Activated;
+        let lease = self.acquire(profile, pending.target, pending.stream, now)?;
+        self.completed.insert(
+            token.into(),
+            TransferStatus {
+                token: token.into(),
+                phase,
+                remaining_ms: lease.remaining_ms,
+                lease: Some(lease.clone()),
+            },
+        );
+        while self.completed.len() > MAX_TRANSFER_TOKENS {
+            let first = self.completed.keys().next().cloned().expect("nonempty");
+            self.completed.remove(&first);
+        }
+        Ok(lease)
+    }
+
+    fn status(&mut self, token: &str, now: Instant) -> Result<TransferStatus, Failure> {
+        if let Some(status) = self.completed.get(token) {
+            return Ok(status.clone());
+        }
+        let pending = self
+            .entries
+            .values()
+            .find_map(|entry| entry.pending.as_ref().filter(|p| p.token == token).cloned())
+            .ok_or("TRANSFER_INVALID")?;
+        if now >= pending.deadline {
+            self.activate(token, now)?;
+            return self.completed.get(token).cloned().ok_or("TRANSFER_INVALID");
+        }
+        Ok(TransferStatus {
+            token: token.into(),
+            phase: TransferPhase::AwaitingAck,
+            remaining_ms: pending.deadline.saturating_duration_since(now).as_millis() as u64,
+            lease: None,
+        })
+    }
 }
 fn control(event: &Progress) -> PlaybackControl {
     PlaybackControl {
@@ -203,7 +423,9 @@ fn control(event: &Progress) -> PlaybackControl {
 fn failure(code: Failure) -> ApiError {
     ApiError(
         match code {
-            "PLAYBACK_ACTIVE" | "LEASE_INVALID" => StatusCode::CONFLICT,
+            "PLAYBACK_ACTIVE" | "LEASE_INVALID" | "TRANSFER_PENDING" | "TRANSFER_INVALID" => {
+                StatusCode::CONFLICT
+            }
             "PLAYBACK_CAPACITY" | "MEDIA_BUSY" => StatusCode::SERVICE_UNAVAILABLE,
             "MEDIA_CHANGED" => StatusCode::PRECONDITION_FAILED,
             _ => StatusCode::UNPROCESSABLE_ENTITY,
@@ -250,14 +472,31 @@ impl PlaybackService {
                 e.lease.session_id == session
                     && e.lease.generation == generation
                     && e.lease.media_id == media
+                    && e.pending.is_none()
                     && Instant::now() < e.deadline
             })
             .map(|e| e.stream.clone())
             .ok_or(failure("LEASE_INVALID"))
     }
-    pub(crate) fn stream_lease_for_profile(&self, profile: &str, session: &str, generation: u64, media: &str) -> Result<StreamLease, ApiError> {
+    pub(crate) fn stream_lease_for_profile(
+        &self,
+        profile: &str,
+        session: &str,
+        generation: u64,
+        media: &str,
+    ) -> Result<StreamLease, ApiError> {
         let b = self.book.lock().map_err(|_| failure("MEDIA_BUSY"))?;
-        b.entries.get(profile).filter(|e| e.lease.session_id==session && e.lease.generation==generation && e.lease.media_id==media && Instant::now()<e.deadline).map(|e|e.stream.clone()).ok_or(failure("LEASE_INVALID"))
+        b.entries
+            .get(profile)
+            .filter(|e| {
+                e.lease.session_id == session
+                    && e.lease.generation == generation
+                    && e.lease.media_id == media
+                    && e.pending.is_none()
+                    && Instant::now() < e.deadline
+            })
+            .map(|e| e.stream.clone())
+            .ok_or(failure("LEASE_INVALID"))
     }
     pub(crate) fn check_stream(&self, s: &StreamLease) -> Result<(), ApiError> {
         self.stream_lease(&s.session, s.generation, &s.media)
@@ -268,6 +507,69 @@ impl PlaybackService {
             .lock()
             .map_err(|_| failure("MEDIA_BUSY"))?
             .validate_progress(p, e, Instant::now())
+            .map_err(failure)
+    }
+    /// `target` and `stream` must already have passed the same indexed-media
+    /// preflight as acquisition; this keeps a proposal bound to that exact file version.
+    #[allow(dead_code)]
+    pub(crate) fn propose_transfer(
+        &self,
+        profile: &str,
+        target: AcquirePlayback,
+        stream: StreamLease,
+    ) -> Result<TransferOffer, ApiError> {
+        self.book
+            .lock()
+            .map_err(|_| failure("MEDIA_BUSY"))?
+            .offer(profile, target, stream, Instant::now())
+            .map_err(failure)
+    }
+    #[allow(dead_code)]
+    pub(crate) fn confirm_transfer(&self, token: &str) -> Result<TransferStatus, ApiError> {
+        self.book
+            .lock()
+            .map_err(|_| failure("MEDIA_BUSY"))?
+            .confirm(token, Instant::now())
+            .map_err(failure)
+    }
+    #[allow(dead_code)]
+    pub(crate) fn transfer_status(&self, token: &str) -> Result<TransferStatus, ApiError> {
+        self.book
+            .lock()
+            .map_err(|_| failure("MEDIA_BUSY"))?
+            .status(token, Instant::now())
+            .map_err(failure)
+    }
+    /// The caller persists the returned final event in the serialized actor,
+    /// then invokes `activate_transfer` only after that persistence succeeds.
+    #[allow(dead_code)]
+    pub(crate) fn acknowledge_transfer(
+        &self,
+        profile: &str,
+        ack: &TransferAck,
+    ) -> Result<Progress, ApiError> {
+        self.book
+            .lock()
+            .map_err(|_| failure("MEDIA_BUSY"))?
+            .ack(profile, ack, Instant::now())
+            .map_err(failure)
+    }
+    /// Undo the ACK reservation when actor persistence fails, before returning
+    /// the failure to the client so that the one allowed final event can retry.
+    #[allow(dead_code)]
+    pub(crate) fn abort_transfer_ack(&self, token: &str) -> Result<(), ApiError> {
+        self.book
+            .lock()
+            .map_err(|_| failure("MEDIA_BUSY"))?
+            .abort_ack(token)
+            .map_err(failure)
+    }
+    #[allow(dead_code)]
+    pub(crate) fn activate_transfer(&self, token: &str) -> Result<Lease, ApiError> {
+        self.book
+            .lock()
+            .map_err(|_| failure("MEDIA_BUSY"))?
+            .activate(token, Instant::now())
             .map_err(failure)
     }
 }
@@ -726,6 +1028,114 @@ mod tests {
         assert!(
             b.validate_progress("p", &event(&l, 3, 100_000, 0), t + Duration::from_secs(10))
                 .is_ok()
+        );
+    }
+
+    #[test]
+    fn transfer_freezes_deadline_and_activates_once_after_it() {
+        let (mut b, t, request, stream) = prepared();
+        let old = b
+            .acquire("p".into(), request.clone(), stream.clone(), t)
+            .unwrap();
+        // A prior heartbeat makes the frozen deadline observably different
+        // from the original lease lifetime.
+        b.heartbeat("p", &ctrl(&old), t + Duration::from_secs(29))
+            .unwrap();
+        let offer = b
+            .offer("p", request, stream, t + Duration::from_secs(29))
+            .unwrap();
+        let waiting = b
+            .confirm(&offer.token, t + Duration::from_secs(29))
+            .unwrap();
+        assert_eq!(waiting.remaining_ms, 30_000);
+        assert_eq!(
+            b.heartbeat("p", &ctrl(&old), t + Duration::from_secs(30))
+                .unwrap_err(),
+            "TRANSFER_PENDING"
+        );
+        let status = b.status(&offer.token, t + Duration::from_secs(59)).unwrap();
+        let successor = status
+            .lease
+            .expect("successor activates at frozen deadline");
+        assert_eq!(status.phase, TransferPhase::Activated);
+        assert!(successor.generation > old.generation);
+        assert!(
+            b.entry("p", &ctrl(&old), t + Duration::from_secs(59))
+                .is_err()
+        );
+        assert_eq!(
+            b.status(&offer.token, t + Duration::from_secs(60))
+                .unwrap()
+                .lease
+                .unwrap()
+                .generation,
+            successor.generation
+        );
+    }
+
+    #[test]
+    fn transfer_ack_is_single_final_event_and_requires_current_generation() {
+        let (mut b, t, request, stream) = prepared();
+        let old = b
+            .acquire("p".into(), request.clone(), stream.clone(), t)
+            .unwrap();
+        let offer = b.offer("p", request, stream, t).unwrap();
+        b.confirm(&offer.token, t).unwrap();
+        let ack = TransferAck {
+            token: offer.token.clone(),
+            lease: ctrl(&old),
+            progress: event(&old, 1, 12_345, 0),
+        };
+        assert_eq!(
+            b.ack("p", &ack, t + Duration::from_secs(1))
+                .unwrap()
+                .position_ms,
+            12_345
+        );
+        assert_eq!(
+            b.ack("p", &ack, t + Duration::from_secs(1)).unwrap_err(),
+            "TRANSFER_INVALID"
+        );
+        let successor = b
+            .activate(&offer.token, t + Duration::from_secs(1))
+            .unwrap();
+        assert!(successor.generation > old.generation);
+        assert!(b.ack("p", &ack, t + Duration::from_secs(2)).is_err());
+    }
+
+    #[test]
+    fn offers_are_bounded_and_confirmation_isolated_by_profile() {
+        let (mut b, t, request, stream) = prepared();
+        let first = b
+            .acquire("a".into(), request.clone(), stream.clone(), t)
+            .unwrap();
+        let second = b
+            .acquire("b".into(), request.clone(), stream.clone(), t)
+            .unwrap();
+        let a = b.offer("a", request.clone(), stream.clone(), t).unwrap();
+        let b_offer = b.offer("b", request.clone(), stream.clone(), t).unwrap();
+        b.confirm(&a.token, t).unwrap();
+        // Confirming A removes only offers tied to A's generation.
+        assert!(b.confirm(&b_offer.token, t).is_ok());
+        assert_eq!(
+            b.heartbeat("a", &ctrl(&first), t).unwrap_err(),
+            "TRANSFER_PENDING"
+        );
+        assert_eq!(
+            b.heartbeat("b", &ctrl(&second), t).unwrap_err(),
+            "TRANSFER_PENDING"
+        );
+
+        let (mut bounded, at, r, s) = prepared();
+        let _ = bounded
+            .acquire("p".into(), r.clone(), s.clone(), at)
+            .unwrap();
+        for _ in 0..MAX_TRANSFER_TOKENS {
+            bounded.offer("p", r.clone(), s.clone(), at).unwrap();
+        }
+        assert_eq!(
+            bounded.offer("p", r, s, at).unwrap_err(),
+            "TRANSFER_CAPACITY"
         );
     }
 }
