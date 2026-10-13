@@ -24,6 +24,7 @@ struct Fixture {
     media: Vec<String>,
     root: PathBuf,
     bytes: Vec<u8>,
+    playback: crate::playback::PlaybackService,
 }
 async fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
@@ -57,8 +58,9 @@ async fn fixture() -> Fixture {
         })
         .await
         .unwrap();
+    let playback = crate::playback::PlaybackService::default();
     let state = AppState {
-        playback: Default::default(),
+        playback: playback.clone(),
         database: db,
         library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
         config: Arc::new(config),
@@ -72,6 +74,153 @@ async fn fixture() -> Fixture {
         media,
         root,
         bytes,
+        playback,
+    }
+}
+
+#[tokio::test]
+async fn release_reclaims_all_unpolled_stream_slots() {
+    let f = fixture().await;
+    let g = grant(&f, 0, 0).await;
+    let mut responses = Vec::new();
+    for _ in 0..8 {
+        responses.push(
+            f.app
+                .clone()
+                .oneshot(stream_request(&g, "bytes=0-"))
+                .await
+                .unwrap(),
+        );
+    }
+    assert_eq!(f.playback.streams.available_permits(), 0);
+    let release = ReleasePlayback {
+        lease: ctrl(&g),
+        progress: None,
+    };
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("/api/v1/profiles/{}/playback/release", f.profiles[0]),
+            serde_json::to_value(release).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    await_free_stream_slots(&f).await;
+    // Stale bodies must not resume after capacity has been returned.
+    for r in responses {
+        assert!(r.into_body().collect().await.is_err());
+    }
+}
+
+async fn await_free_stream_slots(f: &Fixture) {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while f.playback.streams.available_permits() != 8 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("capacity must recover without polling stale bodies");
+}
+
+#[tokio::test]
+async fn root_change_and_profile_deletion_reclaim_unpolled_streams() {
+    for delete in [false, true] {
+        let f = fixture().await;
+        let g = grant(&f, 0, 0).await;
+        let mut responses = Vec::new();
+        for _ in 0..8 {
+            responses.push(
+                f.app
+                    .clone()
+                    .oneshot(stream_request(&g, "bytes=0-"))
+                    .await
+                    .unwrap(),
+            );
+        }
+        assert_eq!(f.playback.streams.available_permits(), 0);
+        if delete {
+            let request = Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/v1/profiles/{}", f.profiles[0]))
+                .header("host", "localhost:8443")
+                .header("x-chill-confirm-delete", &f.profiles[0])
+                .body(Body::empty())
+                .unwrap();
+            assert_eq!(
+                f.app.clone().oneshot(request).await.unwrap().status(),
+                StatusCode::OK
+            );
+        } else {
+            assert_eq!(
+                json_reply(
+                    &f.app,
+                    "PUT",
+                    "/api/v1/admin/library",
+                    json!({"video_root":null,"expected_revision":0})
+                )
+                .await
+                .0,
+                StatusCode::OK
+            );
+        }
+        await_free_stream_slots(&f).await;
+        for r in responses {
+            assert!(r.into_body().collect().await.is_err());
+        }
+    }
+}
+
+#[tokio::test]
+async fn idle_streams_reclaim_capacity_even_if_the_lease_stays_active() {
+    let f = fixture().await;
+    let g = grant(&f, 0, 0).await;
+    let mut responses = Vec::new();
+    for _ in 0..8 {
+        responses.push(
+            f.app
+                .clone()
+                .oneshot(stream_request(&g, "bytes=0-"))
+                .await
+                .unwrap(),
+        );
+    }
+    assert_eq!(f.playback.streams.available_permits(), 0);
+    tokio::time::timeout(std::time::Duration::from_secs(7), async {
+        while f.playback.streams.available_permits() != 8 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("independent five-second idle deadline");
+    let path = format!("/api/v1/profiles/{}/playback/heartbeat", f.profiles[0]);
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &path,
+            serde_json::to_value(ctrl(&g)).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let other = grant(&f, 1, 0).await;
+    let r = f
+        .app
+        .clone()
+        .oneshot(stream_request(&other, "bytes=0-9"))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(
+        &r.into_body().collect().await.unwrap().to_bytes()[..],
+        &f.bytes[..10]
+    );
+    for r in responses {
+        assert!(r.into_body().collect().await.is_err());
     }
 }
 fn request(method: &str, path: &str, body: Value) -> Request<Body> {
@@ -108,6 +257,101 @@ async fn grant(f: &Fixture, p: usize, m: usize) -> PlaybackGrant {
     .await;
     assert_eq!(s, StatusCode::OK, "{v}");
     serde_json::from_value(v).unwrap()
+}
+
+#[tokio::test]
+async fn streaming_body_slots_are_bounded_and_released_on_disconnect() {
+    let f = fixture().await;
+    let g = grant(&f, 0, 0).await;
+    let mut responses = Vec::new();
+    for _ in 0..8 {
+        let r = f
+            .app
+            .clone()
+            .oneshot(stream_request(&g, "bytes=0-"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::PARTIAL_CONTENT);
+        responses.push(r);
+    }
+    let r = f
+        .app
+        .clone()
+        .oneshot(stream_request(&g, "bytes=0-"))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let error: Value =
+        serde_json::from_slice(&r.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(error["code"], "MEDIA_BUSY");
+    drop(responses.pop());
+    let r = f
+        .app
+        .clone()
+        .oneshot(stream_request(&g, "bytes=0-9"))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(
+        &r.into_body().collect().await.unwrap().to_bytes()[..],
+        &f.bytes[..10]
+    );
+}
+
+#[tokio::test]
+async fn five_real_seconds_at_double_speed_accumulate_across_two_leases() {
+    let f = fixture().await;
+    for session in 0..2 {
+        let g = grant(&f, 0, 0).await;
+        assert_eq!(g.personal.final_watched_ms, session * 5_000);
+        let path = format!("/api/v1/profiles/{}/playback/progress", f.profiles[0]);
+        let mut e = event(&g, 1, 90_000);
+        e.playing = true;
+        e.seek = false;
+        e.speed = 2.0;
+        assert_eq!(
+            json_reply(&f.app, "POST", &path, serde_json::to_value(&e).unwrap())
+                .await
+                .0,
+            StatusCode::OK
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(5_010)).await;
+        e.sequence = 2;
+        e.position_ms = 100_000;
+        e.final_elapsed_ms = 5_000;
+        let (status, saved) =
+            json_reply(&f.app, "POST", &path, serde_json::to_value(&e).unwrap()).await;
+        assert_eq!(status, StatusCode::OK, "{saved}");
+        assert_eq!(saved["final_watched_ms"], (session + 1) * 5_000);
+        assert_eq!(saved["watched"], session == 1);
+        let release = ReleasePlayback {
+            lease: ctrl(&g),
+            progress: None,
+        };
+        assert_eq!(
+            json_reply(
+                &f.app,
+                "POST",
+                &format!("/api/v1/profiles/{}/playback/release", f.profiles[0]),
+                serde_json::to_value(release).unwrap()
+            )
+            .await
+            .0,
+            StatusCode::OK
+        );
+    }
+    let (_, other) = json_reply(
+        &f.app,
+        "GET",
+        &format!(
+            "/api/v1/profiles/{}/media/{}/state",
+            f.profiles[1], f.media[0]
+        ),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(other["final_watched_ms"], 0);
+    assert_eq!(other["watched"], false);
 }
 fn ctrl(g: &PlaybackGrant) -> PlaybackControl {
     PlaybackControl {

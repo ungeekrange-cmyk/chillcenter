@@ -11,3 +11,5 @@ Contrats produit inchangés ; complément de mise en œuvre v1. Tous les appels 
 Types partagés : chill-domain ; helpers async : chill-client::playback ; flux bloquant consommé par HttpMediaFactory libmpv sur son worker. Pas d'URL HTTPS libre ou de chemin du stockage dans le lecteur.
 
 Non implémentés ici : transfert confirmé/SSE/ACK, progression automatique du lecteur Tauri, pause locale avant expiration, contexte série/saga/playlist, enchaînement, fichiers sous-titres externes. Les sous-titres intégrés sont décodés par libmpv depuis le média brut ; l'essai headless n'est pas une UI de sélection des pistes.
+
+Ressources :4 jobs fichiers,8 flux actifs maximum ; après5s sans demande de bloc ou révocation/expiration du bail, un garde indépendant rend la capacité et interdit la reprise du corps ancien. Ces limites sont des contraintes de départ, pas des mesures Pi/Wi-Fi. EOF connue côté adaptateur retourne0 au callback mpv, sans requête416 inutile.

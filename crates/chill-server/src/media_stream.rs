@@ -22,8 +22,11 @@ use std::{
         },
     },
     path::{Component, Path as FsPath},
-    sync::Arc,
-    time::Duration,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 use tokio::sync::OwnedSemaphorePermit;
 
@@ -187,7 +190,69 @@ struct StreamState {
     file: Arc<File>,
     offset: u64,
     remaining: u64,
-    _permit: OwnedSemaphorePermit,
+    guard: Arc<StreamGuard>,
+}
+
+/// Capacity ownership can be revoked without polling a backpressured body.
+/// A revoked body can never send new chunks even if its consumer resumes.
+struct StreamGuard {
+    permit: Mutex<Option<OwnedSemaphorePermit>>,
+    cancelled: AtomicBool,
+    last_poll: Mutex<Instant>,
+}
+impl StreamGuard {
+    fn new(
+        service: PlaybackService,
+        lease: StreamLease,
+        permit: OwnedSemaphorePermit,
+    ) -> Arc<Self> {
+        let guard = Arc::new(Self {
+            permit: Mutex::new(Some(permit)),
+            cancelled: AtomicBool::new(false),
+            last_poll: Mutex::new(Instant::now()),
+        });
+        let weak = Arc::downgrade(&guard);
+        tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(Duration::from_millis(100));
+            loop {
+                ticks.tick().await;
+                let Some(guard) = weak.upgrade() else {
+                    break;
+                };
+                let idle = guard
+                    .last_poll
+                    .lock()
+                    .map(|at| at.elapsed() >= Duration::from_secs(5))
+                    .unwrap_or(true);
+                if idle || service.check_stream(&lease).is_err() {
+                    guard.cancel();
+                    break;
+                }
+                if guard.cancelled.load(Ordering::Acquire) {
+                    break;
+                }
+            }
+        });
+        guard
+    }
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+        if let Ok(mut permit) = self.permit.lock() {
+            permit.take();
+        }
+    }
+    fn check(&self) -> io::Result<()> {
+        if self.cancelled.load(Ordering::Acquire) {
+            Err(io::ErrorKind::PermissionDenied.into())
+        } else {
+            Ok(())
+        }
+    }
+    fn touch(&self) -> io::Result<()> {
+        self.check()?;
+        *self.last_poll.lock().map_err(|_| io::ErrorKind::Other)? = Instant::now();
+        self.check()
+    }
 }
 
 pub(crate) async fn stream(
@@ -231,19 +296,21 @@ pub(crate) async fn stream(
         return Ok(response);
     };
     let length = end - start + 1;
+    let guard = StreamGuard::new(state.playback.clone(), lease.clone(), _permit);
     let work = StreamState {
         service: state.playback,
         lease,
         file: Arc::new(file),
         offset: start,
         remaining: length,
-        _permit,
+        guard,
     };
     let chunks = futures_util::stream::unfold(work, |mut s| async move {
         if s.remaining == 0 {
             return None;
         }
         let result = async {
+            s.guard.touch()?;
             s.service
                 .check_stream(&s.lease)
                 .map_err(|_| io::Error::from(io::ErrorKind::PermissionDenied))?;
@@ -276,6 +343,7 @@ pub(crate) async fn stream(
             s.service
                 .check_stream(&s.lease)
                 .map_err(|_| io::Error::from(io::ErrorKind::PermissionDenied))?;
+            s.guard.check()?;
             Ok::<_, io::Error>(bytes)
         }
         .await;
@@ -283,10 +351,14 @@ pub(crate) async fn stream(
             Ok(bytes) => {
                 s.offset += bytes.len() as u64;
                 s.remaining -= bytes.len() as u64;
+                if s.remaining == 0 {
+                    s.guard.cancel();
+                }
                 Some((Ok(Bytes::from(bytes)), s))
             }
             Err(e) => {
                 s.remaining = 0;
+                s.guard.cancel();
                 Some((Err(e), s))
             }
         }
@@ -322,6 +394,61 @@ fn one_header(headers: &HeaderMap, key: &str) -> Result<String, ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn four_real_stalled_jobs_timeout_without_releasing_worker_slots() {
+        let service = PlaybackService::default();
+        let (started_tx, mut started_rx) = tokio::sync::mpsc::channel(4);
+        let mut releases = Vec::new();
+        let mut jobs = Vec::new();
+        for _ in 0..4 {
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            releases.push(release_tx);
+            let started = started_tx.clone();
+            let s = service.clone();
+            jobs.push(tokio::spawn(async move {
+                io_job(&s, move || {
+                    started.blocking_send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(15)).unwrap();
+                    Ok(())
+                })
+                .await
+            }));
+        }
+        for _ in 0..4 {
+            tokio::time::timeout(Duration::from_secs(2), started_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(service.io.available_permits(), 0);
+        assert_eq!(
+            io_job(&service, || Ok(())).await.unwrap_err().1,
+            "MEDIA_BUSY"
+        );
+        for job in jobs {
+            let error = job.await.unwrap().unwrap_err();
+            assert_eq!(error.0, StatusCode::GATEWAY_TIMEOUT);
+            assert_eq!(error.1, "MEDIA_TIMEOUT");
+        }
+        // Callers timed out, but the underlying workers are still running.
+        assert_eq!(service.io.available_permits(), 0);
+        assert_eq!(
+            io_job(&service, || Ok(())).await.unwrap_err().1,
+            "MEDIA_BUSY"
+        );
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while service.io.available_permits() != 4 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(io_job(&service, || Ok(())).await.is_ok());
+    }
     #[test]
     fn range_boundaries() {
         assert_eq!(range("bytes=0-3", 10), Some((0, 3)));

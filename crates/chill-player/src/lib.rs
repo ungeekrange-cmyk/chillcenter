@@ -333,6 +333,12 @@ impl MediaSource for HttpMediaSource {
         if cancellation.is_cancelled() {
             return Err(PlayerError::Stream("lecture annulée".into()));
         }
+        // mpv's stream callback expects zero at EOF, not an HTTP 416 error.
+        // Only a known, pinned size permits this local shortcut; unknown-size
+        // errors and cancellation must remain failures.
+        if buffer.is_empty() || self.size.is_some_and(|size| offset >= size) {
+            return Ok(0);
+        }
         // Exactly one request may be active or queued per open stream. A
         // cancelled reqwest request may live until Transport's timeout, but
         // repeated seeks cannot accumulate threads or request buffers.
@@ -1269,6 +1275,54 @@ mod tests {
         dropped_receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("worker drop should join after the read completes");
+    }
+
+    #[test]
+    fn known_http_eof_and_empty_buffers_do_not_issue_a_range_request() {
+        let requests = Arc::new(AtomicUsize::new(0));
+        let counted = requests.clone();
+        let worker = HttpReadWorker::start_with_reader(move |_, _, _| {
+            counted.fetch_add(1, Ordering::SeqCst);
+            Err(ClientError::InvalidRangeResponse(
+                "fixture: bytes beyond EOF return 416".into(),
+            ))
+        })
+        .unwrap();
+        let mut source = HttpMediaSource {
+            worker,
+            etag: Some("fixture".into()),
+            size: Some(2),
+        };
+        for offset in [2, 3, u64::MAX] {
+            assert_eq!(
+                source
+                    .read_at(offset, &mut [0; 1], &CancellationToken::default())
+                    .unwrap(),
+                0
+            );
+        }
+        assert_eq!(
+            source
+                .read_at(0, &mut [], &CancellationToken::default())
+                .unwrap(),
+            0
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 0);
+        let cancelled = CancellationToken::default();
+        cancelled.cancel();
+        assert!(source.read_at(2, &mut [0; 1], &cancelled).is_err());
+        assert_eq!(requests.load(Ordering::SeqCst), 0);
+        source.size = None;
+        assert!(
+            source
+                .read_at(2, &mut [0; 1], &CancellationToken::default())
+                .is_err()
+        );
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            1,
+            "unknown size must not hide an HTTP failure"
+        );
     }
 
     static DROP_STAGE: AtomicUsize = AtomicUsize::new(0);

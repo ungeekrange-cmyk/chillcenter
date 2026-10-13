@@ -21,6 +21,8 @@ Révision `CC-DOC-001`. Ce journal sera relu avant chaque nouvelle intervention.
 
 Lecture HTTPS : [BUG-0012 crédit ×0,5](BUG-0012-slow-playback-final-credit.md), VERIFIED par test RED/GREEN et horloge serveur déterministe ; seuil inchangé de10s réelles.
 
+Revue du slice lecture r1 : [BUG-0013 EOF HTTP](BUG-0013-http-reader-eof.md) et [BUG-0014 capacité des corps non consommés](BUG-0014-unpolled-stream-capacity.md), reproduits RED puis corrigés avec tests ciblés. Revue r2 et smoke étendu requis avant remise ; rapports r1 conservés.
+
 Branding r6 : [BUG-0011 citrouille Halloween sombre](BUG-0011-halloween-pumpkin-contrast.md), VERIFIED : orange distinct, tige/contour clairs ;4 tests et rendu navigateur, géométrie inchangée.
 
 Suivi r5 de BUG-0010 : base vectorisée validée par l'utilisateur,13 PNG réexportés depuis les SVG communs ; les12 anciens rasters canoniques sont archivés dans `icons/branding/raster-r4/`. Les comparaisons raster r3/r4 restent historiques, pas les assets courants. Sources SVG/générateur inchangés, aucun nouveau défaut applicatif revendiqué.

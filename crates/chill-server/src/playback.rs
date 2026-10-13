@@ -654,4 +654,37 @@ mod tests {
         assert!(b.acquire("d".into(), r, s, t + LEASE_TIME).is_ok());
         assert_eq!(b.entries.len(), 1);
     }
+
+    #[test]
+    fn buffering_and_unknown_duration_cannot_add_watch_credit() {
+        let (mut b, t, r, s) = prepared();
+        let l = b.acquire("p".into(), r, s, t).unwrap();
+        let mut e = event(&l, 1, 0, 0);
+        e.duration_ms = 0;
+        assert_eq!(
+            b.validate_progress("p", &e, t).unwrap_err(),
+            "PROGRESS_INVALID"
+        );
+        b.record("p", event(&l, 1, 90_000, 0), t);
+        let mut buffered = event(&l, 2, 95_000, 1);
+        buffered.buffering = true;
+        assert!(
+            b.validate_progress("p", &buffered, t + Duration::from_secs(5))
+                .is_err()
+        );
+        buffered.final_elapsed_ms = 0;
+        assert!(
+            b.validate_progress("p", &buffered, t + Duration::from_secs(5))
+                .is_ok()
+        );
+        b.record("p", buffered, t + Duration::from_secs(5));
+        assert!(
+            b.validate_progress("p", &event(&l, 3, 100_000, 1), t + Duration::from_secs(10))
+                .is_err()
+        );
+        assert!(
+            b.validate_progress("p", &event(&l, 3, 100_000, 0), t + Duration::from_secs(10))
+                .is_ok()
+        );
+    }
 }

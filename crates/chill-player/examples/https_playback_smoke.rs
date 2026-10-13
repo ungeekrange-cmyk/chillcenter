@@ -166,6 +166,22 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .position_ms,
             position_ms
         );
+        Ok::<_, Box<dyn Error>>(())
+    })?;
+    player.seek_absolute(duration_ms as f64 / 1000.0 - 0.5)?;
+    player.pause(false)?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let PlayerEvent::Ended { reason, error } = player.poll_event(Duration::from_millis(50)) {
+            assert_eq!(reason, 0, "natural EOF expected");
+            assert_eq!(error, 0, "EOF must not become a Range error");
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err("natural EOF timeout".into());
+        }
+    }
+    runtime.block_on(async {
         transport
             .release_playback(
                 &profile,
@@ -226,7 +242,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     factory.clear_playback();
     drop(player);
     println!(
-        "HTTPS_PLAYBACK_OK: pinned TLS, real MP4/audio/subtitles, seek, heartbeat, resume across devices, profile isolation, stale lease refusal"
+        "HTTPS_PLAYBACK_OK: pinned TLS, real MP4/audio/subtitles, seek, natural EOF, heartbeat, resume across devices, profile isolation, stale lease refusal"
     );
     Ok(())
 }
