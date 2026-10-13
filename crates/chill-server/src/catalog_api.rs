@@ -3,9 +3,10 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, put},
+    routing::{delete, get, post, put},
 };
-use chill_domain::store::CatalogQuery;
+use chill_domain::{PlaybackContext, store::CatalogQuery};
+use chill_catalog::model::MediaPatch;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{process::Stdio, time::Duration};
@@ -20,6 +21,15 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/admin/scan", get(scan_status).post(start_scan))
         .route("/api/v1/profiles/{profile}/catalog", get(catalog))
+        .route("/api/v1/profiles/{profile}/media/{media}", get(detail).put(update_media))
+        .route("/api/v1/profiles/{profile}/series/{series}", get(series))
+        .route("/api/v1/profiles/{profile}/sagas", get(sagas))
+        .route("/api/v1/profiles/{profile}/playlists", get(playlists).post(create_playlist))
+        .route("/api/v1/profiles/{profile}/playlists/{playlist}", get(playlist).delete(delete_playlist))
+        .route("/api/v1/profiles/{profile}/playlists/{playlist}/members", post(add_members))
+        .route("/api/v1/profiles/{profile}/playlists/{playlist}/members/{media}", delete(remove_member))
+        .route("/api/v1/profiles/{profile}/playlists/{playlist}/order", put(order_playlist))
+        .route("/api/v1/profiles/{profile}/playback/next", post(next_video))
         .route(
             "/api/v1/profiles/{profile}/media/{media}/playback-info",
             get(playback_info),
@@ -33,6 +43,43 @@ pub fn routes() -> Router<AppState> {
             put(rating),
         )
 }
+
+async fn detail(State(state): State<AppState>, Path((profile, media)): Path<(String, String)>) -> Result<Json<Value>, ApiError> {
+    let item = state.database.call(move |store| store.media(&profile, &media)).await?;
+    Ok(Json(json!({"media":item})))
+}
+
+#[derive(Deserialize)] #[serde(deny_unknown_fields)]
+struct RevisionPatch { expected_revision: u64, #[serde(flatten)] patch: MediaPatch }
+async fn update_media(State(state): State<AppState>, Path((profile, media)): Path<(String,String)>, Json(body): Json<RevisionPatch>) -> Result<Json<Value>, ApiError> {
+    // Legacy records have no revision field; added_at is the durable CAS token until
+    // the catalogue migration introduces a dedicated revision column.
+    let updated = state.database.call(move |store| { let before=store.media(&profile,&media)?; if before.added_at as u64 != body.expected_revision { return Err("La fiche a changé entre-temps.".into()); } store.update_media(&profile,&media,&body.patch) }).await?;
+    Ok(Json(json!({"media":updated,"revision":updated.added_at})))
+}
+async fn series(State(state): State<AppState>, Path((profile, series)): Path<(String,String)>) -> Result<Json<Value>, ApiError> {
+    let key = series.clone();
+    let members = state.database.call(move |store| store.series(&profile,&key)).await?;
+    let total=members.len(); let watched=members.iter().filter(|m|m.watched).count();
+    Ok(Json(json!({"name":series,"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}})))
+}
+async fn sagas(State(state): State<AppState>, Path(profile): Path<String>) -> Result<Json<Value>, ApiError> {
+    let collections=state.database.call(move |store| store.collections(&profile)).await?;
+    Ok(Json(json!({"items":collections.into_iter().filter(|c|c.kind=="saga").collect::<Vec<_>>()})))
+}
+async fn playlists(State(state): State<AppState>, Path(profile): Path<String>) -> Result<Json<Value>, ApiError> { Ok(Json(json!({"items":state.database.call(move|s|s.playlists(&profile)).await?}))) }
+async fn playlist(State(state): State<AppState>, Path((profile,playlist)): Path<(String,String)>) -> Result<Json<Value>, ApiError> { Ok(Json(json!({"playlist":state.database.call(move|s|s.playlist(&profile,&playlist)).await?}))) }
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct PlaylistCreate { name:String, media_id:Option<String> }
+async fn create_playlist(State(state): State<AppState>, Path(profile): Path<String>, Json(body): Json<PlaylistCreate>) -> Result<Json<Value>,ApiError> { let view=state.database.call(move|s| { let list=s.create_collection(&profile,&body.name,"playlist")?; if let Some(id)=body.media_id { s.collection_member_add_bulk(&profile,&list.id,&[id])?; } s.playlist(&profile,&list.id) }).await?; Ok(Json(json!({"playlist":view}))) }
+async fn delete_playlist(State(state): State<AppState>, Path((profile,playlist)): Path<(String,String)>) -> Result<Json<Value>,ApiError> { state.database.call(move|s|s.delete_collection(&profile,&playlist)).await?; Ok(Json(json!({"deleted":true}))) }
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Members { expected_revision:u64, media_ids:Vec<String> }
+async fn add_members(State(state): State<AppState>, Path((profile,playlist)):Path<(String,String)>, Json(body):Json<Members>) -> Result<Json<Value>,ApiError> { let view=state.database.call(move|s| { s.collection_member_add_bulk_at_revision(&profile,&playlist,&body.media_ids,body.expected_revision)?; s.playlist(&profile,&playlist) }).await?; Ok(Json(json!({"playlist":view}))) }
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Remove { expected_revision:u64 }
+async fn remove_member(State(state):State<AppState>,Path((profile,playlist,media)):Path<(String,String,String)>,Json(body):Json<Remove>)->Result<Json<Value>,ApiError>{let view=state.database.call(move|s|{s.collection_member_remove_at_revision(&profile,&playlist,&media,Some(body.expected_revision))?;s.playlist(&profile,&playlist)}).await?;Ok(Json(json!({"playlist":view})))}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Order { expected_revision:u64, expected_order:Vec<String>, media_ids:Vec<String> }
+async fn order_playlist(State(state):State<AppState>,Path((profile,playlist)):Path<(String,String)>,Json(body):Json<Order>)->Result<Json<Value>,ApiError>{let view=state.database.call(move|s|{if s.playlist(&profile,&playlist)?.revision!=body.expected_revision{return Err("La playlist a changé entre-temps.".into())};s.reorder_playlist(&profile,&playlist,&body.expected_order,&body.media_ids)?;s.playlist(&profile,&playlist)}).await?;Ok(Json(json!({"playlist":view})))}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct NextRequest { media_id:String, context:PlaybackContext }
+async fn next_video(State(state):State<AppState>,Path(profile):Path<String>,Json(body):Json<NextRequest>)->Result<Json<chill_domain::NextVideo>,ApiError>{Ok(Json(state.database.call(move|s|s.next_video(&profile,&body.media_id,&body.context)).await?))}
 
 async fn playback_info(
     State(state): State<AppState>,
@@ -112,7 +159,10 @@ async fn watched(
 #[serde(deny_unknown_fields)]
 struct Rating {
     rating: Option<u8>,
+    #[serde(default = "video_scope")]
+    scope: String,
 }
+fn video_scope() -> String { "video".into() }
 async fn rating(
     State(state): State<AppState>,
     Path((profile, media)): Path<(String, String)>,
@@ -120,7 +170,7 @@ async fn rating(
 ) -> Result<Json<Value>, ApiError> {
     state
         .database
-        .call(move |store| store.set_rating(&profile, &media, body.rating, "video"))
+        .call(move |store| store.set_rating(&profile, &media, body.rating, &body.scope))
         .await?;
     Ok(Json(json!({"saved":true})))
 }

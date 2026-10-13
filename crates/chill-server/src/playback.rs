@@ -335,16 +335,16 @@ async fn acquire(
     if uuid::Uuid::parse_str(&profile).is_err()
         || uuid::Uuid::parse_str(&body.media_id).is_err()
         || uuid::Uuid::parse_str(&body.device_id).is_err()
-        || body.context.kind != "standalone"
-        || body.context.id.is_some()
     {
         return Err(failure("PLAYBACK_REQUEST_INVALID"));
     }
     let p = profile.clone();
     let m = body.media_id.clone();
+    let context = body.context.clone();
     let path = s
         .database
         .call(move |store| {
+            store.validate_playback_context(&p, &m, &context)?;
             if !store.media(&p, &m)?.available {
                 return Ok(None);
             }

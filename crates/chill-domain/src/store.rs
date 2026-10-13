@@ -4,7 +4,7 @@
 //! module deliberately never opens or walks a media path: `media_path` is the
 //! narrow server-side escape hatch and all catalogue views expose relative paths.
 
-use crate::{PersonalState, Preferences, Profile, Progress, valid_speed};
+use crate::{PersonalState, Preferences, Profile, Progress, PlaybackContext, NextVideo, valid_speed};
 use chill_catalog::{
     database::Database,
     model::{Collection, Media, MediaPatch},
@@ -34,6 +34,16 @@ pub struct CatalogQuery {
 pub struct CatalogPage {
     pub items: Vec<Media>,
     pub has_more: bool,
+}
+
+/// Personal playlist view.  The revision is deliberately separate from the
+/// common legacy `Collection`: clients must supply it for every mutation.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PlaylistView {
+    pub id: String,
+    pub name: String,
+    pub revision: u64,
+    pub media_ids: Vec<String>,
 }
 
 pub struct Store {
@@ -298,6 +308,17 @@ impl Store {
         self.profile_view(profile_id, self.catalogue.get(&legacy)?)
     }
 
+    pub fn series(&mut self, profile_id: &str, name: &str) -> Result<Vec<Media>, String> {
+        self.require_profile(profile_id)?;
+        if name.is_empty() || name.len() > 500 { return Err("Série invalide.".into()); }
+        let mut members: Vec<_> = self.catalog(profile_id)?.into_iter()
+            .filter(|m| m.category == "serie" && m.series.as_deref().unwrap_or(&m.title) == name)
+            .collect();
+        members.sort_by_key(|m| (m.season.unwrap_or(i32::MAX), m.episode.unwrap_or(i32::MAX), m.title.clone()));
+        if members.is_empty() { return Err("Série introuvable dans le catalogue.".into()); }
+        Ok(members)
+    }
+
     /// Absolute paths stay within the server process and are never serialized in catalogue views.
     pub fn media_path(&self, stable_id: &str) -> Result<PathBuf, String> {
         let legacy = self.legacy_id(stable_id)?;
@@ -312,6 +333,44 @@ impl Store {
         self.require_profile(profile_id)?;
         self.legacy_id(stable_id)?;
         state(&self.personal, profile_id, stable_id)
+    }
+
+    /// Context is server-derived: a client cannot attach an arbitrary playlist,
+    /// saga or series to influence autoplay.
+    pub fn validate_playback_context(&mut self, profile: &str, media: &str, context: &PlaybackContext) -> Result<(), String> {
+        let item = self.media(profile, media)?;
+        match (context.kind.as_str(), context.id.as_deref()) {
+            ("standalone", None) => Ok(()),
+            ("series", Some(name)) if item.category == "serie" && item.series.as_deref().unwrap_or(&item.title) == name => Ok(()),
+            ("playlist", Some(id)) => {
+                let list = self.playlist(profile, id)?;
+                if list.media_ids.iter().any(|v| v == media) { Ok(()) } else { Err("Cette vidéo n’appartient pas à cette playlist.".into()) }
+            }
+            ("saga", Some(id)) => {
+                let saga = self.collections(profile)?.into_iter().find(|c| c.kind == "saga" && c.id == id).ok_or("Saga introuvable.")?;
+                if saga.media_ids.iter().any(|v| v == media) { Ok(()) } else { Err("Cette vidéo n’appartient pas à cette saga.".into()) }
+            }
+            _ => Err("Contexte de lecture invalide.".into()),
+        }
+    }
+
+    pub fn next_video(&mut self, profile: &str, media: &str, context: &PlaybackContext) -> Result<NextVideo, String> {
+        self.validate_playback_context(profile, media, context)?;
+        let current = self.media(profile, media)?;
+        let next = match (context.kind.as_str(), context.id.as_deref()) {
+            ("playlist", Some(id)) => { let p=self.playlist(profile,id)?; p.media_ids.iter().position(|v|v==media).and_then(|n|p.media_ids.get(n+1)).cloned() },
+            ("saga", Some(id)) => self.collections(profile)?.into_iter().find(|c|c.kind=="saga" && c.id==id).and_then(|c|c.media_ids.iter().position(|v|v==media).and_then(|n|c.media_ids.get(n+1)).cloned()),
+            ("series", _) => {
+                if current.category != "serie" || current.season.is_none() || current.episode.is_none() { None } else {
+                    self.series(profile, current.series.as_deref().unwrap_or(&current.title))?.into_iter().find(|m| (m.season,m.episode) > (current.season,current.episode)).map(|m|m.id)
+                }
+            }
+            _ => None,
+        };
+        let item = match next { Some(id) => Some(self.media(profile,&id)?), None => None };
+        let new_season = item.as_ref().is_some_and(|m|m.season != current.season);
+        let available = item.as_ref().is_some_and(|m|m.available);
+        Ok(NextVideo { media:item, new_season, available })
     }
 
     pub fn snapshot(&mut self, discovered: Vec<Media>) -> Result<i64, String> {
@@ -597,6 +656,19 @@ impl Store {
         Ok(collections)
     }
 
+    pub fn playlists(&self, profile_id: &str) -> Result<Vec<PlaylistView>, String> {
+        self.require_profile(profile_id)?;
+        let mut stmt = self.personal.prepare("SELECT id,name,revision FROM cc_playlists WHERE profile_id=?1 ORDER BY name,id").map_err(db_error)?;
+        stmt.query_map([profile_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))
+            .map_err(db_error)?.map(|row| { let (id,name,revision)=row.map_err(db_error)?; Ok(PlaylistView { media_ids: self.playlist_members(&id)?, id, name, revision: revision as u64 }) }).collect()
+    }
+
+    pub fn playlist(&self, profile_id: &str, id: &str) -> Result<PlaylistView, String> {
+        self.require_playlist(profile_id, id)?;
+        let (name, revision): (String, i64) = self.personal.query_row("SELECT name,revision FROM cc_playlists WHERE id=?1 AND profile_id=?2", params![id,profile_id], |r| Ok((r.get(0)?,r.get(1)?))).map_err(db_error)?;
+        Ok(PlaylistView { id: id.into(), name, revision: revision as u64, media_ids: self.playlist_members(id)? })
+    }
+
     pub fn create_collection(
         &self,
         profile_id: &str,
@@ -656,6 +728,12 @@ impl Store {
         )
         .map_err(db_error)?;
         tx.commit().map_err(db_error)
+    }
+
+    pub fn collection_member_add_bulk_at_revision(&self, profile_id: &str, collection_id: &str, media_ids: &[String], expected: u64) -> Result<(), String> {
+        let current = self.playlist(profile_id, collection_id)?;
+        if current.revision != expected { return Err("La playlist a changé entre-temps.".into()); }
+        self.collection_member_add_bulk(profile_id, collection_id, media_ids)
     }
 
     pub fn collection_member_remove(
