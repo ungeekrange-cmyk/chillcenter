@@ -7,7 +7,15 @@ window.chillQaSmoke=async config=>{
   const create=async name=>{const form=$("create-admin");form.elements.name.value=name;form.requestSubmit();await settled(()=>state.profiles.some(p=>p.name===name));};
   try {
     await window.chillReady;
-    if(config.mode==="reopen_delete"){
+    if(config.mode==="renewal_notice"){
+      step="automatic expired-key replacement notice";
+      assert(state.stage==="connected"&&state.notice?.includes("acceptée automatiquement"),"replacement notice missing in connected view");
+      assert(!$("connection-notice").hidden&&$("connection-notice").textContent===state.notice,"visible notice missing");
+      await loadPage();await settled(()=>document.querySelectorAll(".media-card").length===1);
+      assert(!$("connection-notice").hidden,"catalog erased trust notice");
+      $("admin-toggle").click();await settled(()=>!$("admin-panel").hidden);
+      assert(!$("connection-notice").hidden,"refresh erased trust notice");
+    } else if(config.mode==="reopen_delete"){
       step="remembered profile";assert(state.stage==="connected"&&state.profiles.find(p=>p.id===state.profile_id)?.name==="QA B","last profile not restored");
       assert(document.querySelectorAll(".media-card").length===1,"catalog not restored");
       $("admin-toggle").click();await settled(()=>!$("admin-panel").hidden);

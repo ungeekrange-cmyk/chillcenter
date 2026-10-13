@@ -735,6 +735,30 @@ mod tests {
         assert_eq!(page["has_more"], true);
         assert!(!page["items"][0]["path"].as_str().unwrap().starts_with('/'));
         let id = page["items"][0]["id"].as_str().unwrap();
+        for (method, path, body) in [
+            ("GET", format!("/api/v1/profiles/{id}/catalog"), Value::Null),
+            (
+                "PUT",
+                format!("/api/v1/profiles/{id}/media/{id}/watched"),
+                json!({"watched":true}),
+            ),
+            (
+                "PUT",
+                format!("/api/v1/profiles/{id}/media/{id}/rating"),
+                json!({"rating":5}),
+            ),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(request(method, &path, body))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(body["code"], "PROFILE_NOT_FOUND");
+        }
         assert_eq!(
             app.clone()
                 .oneshot(request(
@@ -761,6 +785,7 @@ mod tests {
         assert_eq!(other["items"][0]["id"], id);
         assert_eq!(other["items"][0]["watched"], false);
         let last = app
+            .clone()
             .oneshot(request(
                 "GET",
                 &format!("/api/v1/profiles/{b}/catalog?limit=50&offset=50&category=film"),
@@ -772,5 +797,42 @@ mod tests {
             serde_json::from_slice(&last.into_body().collect().await.unwrap().to_bytes()).unwrap();
         assert_eq!(last["items"].as_array().unwrap().len(), 1);
         assert_eq!(last["has_more"], false);
+        let mut delete = request("DELETE", &format!("/api/v1/profiles/{a}"), Value::Null);
+        delete
+            .headers_mut()
+            .insert("x-chill-confirm-delete", a.parse().unwrap());
+        assert_eq!(
+            app.clone().oneshot(delete).await.unwrap().status(),
+            StatusCode::OK
+        );
+        for (method, path, body) in [
+            ("GET", format!("/api/v1/profiles/{a}/catalog"), Value::Null),
+            (
+                "PUT",
+                format!("/api/v1/profiles/{a}/media/{id}/watched"),
+                json!({"watched":true}),
+            ),
+            (
+                "PUT",
+                format!("/api/v1/profiles/{a}/media/{id}/rating"),
+                json!({"rating":5}),
+            ),
+            (
+                "PUT",
+                format!("/api/v1/profiles/{a}/preferences"),
+                json!({"audio_language":"fr","subtitle_language":"fr","autoplay_seconds":10}),
+            ),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(request(method, &path, body))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(body["code"], "PROFILE_NOT_FOUND");
+        }
     }
 }
