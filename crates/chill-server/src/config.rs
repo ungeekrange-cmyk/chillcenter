@@ -226,10 +226,12 @@ mod tests {
 
     #[test]
     fn address_and_mount_are_not_fixed() {
-        let mut config = ServerConfig::default();
-        config.listen = "10.10.0.8:9443".parse().unwrap();
-        config.tls_names = vec!["media.home".into(), "10.10.0.8".into()];
-        config.video_root = Some("/mnt/other-nas/films".into());
+        let config = ServerConfig {
+            listen: "10.10.0.8:9443".parse().unwrap(),
+            tls_names: vec!["media.home".into(), "10.10.0.8".into()],
+            video_root: Some("/mnt/other-nas/films".into()),
+            ..ServerConfig::default()
+        };
         config.validate().unwrap();
         assert_eq!(
             serde_json::from_str::<ServerConfig>(&serde_json::to_string(&config).unwrap()).unwrap(),
