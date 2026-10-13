@@ -520,6 +520,31 @@ async fn transfer_endpoints_require_confirmation_then_ack_once() {
         .0,
         StatusCode::CONFLICT
     );
+    // A reconnect after confirmation gets a snapshot rather than relying on
+    // having observed the original broadcast.
+    let sse = Request::builder()
+        .uri(format!(
+            "/api/v1/profiles/{}/playback/events?session={}&generation={}",
+            f.profiles[0], old.lease.session_id, old.lease.generation
+        ))
+        .header("host", "localhost:8443")
+        .body(Body::empty())
+        .unwrap();
+    let response = f.app.clone().oneshot(sse).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let frame = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        response.into_body().frame(),
+    )
+    .await
+    .expect("pending pause snapshot must not wait for keepalive")
+    .unwrap()
+    .unwrap()
+    .into_data()
+    .unwrap();
+    let pause = std::str::from_utf8(&frame).unwrap();
+    assert!(pause.contains("event: pause"));
+    assert!(pause.contains(&token));
     let ack = TransferAck {
         token: token.clone(),
         lease: ctrl(&old),

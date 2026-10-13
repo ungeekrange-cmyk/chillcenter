@@ -642,6 +642,7 @@ impl PlaybackService {
         (
             broadcast::Receiver<PauseEvent>,
             tokio::sync::OwnedSemaphorePermit,
+            Option<PauseEvent>,
         ),
         ApiError,
     > {
@@ -659,13 +660,25 @@ impl PlaybackService {
         {
             return Err(failure("LEASE_INVALID"));
         }
+        let snapshot = entry.pending.as_ref().map(|pending| PauseEvent {
+            profile: profile.into(),
+            session: session.into(),
+            generation,
+            token: pending.token.clone(),
+            // Do not replay the confirmation's original value after a client
+            // reconnect: the deadline is monotonic and intentionally frozen.
+            remaining_ms: pending
+                .deadline
+                .saturating_duration_since(Instant::now())
+                .as_millis() as u64,
+        });
         drop(b);
         let permit = self
             .event_subscribers
             .clone()
             .try_acquire_owned()
             .map_err(|_| failure("MEDIA_BUSY"))?;
-        Ok((self.events.subscribe(), permit))
+        Ok((self.events.subscribe(), permit, snapshot))
     }
     fn event_alive(&self, profile: &str, session: &str, generation: u64) -> bool {
         self.book
@@ -885,7 +898,7 @@ async fn events(
     Query(query): Query<EventsQuery>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError>
 {
-    let (receiver, permit) =
+    let (receiver, permit, snapshot) =
         s.playback
             .event_receiver(&profile, &query.session, query.generation)?;
     let service = s.playback.clone();
@@ -893,14 +906,27 @@ async fn events(
         (
             receiver,
             permit,
+            snapshot,
             service,
             profile,
             query.session,
             query.generation,
         ),
-        |(mut receiver, permit, service, profile, session, generation)| async move {
+        |(mut receiver, permit, snapshot, service, profile, session, generation)| async move {
             if !service.event_alive(&profile, &session, generation) {
                 return None;
+            }
+            if let Some(event) = snapshot {
+                let item = Ok(Event::default().event("pause").data(
+                    serde_json::json!({"token":event.token,"remaining_ms":event.remaining_ms})
+                        .to_string(),
+                ));
+                return Some((
+                    item,
+                    (
+                        receiver, permit, None, service, profile, session, generation,
+                    ),
+                ));
             }
             let next = match tokio::time::timeout(Duration::from_secs(10), receiver.recv()).await {
                 Ok(Ok(event))
@@ -922,7 +948,9 @@ async fn events(
             next.map(|item| {
                 (
                     item,
-                    (receiver, permit, service, profile, session, generation),
+                    (
+                        receiver, permit, None, service, profile, session, generation,
+                    ),
                 )
             })
         },
