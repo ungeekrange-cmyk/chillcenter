@@ -770,6 +770,37 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 mod tests {
     use super::*;
     #[test]
+    fn failed_initial_connection_discards_provisional_trust_and_never_persists_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut client = UiClient::open(dir.path()).unwrap();
+        client.save().unwrap();
+        let before = client.trust.read().unwrap().clone();
+        client.pending = Some(Pending {
+            address: "https://127.0.0.1:1/".into(),
+            known_id: None,
+            token: "approval-token".into(),
+            expires: Instant::now() + Duration::from_secs(1),
+            certificate: PresentedCertificate {
+                der: vec![1],
+                spki_sha256: [1; 32],
+                not_before_unix: 1,
+                not_after_unix: i64::MAX,
+                subject: "isolated fixture".into(),
+            },
+        });
+        assert!(
+            client
+                .dispatch(UiCommand::Approve {
+                    token: "approval-token".into()
+                })
+                .is_err()
+        );
+        assert!(client.connected.is_none());
+        assert_eq!(*client.trust.read().unwrap(), before);
+        assert_eq!(UiClient::open(dir.path()).unwrap().settings.trust, before);
+        assert!(client.settings.servers.is_empty());
+    }
+    #[test]
     fn expired_key_replacement_is_visible_but_same_key_renewal_is_not_mislabelled() {
         let mut trust = TrustStore::default();
         trust.events.push(crate::TrustEvent {

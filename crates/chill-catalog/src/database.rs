@@ -70,8 +70,13 @@ impl Database {
         let data: String = self
             .connection
             .query_row("SELECT data FROM media WHERE id=?1", [id], |r| r.get(0))
-            .map_err(|_| "Vidéo introuvable dans le catalogue.".to_string())?;
-        serde_json::from_str(&data).map_err(|_| "Entrée de catalogue invalide.".into())
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    "Vidéo introuvable dans le catalogue.".to_string()
+                }
+                error => db_error(error),
+            })?;
+        serde_json::from_str(&data).map_err(|_| db_error(rusqlite::Error::InvalidQuery))
     }
 
     pub fn put(&self, media: &Media) -> Result<(), String> {
@@ -960,6 +965,26 @@ pub fn similar(media: &Media, all: Vec<Media>) -> Vec<Media> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn missing_media_is_distinct_from_failed_or_corrupt_catalogue_reads() {
+        let db = db();
+        assert_eq!(
+            db.get("missing").unwrap_err(),
+            "Vidéo introuvable dans le catalogue."
+        );
+        db.connection
+            .execute("INSERT INTO media(id,data) VALUES('broken','not-json')", [])
+            .unwrap();
+        assert_eq!(
+            db.get("broken").unwrap_err(),
+            db_error(rusqlite::Error::InvalidQuery)
+        );
+        db.connection.execute_batch("DROP TABLE media;").unwrap();
+        assert_eq!(
+            db.get("broken").unwrap_err(),
+            db_error(rusqlite::Error::InvalidQuery)
+        );
+    }
     #[test]
     fn batch_collection_add_is_atomic_bounded_idempotent_and_keeps_selection_order() {
         let mut db = db();

@@ -567,6 +567,7 @@ dependencies = [
  "hyper-util",
  "libc",
  "rcgen",
+ "rusqlite",
  "rustls",
  "serde",
  "serde_json",

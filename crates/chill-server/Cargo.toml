@@ -23,6 +23,7 @@ x509-parser = { version = "0.18", features = ["verify"] }
 hyper-util = { version = "0.1", features = ["server-auto", "tokio"] }
 
 [dev-dependencies]
+rusqlite.workspace = true
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

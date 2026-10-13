@@ -834,5 +834,23 @@ mod tests {
                     .unwrap();
             assert_eq!(body["code"], "PROFILE_NOT_FOUND");
         }
+        // Inject only a temporary database read failure after successful personal
+        // operations. It must not masquerade as a removed media item/404.
+        let connection = rusqlite::Connection::open(dir.path().join("test.sqlite")).unwrap();
+        connection.execute_batch("DROP TABLE media;").unwrap();
+        let response = app
+            .clone()
+            .oneshot(request(
+                "PUT",
+                &format!("/api/v1/profiles/{b}/media/{id}/rating"),
+                json!({"rating":5}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(body["code"], "DATABASE_OFFLINE");
     }
 }
