@@ -520,4 +520,12 @@ mod tests {
         assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
         assert!(open_indexed(&root, &root.join("pipe.mp4")).is_err());
     }
+    #[test]
+    fn subtitle_index_is_adjacent_bounded_and_never_follows_links() {
+        let temp=tempfile::tempdir().unwrap(); let root=temp.path().canonicalize().unwrap(); let video=root.join("Film.mkv");
+        std::fs::write(&video,b"video").unwrap(); std::fs::write(root.join("Film.en.srt"),b"1\n00:00:00,000 --> 00:00:01,000\nHi").unwrap();
+        std::fs::write(root.join("Other.en.srt"),b"wrong").unwrap(); std::fs::write(root.join("Film.fr.srt"),vec![b'x';MAX_SUBTITLE_BYTES as usize+1]).unwrap();
+        std::os::unix::fs::symlink("Film.en.srt",root.join("Film.de.srt")).unwrap();
+        let got=subtitle_files(&root,&video).unwrap(); assert_eq!(got.len(),1); assert_eq!(got[0].0,"Film.en.srt"); assert_eq!(language(&got[0].0,"Film"),Some("en".into()));
+    }
 }
