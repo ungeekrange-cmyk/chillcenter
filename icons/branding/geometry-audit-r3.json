@@ -1,0 +1,993 @@
+{
+  "date": "2026-10-13",
+  "base_commit": "61f6cd68dae7b2562c4e6d535269f0e0fd8bf2c9",
+  "canvas": [
+    1254,
+    1254
+  ],
+  "foreground_rgb_anchor": [
+    625,
+    1050
+  ],
+  "disc_rgb_anchor": [
+    220,
+    690
+  ],
+  "fir_rgb_anchor": [
+    625,
+    500
+  ],
+  "sampling": {
+    "arm_seams_y": [
+      770,
+      790,
+      820
+    ],
+    "left_seam_x_range": [
+      330,
+      469
+    ],
+    "right_seam_x_range": [
+      780,
+      919
+    ],
+    "seat_seams_x": [
+      470,
+      780
+    ],
+    "seat_y_range": [
+      750,
+      929
+    ],
+    "backrest_central_x": 625,
+    "backrest_y_range": [
+      610,
+      699
+    ]
+  },
+  "method": "Read-only RGB foreground classification; sampled seam widths/positions and central backrest top, not full silhouette identity. Canvas1254. Nearest foreground/background RGB anchor; fir excluded from backrest by third-color comparison; alpha128.",
+  "limitations": [
+    "Samples only, not a proof that entire silhouettes coincide.",
+    "RGB gradient and antialiasing can move sampled edges by about one pixel.",
+    "Pumpkins are excluded by lateral seat samples; fir excluded from central backrest classification.",
+    "Remaining deltas up to4px at1254px, about1px at320px preview: cannot claim exact uniformity."
+  ],
+  "tool": "Read-only Python3/Pillow11.3.0; no images modified by diagnostic",
+  "before": {
+    "method": "Read-only RGB foreground classification; sampled seam widths/positions and central backrest top, not full silhouette identity. Canvas1254. Nearest foreground/background RGB anchor; fir excluded from backrest by third-color comparison; alpha128.",
+    "reference": "default.png",
+    "rows": [
+      {
+        "file": "autumn-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 362,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 380,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 843
+          },
+          "780": {
+            "height": 31,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 1
+      },
+      {
+        "file": "autumn-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 22,
+            "right": 22,
+            "left_start": 362,
+            "right_start": 863
+          },
+          "790": {
+            "left": 18,
+            "right": 17,
+            "left_start": 380,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 32,
+            "start": 842
+          },
+          "780": {
+            "height": 32,
+            "start": 842
+          }
+        },
+        "backrest_top_y": 648,
+        "max_sampled_delta_px": 2
+      },
+      {
+        "file": "christmas-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 24,
+            "right": 22,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 30,
+            "start": 843
+          },
+          "780": {
+            "height": 30,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 644,
+        "max_sampled_delta_px": 4
+      },
+      {
+        "file": "christmas-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 40,
+            "right": 42,
+            "left_start": 330,
+            "right_start": 877
+          },
+          "790": {
+            "left": 25,
+            "right": 26,
+            "left_start": 366,
+            "right_start": 855
+          },
+          "820": {
+            "left": 20,
+            "right": 21,
+            "left_start": 386,
+            "right_start": 840
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 29,
+            "start": 854
+          },
+          "780": {
+            "height": 29,
+            "start": 854
+          }
+        },
+        "backrest_top_y": 671,
+        "max_sampled_delta_px": 33
+      },
+      {
+        "file": "default.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 844
+          },
+          "780": {
+            "height": 31,
+            "start": 844
+          }
+        },
+        "backrest_top_y": 648,
+        "max_sampled_delta_px": 0
+      },
+      {
+        "file": "halloween-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 21,
+            "right": 21,
+            "left_start": 364,
+            "right_start": 863
+          },
+          "790": {
+            "left": 18,
+            "right": 17,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 15,
+            "left_start": 392,
+            "right_start": 840
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 28,
+            "start": 844
+          },
+          "780": {
+            "height": 28,
+            "start": 844
+          }
+        },
+        "backrest_top_y": 646,
+        "max_sampled_delta_px": 3
+      },
+      {
+        "file": "halloween-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 17,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 843
+          },
+          "780": {
+            "height": 31,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 1
+      },
+      {
+        "file": "spring-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 15,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 844
+          },
+          "780": {
+            "height": 31,
+            "start": 844
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 1
+      },
+      {
+        "file": "spring-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 25,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 20,
+            "left_start": 381,
+            "right_start": 848
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 32,
+            "start": 843
+          },
+          "780": {
+            "height": 32,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 648,
+        "max_sampled_delta_px": 2
+      },
+      {
+        "file": "summer-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 21,
+            "right": 22,
+            "left_start": 364,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 17,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 32,
+            "start": 843
+          },
+          "780": {
+            "height": 32,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 2
+      },
+      {
+        "file": "summer-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 27,
+            "right": 26,
+            "left_start": 360,
+            "right_start": 861
+          },
+          "790": {
+            "left": 21,
+            "right": 21,
+            "left_start": 379,
+            "right_start": 848
+          },
+          "820": {
+            "left": 17,
+            "right": 17,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 843
+          },
+          "780": {
+            "height": 31,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 4
+      },
+      {
+        "file": "winter-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 22,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 19,
+            "left_start": 381,
+            "right_start": 848
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 843
+          },
+          "780": {
+            "height": 32,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 646,
+        "max_sampled_delta_px": 2
+      },
+      {
+        "file": "winter-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 19,
+            "left_start": 381,
+            "right_start": 848
+          },
+          "820": {
+            "left": 17,
+            "right": 16,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 32,
+            "start": 843
+          },
+          "780": {
+            "height": 32,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 648,
+        "max_sampled_delta_px": 1
+      }
+    ]
+  },
+  "after": {
+    "method": "Read-only RGB foreground classification; sampled seam widths/positions and central backrest top, not full silhouette identity. Canvas1254. Nearest foreground/background RGB anchor; fir excluded from backrest by third-color comparison; alpha128.",
+    "reference": "default.png",
+    "rows": [
+      {
+        "file": "autumn-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 362,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 380,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 843
+          },
+          "780": {
+            "height": 31,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 1
+      },
+      {
+        "file": "autumn-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 22,
+            "right": 22,
+            "left_start": 362,
+            "right_start": 863
+          },
+          "790": {
+            "left": 18,
+            "right": 17,
+            "left_start": 380,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 32,
+            "start": 842
+          },
+          "780": {
+            "height": 32,
+            "start": 842
+          }
+        },
+        "backrest_top_y": 648,
+        "max_sampled_delta_px": 2
+      },
+      {
+        "file": "christmas-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 24,
+            "right": 22,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 30,
+            "start": 843
+          },
+          "780": {
+            "height": 30,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 644,
+        "max_sampled_delta_px": 4
+      },
+      {
+        "file": "christmas-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 24,
+            "right": 25,
+            "left_start": 365,
+            "right_start": 859
+          },
+          "790": {
+            "left": 20,
+            "right": 21,
+            "left_start": 381,
+            "right_start": 847
+          },
+          "820": {
+            "left": 18,
+            "right": 19,
+            "left_start": 391,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 840
+          },
+          "780": {
+            "height": 31,
+            "start": 840
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 4
+      },
+      {
+        "file": "default.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 844
+          },
+          "780": {
+            "height": 31,
+            "start": 844
+          }
+        },
+        "backrest_top_y": 648,
+        "max_sampled_delta_px": 0
+      },
+      {
+        "file": "halloween-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 21,
+            "right": 21,
+            "left_start": 364,
+            "right_start": 863
+          },
+          "790": {
+            "left": 18,
+            "right": 17,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 15,
+            "left_start": 392,
+            "right_start": 840
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 28,
+            "start": 844
+          },
+          "780": {
+            "height": 28,
+            "start": 844
+          }
+        },
+        "backrest_top_y": 646,
+        "max_sampled_delta_px": 3
+      },
+      {
+        "file": "halloween-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 16,
+            "right": 17,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 843
+          },
+          "780": {
+            "height": 31,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 1
+      },
+      {
+        "file": "spring-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 849
+          },
+          "820": {
+            "left": 15,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 844
+          },
+          "780": {
+            "height": 31,
+            "start": 844
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 1
+      },
+      {
+        "file": "spring-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 25,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 20,
+            "left_start": 381,
+            "right_start": 848
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 32,
+            "start": 843
+          },
+          "780": {
+            "height": 32,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 648,
+        "max_sampled_delta_px": 2
+      },
+      {
+        "file": "summer-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 22,
+            "right": 21,
+            "left_start": 364,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 18,
+            "left_start": 381,
+            "right_start": 848
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 843
+          },
+          "780": {
+            "height": 31,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 646,
+        "max_sampled_delta_px": 2
+      },
+      {
+        "file": "summer-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 27,
+            "right": 26,
+            "left_start": 360,
+            "right_start": 861
+          },
+          "790": {
+            "left": 21,
+            "right": 20,
+            "left_start": 379,
+            "right_start": 848
+          },
+          "820": {
+            "left": 17,
+            "right": 17,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 32,
+            "start": 842
+          },
+          "780": {
+            "height": 32,
+            "start": 842
+          }
+        },
+        "backrest_top_y": 647,
+        "max_sampled_delta_px": 4
+      },
+      {
+        "file": "winter-dark.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 22,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 19,
+            "left_start": 381,
+            "right_start": 848
+          },
+          "820": {
+            "left": 16,
+            "right": 16,
+            "left_start": 393,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 31,
+            "start": 843
+          },
+          "780": {
+            "height": 32,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 646,
+        "max_sampled_delta_px": 2
+      },
+      {
+        "file": "winter-light.png",
+        "arm_gaps": {
+          "770": {
+            "left": 23,
+            "right": 23,
+            "left_start": 363,
+            "right_start": 862
+          },
+          "790": {
+            "left": 18,
+            "right": 19,
+            "left_start": 381,
+            "right_start": 848
+          },
+          "820": {
+            "left": 17,
+            "right": 16,
+            "left_start": 392,
+            "right_start": 839
+          }
+        },
+        "seat_gaps": {
+          "470": {
+            "height": 32,
+            "start": 843
+          },
+          "780": {
+            "height": 32,
+            "start": 843
+          }
+        },
+        "backrest_top_y": 648,
+        "max_sampled_delta_px": 1
+      }
+    ]
+  },
+  "asset_sha256": {
+    "autumn-dark.png": "108d3fcee103ab7f05c1f620808bf2e3e04d9f12487787af536d53e53a9135fd",
+    "autumn-light.png": "cd72f88a0e3788d403af39dc5e505bc1e1be9862747c703c95da7afa50705678",
+    "christmas-dark.png": "753b8057d76f07adb555c4c377c3d1a7176c71b4756035ada5dc59f979327270",
+    "christmas-light.png": "6dd82efa54d582a76b4b10f7754ca060131bc1b6f24e32db35b25cf115845e31",
+    "default.png": "45dd0eec618bec968f29c009e9122e74c42081db3bbc462c4bb3176d769b128f",
+    "halloween-dark.png": "294fb285a4bb1673ae8a8f5497adc74a62b28bacb4fb83eecb47120ec8be54dc",
+    "halloween-light.png": "67c7d8dfa45f7d0b7cfaf3831f04b26cd4dc0e5351c1f267286c90d156b355a7",
+    "spring-dark.png": "103f908848d793cb22522ceafeef1509d950cfb68cb3b89e3e7dff727b5ac736",
+    "spring-light.png": "49a75e2ccedb246999cc17ab52b8aa9896100e1721b048cbd4b5c143b0e25b51",
+    "summer-dark.png": "082b11a1d161572aa8e1ea1a5b75ca62af9e161152f1c884f7dcfff59a4e62ba",
+    "summer-light.png": "e74e4b144c4a6f14ffd9e1336785f9acfb2b0eab10419edc13031ee0cbc00ea2",
+    "winter-dark.png": "af929088b34722813a0c1b1dcfc6fbfdffe4e7f1e0ffb5f48eaf78399adae5ad",
+    "winter-light.png": "5b0d8184a3c78271f33c67c8fe20cd3e8b5c87923d9cbf3853f47d463c2ba8b2"
+  }
+}

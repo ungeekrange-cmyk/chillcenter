@@ -19,6 +19,8 @@ Révision `CC-DOC-001`. Ce journal sera relu avant chaque nouvelle intervention.
 
 ## Format de tout futur BUG
 
+Assets de marque r3/r4 : [BUG-0010 géométrie du canapé](BUG-0010-branding-geometry.md) : VERIFIED pour les SVG communs autorisés par l'utilisateur, mêmes tracés sur13 variantes ; défaut principal Noël clair corrigé, branches latérales vérifiées. Audit des PNG et leurs écarts résiduels conservés dans `icons/branding/geometry-audit-r3.json`. Méthode vectorielle autorisée, propositions visuelles encore à valider.
+
 Assets de marque, 2026-10-13 : [BUG-0009 marques fantômes](BUG-0009-branding-artifacts.md) : VERIFIED par inspection directe des PNG avant/après pour été clair et automne sombre. Pas un défaut de la galerie ou du runtime ; aucun test applicatif revendiqué pour ces retouches. Le logo approuvé et les six variantes non concernées sont inchangés.
 
 Implémentation 2026-10-13 : [BUG-0001 fournisseur TLS](BUG-0001-tls-provider.md) et [BUG-0002 autorité HTTP/2](BUG-0002-http2-authority.md) : corrections vérifiées par tests et smoke réel de configuration ; [BUG-0003 fixture extraite](BUG-0003-extracted-fixture.md) : VERIFIED par 64 tests catalogue. Les défauts de revue du candidat domaine initial ne sont pas effacés ; nouvelles preuves dans `docs/implementation/` et rapports à consulter avant intégration finale.

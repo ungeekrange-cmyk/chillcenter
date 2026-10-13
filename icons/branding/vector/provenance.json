@@ -1,0 +1,66 @@
+{
+  "revision": "branding-r4",
+  "date": "2026-10-13",
+  "mode": "DEV_FAST_ASSETS_ONLY",
+  "author_instance_id": "/root",
+  "user_authorization": "Oui, créer le gabarit SVG commun",
+  "approved_original": {
+    "file": "../default.png",
+    "sha256": "45dd0eec618bec968f29c009e9122e74c42081db3bbc462c4bb3176d769b128f"
+  },
+  "source": "master.svg",
+  "generator": "../../../scripts/branding.rs",
+  "trace": {
+    "tool": "Potrace1.16 (installed developer utility, not bundled runtime)",
+    "source_size": [
+      1254,
+      1254
+    ],
+    "alpha_threshold": 128,
+    "foreground_rgb_anchor": [
+      625,
+      1050
+    ],
+    "disc_rgb_anchor": [
+      220,
+      690
+    ],
+    "classification": "Nearest squared RGB distance",
+    "parameters": [
+      "--svg",
+      "--flat",
+      "--turdsize20",
+      "--opttolerance0.2",
+      "--unit10"
+    ],
+    "source_url": "https://potrace.sourceforge.net/"
+  },
+  "native_geometry": {
+    "shared_defs_sha256": "09f00d733c19968011268b64f81759bea354f37eae0a742ebdeb604cef0ee3ea",
+    "identity": "Identical definitions and transforms in master and all13 generated SVGs",
+    "original_foreground_mask_iou": 0.9963066661121524,
+    "note": "Vector trace is a smoothed flat-color derivation, not byte/pixel identity with original. Common geometry equality between SVG variants is exact."
+  },
+  "verification": {
+    "rust_tests": "3 PASS",
+    "svg_xml_and_refs": "13 PASS; unique IDs, local references resolve, viewBox matches",
+    "browser_render": "13 PASS in isolated Chromium profile, network blocked",
+    "transparency": "13 PASS:corner alpha0, tile interior255",
+    "tree_sides": "Both variants:sample(327,713)and(921,713)=sageRGB142,167,138",
+    "pumpkin_stem": "Both variants:sample(633,690)=contrasting outline",
+    "visual_qa": "All12 via browser-rendered contact sheet plus default/Noël/Halloween inspection",
+    "limitations": [
+      "No quantitative contrast or16px icon audit.",
+      "No runtime ambiance integration or Mac app rebuild.",
+      "ImageMagick internal SVG renderer omits some referenced pumpkin details; browser rendering used for final QA.",
+      "Chromium initially refused Mach port access under sandbox; explicit scoped escalation succeeded."
+    ]
+  },
+  "raster_preservation": {
+    "default_unchanged": true,
+    "unchanged_variants": 9,
+    "three_previous_files": "../raster-r2/",
+    "all_sources_retained_in_git": true
+  },
+  "status": "PROPOSED_VISUAL_APPROVAL_PENDING"
+}

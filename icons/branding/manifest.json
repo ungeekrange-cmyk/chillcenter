@@ -78,7 +78,7 @@
       "label": "Noël — clair",
       "file": "christmas-light.png",
       "status": "PROPOSED",
-      "sha256": "8bdbdcb09adcf5459e93a783104d9f145e2ab7a46477beb2c988237c4e555bd1",
+      "sha256": "6dd82efa54d582a76b4b10f7754ca060131bc1b6f24e32db35b25cf115845e31",
       "width": 1254,
       "height": 1254,
       "has_alpha": true,
@@ -87,26 +87,14 @@
         "#85313B",
         "muted sage green"
       ],
-      "source_image": "exec-ff2c7254-2332-4fde-b833-67e1ac739980.png",
-      "edit_target": "exec-48176c52-3d9e-4961-93c0-5a822e84ad39.png",
-      "prompt": "Image 1 is the Christmas LIGHT logo to edit. Image 2 is ONLY the composition reference for the tree height. Make ONE change to Image 1: extend the existing sage fir tree UPWARDS so its tip reaches near the top of the red circular disc and upper branches visibly pass BEHIND the cream capital C of \"Chill Center\", just as the tree in Image 2 passes behind the dark C. Do not stop the tree below the word arch. Text must be fully in front of the tree: the C and other letters mask the tree wherever they overlap. The lower tree remains behind the sofa. Keep Image 1 LIGHT cream outer tile/sofa/letters, rich red filled circle, sage tree, exact wordmark and round-square/circle/sofa geometry. Do NOT copy the DARK palette of Image 2. No other additions, no changes to sofa, no ornaments or star. Clean simple fills, no smudges. Transparent outside tile.",
-      "revision": 2,
+      "source_image": "exec-776c109c-80f3-471e-8c41-3552f2bf623d.png",
+      "edit_target": "christmas-dark.png",
+      "prompt": "Use case: precise-object-edit. Image 1, Christmas DARK, is the EDIT TARGET and the GEOMETRY MASTER. Image 2 is ONLY the Christmas LIGHT COLOR reference; do NOT copy its altered sofa geometry or tree width. Make a LIGHT version of Image 1 by recoloring: tile/sofa/letters pale cream #F5E8CE, filled disc rich red #85313B, background fir tree muted sage green. Preserve Image 1's exact TREE silhouette: the widest lower branches visibly protrude beyond BOTH left and right sides of the sofa backrest, around the upper armrests, not just above the sofa. The large tree reaches behind the C and extends behind the backrest. Do not narrow the tree. Text and sofa remain foreground. Keep the EXACT wordmark \"Chill Center\" (same bold gourmand curved lettering), outer rounded square, circle, sofa size and positions. Preserve genuinely transparent pixels outside the tile. No rings, no extra objects, no smudges or textures. Sofa spacings MUST match the geometry master: at y=790 on a 1254px canvas, left and right separator gaps are each 18px; backrest/seat separator is 31px thick near x=470. Do not thicken gaps or lower the sofa. ",
+      "revision": 3,
       "motif": "Fir tree behind sofa and wordmark",
-      "generation_steps": [
-        {
-          "source_image": "exec-48176c52-3d9e-4961-93c0-5a822e84ad39.png",
-          "prompt": "Edit the supplied logo only. Preserve the exact rounded-square shape and padding, filled circle position and size, sofa silhouette with curved armrests, and exact chunky curved lettering \"Chill Center\". No extra words, no rings, no mockup. Keep genuinely transparent pixels outside the tile with clean edges, no stray flecks. Do not change the approved composition. Christmas LIGHT. Remove the small holly sprig and berries completely. Add ONE large simple recognizable fir tree as a BACKGROUND layer INSIDE the existing red circle. Its lower branches and trunk are hidden BEHIND the cream sofa, its upper branches rise high BEHIND the cream \"Chill Center\" lettering at the top of the circle. It must be a full fir tree silhouette extending from the sofa up into the lettering arch, not a tiny floating badge in the gap. Foreground text and sofa remain intact, unobscured and legible. Tree in muted sage green, enough contrast against red to see its tiered branches but subordinate to text. Preserve LIGHT CREAM tile/sofa/text and filled CHRISTMAS RED disc. Clean flat graphic style. No holly, no berries, no ornaments, no stars, no texture or ghost marks.",
-          "status": "SUPERSEDED_TREE_TOO_LOW"
-        },
-        {
-          "source_image": "exec-ff2c7254-2332-4fde-b833-67e1ac739980.png",
-          "prompt": "Image 1 is the Christmas LIGHT logo to edit. Image 2 is ONLY the composition reference for the tree height. Make ONE change to Image 1: extend the existing sage fir tree UPWARDS so its tip reaches near the top of the red circular disc and upper branches visibly pass BEHIND the cream capital C of \"Chill Center\", just as the tree in Image 2 passes behind the dark C. Do not stop the tree below the word arch. Text must be fully in front of the tree: the C and other letters mask the tree wherever they overlap. The lower tree remains behind the sofa. Keep Image 1 LIGHT cream outer tile/sofa/letters, rich red filled circle, sage tree, exact wordmark and round-square/circle/sofa geometry. Do NOT copy the DARK palette of Image 2. No other additions, no changes to sofa, no ornaments or star. Clean simple fills, no smudges. Transparent outside tile.",
-          "status": "PROPOSED",
-          "references": [
-            "exec-48176c52-3d9e-4961-93c0-5a822e84ad39.png",
-            "exec-397dcdc8-bf45-4182-92c1-63d17d0c7ad4.png"
-          ]
-        }
+      "references": [
+        "christmas-dark.png",
+        "christmas-light.png"
       ]
     },
     {
@@ -192,17 +180,22 @@
       "label": "Été — sombre",
       "file": "summer-dark.png",
       "status": "PROPOSED",
-      "sha256": "2b66dcb06fe904088b164658bae8e9047a6d5cdfa957a12ebe0e3def6a5a4afa",
+      "sha256": "082b11a1d161572aa8e1ea1a5b75ca62af9e161152f1c884f7dcfff59a4e62ba",
       "width": 1254,
       "height": 1254,
       "has_alpha": true,
       "palette_requested": [
-        "#513321",
-        "#EFCA89"
+        "#8F3E1B",
+        "#FFD36E"
       ],
-      "source_image": "exec-c828b5e1-1601-403d-aa6b-ead910d11c0f.png",
-      "edit_target": "exec-df820cb4-e6c6-4ce6-8266-d301ab7fe79d.png",
-      "prompt": "Edit the supplied approved Chill Center logo, which is the edit target, to make ONE ambiance variant. Preserve EXACTLY the outer rounded-square geometry and padding, the size and placement of the inner circle and sofa, curved armrests, the exact chunky gourmand lettering 'Chill Center' and its circular path. DO NOT enlarge or lower the circle. Only change the specified palette; keep its same minimal graphic treatment. No new words, no mockup, no watermark. Preserve real transparency outside the rounded-square tile. Summer DARK variant. Rounded square, sofa silhouette and lettering in deep warm earth brown #513321; circular disc and seat separation in pale apricot sand #EFCA89. Strong contrast, warm evening mood, no decorative motifs."
+      "source_image": "exec-c4cb002f-1935-468b-b680-3ce138a5b9ed.png",
+      "edit_target": "summer-dark.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the SUMMER DARK edit target. Image 2 is the approved GEOMETRY master only, not a palette reference. Give Image 1 a warmer brighter sunnier SUMMER EVENING palette while keeping dark mode: tile, sofa and letters deep warm terracotta #8F3E1B, NOT muddy dark brown; filled circular disc and sofa separation luminous honey amber #FFD36E. Sun-warmed orange/amber tones, crisp readable contrast. Align sofa geometry and all gaps precisely to Image 2, without changing circle placement or size. No sun symbol or new motif. Keep the EXACT wordmark \"Chill Center\" (same bold gourmand curved lettering), outer rounded square, circle, sofa size and positions. Preserve genuinely transparent pixels outside the tile. No rings, no extra objects, no smudges or textures. Sofa spacings MUST match the geometry master: at y=790 on a 1254px canvas, left and right separator gaps are each 18px; backrest/seat separator is 31px thick near x=470. Do not thicken gaps or lower the sofa. ",
+      "revision": 3,
+      "references": [
+        "summer-dark.png",
+        "default.png"
+      ]
     },
     {
       "ambience": "summer",
@@ -210,18 +203,22 @@
       "label": "Été — clair",
       "file": "summer-light.png",
       "status": "PROPOSED",
-      "sha256": "e2a04bdf5760c68017c416500b826f3cec4a2a67d920561bf556940218b6aa56",
+      "sha256": "e74e4b144c4a6f14ffd9e1336785f9acfb2b0eab10419edc13031ee0cbc00ea2",
       "width": 1254,
       "height": 1254,
       "has_alpha": true,
       "palette_requested": [
-        "#FFF0D2",
-        "#A65C2D"
+        "#FFF3C8",
+        "#DA7515"
       ],
-      "source_image": "exec-3f64f192-e2aa-4ded-a145-ed7810b881e9.png",
+      "source_image": "exec-a98b2594-e3cd-4c5d-9950-489ff69b6994.png",
       "edit_target": "summer-light.png",
-      "prompt": "Edit the supplied logo only. Preserve the exact rounded-square shape and padding, filled circle position and size, sofa silhouette with curved armrests, and exact chunky curved lettering \"Chill Center\". No extra words, no rings, no mockup. Keep genuinely transparent pixels outside the tile with clean edges, no stray flecks. Do not change the approved composition. Remove the faint irregular ghost/smudge in the CENTER of the ochre circle, in the gap above the sofa backrest and below the lettering. Make ALL negative space and flat fills clean and uniform, no stains, texture, mottling or ghost silhouettes anywhere. Keep the pale sand tile/sofa/letters and warm ochre disc palette exactly as supplied. No seasonal motif. This is an artifact cleanup, not a redesign.",
-      "revision": 2
+      "prompt": "Use case: precise-object-edit. Image 1 is the SUMMER LIGHT edit target. Image 2 is the approved GEOMETRY master only, not a palette reference. Give Image 1 a warmer brighter sunnier SUMMER palette: tile, sofa and letters warm luminous pale golden cream #FFF3C8; filled circular disc and sofa separation vivid golden tangerine orange #DA7515. Fresh sunny apricot/gold warmth, much less brown/muddy than the original. Flat clear readable logo. Align sofa geometry and all gaps precisely to Image 2, without changing circle placement or size. No sun symbol or new motif. Keep the EXACT wordmark \"Chill Center\" (same bold gourmand curved lettering), outer rounded square, circle, sofa size and positions. Preserve genuinely transparent pixels outside the tile. No rings, no extra objects, no smudges or textures. Sofa spacings MUST match the geometry master: at y=790 on a 1254px canvas, left and right separator gaps are each 18px; backrest/seat separator is 31px thick near x=470. Do not thicken gaps or lower the sofa. ",
+      "revision": 3,
+      "references": [
+        "summer-light.png",
+        "default.png"
+      ]
     },
     {
       "ambience": "winter",
@@ -424,6 +421,125 @@
         }
       ],
       "rollback": "Previous complete asset/doc set is retained in base_commit Git history. Default and the six other variants are unchanged."
+    },
+    {
+      "id": "branding-r3",
+      "date": "2026-10-13",
+      "base_commit": "61f6cd68dae7b2562c4e6d535269f0e0fd8bf2c9",
+      "request": "Christmas LIGHT fir branches must protrude at both sides of sofa backrest; check sofa spacings across all logos; warmer brighter summer colors.",
+      "previous_variants": [
+        {
+          "ambience": "christmas",
+          "mode": "light",
+          "label": "Noël — clair",
+          "file": "christmas-light.png",
+          "status": "PROPOSED",
+          "sha256": "6dd82efa54d582a76b4b10f7754ca060131bc1b6f24e32db35b25cf115845e31",
+          "width": 1254,
+          "height": 1254,
+          "has_alpha": true,
+          "palette_requested": [
+            "#F5E8CE",
+            "#85313B",
+            "muted sage green"
+          ],
+          "source_image": "exec-776c109c-80f3-471e-8c41-3552f2bf623d.png",
+          "edit_target": "christmas-dark.png",
+          "prompt": "Use case: precise-object-edit. Image 1, Christmas DARK, is the EDIT TARGET and the GEOMETRY MASTER. Image 2 is ONLY the Christmas LIGHT COLOR reference; do NOT copy its altered sofa geometry or tree width. Make a LIGHT version of Image 1 by recoloring: tile/sofa/letters pale cream #F5E8CE, filled disc rich red #85313B, background fir tree muted sage green. Preserve Image 1's exact TREE silhouette: the widest lower branches visibly protrude beyond BOTH left and right sides of the sofa backrest, around the upper armrests, not just above the sofa. The large tree reaches behind the C and extends behind the backrest. Do not narrow the tree. Text and sofa remain foreground. Keep the EXACT wordmark \"Chill Center\" (same bold gourmand curved lettering), outer rounded square, circle, sofa size and positions. Preserve genuinely transparent pixels outside the tile. No rings, no extra objects, no smudges or textures. Sofa spacings MUST match the geometry master: at y=790 on a 1254px canvas, left and right separator gaps are each 18px; backrest/seat separator is 31px thick near x=470. Do not thicken gaps or lower the sofa. ",
+          "revision": 3,
+          "motif": "Fir tree behind sofa and wordmark",
+          "references": [
+            "christmas-dark.png",
+            "christmas-light.png"
+          ]
+        },
+        {
+          "ambience": "summer",
+          "mode": "dark",
+          "label": "Été — sombre",
+          "file": "summer-dark.png",
+          "status": "PROPOSED",
+          "sha256": "082b11a1d161572aa8e1ea1a5b75ca62af9e161152f1c884f7dcfff59a4e62ba",
+          "width": 1254,
+          "height": 1254,
+          "has_alpha": true,
+          "palette_requested": [
+            "#8F3E1B",
+            "#FFD36E"
+          ],
+          "source_image": "exec-c4cb002f-1935-468b-b680-3ce138a5b9ed.png",
+          "edit_target": "summer-dark.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the SUMMER DARK edit target. Image 2 is the approved GEOMETRY master only, not a palette reference. Give Image 1 a warmer brighter sunnier SUMMER EVENING palette while keeping dark mode: tile, sofa and letters deep warm terracotta #8F3E1B, NOT muddy dark brown; filled circular disc and sofa separation luminous honey amber #FFD36E. Sun-warmed orange/amber tones, crisp readable contrast. Align sofa geometry and all gaps precisely to Image 2, without changing circle placement or size. No sun symbol or new motif. Keep the EXACT wordmark \"Chill Center\" (same bold gourmand curved lettering), outer rounded square, circle, sofa size and positions. Preserve genuinely transparent pixels outside the tile. No rings, no extra objects, no smudges or textures. Sofa spacings MUST match the geometry master: at y=790 on a 1254px canvas, left and right separator gaps are each 18px; backrest/seat separator is 31px thick near x=470. Do not thicken gaps or lower the sofa. ",
+          "revision": 3,
+          "references": [
+            "summer-dark.png",
+            "default.png"
+          ]
+        },
+        {
+          "ambience": "summer",
+          "mode": "light",
+          "label": "Été — clair",
+          "file": "summer-light.png",
+          "status": "PROPOSED",
+          "sha256": "e74e4b144c4a6f14ffd9e1336785f9acfb2b0eab10419edc13031ee0cbc00ea2",
+          "width": 1254,
+          "height": 1254,
+          "has_alpha": true,
+          "palette_requested": [
+            "#FFF3C8",
+            "#DA7515"
+          ],
+          "source_image": "exec-a98b2594-e3cd-4c5d-9950-489ff69b6994.png",
+          "edit_target": "summer-light.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the SUMMER LIGHT edit target. Image 2 is the approved GEOMETRY master only, not a palette reference. Give Image 1 a warmer brighter sunnier SUMMER palette: tile, sofa and letters warm luminous pale golden cream #FFF3C8; filled circular disc and sofa separation vivid golden tangerine orange #DA7515. Fresh sunny apricot/gold warmth, much less brown/muddy than the original. Flat clear readable logo. Align sofa geometry and all gaps precisely to Image 2, without changing circle placement or size. No sun symbol or new motif. Keep the EXACT wordmark \"Chill Center\" (same bold gourmand curved lettering), outer rounded square, circle, sofa size and positions. Preserve genuinely transparent pixels outside the tile. No rings, no extra objects, no smudges or textures. Sofa spacings MUST match the geometry master: at y=790 on a 1254px canvas, left and right separator gaps are each 18px; backrest/seat separator is 31px thick near x=470. Do not thicken gaps or lower the sofa. ",
+          "revision": 3,
+          "references": [
+            "summer-light.png",
+            "default.png"
+          ]
+        }
+      ],
+      "geometry_audit": "geometry-audit-r3.json",
+      "geometry_result": "Major Christmas LIGHT drift corrected; remaining sampled maximum deltas1–4px at1254px. Not pixel-identical across independently generated PNGs. Shared SVG master proposed separately, pending user choice.",
+      "rollback": "Restore the three images and consuming metadata/gallery from base_commit; regenerate repository manifest."
+    },
+    {
+      "id": "branding-r4",
+      "date": "2026-10-13",
+      "authorization": "Oui, créer le gabarit SVG commun",
+      "method": "Trace retained default contours once; shared native SVG definitions; deterministic Rust palette/motif generator.",
+      "result": "Exact shared vector geometry across13 SVGs; calendar/app integration unchanged; visual approval pending."
     }
-  ]
+  ],
+  "vector": {
+    "revision": 4,
+    "status": "PROPOSED_VISUAL_APPROVAL_PENDING",
+    "method_approved_by_user": "Oui, créer le gabarit SVG commun",
+    "master": "vector/master.svg",
+    "provenance": "vector/provenance.json",
+    "generator": "scripts/branding.rs",
+    "geometry_shared": true,
+    "default_raster_unchanged": true,
+    "files": [
+      "vector/default.svg",
+      "vector/spring-light.svg",
+      "vector/spring-dark.svg",
+      "vector/summer-light.svg",
+      "vector/summer-dark.svg",
+      "vector/autumn-light.svg",
+      "vector/autumn-dark.svg",
+      "vector/winter-light.svg",
+      "vector/winter-dark.svg",
+      "vector/christmas-light.svg",
+      "vector/christmas-dark.svg",
+      "vector/halloween-light.svg",
+      "vector/halloween-dark.svg"
+    ],
+    "previous_raster_files": [
+      "raster-r2/christmas-light.png",
+      "raster-r2/summer-light.png",
+      "raster-r2/summer-dark.png"
+    ]
+  }
 }
