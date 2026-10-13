@@ -149,6 +149,7 @@ impl IntoResponse for ApiError {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .merge(crate::archive_api::routes())
         .merge(crate::catalog_api::routes())
         .merge(crate::playback::routes())
         .route("/api/v1/server", get(server))

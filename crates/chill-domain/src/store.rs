@@ -4,7 +4,9 @@
 //! module deliberately never opens or walks a media path: `media_path` is the
 //! narrow server-side escape hatch and all catalogue views expose relative paths.
 
-use crate::{PersonalState, Preferences, Profile, Progress, PlaybackContext, NextVideo, valid_speed};
+use crate::{
+    NextVideo, PersonalState, PlaybackContext, Preferences, Profile, Progress, valid_speed,
+};
 use chill_catalog::{
     database::Database,
     model::{Collection, Media, MediaPatch},
@@ -46,7 +48,13 @@ pub struct PlaylistView {
     pub media_ids: Vec<String>,
 }
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct SagaView { pub id:String, pub name:String, pub revision:u64, pub media_ids:Vec<String>, pub poster:Option<String> }
+pub struct SagaView {
+    pub id: String,
+    pub name: String,
+    pub revision: u64,
+    pub media_ids: Vec<String>,
+    pub poster: Option<String>,
+}
 
 pub struct Store {
     catalogue: Database,
@@ -316,12 +324,24 @@ impl Store {
 
     pub fn series(&mut self, profile_id: &str, name: &str) -> Result<Vec<Media>, String> {
         self.require_profile(profile_id)?;
-        if name.is_empty() || name.len() > 500 { return Err("Série invalide.".into()); }
-        let mut members: Vec<_> = self.catalog(profile_id)?.into_iter()
+        if name.is_empty() || name.len() > 500 {
+            return Err("Série invalide.".into());
+        }
+        let mut members: Vec<_> = self
+            .catalog(profile_id)?
+            .into_iter()
             .filter(|m| m.category == "serie" && m.series.as_deref().unwrap_or(&m.title) == name)
             .collect();
-        members.sort_by_key(|m| (m.season.unwrap_or(i32::MAX), m.episode.unwrap_or(i32::MAX), m.title.clone()));
-        if members.is_empty() { return Err("Série introuvable dans le catalogue.".into()); }
+        members.sort_by_key(|m| {
+            (
+                m.season.unwrap_or(i32::MAX),
+                m.episode.unwrap_or(i32::MAX),
+                m.title.clone(),
+            )
+        });
+        if members.is_empty() {
+            return Err("Série introuvable dans le catalogue.".into());
+        }
         Ok(members)
     }
 
@@ -343,40 +363,101 @@ impl Store {
 
     /// Context is server-derived: a client cannot attach an arbitrary playlist,
     /// saga or series to influence autoplay.
-    pub fn validate_playback_context(&mut self, profile: &str, media: &str, context: &PlaybackContext) -> Result<(), String> {
+    pub fn validate_playback_context(
+        &mut self,
+        profile: &str,
+        media: &str,
+        context: &PlaybackContext,
+    ) -> Result<(), String> {
         let item = self.media(profile, media)?;
         match (context.kind.as_str(), context.id.as_deref()) {
             ("standalone", None) => Ok(()),
-            ("series", Some(name)) if item.category == "serie" && item.series.as_deref().unwrap_or(&item.title) == name => Ok(()),
+            ("series", Some(name))
+                if item.category == "serie"
+                    && item.series.as_deref().unwrap_or(&item.title) == name =>
+            {
+                Ok(())
+            }
             ("playlist", Some(id)) => {
                 let list = self.playlist(profile, id)?;
-                if list.media_ids.iter().any(|v| v == media) { Ok(()) } else { Err("Cette vidéo n’appartient pas à cette playlist.".into()) }
+                if list.media_ids.iter().any(|v| v == media) {
+                    Ok(())
+                } else {
+                    Err("Cette vidéo n’appartient pas à cette playlist.".into())
+                }
             }
             ("saga", Some(id)) => {
-                let saga = self.collections(profile)?.into_iter().find(|c| c.kind == "saga" && c.id == id).ok_or("Saga introuvable.")?;
-                if saga.media_ids.iter().any(|v| v == media) { Ok(()) } else { Err("Cette vidéo n’appartient pas à cette saga.".into()) }
+                let saga = self
+                    .collections(profile)?
+                    .into_iter()
+                    .find(|c| c.kind == "saga" && c.id == id)
+                    .ok_or("Saga introuvable.")?;
+                if saga.media_ids.iter().any(|v| v == media) {
+                    Ok(())
+                } else {
+                    Err("Cette vidéo n’appartient pas à cette saga.".into())
+                }
             }
             _ => Err("Contexte de lecture invalide.".into()),
         }
     }
 
-    pub fn next_video(&mut self, profile: &str, media: &str, context: &PlaybackContext) -> Result<NextVideo, String> {
+    pub fn next_video(
+        &mut self,
+        profile: &str,
+        media: &str,
+        context: &PlaybackContext,
+    ) -> Result<NextVideo, String> {
         self.validate_playback_context(profile, media, context)?;
         let current = self.media(profile, media)?;
         let next = match (context.kind.as_str(), context.id.as_deref()) {
-            ("playlist", Some(id)) => { let p=self.playlist(profile,id)?; p.media_ids.iter().position(|v|v==media).and_then(|n|p.media_ids.get(n+1)).cloned() },
-            ("saga", Some(id)) => self.collections(profile)?.into_iter().find(|c|c.kind=="saga" && c.id==id).and_then(|c|c.media_ids.iter().position(|v|v==media).and_then(|n|c.media_ids.get(n+1)).cloned()),
+            ("playlist", Some(id)) => {
+                let p = self.playlist(profile, id)?;
+                p.media_ids
+                    .iter()
+                    .position(|v| v == media)
+                    .and_then(|n| p.media_ids.get(n + 1))
+                    .cloned()
+            }
+            ("saga", Some(id)) => self
+                .collections(profile)?
+                .into_iter()
+                .find(|c| c.kind == "saga" && c.id == id)
+                .and_then(|c| {
+                    c.media_ids
+                        .iter()
+                        .position(|v| v == media)
+                        .and_then(|n| c.media_ids.get(n + 1))
+                        .cloned()
+                }),
             ("series", _) => {
-                if current.category != "serie" || current.season.is_none() || current.episode.is_none() { None } else {
-                    self.series(profile, current.series.as_deref().unwrap_or(&current.title))?.into_iter().find(|m| (m.season,m.episode) > (current.season,current.episode)).map(|m|m.id)
+                if current.category != "serie"
+                    || current.season.is_none()
+                    || current.episode.is_none()
+                {
+                    None
+                } else {
+                    self.series(profile, current.series.as_deref().unwrap_or(&current.title))?
+                        .into_iter()
+                        .find(|m| (m.season, m.episode) > (current.season, current.episode))
+                        .map(|m| m.id)
                 }
             }
             _ => None,
         };
-        let item = match next { Some(id) => Some(self.media(profile,&id)?), None => None };
-        let new_season = context.kind == "series" && current.season.is_some() && item.as_ref().is_some_and(|m|m.season != current.season);
-        let available = item.as_ref().is_some_and(|m|m.available);
-        Ok(NextVideo { media:item, new_season, available })
+        let item = match next {
+            Some(id) => Some(self.media(profile, &id)?),
+            None => None,
+        };
+        let new_season = context.kind == "series"
+            && current.season.is_some()
+            && item.as_ref().is_some_and(|m| m.season != current.season);
+        let available = item.as_ref().is_some_and(|m| m.available);
+        Ok(NextVideo {
+            media: item,
+            new_season,
+            available,
+        })
     }
 
     pub fn snapshot(&mut self, discovered: Vec<Media>) -> Result<i64, String> {
@@ -481,30 +562,115 @@ impl Store {
 
     pub fn media_revision(&self, stable_id: &str) -> Result<u64, String> {
         self.legacy_id(stable_id)?;
-        self.personal.query_row("SELECT revision FROM cc_media_revision WHERE stable_id=?1", [stable_id], |r| r.get::<_,i64>(0)).optional().map_err(db_error)?.map(|v|v as u64).ok_or_else(|| "Vidéo introuvable dans le catalogue.".into())
+        self.personal
+            .query_row(
+                "SELECT revision FROM cc_media_revision WHERE stable_id=?1",
+                [stable_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(db_error)?
+            .map(|v| v as u64)
+            .ok_or_else(|| "Vidéo introuvable dans le catalogue.".into())
     }
 
-    pub fn update_media_at_revision(&mut self, profile: &str, stable_id: &str, expected: u64, patch: &MediaPatch) -> Result<(Media,u64), String> {
+    pub fn update_media_at_revision(
+        &mut self,
+        profile: &str,
+        stable_id: &str,
+        expected: u64,
+        patch: &MediaPatch,
+    ) -> Result<(Media, u64), String> {
         self.require_profile(profile)?;
-        if patch.rating.is_some() || patch.watched.is_some() { return Err("La note et le vu sont propres au profil.".into()); }
-        let legacy=self.legacy_id(stable_id)?;
-        let tx=self.personal.unchecked_transaction().map_err(db_error)?;
-        let revision:i64=tx.query_row("SELECT revision FROM cc_media_revision WHERE stable_id=?1",[stable_id],|r|r.get(0)).map_err(db_error)?;
-        if revision as u64 != expected { return Err("La fiche a changé entre-temps.".into()); }
-        let data:String=tx.query_row("SELECT data FROM media WHERE id=?1",[&legacy],|r|r.get(0)).map_err(db_error)?;
-        let mut updated:Media=serde_json::from_str(&data).map_err(|_|"Catalogue local endommagé : aucune donnée remplacée.".to_string())?;
+        if patch.rating.is_some() || patch.watched.is_some() {
+            return Err("La note et le vu sont propres au profil.".into());
+        }
+        let legacy = self.legacy_id(stable_id)?;
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let revision: i64 = tx
+            .query_row(
+                "SELECT revision FROM cc_media_revision WHERE stable_id=?1",
+                [stable_id],
+                |r| r.get(0),
+            )
+            .map_err(db_error)?;
+        if revision as u64 != expected {
+            return Err("La fiche a changé entre-temps.".into());
+        }
+        let data: String = tx
+            .query_row("SELECT data FROM media WHERE id=?1", [&legacy], |r| {
+                r.get(0)
+            })
+            .map_err(db_error)?;
+        let mut updated: Media = serde_json::from_str(&data)
+            .map_err(|_| "Catalogue local endommagé : aucune donnée remplacée.".to_string())?;
         patch.apply(&mut updated)?;
-        tx.execute("UPDATE media SET data=?1 WHERE id=?2",params![serde_json::to_string(&updated).map_err(|_|"Métadonnées invalides.")?,legacy]).map_err(db_error)?;
-        tx.execute("UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",[stable_id]).map_err(db_error)?;
+        tx.execute(
+            "UPDATE media SET data=?1 WHERE id=?2",
+            params![
+                serde_json::to_string(&updated).map_err(|_| "Métadonnées invalides.")?,
+                legacy
+            ],
+        )
+        .map_err(db_error)?;
+        tx.execute(
+            "UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",
+            [stable_id],
+        )
+        .map_err(db_error)?;
         tx.commit().map_err(db_error)?;
-        Ok((self.profile_view(profile,updated)?,revision as u64+1))
+        Ok((self.profile_view(profile, updated)?, revision as u64 + 1))
     }
-    pub fn set_custom_poster(&mut self, profile:&str, stable:&str, expected:u64, bytes:&[u8], cache:&Path)->Result<(Media,u64),String>{
-        self.require_profile(profile)?; if bytes.len()>8*1024*1024{return Err("Image trop volumineuse.".into())}; let legacy=self.legacy_id(stable)?;
-        let tx=self.personal.unchecked_transaction().map_err(db_error)?; let revision:i64=tx.query_row("SELECT revision FROM cc_media_revision WHERE stable_id=?1",[stable],|r|r.get(0)).map_err(db_error)?; if revision as u64!=expected{return Err("La fiche a changé entre-temps.".into())};
+    pub fn set_custom_poster(
+        &mut self,
+        profile: &str,
+        stable: &str,
+        expected: u64,
+        bytes: &[u8],
+        cache: &Path,
+    ) -> Result<(Media, u64), String> {
+        self.require_profile(profile)?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err("Image trop volumineuse.".into());
+        };
+        let legacy = self.legacy_id(stable)?;
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let revision: i64 = tx
+            .query_row(
+                "SELECT revision FROM cc_media_revision WHERE stable_id=?1",
+                [stable],
+                |r| r.get(0),
+            )
+            .map_err(db_error)?;
+        if revision as u64 != expected {
+            return Err("La fiche a changé entre-temps.".into());
+        };
         // Store validates JPEG/PNG/WebP before any database pointer is changed.
-        let poster=chill_catalog::poster::store(bytes,cache)?; let data:String=tx.query_row("SELECT data FROM media WHERE id=?1",[&legacy],|r|r.get(0)).map_err(db_error)?;let mut item:Media=serde_json::from_str(&data).map_err(|_|"Catalogue local endommagé : aucune donnée remplacée.".to_string())?;item.poster=Some(poster);item.poster_custom=true;
-        tx.execute("UPDATE media SET data=?1 WHERE id=?2",params![serde_json::to_string(&item).map_err(|_|"Métadonnées invalides.")?,legacy]).map_err(db_error)?;tx.execute("UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",[stable]).map_err(db_error)?;tx.commit().map_err(db_error)?;Ok((self.profile_view(profile,item)?,revision as u64+1))
+        let poster = chill_catalog::poster::store(bytes, cache)?;
+        let data: String = tx
+            .query_row("SELECT data FROM media WHERE id=?1", [&legacy], |r| {
+                r.get(0)
+            })
+            .map_err(db_error)?;
+        let mut item: Media = serde_json::from_str(&data)
+            .map_err(|_| "Catalogue local endommagé : aucune donnée remplacée.".to_string())?;
+        item.poster = Some(poster);
+        item.poster_custom = true;
+        tx.execute(
+            "UPDATE media SET data=?1 WHERE id=?2",
+            params![
+                serde_json::to_string(&item).map_err(|_| "Métadonnées invalides.")?,
+                legacy
+            ],
+        )
+        .map_err(db_error)?;
+        tx.execute(
+            "UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",
+            [stable],
+        )
+        .map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        Ok((self.profile_view(profile, item)?, revision as u64 + 1))
     }
 
     pub fn set_rating(
@@ -692,28 +858,134 @@ impl Store {
 
     pub fn playlists(&self, profile_id: &str) -> Result<Vec<PlaylistView>, String> {
         self.require_profile(profile_id)?;
-        let mut stmt = self.personal.prepare("SELECT id,name,revision FROM cc_playlists WHERE profile_id=?1 ORDER BY name,id").map_err(db_error)?;
-        stmt.query_map([profile_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))
-            .map_err(db_error)?.map(|row| { let (id,name,revision)=row.map_err(db_error)?; Ok(PlaylistView { media_ids: self.playlist_members(&id)?, id, name, revision: revision as u64 }) }).collect()
+        let mut stmt = self
+            .personal
+            .prepare(
+                "SELECT id,name,revision FROM cc_playlists WHERE profile_id=?1 ORDER BY name,id",
+            )
+            .map_err(db_error)?;
+        stmt.query_map([profile_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })
+        .map_err(db_error)?
+        .map(|row| {
+            let (id, name, revision) = row.map_err(db_error)?;
+            Ok(PlaylistView {
+                media_ids: self.playlist_members(&id)?,
+                id,
+                name,
+                revision: revision as u64,
+            })
+        })
+        .collect()
     }
     pub fn sagas(&mut self) -> Result<Vec<SagaView>, String> {
-        self.catalogue.collections()?.into_iter().filter(|c|c.kind=="saga").map(|c| {
-            let media_ids=c.media_ids.iter().map(|legacy|self.stable_id(legacy)).collect::<Result<Vec<_>,_>>()?;
-            let poster=c.poster.filter(|p| !Path::new(p).is_absolute() && !p.starts_with("file:"));
-            Ok(SagaView { revision:self.catalogue.saga_revision(&c.id)?, id:c.id,name:c.name,media_ids,poster })
-        }).collect()
+        self.catalogue
+            .collections()?
+            .into_iter()
+            .filter(|c| c.kind == "saga")
+            .map(|c| {
+                let media_ids = c
+                    .media_ids
+                    .iter()
+                    .map(|legacy| self.stable_id(legacy))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let poster = c
+                    .poster
+                    .filter(|p| !Path::new(p).is_absolute() && !p.starts_with("file:"));
+                Ok(SagaView {
+                    revision: self.catalogue.saga_revision(&c.id)?,
+                    id: c.id,
+                    name: c.name,
+                    media_ids,
+                    poster,
+                })
+            })
+            .collect()
     }
-    pub fn saga(&mut self,id:&str)->Result<SagaView,String>{self.sagas()?.into_iter().find(|s|s.id==id).ok_or_else(||"Saga introuvable.".into())}
-    pub fn create_saga(&mut self,name:&str)->Result<SagaView,String>{let id=self.catalogue.create_collection(name,"saga")?.into_iter().find(|c|c.kind=="saga"&&c.name==name.trim()).ok_or("Saga introuvable.")?.id;self.saga(&id)}
-    pub fn rename_saga_at_revision(&mut self,id:&str,name:&str,revision:u64)->Result<SagaView,String>{self.catalogue.rename_saga_at_revision(id,name,revision)?;self.saga(id)}
-    pub fn saga_members_at_revision(&mut self,id:&str,media:&[String],revision:u64,add:bool)->Result<SagaView,String>{let legacy=media.iter().map(|stable|self.legacy_id(stable)).collect::<Result<Vec<_>,_>>()?;self.catalogue.saga_members_at_revision(id,&legacy,revision,add)?;self.saga(id)}
-    pub fn reorder_saga_at_revision(&mut self,id:&str,revision:u64,expected:&[String],desired:&[String])->Result<SagaView,String>{let expected=expected.iter().map(|stable|self.legacy_id(stable)).collect::<Result<Vec<_>,_>>()?;let desired=desired.iter().map(|stable|self.legacy_id(stable)).collect::<Result<Vec<_>,_>>()?;self.catalogue.reorder_saga_at_revision(id,revision,&expected,&desired)?;self.saga(id)}
-    pub fn delete_saga_at_revision(&mut self,id:&str,revision:u64)->Result<(),String>{self.catalogue.delete_saga_at_revision(id,revision)}
+    pub fn saga(&mut self, id: &str) -> Result<SagaView, String> {
+        self.sagas()?
+            .into_iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| "Saga introuvable.".into())
+    }
+    pub fn create_saga(&mut self, name: &str) -> Result<SagaView, String> {
+        let id = self
+            .catalogue
+            .create_collection(name, "saga")?
+            .into_iter()
+            .find(|c| c.kind == "saga" && c.name == name.trim())
+            .ok_or("Saga introuvable.")?
+            .id;
+        self.saga(&id)
+    }
+    pub fn rename_saga_at_revision(
+        &mut self,
+        id: &str,
+        name: &str,
+        revision: u64,
+    ) -> Result<SagaView, String> {
+        self.catalogue.rename_saga_at_revision(id, name, revision)?;
+        self.saga(id)
+    }
+    pub fn saga_members_at_revision(
+        &mut self,
+        id: &str,
+        media: &[String],
+        revision: u64,
+        add: bool,
+    ) -> Result<SagaView, String> {
+        let legacy = media
+            .iter()
+            .map(|stable| self.legacy_id(stable))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.catalogue
+            .saga_members_at_revision(id, &legacy, revision, add)?;
+        self.saga(id)
+    }
+    pub fn reorder_saga_at_revision(
+        &mut self,
+        id: &str,
+        revision: u64,
+        expected: &[String],
+        desired: &[String],
+    ) -> Result<SagaView, String> {
+        let expected = expected
+            .iter()
+            .map(|stable| self.legacy_id(stable))
+            .collect::<Result<Vec<_>, _>>()?;
+        let desired = desired
+            .iter()
+            .map(|stable| self.legacy_id(stable))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.catalogue
+            .reorder_saga_at_revision(id, revision, &expected, &desired)?;
+        self.saga(id)
+    }
+    pub fn delete_saga_at_revision(&mut self, id: &str, revision: u64) -> Result<(), String> {
+        self.catalogue.delete_saga_at_revision(id, revision)
+    }
 
     pub fn playlist(&self, profile_id: &str, id: &str) -> Result<PlaylistView, String> {
         self.require_playlist(profile_id, id)?;
-        let (name, revision): (String, i64) = self.personal.query_row("SELECT name,revision FROM cc_playlists WHERE id=?1 AND profile_id=?2", params![id,profile_id], |r| Ok((r.get(0)?,r.get(1)?))).map_err(db_error)?;
-        Ok(PlaylistView { id: id.into(), name, revision: revision as u64, media_ids: self.playlist_members(id)? })
+        let (name, revision): (String, i64) = self
+            .personal
+            .query_row(
+                "SELECT name,revision FROM cc_playlists WHERE id=?1 AND profile_id=?2",
+                params![id, profile_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(db_error)?;
+        Ok(PlaylistView {
+            id: id.into(),
+            name,
+            revision: revision as u64,
+            media_ids: self.playlist_members(id)?,
+        })
     }
 
     pub fn create_collection(
@@ -743,13 +1015,34 @@ impl Store {
         })
     }
 
-    pub fn create_playlist_with_members(&self, profile_id:&str, name:&str, media_ids:&[String]) -> Result<PlaylistView,String> {
+    pub fn create_playlist_with_members(
+        &self,
+        profile_id: &str,
+        name: &str,
+        media_ids: &[String],
+    ) -> Result<PlaylistView, String> {
         self.require_profile(profile_id)?;
-        if media_ids.len()>1000 { return Err("Sélectionnez au plus 1 000 vidéos.".into()); }
-        let name=valid_collection_name(name)?; let id=Uuid::new_v4().to_string(); let tx=self.personal.unchecked_transaction().map_err(db_error)?;
-        tx.execute("INSERT INTO cc_playlists(id,profile_id,name) VALUES(?1,?2,?3)",params![id,profile_id,name]).map_err(|_|"Une playlist porte déjà ce nom pour ce profil.".to_string())?;
-        let mut seen=HashSet::new(); for (position,media) in media_ids.iter().enumerate() { if !seen.insert(media) { return Err("Sélection invalide : vidéo dupliquée.".into()); } ensure_identity_in(&tx,media)?; tx.execute("INSERT INTO cc_playlist_members(playlist_id,stable_media_id,position) VALUES(?1,?2,?3)",params![id,media,position as i64]).map_err(db_error)?; }
-        tx.commit().map_err(db_error)?; self.playlist(profile_id,&id)
+        if media_ids.len() > 1000 {
+            return Err("Sélectionnez au plus 1 000 vidéos.".into());
+        }
+        let name = valid_collection_name(name)?;
+        let id = Uuid::new_v4().to_string();
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        tx.execute(
+            "INSERT INTO cc_playlists(id,profile_id,name) VALUES(?1,?2,?3)",
+            params![id, profile_id, name],
+        )
+        .map_err(|_| "Une playlist porte déjà ce nom pour ce profil.".to_string())?;
+        let mut seen = HashSet::new();
+        for (position, media) in media_ids.iter().enumerate() {
+            if !seen.insert(media) {
+                return Err("Sélection invalide : vidéo dupliquée.".into());
+            }
+            ensure_identity_in(&tx, media)?;
+            tx.execute("INSERT INTO cc_playlist_members(playlist_id,stable_media_id,position) VALUES(?1,?2,?3)",params![id,media,position as i64]).map_err(db_error)?;
+        }
+        tx.commit().map_err(db_error)?;
+        self.playlist(profile_id, &id)
     }
 
     pub fn collection_member_add_bulk(
@@ -786,9 +1079,17 @@ impl Store {
         tx.commit().map_err(db_error)
     }
 
-    pub fn collection_member_add_bulk_at_revision(&self, profile_id: &str, collection_id: &str, media_ids: &[String], expected: u64) -> Result<(), String> {
+    pub fn collection_member_add_bulk_at_revision(
+        &self,
+        profile_id: &str,
+        collection_id: &str,
+        media_ids: &[String],
+        expected: u64,
+    ) -> Result<(), String> {
         let current = self.playlist(profile_id, collection_id)?;
-        if current.revision != expected { return Err("La playlist a changé entre-temps.".into()); }
+        if current.revision != expected {
+            return Err("La playlist a changé entre-temps.".into());
+        }
         self.collection_member_add_bulk(profile_id, collection_id, media_ids)
     }
 
@@ -899,9 +1200,17 @@ impl Store {
             .map_err(|_| "Une playlist porte déjà ce nom pour ce profil.".to_string())?;
         Ok(())
     }
-    pub fn rename_playlist_at_revision(&self, profile:&str,id:&str,name:&str,expected:u64)->Result<(),String>{
-        self.require_playlist(profile,id)?; let name=valid_collection_name(name)?;
-        if self.personal.execute("UPDATE cc_playlists SET name=?1,revision=revision+1 WHERE id=?2 AND profile_id=?3 AND revision=?4",params![name,id,profile,expected as i64]).map_err(db_error)? != 1 { return Err("La playlist a changé entre-temps.".into()); } Ok(())
+    pub fn rename_playlist_at_revision(
+        &self,
+        profile: &str,
+        id: &str,
+        name: &str,
+        expected: u64,
+    ) -> Result<(), String> {
+        self.require_playlist(profile, id)?;
+        let name = valid_collection_name(name)?;
+        if self.personal.execute("UPDATE cc_playlists SET name=?1,revision=revision+1 WHERE id=?2 AND profile_id=?3 AND revision=?4",params![name,id,profile,expected as i64]).map_err(db_error)? != 1 { return Err("La playlist a changé entre-temps.".into()); }
+        Ok(())
     }
     pub fn delete_collection(&self, profile_id: &str, collection_id: &str) -> Result<(), String> {
         self.require_playlist(profile_id, collection_id)?;
@@ -912,6 +1221,16 @@ impl Store {
     }
 
     pub fn export_json(&mut self) -> Result<Value, String> {
+        self.export_json_with_limit(Some(MAX_IN_MEMORY_EXPORT_BYTES))
+    }
+
+    /// Archive staging owns its size limits on disk. The legacy API remains
+    /// memory-bounded for compatibility.
+    pub fn export_archive_json(&mut self) -> Result<Value, String> {
+        self.export_json_with_limit(None)
+    }
+
+    fn export_json_with_limit(&mut self, maximum: Option<usize>) -> Result<Value, String> {
         // Reserve the single SQLite writer while both legacy and personal rows
         // are read. This is a coherent, bounded compatibility export; callers
         // needing a larger archive must use the future staging/streaming API.
@@ -928,11 +1247,11 @@ impl Store {
             .map(|p| self.export_profile(p))
             .collect::<Result<Vec<_>, _>>()?;
         let document = json!({"format_version": EXPORT_FORMAT_VERSION, "export_id": Uuid::new_v4().to_string(), "profiles": profiles, "media": identities, "sagas": sagas, "personal": personal, "leases": []});
-        if serde_json::to_vec(&document)
-            .map_err(|_| "Export invalide.")?
-            .len()
-            > MAX_IN_MEMORY_EXPORT_BYTES
-        {
+        if maximum.is_some_and(|maximum| {
+            serde_json::to_vec(&document)
+                .map(|value| value.len() > maximum)
+                .unwrap_or(true)
+        }) {
             return Err(
                 "Export trop volumineux pour l’API mémoire ; utilisez l’export de staging.".into(),
             );
@@ -1055,13 +1374,22 @@ impl Store {
         // through the controlled artwork endpoint.
         // The file location/provider URL is storage-private.  The client gets a
         // stable opaque endpoint only; the handler resolves and validates it.
-        if media.poster.is_some() { media.poster=Some(format!("/api/v1/profiles/{profile}/media/{}/artwork", media.id)); }
+        if media.poster.is_some() {
+            media.poster = Some(format!(
+                "/api/v1/profiles/{profile}/media/{}/artwork",
+                media.id
+            ));
+        }
         Ok(media)
     }
-    pub fn artwork_path(&mut self, profile:&str, stable:&str)->Result<PathBuf,String>{
-        self.require_profile(profile)?; let legacy=self.legacy_id(stable)?; let media=self.catalogue.get(&legacy)?;
-        let poster=media.poster.ok_or("Affiche introuvable.")?;
-        if !Path::new(&poster).is_absolute() || poster.starts_with("file:") { return Err("Affiche introuvable.".into()); }
+    pub fn artwork_path(&mut self, profile: &str, stable: &str) -> Result<PathBuf, String> {
+        self.require_profile(profile)?;
+        let legacy = self.legacy_id(stable)?;
+        let media = self.catalogue.get(&legacy)?;
+        let poster = media.poster.ok_or("Affiche introuvable.")?;
+        if !Path::new(&poster).is_absolute() || poster.starts_with("file:") {
+            return Err("Affiche introuvable.".into());
+        }
         Ok(PathBuf::from(poster))
     }
     fn playlist_members(&self, id: &str) -> Result<Vec<String>, String> {
@@ -1413,47 +1741,133 @@ mod tests {
     }
     #[test]
     fn saga_boundary_roundtrips_scanned_stable_ids_without_touching_personal_state() {
-        let mut s=store(); let p=s.create_profile("Saga").unwrap();
-        let ids:Vec<_>=s.catalog(&p.id).unwrap().into_iter().map(|m|m.id).collect();
+        let mut s = store();
+        let p = s.create_profile("Saga").unwrap();
+        let ids: Vec<_> = s
+            .catalog(&p.id)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
         // Snapshot stores relative legacy IDs, whereas all public APIs below use UUIDs.
-        assert!(ids.iter().all(|id| id!="Films/A.mkv" && id!="Films/B.mkv"));
-        s.set_watched(&p.id,&ids[0],true).unwrap(); s.set_rating(&p.id,&ids[0],Some(4),"video").unwrap();
-        let saga=s.create_saga("Saga stable").unwrap();
-        let saga=s.saga_members_at_revision(&saga.id,&ids,saga.revision,true).unwrap();
-        assert_eq!(saga.media_ids,ids);
-        assert!(s.validate_playback_context(&p.id,&ids[0],&PlaybackContext{kind:"saga".into(),id:Some(saga.id.clone())}).is_ok());
-        let before=saga.clone(); assert!(s.saga_members_at_revision(&before.id,&[ids[0].clone()],before.revision-1,false).is_err());
-        assert_eq!(s.saga(&before.id).unwrap().media_ids,ids);
-        let saga=s.reorder_saga_at_revision(&before.id,before.revision,&ids,&[ids[1].clone(),ids[0].clone()]).unwrap();
-        assert_eq!(saga.media_ids,vec![ids[1].clone(),ids[0].clone()]);
-        let saga=s.saga_members_at_revision(&saga.id,&[ids[1].clone()],saga.revision,false).unwrap(); assert_eq!(saga.media_ids,vec![ids[0].clone()]);
-        let view=s.media(&p.id,&ids[0]).unwrap(); assert!(view.watched); assert_eq!(view.rating,Some(4));
+        assert!(
+            ids.iter()
+                .all(|id| id != "Films/A.mkv" && id != "Films/B.mkv")
+        );
+        s.set_watched(&p.id, &ids[0], true).unwrap();
+        s.set_rating(&p.id, &ids[0], Some(4), "video").unwrap();
+        let saga = s.create_saga("Saga stable").unwrap();
+        let saga = s
+            .saga_members_at_revision(&saga.id, &ids, saga.revision, true)
+            .unwrap();
+        assert_eq!(saga.media_ids, ids);
+        assert!(
+            s.validate_playback_context(
+                &p.id,
+                &ids[0],
+                &PlaybackContext {
+                    kind: "saga".into(),
+                    id: Some(saga.id.clone())
+                }
+            )
+            .is_ok()
+        );
+        let before = saga.clone();
+        assert!(
+            s.saga_members_at_revision(&before.id, &[ids[0].clone()], before.revision - 1, false)
+                .is_err()
+        );
+        assert_eq!(s.saga(&before.id).unwrap().media_ids, ids);
+        let saga = s
+            .reorder_saga_at_revision(
+                &before.id,
+                before.revision,
+                &ids,
+                &[ids[1].clone(), ids[0].clone()],
+            )
+            .unwrap();
+        assert_eq!(saga.media_ids, vec![ids[1].clone(), ids[0].clone()]);
+        let saga = s
+            .saga_members_at_revision(&saga.id, &[ids[1].clone()], saga.revision, false)
+            .unwrap();
+        assert_eq!(saga.media_ids, vec![ids[0].clone()]);
+        let view = s.media(&p.id, &ids[0]).unwrap();
+        assert!(view.watched);
+        assert_eq!(view.rating, Some(4));
     }
     #[test]
     fn media_cas_context_and_next_are_profile_bound() {
         let mut s = store();
         let p = s.create_profile("A").unwrap();
         let other = s.create_profile("B").unwrap();
-        let ids: Vec<_> = s.catalog(&p.id).unwrap().into_iter().map(|m|m.id).collect();
-        let revision=s.media_revision(&ids[0]).unwrap();
-        let (changed,next_revision)=s.update_media_at_revision(&p.id,&ids[0],revision,&MediaPatch { title:Some("Nouveau".into()), ..Default::default() }).unwrap();
-        assert_eq!(changed.title,"Nouveau");
-        assert!(s.update_media_at_revision(&p.id,&ids[0],revision,&MediaPatch::default()).is_err());
-        assert_eq!(next_revision,revision+1);
-        let list=s.create_collection(&p.id,"Liste","playlist").unwrap();
-        s.collection_member_add_bulk(&p.id,&list.id,&ids).unwrap();
-        let context=PlaybackContext {kind:"playlist".into(),id:Some(list.id.clone())};
-        assert_eq!(s.next_video(&p.id,&ids[0],&context).unwrap().media.unwrap().id,ids[1]);
-        assert!(s.validate_playback_context(&other.id,&ids[0],&context).is_err());
+        let ids: Vec<_> = s
+            .catalog(&p.id)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        let revision = s.media_revision(&ids[0]).unwrap();
+        let (changed, next_revision) = s
+            .update_media_at_revision(
+                &p.id,
+                &ids[0],
+                revision,
+                &MediaPatch {
+                    title: Some("Nouveau".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(changed.title, "Nouveau");
+        assert!(
+            s.update_media_at_revision(&p.id, &ids[0], revision, &MediaPatch::default())
+                .is_err()
+        );
+        assert_eq!(next_revision, revision + 1);
+        let list = s.create_collection(&p.id, "Liste", "playlist").unwrap();
+        s.collection_member_add_bulk(&p.id, &list.id, &ids).unwrap();
+        let context = PlaybackContext {
+            kind: "playlist".into(),
+            id: Some(list.id.clone()),
+        };
+        assert_eq!(
+            s.next_video(&p.id, &ids[0], &context)
+                .unwrap()
+                .media
+                .unwrap()
+                .id,
+            ids[1]
+        );
+        assert!(
+            s.validate_playback_context(&other.id, &ids[0], &context)
+                .is_err()
+        );
     }
     #[test]
     fn group_ratings_only_touch_present_targeted_episodes() {
-        let mut s=store(); let p=s.create_profile("A").unwrap();
-        let mut a=media("S/a.mkv","/nas/S/a.mkv"); a.category="serie".into(); a.series=Some("S".into()); a.season=Some(1); a.episode=Some(1);
-        let mut b=media("S/b.mkv","/nas/S/b.mkv"); b.category="serie".into(); b.series=Some("S".into()); b.season=Some(2); b.episode=Some(1);
-        s.snapshot(vec![a,b]).unwrap(); let ids:Vec<_>=s.catalog(&p.id).unwrap().into_iter().filter(|m|m.series.as_deref()==Some("S")).map(|m|m.id).collect();
-        s.set_rating(&p.id,&ids[0],Some(4),"season").unwrap();
-        assert_eq!(s.media(&p.id,&ids[0]).unwrap().rating,Some(4)); assert_eq!(s.media(&p.id,&ids[1]).unwrap().rating,None);
+        let mut s = store();
+        let p = s.create_profile("A").unwrap();
+        let mut a = media("S/a.mkv", "/nas/S/a.mkv");
+        a.category = "serie".into();
+        a.series = Some("S".into());
+        a.season = Some(1);
+        a.episode = Some(1);
+        let mut b = media("S/b.mkv", "/nas/S/b.mkv");
+        b.category = "serie".into();
+        b.series = Some("S".into());
+        b.season = Some(2);
+        b.episode = Some(1);
+        s.snapshot(vec![a, b]).unwrap();
+        let ids: Vec<_> = s
+            .catalog(&p.id)
+            .unwrap()
+            .into_iter()
+            .filter(|m| m.series.as_deref() == Some("S"))
+            .map(|m| m.id)
+            .collect();
+        s.set_rating(&p.id, &ids[0], Some(4), "season").unwrap();
+        assert_eq!(s.media(&p.id, &ids[0]).unwrap().rating, Some(4));
+        assert_eq!(s.media(&p.id, &ids[1]).unwrap().rating, None);
     }
     #[test]
     fn watch_threshold_and_manual_reset_preserve_resume() {

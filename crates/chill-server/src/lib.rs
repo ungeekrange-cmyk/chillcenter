@@ -1,4 +1,5 @@
 pub mod api;
+pub mod archive_api;
 pub mod catalog_api;
 pub mod config;
 pub mod connection;
