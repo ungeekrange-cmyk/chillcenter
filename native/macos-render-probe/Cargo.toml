@@ -1,0 +1,15 @@
+[package]
+name = "chill-macos-render-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+chill-player = { path = "../../crates/chill-player" }
+libc = "0.2.190"
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSOpenGL"] }
+tempfile = "3.27.0"
+
