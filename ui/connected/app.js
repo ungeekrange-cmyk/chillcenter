@@ -58,7 +58,8 @@ async function loadPage(){
     for(const [value,text] of [["","Sans note"],["1","★"],["2","★★"],["3","★★★"],["4","★★★★"],["5","★★★★★"]]){const o=node("option",text);o.value=value;rating.append(o);}rating.value=m.rating?String(m.rating):"";
     watched.onclick=async()=>{if(await run({action:"set_watched",media_id:m.id,watched:!m.watched},false))await loadPage();};
     rating.onchange=async()=>{if(await run({action:"set_rating",media_id:m.id,rating:rating.value?Number(rating.value):null},false))await loadPage();};
-    actions.append(watched,rating);info.append(actions);if(!m.available)info.append(node("p","Indisponible au dernier scan","muted"));card.append(poster,info);$("media").append(card);
+    const play=node("button","Lecture","play-video");play.disabled=!m.available;play.onclick=()=>window.chillPlay(m.id);
+    actions.append(play,watched,rating);watched.classList.add("watched-toggle");info.append(actions);if(!m.available)info.append(node("p","Indisponible au dernier scan","muted"));card.append(poster,info);$("media").append(card);
   }
 }
 $("connect-form").onsubmit=e=>{e.preventDefault();connect($("address").value);};

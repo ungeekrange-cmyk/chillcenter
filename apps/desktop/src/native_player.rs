@@ -122,6 +122,7 @@ pub struct NativeSnapshot {
     pub tracks: Vec<Track>,
     pub ended: bool,
     pub error: Option<String>,
+    pub notice: Option<String>,
     pub decoder: Option<String>,
     pub hardware_decoder: Option<String>,
     #[cfg(debug_assertions)]
@@ -265,6 +266,7 @@ struct SurfacePlayer {
     paused: bool,
     ended: bool,
     error: Option<String>,
+    notice: Option<String>,
     loaded: bool,
     pending: Option<PendingLoad>,
     speed: f64,
@@ -310,6 +312,7 @@ impl SurfacePlayer {
             paused: true,
             ended: false,
             error: None,
+            notice: None,
             loaded: false,
             pending: None,
             speed: 1.,
@@ -338,6 +341,7 @@ impl SurfacePlayer {
         self.media_id = playback.media_id;
         self.ended = false;
         self.error = None;
+        self.notice = None;
         self.loaded = false;
         self.pending = Some(PendingLoad {
             resume_seconds,
@@ -465,7 +469,12 @@ impl SurfacePlayer {
     fn poll_and_render(&mut self) -> Result<(), NativePlayerError> {
         self.expire_if_needed()?;
         for _ in 0..32 {
-            match self.player.poll_event(Duration::ZERO) {
+            let event=self.player.poll_event(Duration::ZERO);
+            #[cfg(debug_assertions)]
+            if std::env::var_os("CHILL_UI_QA_URL").is_some() && matches!(&event,PlayerEvent::Started|PlayerEvent::FileLoaded|PlayerEvent::Ended{..}) {
+                println!("NATIVE_QA_EVENT {:?} loaded={} pending={}",event,self.loaded,self.pending.is_some());
+            }
+            match event {
                 PlayerEvent::None => break,
                 PlayerEvent::FileLoaded => self.apply_pending()?,
                 PlayerEvent::Ended { reason, error } => {
@@ -507,7 +516,7 @@ impl SurfacePlayer {
             })
             .or_else(|| {
                 tracks.iter().find(|track| {
-                    matches!(track.kind, chill_player::TrackKind::Audio) && track.language.is_some()
+                    matches!(track.kind, chill_player::TrackKind::Audio) && track.original
                 })
             })
             .or_else(|| {
@@ -520,7 +529,7 @@ impl SurfacePlayer {
             if wanted_audio.is_some()
                 && track.language.as_deref().and_then(language_key) != wanted_audio
             {
-                self.error = Some("langue audio préférée indisponible".into());
+                self.notice = Some("Langue audio préférée indisponible : audio original ou première piste utilisé.".into());
             }
         }
         if let Some(wanted) = wanted_subtitle {
@@ -531,7 +540,7 @@ impl SurfacePlayer {
                 self.player.select_subtitle(Some(track.id))?;
             } else {
                 self.player.select_subtitle(None)?;
-                self.error = Some("sous-titres préférés indisponibles".into());
+                self.notice = Some("Sous-titres préférés indisponibles : sous-titres désactivés.".into());
             }
         } else {
             self.player.select_subtitle(None)?;
@@ -551,6 +560,7 @@ impl SurfacePlayer {
             tracks: self.player.tracks()?,
             ended: self.ended,
             error: self.error.clone(),
+            notice: self.notice.clone(),
             decoder: self.player.decoder()?,
             hardware_decoder: self.player.hardware_decoder()?,
             #[cfg(debug_assertions)]

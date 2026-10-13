@@ -11,6 +11,9 @@ fn profile_path(profile: &str, operation: &str) -> Result<String, ClientError> {
     }
     Ok(format!("/api/v1/profiles/{profile}/playback/{operation}"))
 }
+pub fn valid_speed_value(speed: f64) -> bool {
+    chill_domain::valid_speed(speed)
+}
 impl Transport {
     pub async fn playback_info(
         &self,

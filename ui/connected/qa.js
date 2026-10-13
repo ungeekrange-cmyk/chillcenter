@@ -34,12 +34,12 @@ window.chillQaSmoke=async config=>{
       step="library root";$("admin-toggle").click();await settled(()=>!$("admin-panel").hidden);$("video-root").value=config.root;$("library-form").requestSubmit();await settled(()=>state.library.video_root===config.root);
       step="create A";await create("QA A");$("admin-close").click();document.querySelector(".profile-choice").click();await settled(()=>Boolean(state.profile_id));
       step="scan";await wait(()=>!busy);$("admin-toggle").click();await settled(()=>!$("admin-panel").hidden);$("scan").click();await settled(()=>document.querySelectorAll(".media-card").length===1);
-      step="personal state A";document.querySelector(".media-card button").click();await settled(()=>document.querySelector(".media-card button")?.textContent==="Vu ✓");
+      step="personal state A";document.querySelector(".media-card .watched-toggle").click();await settled(()=>document.querySelector(".media-card .watched-toggle")?.textContent==="Vu ✓");
       const rate=document.querySelector(".media-card select");rate.value="5";rate.dispatchEvent(new Event("change"));await settled(()=>document.querySelector(".media-card select")?.value==="5");
       $("audio-language").value="fr";$("autoplay").value="off";$("preferences-form").requestSubmit();await settled(()=>state.preferences.audio_language==="fr"&&state.preferences.autoplay_seconds===null);
       step="rename A";const row=document.querySelector(".profile-row");row.querySelector("input").value="QA A2";row.querySelector("button").click();await settled(()=>state.profiles.some(p=>p.name==="QA A2"));
       step="create B";await create("QA B");const b=state.profiles.find(p=>p.name==="QA B");$("admin-close").click();$("profile-switch").value=b.id;$("profile-switch").dispatchEvent(new Event("change"));await settled(()=>state.profile_id===b.id&&document.querySelectorAll(".media-card").length===1);
-      assert(document.querySelector(".media-card button").textContent==="Non vu"&&document.querySelector(".media-card select").value==="","profile state mixed");assert(state.preferences.audio_language==="en","preferences mixed");
+      assert(document.querySelector(".media-card .watched-toggle").textContent==="Non vu"&&document.querySelector(".media-card select").value==="","profile state mixed");assert(state.preferences.audio_language==="en","preferences mixed");
     }
     await window.__TAURI__.core.invoke("qa_result",{success:true,detail:config.mode||"connect-consent-profiles-library-scan-personal-state"});
   } catch(error){await window.__TAURI__.core.invoke("qa_result",{success:false,detail:step+": "+error.message});}

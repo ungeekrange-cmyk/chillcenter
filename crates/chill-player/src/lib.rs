@@ -86,6 +86,8 @@ pub struct Track {
     pub title: Option<String>,
     pub selected: bool,
     pub external: bool,
+    #[serde(default)]
+    pub original: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,7 +205,13 @@ impl MediaFactory for HttpMediaFactory {
             ));
         }
         Ok(Box::new(HttpMediaSource {
-            worker: HttpReadWorker::start(self.transport.read().expect("transport lock poisoned").clone(), active)?,
+            worker: HttpReadWorker::start(
+                self.transport
+                    .read()
+                    .expect("transport lock poisoned")
+                    .clone(),
+                active,
+            )?,
             etag: None,
             size: None,
         }))
@@ -684,6 +692,7 @@ impl Player {
                 title: self.property(&format!("{prefix}/title"))?,
                 selected: property_bool(self.property(&format!("{prefix}/selected"))?),
                 external: property_bool(self.property(&format!("{prefix}/external"))?),
+                original: property_bool(self.property(&format!("{prefix}/original"))?),
             });
         }
         Ok(tracks)
