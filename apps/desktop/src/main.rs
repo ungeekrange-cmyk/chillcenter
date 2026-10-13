@@ -75,9 +75,14 @@ async fn player_command(
             status: None,
             code: "CLIENT_BUSY".into(),
         })?;
-    if let PlayerCommand::Start { media_id, rect } = command {
+    if let PlayerCommand::Start {
+        media_id,
+        rect,
+        context,
+    } = command
+    {
         let client = bridge.client.clone();
-        let context = tauri::async_runtime::spawn_blocking(move || {
+        let connection = tauri::async_runtime::spawn_blocking(move || {
             client
                 .lock()
                 .map_err(|_| player_bridge::error("Client indisponible."))?
@@ -89,7 +94,7 @@ async fn player_command(
             .player
             .lock()
             .await
-            .start(&window, context, media_id, rect)
+            .start(&window, connection, media_id, rect, context)
             .await
     } else {
         bridge.player.lock().await.command(&window, command).await
@@ -107,8 +112,8 @@ fn main() {
             directory
         };
         let client = UiClient::open(&directory).map_err(|e| std::io::Error::other(e.message))?;
-        let player=PlayerHost::default();
-        let rendering=player.rendering.clone();
+        let player = PlayerHost::default();
+        let rendering = player.rendering.clone();
         app.manage(Bridge {
             client: Arc::new(Mutex::new(client)),
             slot: Arc::new(tokio::sync::Semaphore::new(1)),
@@ -151,7 +156,9 @@ fn main() {
                 {
                     break;
                 }
-                let active = render_bridge.rendering.load(std::sync::atomic::Ordering::Acquire);
+                let active = render_bridge
+                    .rendering
+                    .load(std::sync::atomic::Ordering::Acquire);
                 if active {
                     let _ = native_player::render_tick(&render_window).await;
                 }
@@ -198,7 +205,11 @@ fn main() {
                     "{}\n{}\n{}({});",
                     include_str!("../../../ui/connected/qa.js"),
                     include_str!("../../../ui/connected/player-qa.js"),
-                    if mode=="player" {"window.chillPlayerQa"} else {"window.chillQaSmoke"},
+                    if mode == "player" {
+                        "window.chillPlayerQa"
+                    } else {
+                        "window.chillQaSmoke"
+                    },
                     serde_json::json!({"address":address,"root":root,"mode":mode})
                 ));
             }

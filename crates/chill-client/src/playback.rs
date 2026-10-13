@@ -1,8 +1,8 @@
 //! Typed playback operations over the same pinned transport as the catalogue.
 use crate::{ClientError, Transport, is_opaque_id};
 pub use chill_domain::{
-    AcquirePlayback, Lease, PersonalState, PlaybackControl, PlaybackGrant, PlaybackInfo, Progress,
-    ReleasePlayback,
+    AcquirePlayback, Lease, NextVideo, PersonalState, PlaybackContext, PlaybackControl,
+    PlaybackGrant, PlaybackInfo, Progress, ReleasePlayback,
 };
 use reqwest::Method;
 fn profile_path(profile: &str, operation: &str) -> Result<String, ClientError> {
@@ -15,6 +15,19 @@ pub fn valid_speed_value(speed: f64) -> bool {
     chill_domain::valid_speed(speed)
 }
 impl Transport {
+    pub async fn next_video(
+        &self,
+        profile: &str,
+        media: &str,
+        context: &PlaybackContext,
+    ) -> Result<NextVideo, ClientError> {
+        self.request_json(
+            Method::POST,
+            &profile_path(profile, "next")?,
+            Some(&serde_json::json!({"media_id":media,"context":context})),
+        )
+        .await
+    }
     pub async fn playback_info(
         &self,
         profile: &str,

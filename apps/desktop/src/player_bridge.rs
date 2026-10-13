@@ -2,7 +2,10 @@
 use crate::native_player::{self, LeaseDeadline, NativeAction, NativeRect, NativeSnapshot};
 use chill_client::{
     Transport,
-    playback::{AcquirePlayback, Lease, PlaybackControl, PlaybackInfo, ReleasePlayback},
+    playback::{
+        AcquirePlayback, Lease, NextVideo, PlaybackContext, PlaybackControl, PlaybackInfo,
+        ReleasePlayback,
+    },
     ui::{PlaybackConnection, UiError},
     watch_clock::{Observation, WatchClock},
 };
@@ -21,17 +24,37 @@ use tauri::WebviewWindow;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerCommand {
-    Start { media_id: String, rect: NativeRect },
+    Start {
+        media_id: String,
+        rect: NativeRect,
+        #[serde(default)]
+        context: Option<PlaybackContext>,
+    },
     Status,
+    Next {
+        expected_id: String,
+    },
     Pause,
     Resume,
     Stop,
-    Mount { rect: NativeRect },
-    Seek { position: f64 },
-    Jump { seconds: i8 },
-    Speed { speed: f64 },
-    Audio { track_id: i64 },
-    Subtitle { track_id: Option<i64> },
+    Mount {
+        rect: NativeRect,
+    },
+    Seek {
+        position: f64,
+    },
+    Jump {
+        seconds: i8,
+    },
+    Speed {
+        speed: f64,
+    },
+    Audio {
+        track_id: i64,
+    },
+    Subtitle {
+        track_id: Option<i64>,
+    },
     Fullscreen,
 }
 pub fn error(message: &str) -> UiError {
@@ -66,6 +89,8 @@ struct Session {
     started: bool,
     desired_position: Option<f64>,
     note: Option<String>,
+    context: PlaybackContext,
+    next: Option<NextVideo>,
 }
 #[derive(Default)]
 pub struct PlayerHost {
@@ -79,6 +104,7 @@ impl PlayerHost {
         c: PlaybackConnection,
         media: String,
         rect: NativeRect,
+        context: Option<PlaybackContext>,
     ) -> Result<Value, UiError> {
         uuid_check(&media)?;
         self.stop(w).await?;
@@ -86,6 +112,21 @@ impl PlayerHost {
         if !info.media.available {
             return Err(error("Vidéo indisponible."));
         }
+        let context = context.unwrap_or_else(|| {
+            if info.media.category == "serie" {
+                PlaybackContext {
+                    kind: "series".into(),
+                    id: Some(
+                        info.media
+                            .series
+                            .clone()
+                            .unwrap_or_else(|| info.media.title.clone()),
+                    ),
+                }
+            } else {
+                Default::default()
+            }
+        });
         let sent = Instant::now();
         let grant = c
             .transport
@@ -94,7 +135,7 @@ impl PlayerHost {
                 &AcquirePlayback {
                     media_id: media,
                     device_id: c.device_id.clone(),
-                    context: Default::default(),
+                    context: context.clone(),
                 },
             )
             .await?;
@@ -143,6 +184,8 @@ impl PlayerHost {
             started: false,
             desired_position: None,
             note: None,
+            context,
+            next: None,
         });
         self.view()
     }
@@ -150,7 +193,7 @@ impl PlayerHost {
         Ok(match &self.session {
             None => json!({"stage":"closed"}),
             Some(s) => {
-                json!({"stage":"player","media_id":s.info.media.id,"title":s.info.media.title,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some()})
+                json!({"stage":"player","media_id":s.info.media.id,"title":s.info.media.title,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some(),"context":s.context,"next":s.next,"autoplay_seconds":s.info.preferences.autoplay_seconds})
             }
         })
     }
@@ -194,8 +237,28 @@ impl PlayerHost {
         if s.snapshot.ended {
             self.rendering.store(false, Ordering::Release);
             if s.lease.is_some() {
-                report(s, !previous.paused, false).await?;
-                release(s).await?;
+                let saved = report(s, !previous.paused, false).await;
+                let released = release(s).await;
+                native_player::action(w, NativeAction::Close)
+                    .await
+                    .map_err(native_error)?;
+                if saved.is_err() || released.is_err() {
+                    s.note=Some("Fin de lecture : synchronisation indisponible, aucun enchaînement automatique.".into());
+                } else {
+                    match s
+                        .transport
+                        .next_video(&s.profile, &s.info.media.id, &s.context)
+                        .await
+                    {
+                        Ok(next) => s.next = Some(next),
+                        Err(_) => {
+                            s.note = Some(
+                                "Vidéo suivante indisponible : impossible de vérifier la suite."
+                                    .into(),
+                            )
+                        }
+                    }
+                }
             }
             return Ok(());
         }
@@ -208,11 +271,17 @@ impl PlayerHost {
             report(s, true, true).await?; // Anchor only, initial resume is a seek, never credit.
             report(s, true, false).await?;
         }
-        if let Some(target)=s.desired_position {
-            if s.lease.is_some() && s.snapshot.position.is_some_and(|p|(p-target).abs()<0.5) && !s.snapshot.buffering {
-                s.desired_position=None;s.clock.forget_credit();
-                report(s,!s.snapshot.paused,true).await?;
-                report(s,!s.snapshot.paused,false).await?;
+        if let Some(target) = s.desired_position {
+            if s.lease.is_some()
+                && s.snapshot
+                    .position
+                    .is_some_and(|p| (p - target).abs() < 0.5)
+                && !s.snapshot.buffering
+            {
+                s.desired_position = None;
+                s.clock.forget_credit();
+                report(s, !s.snapshot.paused, true).await?;
+                report(s, !s.snapshot.paused, false).await?;
             }
         }
         self.rendering.store(
@@ -239,6 +308,41 @@ impl PlayerHost {
         w: &WebviewWindow,
         cmd: PlayerCommand,
     ) -> Result<Value, UiError> {
+        if let PlayerCommand::Next { expected_id } = &cmd {
+            uuid_check(expected_id)?;
+            let s = self
+                .session
+                .as_ref()
+                .ok_or_else(|| error("Aucune proposition de suite."))?;
+            if !s.snapshot.ended || s.snapshot.error.is_some() {
+                return Err(error("La vidéo n'est pas terminée."));
+            }
+            let next = s
+                .transport
+                .next_video(&s.profile, &s.info.media.id, &s.context)
+                .await?;
+            let media = next
+                .media
+                .as_ref()
+                .ok_or_else(|| error("Il n'y a plus de vidéo suivante."))?;
+            if media.id != *expected_id {
+                self.session.as_mut().unwrap().next = Some(next);
+                return Err(error("L'ordre a changé. Vérifiez la nouvelle proposition."));
+            }
+            if !next.available || !media.available {
+                return Err(error("Vidéo suivante indisponible."));
+            }
+            let c = PlaybackConnection {
+                transport: s.transport.clone(),
+                profile_id: s.profile.clone(),
+                device_id: s.device.clone(),
+                server_id: String::new(),
+            };
+            let context = s.context.clone();
+            let rect = s.rect;
+            let id = media.id.clone();
+            return self.start(w, c, id, rect, Some(context)).await;
+        }
         if matches!(cmd, PlayerCommand::Stop) {
             self.stop(w).await?;
             return self.view();
@@ -272,7 +376,7 @@ impl PlayerHost {
                             &AcquirePlayback {
                                 media_id: s.info.media.id.clone(),
                                 device_id: s.device.clone(),
-                                context: Default::default(),
+                                context: s.context.clone(),
                             },
                         )
                         .await?;
@@ -295,6 +399,7 @@ impl PlayerHost {
                     s.started = false;
                     s.last_beat = Instant::now();
                     s.desired_position = None;
+                    s.next = None;
                     native_player::action(w, NativeAction::Mount { rect: s.rect })
                         .await
                         .map_err(native_error)?;
@@ -329,6 +434,34 @@ impl PlayerHost {
                     s.transport
                         .save_playback_speed(&s.profile, &control(l), speed)
                         .await?;
+                } else if s.info.media.series.is_some() {
+                    let g = s
+                        .transport
+                        .acquire_playback(
+                            &s.profile,
+                            &AcquirePlayback {
+                                media_id: s.info.media.id.clone(),
+                                device_id: s.device.clone(),
+                                context: s.context.clone(),
+                            },
+                        )
+                        .await?;
+                    let saved = s
+                        .transport
+                        .save_playback_speed(&s.profile, &control(&g.lease), speed)
+                        .await;
+                    let released = s
+                        .transport
+                        .release_playback(
+                            &s.profile,
+                            &ReleasePlayback {
+                                lease: control(&g.lease),
+                                progress: None,
+                            },
+                        )
+                        .await;
+                    saved?;
+                    released?;
                 }
                 s.snapshot = native_player::action(w, NativeAction::Speed { speed })
                     .await
@@ -496,7 +629,7 @@ async fn seek(s: &mut Session, w: &WebviewWindow, position: f64) -> Result<(), U
                 &AcquirePlayback {
                     media_id: s.info.media.id.clone(),
                     device_id: s.device.clone(),
-                    context: Default::default(),
+                    context: s.context.clone(),
                 },
             )
             .await?;

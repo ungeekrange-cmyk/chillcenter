@@ -548,6 +548,11 @@ impl Player {
                 },
             )?;
             player.set_option("volume", &options.initial_volume.min(100).to_string())?;
+            // Packet cache is bounded across forward/backward playback. Decoded
+            // frames and the webview are separate and measured in the client RSS.
+            player.set_option("demuxer-max-bytes", "48MiB")?;
+            player.set_option("demuxer-max-back-bytes", "16MiB")?;
+            player.set_option("cache-secs", "20")?;
             #[cfg(not(target_os = "macos"))]
             if let Some(handle) = options.native_window {
                 let value = match handle {
