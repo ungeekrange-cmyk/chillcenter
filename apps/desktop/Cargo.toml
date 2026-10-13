@@ -7,8 +7,14 @@ build = "build.rs"
 
 [dependencies]
 chill-client.workspace = true
+chill-player.workspace = true
+libc = "0.2.190"
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSOpenGL", "NSView"] }
+objc2-foundation = "0.3.2"
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tauri = { version = "2.12", features = ["custom-protocol"] }
 
