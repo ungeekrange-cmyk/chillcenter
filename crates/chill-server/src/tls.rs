@@ -1,6 +1,6 @@
 //! Calendar-based renewal with stable service key and explicitly configured SANs.
 use crate::config::{ServerConfig, atomic_private_write};
-use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
+use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PublicKeyData};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use time::{Date, Month, OffsetDateTime};
@@ -36,6 +36,9 @@ pub async fn load(
 
 pub fn ensure(config: &ServerConfig, now: OffsetDateTime) -> Result<Certificates, String> {
     config.validate()?;
+    if now.year() < 2024 {
+        return Err("Horloge non initialisée : synchronisez Linux avant de démarrer HTTPS.".into());
+    }
     let directory = config.data_dir.join("tls");
     fs::create_dir_all(&directory).map_err(|_| "Création du dossier TLS impossible.")?;
     use std::os::unix::fs::PermissionsExt;
@@ -52,6 +55,12 @@ pub fn ensure(config: &ServerConfig, now: OffsetDateTime) -> Result<Certificates
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(_) => return Err("Calendrier TLS inaccessible.".into()),
     };
+    if prior
+        .as_ref()
+        .is_some_and(|schedule| now.unix_timestamp() < schedule.issued_at - 300)
+    {
+        return Err("Horloge antérieure au dernier certificat : synchronisation requise.".into());
+    }
     let key =
         match fs::read_to_string(&key_path) {
             Ok(pem) => KeyPair::from_pem(&pem).map_err(|_| "Clé TLS invalide.")?,
@@ -71,7 +80,7 @@ pub fn ensure(config: &ServerConfig, now: OffsetDateTime) -> Result<Certificates
     let schedule = if prior.as_ref().is_some_and(|p| {
         p.renew_at > now.unix_timestamp()
             && p.names == config.tls_names
-            && certificate_path.is_file()
+            && persisted_certificate_matches(&certificate_path, &key, p, now)
     }) {
         prior.unwrap()
     } else {
@@ -109,6 +118,56 @@ pub fn ensure(config: &ServerConfig, now: OffsetDateTime) -> Result<Certificates
     })
 }
 
+fn persisted_certificate_matches(
+    path: &std::path::Path,
+    key: &KeyPair,
+    schedule: &CertificateSchedule,
+    now: OffsetDateTime,
+) -> bool {
+    use x509_parser::{extensions::GeneralName, prelude::*};
+    let Ok(bytes) = fs::read(path) else {
+        return false;
+    };
+    if bytes.len() > 64 * 1024 {
+        return false;
+    }
+    let Ok((_, pem)) = x509_parser::pem::parse_x509_pem(&bytes) else {
+        return false;
+    };
+    let Ok((_, cert)) = X509Certificate::from_der(&pem.contents) else {
+        return false;
+    };
+    let Ok(time) = ASN1Time::from_timestamp(now.unix_timestamp()) else {
+        return false;
+    };
+    if !cert.validity().is_valid_at(time)
+        || cert.verify_signature(None).is_err()
+        || cert.public_key().raw != key.subject_public_key_info().as_slice()
+        || cert.validity().not_after.timestamp() != schedule.expires_at
+        || cert.validity().not_before.timestamp() != schedule.issued_at - 300
+    {
+        return false;
+    }
+    let Ok(Some(san)) = cert.subject_alternative_name() else {
+        return false;
+    };
+    san.value.general_names.len() == schedule.names.len()
+        && schedule.names.iter().all(|name| {
+            san.value.general_names.iter().any(|entry| {
+                match (entry, name.parse::<std::net::IpAddr>()) {
+                    (GeneralName::DNSName(dns), Err(_)) => dns.eq_ignore_ascii_case(name),
+                    (GeneralName::IPAddress(bytes), Ok(std::net::IpAddr::V4(ip))) => {
+                        *bytes == ip.octets()
+                    }
+                    (GeneralName::IPAddress(bytes), Ok(std::net::IpAddr::V6(ip))) => {
+                        *bytes == ip.octets()
+                    }
+                    _ => false,
+                }
+            })
+        })
+}
+
 fn add_months(now: OffsetDateTime, months: i32) -> Result<OffsetDateTime, String> {
     let total = now
         .year()
@@ -129,6 +188,28 @@ fn add_months(now: OffsetDateTime, months: i32) -> Result<OffsetDateTime, String
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cold_boot_clock_and_corrupted_restored_certificate_are_not_reused() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = ServerConfig {
+            data_dir: dir.path().to_owned(),
+            ..ServerConfig::default()
+        };
+        assert!(ensure(&config, OffsetDateTime::UNIX_EPOCH).is_err());
+        let now = OffsetDateTime::now_utc();
+        let first = ensure(&config, now).unwrap();
+        let key = fs::read(&first.key_path).unwrap();
+        assert!(ensure(&config, now - time::Duration::days(1)).is_err());
+        fs::write(&first.certificate_path, b"corrupt restored certificate").unwrap();
+        let repaired = ensure(&config, now + time::Duration::minutes(1)).unwrap();
+        assert_eq!(key, fs::read(&repaired.key_path).unwrap());
+        assert_eq!(first.schedule.server_id, repaired.schedule.server_id);
+        load_certificate_for_test(&repaired.certificate_path);
+    }
+    fn load_certificate_for_test(path: &std::path::Path) {
+        let bytes = fs::read(path).unwrap();
+        x509_parser::pem::parse_x509_pem(&bytes).unwrap();
+    }
     #[tokio::test]
     async fn https_config_loads_with_workspace_crypto_features() {
         let dir = tempfile::tempdir().unwrap();

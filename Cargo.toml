@@ -1,5 +1,6 @@
 [workspace]
-members = ["crates/chill-catalog", "crates/chill-domain", "crates/chill-server", "crates/chill-client", "crates/chill-player", "apps/desktop"]
+members = ["crates/chill-catalog", "crates/chill-domain", "crates/chill-server", "crates/chill-client", "crates/chill-player"]
+exclude = ["apps/desktop", "native/macos-render-probe"]
 resolver = "3"
 
 [workspace.package]

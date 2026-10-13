@@ -47,6 +47,9 @@ impl ServerConfig {
         if self.listen.port() == 0 {
             return Err("Le port doit être supérieur à zéro.".into());
         }
+        if !is_local_address(self.listen.ip()) {
+            return Err("Sans authentification, écoutez une adresse LAN explicite ou loopback, pas toutes les interfaces/public Internet.".into());
+        }
         if self.tls_names.is_empty() || self.tls_names.len() > 32 {
             return Err("Configurez entre 1 et 32 noms DNS/adresses IP pour HTTPS.".into());
         }
@@ -70,6 +73,55 @@ impl ServerConfig {
         }
         Ok(())
     }
+}
+
+pub fn is_local_address(address: std::net::IpAddr) -> bool {
+    match address {
+        std::net::IpAddr::V4(ip) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+        std::net::IpAddr::V6(ip) => {
+            ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local()
+        }
+    }
+}
+
+/// Refuse symlink components and unsafe service-directory ownership before opening SQLite/TLS.
+pub fn prepare_data_dir(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    validate_absolute(path)?;
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err("Le stockage local ne doit pas traverser un lien symbolique.".into());
+            }
+            Ok(metadata) => {
+                let own = metadata.uid() == unsafe { libc::geteuid() } || metadata.uid() == 0;
+                let writable_without_sticky =
+                    metadata.mode() & 0o022 != 0 && metadata.mode() & 0o1000 == 0;
+                if !own || writable_without_sticky {
+                    return Err("Un parent du stockage local est insuffisamment protégé.".into());
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err("Stockage local inaccessible.".into()),
+        }
+    }
+    let existed = path.exists();
+    fs::create_dir_all(path).map_err(|_| "Stockage local inaccessible.")?;
+    let metadata = fs::symlink_metadata(path).map_err(|_| "Stockage local inaccessible.")?;
+    // SAFETY: geteuid has no pointer arguments and cannot fail.
+    if !metadata.is_dir()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || (existed && metadata.mode() & 0o022 != 0)
+    {
+        return Err(
+            "Le stockage doit appartenir au compte du service, sans écriture groupe/autres.".into(),
+        );
+    }
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        .map_err(|_| "Protection du stockage impossible.")?;
+    Ok(())
 }
 
 /// This file is owned by the service user, unlike the static /etc configuration.
@@ -225,6 +277,41 @@ mod tests {
             };
             assert!(config.validate().is_err());
         }
+    }
+
+    #[test]
+    fn wildcard_and_public_unauthenticated_listeners_are_refused() {
+        for address in [
+            "0.0.0.0:8443",
+            "[::]:8443",
+            "8.8.8.8:8443",
+            "[2001:4860:4860::8888]:8443",
+        ] {
+            let config = ServerConfig {
+                listen: address.parse().unwrap(),
+                ..ServerConfig::default()
+            };
+            assert!(config.validate().is_err());
+        }
+        let config = ServerConfig {
+            listen: "192.168.50.9:9443".parse().unwrap(),
+            ..ServerConfig::default()
+        };
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn data_directory_rejects_symlinks_and_unsafe_permissions() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let dir = tempfile::tempdir().unwrap();
+        let canonical = dir.path().canonicalize().unwrap();
+        let actual = canonical.join("actual");
+        prepare_data_dir(&actual).unwrap();
+        let alias = canonical.join("alias");
+        symlink(&actual, &alias).unwrap();
+        assert!(prepare_data_dir(&alias).is_err());
+        fs::set_permissions(&actual, fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(prepare_data_dir(&actual).is_err());
     }
 
     #[test]

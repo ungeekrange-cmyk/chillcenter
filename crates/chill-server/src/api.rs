@@ -136,7 +136,11 @@ async fn same_origin(
     {
         return Err(ApiError(StatusCode::FORBIDDEN, "HOST_REFUSED"));
     }
-    Ok(next.run(request).await)
+    // Current routes are JSON only. Future media routes need per-read deadlines,
+    // not a total playback deadline.
+    tokio::time::timeout(std::time::Duration::from_secs(30), next.run(request))
+        .await
+        .map_err(|_| ApiError(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"))
 }
 
 async fn server(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {

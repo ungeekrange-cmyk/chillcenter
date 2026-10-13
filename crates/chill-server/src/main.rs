@@ -1,6 +1,7 @@
 use chill_server::{
     api::{AppState, DatabaseActor, router},
-    config::{LibrarySettings, ServerConfig},
+    config::{LibrarySettings, ServerConfig, prepare_data_dir},
+    connection::LimitedAcceptor,
     tls,
 };
 use std::{
@@ -23,8 +24,11 @@ async fn run() -> Result<(), String> {
     }
     let config_path = PathBuf::from(&arguments[1]);
     let config = ServerConfig::load(&config_path)?;
-    std::fs::create_dir_all(&config.data_dir)
-        .map_err(|_| "Stockage local du serveur inaccessible.")?;
+    prepare_data_dir(&config.data_dir)?;
+    // Service-owned SQLite/WAL and future staging files must not inherit a permissive shell umask.
+    unsafe {
+        libc::umask(0o077);
+    }
     let certificates = tls::ensure(&config, time::OffsetDateTime::now_utc())?;
     let rustls = tls::load(&certificates).await?;
     let state = AppState {
@@ -36,7 +40,7 @@ async fn run() -> Result<(), String> {
     let renewal_state = state.clone();
     let renewal_tls = rustls.clone();
     tokio::spawn(async move {
-        let mut daily = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
+        let mut daily = tokio::time::interval(std::time::Duration::from_secs(60));
         daily.tick().await;
         loop {
             daily.tick().await;
@@ -62,7 +66,24 @@ async fn run() -> Result<(), String> {
             }
         }
     });
-    axum_server::bind_rustls(state.config.listen, rustls)
+    let acceptor = axum_server::tls_rustls::RustlsAcceptor::new(rustls)
+        .handshake_timeout(std::time::Duration::from_secs(5))
+        .acceptor(LimitedAcceptor::new(16));
+    let mut server = axum_server::bind(state.config.listen).acceptor(acceptor);
+    server
+        .http_builder()
+        .http1()
+        .timer(hyper_util::rt::TokioTimer::new())
+        .header_read_timeout(std::time::Duration::from_secs(5))
+        .keep_alive(false);
+    server
+        .http_builder()
+        .http2()
+        .timer(hyper_util::rt::TokioTimer::new())
+        .max_concurrent_streams(8)
+        .keep_alive_interval(Some(std::time::Duration::from_secs(10)))
+        .keep_alive_timeout(std::time::Duration::from_secs(5));
+    server
         .serve(router(state).into_make_service())
         .await
         .map_err(|_| "Service HTTPS arrêté sur erreur.".to_string())
