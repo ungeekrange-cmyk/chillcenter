@@ -697,13 +697,17 @@ impl Store {
             .map_err(db_error)?.map(|row| { let (id,name,revision)=row.map_err(db_error)?; Ok(PlaylistView { media_ids: self.playlist_members(&id)?, id, name, revision: revision as u64 }) }).collect()
     }
     pub fn sagas(&mut self) -> Result<Vec<SagaView>, String> {
-        self.catalogue.collections()?.into_iter().filter(|c|c.kind=="saga").map(|c| Ok(SagaView { revision:self.catalogue.saga_revision(&c.id)?, id:c.id,name:c.name,media_ids:c.media_ids,poster:c.poster })).collect()
+        self.catalogue.collections()?.into_iter().filter(|c|c.kind=="saga").map(|c| {
+            let media_ids=c.media_ids.iter().map(|legacy|self.stable_id(legacy)).collect::<Result<Vec<_>,_>>()?;
+            let poster=c.poster.filter(|p| !Path::new(p).is_absolute() && !p.starts_with("file:"));
+            Ok(SagaView { revision:self.catalogue.saga_revision(&c.id)?, id:c.id,name:c.name,media_ids,poster })
+        }).collect()
     }
     pub fn saga(&mut self,id:&str)->Result<SagaView,String>{self.sagas()?.into_iter().find(|s|s.id==id).ok_or_else(||"Saga introuvable.".into())}
     pub fn create_saga(&mut self,name:&str)->Result<SagaView,String>{let id=self.catalogue.create_collection(name,"saga")?.into_iter().find(|c|c.kind=="saga"&&c.name==name.trim()).ok_or("Saga introuvable.")?.id;self.saga(&id)}
     pub fn rename_saga_at_revision(&mut self,id:&str,name:&str,revision:u64)->Result<SagaView,String>{self.catalogue.rename_saga_at_revision(id,name,revision)?;self.saga(id)}
-    pub fn saga_members_at_revision(&mut self,id:&str,media:&[String],revision:u64,add:bool)->Result<SagaView,String>{self.catalogue.saga_members_at_revision(id,media,revision,add)?;self.saga(id)}
-    pub fn reorder_saga_at_revision(&mut self,id:&str,revision:u64,expected:&[String],desired:&[String])->Result<SagaView,String>{self.catalogue.reorder_saga_at_revision(id,revision,expected,desired)?;self.saga(id)}
+    pub fn saga_members_at_revision(&mut self,id:&str,media:&[String],revision:u64,add:bool)->Result<SagaView,String>{let legacy=media.iter().map(|stable|self.legacy_id(stable)).collect::<Result<Vec<_>,_>>()?;self.catalogue.saga_members_at_revision(id,&legacy,revision,add)?;self.saga(id)}
+    pub fn reorder_saga_at_revision(&mut self,id:&str,revision:u64,expected:&[String],desired:&[String])->Result<SagaView,String>{let expected=expected.iter().map(|stable|self.legacy_id(stable)).collect::<Result<Vec<_>,_>>()?;let desired=desired.iter().map(|stable|self.legacy_id(stable)).collect::<Result<Vec<_>,_>>()?;self.catalogue.reorder_saga_at_revision(id,revision,&expected,&desired)?;self.saga(id)}
     pub fn delete_saga_at_revision(&mut self,id:&str,revision:u64)->Result<(),String>{self.catalogue.delete_saga_at_revision(id,revision)}
 
     pub fn playlist(&self, profile_id: &str, id: &str) -> Result<PlaylistView, String> {
