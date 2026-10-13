@@ -1,6 +1,6 @@
 use crate::api::{ApiError, AppState};
 use axum::{
-    Json, Router,
+    Json, Router, body::Bytes,
     extract::{Path, Query, State},
     http::{StatusCode, header}, response::{Response, IntoResponse},
     routing::{delete, get, post, put},
@@ -10,6 +10,7 @@ use chill_catalog::model::MediaPatch;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{process::Stdio, time::Duration};
+use std::{io::Read, os::unix::io::FromRawFd};
 
 #[derive(Clone, Default, Serialize)]
 pub struct ScanStatus {
@@ -23,6 +24,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/profiles/{profile}/catalog", get(catalog))
         .route("/api/v1/profiles/{profile}/media/{media}", get(detail).put(update_media))
         .route("/api/v1/profiles/{profile}/media/{media}/artwork", get(artwork))
+        .route("/api/v1/profiles/{profile}/media/{media}/poster", put(upload_poster))
         .route("/api/v1/profiles/{profile}/media/{media}/subtitles", get(crate::media_stream::subtitles))
         .route("/api/v1/profiles/{profile}/media/{media}/subtitles/{id}", get(crate::media_stream::subtitle))
         .route("/api/v1/profiles/{profile}/series/{series}", get(series))
@@ -49,6 +51,10 @@ pub fn routes() -> Router<AppState> {
             put(rating),
         )
 }
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct PosterRevision { expected_revision:u64 }
+async fn upload_poster(State(state):State<AppState>,Path((profile,media)):Path<(String,String)>,Query(query):Query<PosterRevision>,bytes:Bytes)->Result<Json<Value>,ApiError>{
+ let cache=state.config.data_dir.join("posters"); let (media,revision)=state.database.call(move|s|s.set_custom_poster(&profile,&media,query.expected_revision,&bytes,&cache)).await?;Ok(Json(json!({"media":media,"revision":revision})))
+}
 
 /// Resolves only a catalogue-owned cached artwork path.  The reference exposed
 /// by DTOs is this endpoint, never a local path or third-party URL.
@@ -58,7 +64,13 @@ async fn artwork(State(state):State<AppState>,Path((profile,media)):Path<(String
     let canonical=std::fs::canonicalize(&path).map_err(|_|ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"))?;
     let root=std::fs::canonicalize(&cache).map_err(|_|ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"))?;
     if !canonical.starts_with(&root) { return Err(ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND")); }
-    let bytes=std::fs::read(&canonical).map_err(|_|ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"))?;
+    // Canonicalization alone is not sufficient: refuse a symlink swapped in
+    // between validation and read. Cache directories are service-owned.
+    use std::ffi::CString;
+    let raw=unsafe { libc::open(CString::new(canonical.as_os_str().as_encoded_bytes()).map_err(|_|ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"))?.as_ptr(), libc::O_RDONLY|libc::O_NOFOLLOW|libc::O_CLOEXEC) };
+    if raw < 0 { return Err(ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND")); }
+    let mut file=unsafe { std::fs::File::from_raw_fd(raw) }; let mut bytes=Vec::new();
+    file.by_ref().take((8*1024*1024+1) as u64).read_to_end(&mut bytes).map_err(|_|ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"))?;
     if bytes.len()>8*1024*1024 {return Err(ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"));}
     let kind=if bytes.starts_with(&[0xff,0xd8,0xff]){"image/jpeg"}else if bytes.starts_with(b"\x89PNG\r\n\x1a\n"){"image/png"}else if bytes.len()>=12&&&bytes[..4]==b"RIFF"&&&bytes[8..12]==b"WEBP"{"image/webp"}else{return Err(ApiError(StatusCode::NOT_FOUND,"ARTWORK_NOT_FOUND"));};
     Ok(([(header::CONTENT_TYPE,kind),(header::CACHE_CONTROL,"private, max-age=31536000, immutable")],bytes).into_response())

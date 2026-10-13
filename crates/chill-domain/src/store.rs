@@ -499,6 +499,13 @@ impl Store {
         tx.commit().map_err(db_error)?;
         Ok((self.profile_view(profile,updated)?,revision as u64+1))
     }
+    pub fn set_custom_poster(&mut self, profile:&str, stable:&str, expected:u64, bytes:&[u8], cache:&Path)->Result<(Media,u64),String>{
+        self.require_profile(profile)?; if bytes.len()>8*1024*1024{return Err("Image trop volumineuse.".into())}; let legacy=self.legacy_id(stable)?;
+        let tx=self.personal.unchecked_transaction().map_err(db_error)?; let revision:i64=tx.query_row("SELECT revision FROM cc_media_revision WHERE stable_id=?1",[stable],|r|r.get(0)).map_err(db_error)?; if revision as u64!=expected{return Err("La fiche a changé entre-temps.".into())};
+        // Store validates JPEG/PNG/WebP before any database pointer is changed.
+        let poster=chill_catalog::poster::store(bytes,cache)?; let data:String=tx.query_row("SELECT data FROM media WHERE id=?1",[&legacy],|r|r.get(0)).map_err(db_error)?;let mut item:Media=serde_json::from_str(&data).map_err(|_|"Catalogue local endommagé : aucune donnée remplacée.".to_string())?;item.poster=Some(poster);item.poster_custom=true;
+        tx.execute("UPDATE media SET data=?1 WHERE id=?2",params![serde_json::to_string(&item).map_err(|_|"Métadonnées invalides.")?,legacy]).map_err(db_error)?;tx.execute("UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",[stable]).map_err(db_error)?;tx.commit().map_err(db_error)?;Ok((self.profile_view(profile,item)?,revision as u64+1))
+    }
 
     pub fn set_rating(
         &mut self,
