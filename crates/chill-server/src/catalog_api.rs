@@ -39,6 +39,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/profiles/{profile}/playlists/{playlist}/order", put(order_playlist))
         .route("/api/v1/profiles/{profile}/playback/next", post(next_video))
         .route("/api/v1/admin/media/{media}/reassociate", post(reassociate))
+        .route("/api/v1/admin/profiles/{profile}/media/{media}/tmdb", post(tmdb_enrich))
+        .route("/api/v1/admin/tmdb", get(tmdb_status))
         .route(
             "/api/v1/profiles/{profile}/media/{media}/playback-info",
             get(playback_info),
@@ -127,6 +129,16 @@ async fn order_playlist(State(state):State<AppState>,Path((profile,playlist)):Pa
 async fn next_video(State(state):State<AppState>,Path(profile):Path<String>,Json(body):Json<NextRequest>)->Result<Json<chill_domain::NextVideo>,ApiError>{Ok(Json(state.database.call(move|s|s.next_video(&profile,&body.media_id,&body.context)).await?))}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Reassociate { relative_path:String }
 async fn reassociate(State(state):State<AppState>,Path(media):Path<String>,Json(body):Json<Reassociate>)->Result<Json<Value>,ApiError>{state.database.call(move|s|s.confirm_media_reassociation(&media,&body.relative_path)).await?;Ok(Json(json!({"reassociated":true})))}
+async fn tmdb_status()->Json<Value>{Json(json!({"configured":std::env::var("CHILL_TMDB_TOKEN").ok().is_some_and(|v|!v.trim().is_empty())}))}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct TmdbEnrich { expected_revision:u64, tmdb_id:i64, kind:String }
+async fn tmdb_enrich(State(state):State<AppState>,Path((profile,media)):Path<(String,String)>,Json(body):Json<TmdbEnrich>)->Result<Json<Value>,ApiError>{
+ let token=std::env::var("CHILL_TMDB_TOKEN").ok().filter(|v|!v.trim().is_empty()).ok_or(ApiError(StatusCode::SERVICE_UNAVAILABLE,"TMDB_NOT_CONFIGURED"))?;
+ let original=state.database.call({let profile=profile.clone();let media=media.clone();move|s|s.media(&profile,&media)}).await?;
+ let provider=chill_catalog::metadata::Tmdb::new(token).map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"TMDB_NOT_CONFIGURED"))?;
+ let enriched=provider.enrich(original.clone(),body.tmdb_id,&body.kind,&state.config.data_dir.join("posters")).await.map_err(|_|ApiError(StatusCode::BAD_GATEWAY,"TMDB_UNAVAILABLE"))?;
+ let patch=MediaPatch{title:Some(enriched.title),category:Some(enriched.category),year:enriched.year,genres:Some(enriched.genres),series:enriched.series,overview:Some(enriched.overview),runtime_minutes:enriched.runtime_minutes,cast:Some(enriched.cast),directors:Some(enriched.directors),series_overview:Some(enriched.series_overview),..Default::default()};
+ let (media,revision)=state.database.call(move|s|s.update_media_at_revision(&profile,&media,body.expected_revision,&patch)).await?;Ok(Json(json!({"media":media,"revision":revision})))
+}
 
 async fn playback_info(
     State(state): State<AppState>,
