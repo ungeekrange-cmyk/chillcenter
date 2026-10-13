@@ -223,17 +223,36 @@ enum HttpReadCommand {
 
 struct HttpReadWorker {
     sender: mpsc::SyncSender<HttpReadCommand>,
+    in_flight: Arc<AtomicBool>,
     join: Option<thread::JoinHandle<()>>,
 }
 
 impl HttpReadWorker {
     fn start(transport: Transport, playback: PlaybackStream) -> Result<Self, PlayerError> {
-        let (sender, receiver) = mpsc::sync_channel(0);
-        let (ready_sender, ready_receiver) = mpsc::sync_channel(0);
+        Self::start_with_reader(move |offset, bytes, etag| {
+            transport.read_media_range_blocking(
+                &playback.media_id,
+                &playback.session_id,
+                playback.generation,
+                offset,
+                bytes,
+                etag,
+            )
+        })
+    }
+
+    fn start_with_reader<F>(mut read: F) -> Result<Self, PlayerError>
+    where
+        F: FnMut(u64, &mut [u8], Option<&str>) -> Result<chill_client::RangeRead, ClientError>
+            + Send
+            + 'static,
+    {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let in_flight = Arc::new(AtomicBool::new(false));
+        let worker_in_flight = Arc::clone(&in_flight);
         let join = thread::Builder::new()
             .name("chill-media-read".into())
             .spawn(move || {
-                let _ = ready_sender.send(());
                 while let Ok(command) = receiver.recv() {
                     match command {
                         HttpReadCommand::Read {
@@ -243,14 +262,12 @@ impl HttpReadWorker {
                             response,
                         } => {
                             let mut bytes = vec![0; length];
-                            let result = transport.read_media_range_blocking(
-                                &playback.media_id,
-                                &playback.session_id,
-                                playback.generation,
-                                offset,
-                                &mut bytes,
-                                etag.as_deref(),
-                            );
+                            let result = read(offset, &mut bytes, etag.as_deref());
+                            // Network I/O is complete. Release the gate before
+                            // publishing the response so a following read can
+                            // safely queue even if this worker is not yet back
+                            // in `recv`.
+                            worker_in_flight.store(false, Ordering::Release);
                             let _ = response.send((result, bytes));
                         }
                         HttpReadCommand::Shutdown => break,
@@ -258,14 +275,43 @@ impl HttpReadWorker {
                 }
             })
             .map_err(|error| PlayerError::Stream(error.to_string()))?;
-        ready_receiver
-            .recv()
-            .map_err(|_| PlayerError::Stream("worker HTTP non démarré".into()))?;
         Ok(Self {
             sender,
+            in_flight,
             join: Some(join),
         })
     }
+
+    fn dispatch(&self, command: HttpReadCommand) -> Result<(), PlayerError> {
+        try_dispatch_single_flight(&self.sender, &self.in_flight, command)
+    }
+}
+
+fn try_dispatch_single_flight<T>(
+    sender: &mpsc::SyncSender<T>,
+    in_flight: &AtomicBool,
+    command: T,
+) -> Result<(), PlayerError> {
+    if in_flight
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err(PlayerError::Stream(
+            "une lecture HTTP précédente est encore active".into(),
+        ));
+    }
+
+    sender.try_send(command).map_err(|error| {
+        in_flight.store(false, Ordering::Release);
+        match error {
+            mpsc::TrySendError::Full(_) => {
+                PlayerError::Stream("file de lecture HTTP occupée".into())
+            }
+            mpsc::TrySendError::Disconnected(_) => {
+                PlayerError::Stream("worker HTTP interrompu".into())
+            }
+        }
+    })
 }
 
 impl Drop for HttpReadWorker {
@@ -287,27 +333,17 @@ impl MediaSource for HttpMediaSource {
         if cancellation.is_cancelled() {
             return Err(PlayerError::Stream("lecture annulée".into()));
         }
-        // Exactly one worker and no queued request exist per open stream. A
+        // Exactly one request may be active or queued per open stream. A
         // cancelled reqwest request may live until Transport's timeout, but
         // repeated seeks cannot accumulate threads or request buffers.
         let length = capped_stream_read_length(buffer.len());
         let (sender, receiver) = mpsc::sync_channel(1);
-        self.worker
-            .sender
-            .try_send(HttpReadCommand::Read {
-                offset,
-                length,
-                etag: self.etag.clone(),
-                response: sender,
-            })
-            .map_err(|error| match error {
-                mpsc::TrySendError::Full(_) => {
-                    PlayerError::Stream("une lecture HTTP précédente est encore active".into())
-                }
-                mpsc::TrySendError::Disconnected(_) => {
-                    PlayerError::Stream("worker HTTP interrompu".into())
-                }
-            })?;
+        self.worker.dispatch(HttpReadCommand::Read {
+            offset,
+            length,
+            etag: self.etag.clone(),
+            response: sender,
+        })?;
         let (read, bytes) = loop {
             if cancellation.is_cancelled() {
                 return Err(PlayerError::Stream("lecture annulée".into()));
@@ -1114,6 +1150,125 @@ mod tests {
             capped_stream_read_length(MAX_STREAM_READ_BYTES * 4),
             MAX_STREAM_READ_BYTES
         );
+    }
+
+    #[test]
+    fn single_flight_dispatch_queues_before_receive_and_repeats() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let in_flight = AtomicBool::new(false);
+
+        // The receiver is deliberately not waiting: this was rejected by the
+        // former zero-capacity channel even though no read was active.
+        try_dispatch_single_flight(&sender, &in_flight, 1).unwrap();
+        assert!(try_dispatch_single_flight(&sender, &in_flight, 2).is_err());
+        assert_eq!(receiver.recv().unwrap(), 1);
+
+        // Model the worker completing network I/O, but not yet waiting in
+        // recv again. A sequential request must still fit in the one-slot
+        // channel.
+        in_flight.store(false, Ordering::Release);
+        try_dispatch_single_flight(&sender, &in_flight, 3).unwrap();
+        assert_eq!(receiver.recv().unwrap(), 3);
+    }
+
+    #[test]
+    fn http_worker_cancellation_preserves_backpressure_then_allows_reuse() {
+        let (entered_sender, entered_receiver) = mpsc::sync_channel(1);
+        let (release_sender, release_receiver) = mpsc::sync_channel(0);
+        let mut call = 0;
+        let worker = HttpReadWorker::start_with_reader(move |_, bytes, _| {
+            if call == 0 {
+                entered_sender.send(()).unwrap();
+                release_receiver.recv().unwrap();
+            }
+            call += 1;
+            bytes[0] = call;
+            Ok(chill_client::RangeRead {
+                bytes_read: 1,
+                total_size: Some(2),
+                etag: Some("fixture".into()),
+            })
+        })
+        .unwrap();
+        let in_flight = Arc::clone(&worker.in_flight);
+        let mut source = HttpMediaSource {
+            worker,
+            etag: None,
+            size: None,
+        };
+        let cancellation = CancellationToken::default();
+        let worker_cancellation = cancellation.clone();
+        let read = thread::spawn(move || {
+            let result = source.read_at(0, &mut [0; 1], &worker_cancellation);
+            (result, source)
+        });
+
+        entered_receiver.recv().unwrap();
+        cancellation.cancel();
+        let (cancelled, mut source) = read.join().unwrap();
+        assert!(cancelled.is_err());
+        assert!(
+            source
+                .read_at(0, &mut [0; 1], &CancellationToken::default())
+                .is_err(),
+            "a blocked network read must retain the single-flight gate"
+        );
+
+        release_sender.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while in_flight.load(Ordering::Acquire) && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert!(!in_flight.load(Ordering::Acquire));
+        let mut byte = [0];
+        assert_eq!(
+            source
+                .read_at(1, &mut byte, &CancellationToken::default())
+                .unwrap(),
+            1
+        );
+        assert_eq!(byte, [2]);
+    }
+
+    #[test]
+    fn http_worker_drop_joins_an_active_read() {
+        let (entered_sender, entered_receiver) = mpsc::sync_channel(1);
+        let (release_sender, release_receiver) = mpsc::sync_channel(0);
+        let worker = HttpReadWorker::start_with_reader(move |_, _, _| {
+            entered_sender.send(()).unwrap();
+            release_receiver.recv().unwrap();
+            Ok(chill_client::RangeRead {
+                bytes_read: 0,
+                total_size: Some(0),
+                etag: Some("fixture".into()),
+            })
+        })
+        .unwrap();
+        let (response_sender, _response_receiver) = mpsc::sync_channel(1);
+        worker
+            .dispatch(HttpReadCommand::Read {
+                offset: 0,
+                length: 1,
+                etag: None,
+                response: response_sender,
+            })
+            .unwrap();
+        entered_receiver.recv().unwrap();
+
+        let (dropped_sender, dropped_receiver) = mpsc::sync_channel(1);
+        thread::spawn(move || {
+            drop(worker);
+            dropped_sender.send(()).unwrap();
+        });
+        assert_eq!(
+            dropped_receiver.recv_timeout(Duration::from_millis(20)),
+            Err(mpsc::RecvTimeoutError::Timeout),
+            "drop must wait for the active read thread"
+        );
+        release_sender.send(()).unwrap();
+        dropped_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("worker drop should join after the read completes");
     }
 
     static DROP_STAGE: AtomicUsize = AtomicUsize::new(0);
