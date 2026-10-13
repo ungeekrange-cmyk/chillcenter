@@ -68,6 +68,10 @@ impl Store {
                 stable_id TEXT PRIMARY KEY, legacy_id TEXT NOT NULL UNIQUE,
                 relative_path TEXT NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS cc_media_revision (
+                stable_id TEXT PRIMARY KEY REFERENCES cc_media_identity(stable_id) ON DELETE CASCADE,
+                revision INTEGER NOT NULL DEFAULT 1
+             );
              CREATE TABLE IF NOT EXISTS cc_profile_state (
                 profile_id TEXT NOT NULL REFERENCES cc_profiles(id) ON DELETE CASCADE,
                 stable_media_id TEXT NOT NULL REFERENCES cc_media_identity(stable_id),
@@ -471,6 +475,18 @@ impl Store {
         let legacy = self.legacy_id(stable_id)?;
         let updated = self.catalogue.patch(&legacy, patch)?;
         self.profile_view(profile_id, updated)
+    }
+
+    pub fn media_revision(&self, stable_id: &str) -> Result<u64, String> {
+        self.legacy_id(stable_id)?;
+        self.personal.query_row("SELECT revision FROM cc_media_revision WHERE stable_id=?1", [stable_id], |r| r.get::<_,i64>(0)).optional().map_err(db_error)?.map(|v|v as u64).ok_or_else(|| "Vidéo introuvable dans le catalogue.".into())
+    }
+
+    pub fn update_media_at_revision(&mut self, profile: &str, stable_id: &str, expected: u64, patch: &MediaPatch) -> Result<(Media,u64), String> {
+        if self.media_revision(stable_id)? != expected { return Err("La fiche a changé entre-temps.".into()); }
+        let updated=self.update_media(profile,stable_id,patch)?;
+        self.personal.execute("UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1", [stable_id]).map_err(db_error)?;
+        Ok((updated,self.media_revision(stable_id)?))
     }
 
     pub fn set_rating(
@@ -955,6 +971,7 @@ impl Store {
     fn ensure_identities(&self, media: &[Media]) -> Result<(), String> {
         let tx = self.personal.unchecked_transaction().map_err(db_error)?;
         insert_identities(&tx, media)?;
+        tx.execute("INSERT OR IGNORE INTO cc_media_revision(stable_id,revision) SELECT stable_id,1 FROM cc_media_identity", []).map_err(db_error)?;
         tx.commit().map_err(db_error)
     }
     fn stable_id(&self, legacy: &str) -> Result<String, String> {

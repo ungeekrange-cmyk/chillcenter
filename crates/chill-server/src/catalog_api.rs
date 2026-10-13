@@ -45,17 +45,15 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn detail(State(state): State<AppState>, Path((profile, media)): Path<(String, String)>) -> Result<Json<Value>, ApiError> {
-    let item = state.database.call(move |store| store.media(&profile, &media)).await?;
-    Ok(Json(json!({"media":item})))
+    let (item,revision) = state.database.call(move |store| { let item=store.media(&profile, &media)?; let revision=store.media_revision(&media)?; Ok((item,revision)) }).await?;
+    Ok(Json(json!({"media":item,"revision":revision})))
 }
 
 #[derive(Deserialize)] #[serde(deny_unknown_fields)]
 struct RevisionPatch { expected_revision: u64, #[serde(flatten)] patch: MediaPatch }
 async fn update_media(State(state): State<AppState>, Path((profile, media)): Path<(String,String)>, Json(body): Json<RevisionPatch>) -> Result<Json<Value>, ApiError> {
-    // Legacy records have no revision field; added_at is the durable CAS token until
-    // the catalogue migration introduces a dedicated revision column.
-    let updated = state.database.call(move |store| { let before=store.media(&profile,&media)?; if before.added_at as u64 != body.expected_revision { return Err("La fiche a changé entre-temps.".into()); } store.update_media(&profile,&media,&body.patch) }).await?;
-    Ok(Json(json!({"media":updated,"revision":updated.added_at})))
+    let (updated,revision) = state.database.call(move |store| store.update_media_at_revision(&profile,&media,body.expected_revision,&body.patch)).await?;
+    Ok(Json(json!({"media":updated,"revision":revision})))
 }
 async fn series(State(state): State<AppState>, Path((profile, series)): Path<(String,String)>) -> Result<Json<Value>, ApiError> {
     let key = series.clone();
