@@ -703,6 +703,7 @@ impl Store {
     pub fn create_saga(&mut self,name:&str)->Result<SagaView,String>{let id=self.catalogue.create_collection(name,"saga")?.into_iter().find(|c|c.kind=="saga"&&c.name==name.trim()).ok_or("Saga introuvable.")?.id;self.saga(&id)}
     pub fn rename_saga_at_revision(&mut self,id:&str,name:&str,revision:u64)->Result<SagaView,String>{self.catalogue.rename_saga_at_revision(id,name,revision)?;self.saga(id)}
     pub fn saga_members_at_revision(&mut self,id:&str,media:&[String],revision:u64,add:bool)->Result<SagaView,String>{self.catalogue.saga_members_at_revision(id,media,revision,add)?;self.saga(id)}
+    pub fn reorder_saga_at_revision(&mut self,id:&str,revision:u64,expected:&[String],desired:&[String])->Result<SagaView,String>{self.catalogue.reorder_saga_at_revision(id,revision,expected,desired)?;self.saga(id)}
     pub fn delete_saga_at_revision(&mut self,id:&str,revision:u64)->Result<(),String>{self.catalogue.delete_saga_at_revision(id,revision)}
 
     pub fn playlist(&self, profile_id: &str, id: &str) -> Result<PlaylistView, String> {

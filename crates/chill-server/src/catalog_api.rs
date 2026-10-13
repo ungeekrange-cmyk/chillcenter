@@ -31,6 +31,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/profiles/{profile}/sagas", get(sagas).post(create_saga))
         .route("/api/v1/profiles/{profile}/sagas/{saga}", get(saga).put(rename_saga).delete(delete_saga))
         .route("/api/v1/profiles/{profile}/sagas/{saga}/members", post(add_saga_members).delete(remove_saga_members))
+        .route("/api/v1/profiles/{profile}/sagas/{saga}/order", put(order_saga))
         .route("/api/v1/profiles/{profile}/playlists", get(playlists).post(create_playlist))
         .route("/api/v1/profiles/{profile}/playlists/{playlist}", get(playlist).put(rename_playlist).delete(delete_playlist))
         .route("/api/v1/profiles/{profile}/playlists/{playlist}/members", post(add_members))
@@ -105,6 +106,8 @@ async fn rename_saga(State(state):State<AppState>,Path((profile,id)):Path<(Strin
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct SagaMembers { expected_revision:u64,media_ids:Vec<String> }
 async fn add_saga_members(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>,Json(body):Json<SagaMembers>)->Result<Json<Value>,ApiError>{Ok(Json(json!({"saga":state.database.call(move|s|{s.preferences(&profile)?;s.saga_members_at_revision(&id,&body.media_ids,body.expected_revision,true)}).await?})))}
 async fn remove_saga_members(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>,Json(body):Json<SagaMembers>)->Result<Json<Value>,ApiError>{Ok(Json(json!({"saga":state.database.call(move|s|{s.preferences(&profile)?;s.saga_members_at_revision(&id,&body.media_ids,body.expected_revision,false)}).await?})))}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct SagaOrder { expected_revision:u64,expected_order:Vec<String>,media_ids:Vec<String> }
+async fn order_saga(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>,Json(body):Json<SagaOrder>)->Result<Json<Value>,ApiError>{Ok(Json(json!({"saga":state.database.call(move|s|{s.preferences(&profile)?;s.reorder_saga_at_revision(&id,body.expected_revision,&body.expected_order,&body.media_ids)}).await?})))}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct SagaDelete { expected_revision:u64 }
 async fn delete_saga(State(state):State<AppState>,Path((profile,id)):Path<(String,String)>,Json(body):Json<SagaDelete>)->Result<Json<Value>,ApiError>{state.database.call(move|s|{s.preferences(&profile)?;s.delete_saga_at_revision(&id,body.expected_revision)}).await?;Ok(Json(json!({"deleted":true})))}
 async fn playlists(State(state): State<AppState>, Path(profile): Path<String>) -> Result<Json<Value>, ApiError> { Ok(Json(json!({"items":state.database.call(move|s|s.playlists(&profile)).await?}))) }
