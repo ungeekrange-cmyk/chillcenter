@@ -194,6 +194,153 @@ fn hash_file(path: &std::path::Path) -> Result<String, ApiError> {
     Ok(format!("{:x}", hash.finalize()))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        api::{DatabaseActor, router},
+        config::{LibrarySettings, ServerConfig},
+        playback::PlaybackService,
+        tls,
+    };
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use std::{
+        io::Cursor,
+        sync::{Arc, Mutex},
+    };
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn export_route_streams_checked_portable_zip_without_secrets_or_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().canonicalize().unwrap();
+        let root = base.join("videos");
+        let data = base.join("data");
+        let posters = data.join("posters");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&posters).unwrap();
+        fs::write(root.join("movie.mp4"), b"video-never-exported").unwrap();
+        fs::write(posters.join("cover.png"), b"poster-bytes").unwrap();
+        let config = ServerConfig {
+            data_dir: data.clone(),
+            video_root: Some(root.clone()),
+            ..Default::default()
+        };
+        let cert = tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
+        let database = DatabaseActor::open(data.join("catalog.sqlite")).unwrap();
+        let roots = root.clone();
+        let poster = posters.join("cover.png");
+        let (profile, media) = database
+            .call(move |store| {
+                let p = store.create_profile("Archive")?;
+                let mut m = chill_catalog::scanner::parse_file(&roots, &roots.join("movie.mp4"));
+                m.poster = Some(poster.to_string_lossy().into());
+                m.poster_custom = true;
+                store.snapshot(vec![m])?;
+                let media = store.catalog(&p.id)?.remove(0);
+                store.save_preferences(
+                    &p.id,
+                    &chill_domain::Preferences {
+                        audio_language: "fr".into(),
+                        subtitle_language: "en".into(),
+                        autoplay_seconds: Some(20),
+                    },
+                )?;
+                store.set_series_speed(&p.id, "series", 1.25)?;
+                store.set_rating(&p.id, &media.id, Some(4), "video")?;
+                store.create_playlist_with_members(&p.id, "Liste", &[media.id.clone()])?;
+                Ok((p.id, media.id))
+            })
+            .await
+            .unwrap();
+        let state = crate::api::AppState {
+            playback: PlaybackService::default(),
+            database,
+            library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
+            config: Arc::new(config),
+            certificate: Arc::new(Mutex::new(cert.schedule)),
+            scan: Arc::new(Mutex::new(Default::default())),
+        };
+        let app = router(state);
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/admin/exports")
+            .header("host", "localhost:8443")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let ready: serde_json::Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(ready["state"], "ready");
+        let id = ready["export_id"].as_str().unwrap();
+        let request = Request::builder()
+            .uri(format!("/api/v1/admin/exports/{id}"))
+            .header("host", "localhost:8443")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut manifest = String::new();
+        zip.by_name("manifest.json")
+            .unwrap()
+            .read_to_string(&mut manifest)
+            .unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+        let mut document = String::new();
+        zip.by_name("data.json")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        let document: serde_json::Value = serde_json::from_str(&document).unwrap();
+        let poster_ref = document["media"][0]["data"]["poster"].as_str().unwrap();
+        let mut poster = Vec::new();
+        zip.by_name(poster_ref)
+            .unwrap()
+            .read_to_end(&mut poster)
+            .unwrap();
+        assert_eq!(poster, b"poster-bytes");
+        let expected = manifest["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["reference"] == poster_ref)
+            .unwrap()["sha256"]
+            .as_str()
+            .unwrap();
+        assert_eq!(expected, format!("{:x}", Sha256::digest(&poster)));
+        assert_eq!(document["profiles"][0]["id"], profile);
+        assert_eq!(
+            document["personal"][0]["preferences"]["audio_language"],
+            "fr"
+        );
+        assert_eq!(
+            document["personal"][0]["playlists"][0]["media_ids"][0],
+            media
+        );
+        let rendered = document.to_string();
+        assert!(
+            !rendered.contains("video-never-exported")
+                && !rendered.contains(root.to_string_lossy().as_ref())
+                && !rendered.contains("tmdb_token")
+        );
+        assert_eq!(document["leases"], serde_json::json!([]));
+        let request = Request::builder()
+            .uri("/api/v1/admin/exports/not-a-uuid")
+            .header("host", "localhost:8443")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            app.oneshot(request).await.unwrap().status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+}
+
 async fn download(
     State(state): State<AppState>,
     Path(id): Path<String>,
