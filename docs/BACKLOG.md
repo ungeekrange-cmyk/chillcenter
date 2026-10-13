@@ -1,6 +1,6 @@
 # Backlog Chill Center
 
-Révision **CC-STORIES-001**, auteur /root, 2026-10-13 ; statut documentaire REVIEW_REQUESTED. Entrées approuvées : [CC-FONC-002](discovery/SCOPE.md), [architecture CC-DOC-001](architecture/ARCHITECTURE.md) et [G-02 utilisateur](gates/G-02-CC-DOC-001.md). Implémentation non commencée ; G-03 utilisateur PENDING.
+Révision **CC-STORIES-001**, auteur /root, 2026-10-13 ; statut APPROVED_BY_USER. Entrées approuvées : [CC-FONC-002](discovery/SCOPE.md), [architecture CC-DOC-001](architecture/ARCHITECTURE.md) et [G-02 utilisateur](gates/G-02-CC-DOC-001.md). [G-03](gates/G-03-CC-STORIES-001.md) approuvé par « validé, go implémentation » ; implémentation IN_PROGRESS. Le présent changement de statut ne modifie ni stories, ni AC, ni DAG.
 
 ## Lecture et méthode
 
@@ -117,5 +117,5 @@ Stories vérifiées sur leurs AC, dépendances intégrées, enablers/migrations 
 
 ## Revue et validation
 
-[Rapport indépendant final](reviews/STORY_REVIEW_REPORT-r2.md) pour stories, AC, estimations, couverture et DAG ; [rapport initial conservé](reviews/STORY_REVIEW_REPORT.md). [Matrice des exigences](stories/TRACEABILITY.md) et [inputs/preuves](stories/INPUTS.md). Gate utilisateur G-03 : attendre une validation explicite de CC-STORIES-001 avant de commencer le code. Ce dossier planifie la totalité de la première version Mac avec serveur Linux.
+[Rapport indépendant final](reviews/STORY_REVIEW_REPORT-r2.md) pour stories, AC, estimations, couverture et DAG ; [rapport initial conservé](reviews/STORY_REVIEW_REPORT.md). [Matrice des exigences](stories/TRACEABILITY.md) et [inputs/preuves](stories/INPUTS.md). Gate utilisateur G-03 approuvé ; [état de l'implémentation](implementation/STATUS.md). Ce dossier planifie la totalité de la première version Mac avec serveur Linux.
 
