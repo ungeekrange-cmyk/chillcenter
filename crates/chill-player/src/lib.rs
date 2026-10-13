@@ -161,14 +161,14 @@ pub struct PlaybackStream {
 
 #[derive(Clone)]
 pub struct HttpMediaFactory {
-    transport: Transport,
+    transport: Arc<RwLock<Transport>>,
     active: Arc<RwLock<Option<PlaybackStream>>>,
 }
 
 impl HttpMediaFactory {
     pub fn new(transport: Transport) -> Self {
         Self {
-            transport,
+            transport: Arc::new(RwLock::new(transport)),
             active: Arc::new(RwLock::new(None)),
         }
     }
@@ -177,6 +177,11 @@ impl HttpMediaFactory {
     }
     pub fn clear_playback(&self) {
         *self.active.write().expect("playback lock poisoned") = None;
+    }
+    /// Existing sources retain their own pinned transport/session snapshot.
+    /// A server change applies only to a subsequent authorised stream open.
+    pub fn set_transport(&self, transport: Transport) {
+        *self.transport.write().expect("transport lock poisoned") = transport;
     }
 }
 
@@ -198,7 +203,7 @@ impl MediaFactory for HttpMediaFactory {
             ));
         }
         Ok(Box::new(HttpMediaSource {
-            worker: HttpReadWorker::start(self.transport.clone(), active)?,
+            worker: HttpReadWorker::start(self.transport.read().expect("transport lock poisoned").clone(), active)?,
             etag: None,
             size: None,
         }))
@@ -600,6 +605,12 @@ impl Player {
     }
     pub fn pause(&self, paused: bool) -> Result<(), PlayerError> {
         self.set_property("pause", if paused { "yes" } else { "no" })
+    }
+    pub fn is_buffering(&self) -> Result<bool, PlayerError> {
+        Ok(property_bool(self.property("paused-for-cache")?))
+    }
+    pub fn set_volume(&self, volume: u8) -> Result<(), PlayerError> {
+        self.set_property("volume", &volume.min(100).to_string())
     }
     pub fn seek_relative(&self, seconds: f64) -> Result<(), PlayerError> {
         self.command(&["seek", &seconds.to_string(), "relative+exact"])

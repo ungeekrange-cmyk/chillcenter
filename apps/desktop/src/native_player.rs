@@ -12,8 +12,8 @@ use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSOpenGLContext, NSOpenGLPFAAccelerated, NSOpenGLPFAAlphaSize, NSOpenGLPFAColorSize,
-    NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat, NSOpenGLProfileVersion3_2Core, NSOpenGLView,
-    NSView,
+    NSOpenGLPFADoubleBuffer, NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat,
+    NSOpenGLProfileVersion3_2Core, NSOpenGLView, NSView,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde::{Deserialize, Serialize};
@@ -21,11 +21,12 @@ use std::cell::RefCell;
 use std::ffi::{CStr, c_int, c_uint, c_void};
 use std::ptr::{self, NonNull};
 use std::rc::Rc;
-use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime};
 use tauri::{Runtime, WebviewWindow};
 
 const GL_FRAMEBUFFER: c_uint = 0x8D40;
+const GL_READ_FRAMEBUFFER: c_uint = 0x8CA8;
+const GL_DRAW_FRAMEBUFFER: c_uint = 0x8CA9;
 const GL_TEXTURE_2D: c_uint = 0x0DE1;
 const GL_COLOR_ATTACHMENT0: c_uint = 0x8CE0;
 const GL_RGBA8: c_int = 0x8058;
@@ -61,6 +62,27 @@ unsafe extern "C" {
     fn glViewport(x: c_int, y: c_int, w: c_int, h: c_int);
     fn glClearColor(r: f32, g: f32, b: f32, a: f32);
     fn glClear(mask: c_uint);
+    fn glBlitFramebuffer(
+        sx0: c_int,
+        sy0: c_int,
+        sx1: c_int,
+        sy1: c_int,
+        dx0: c_int,
+        dy0: c_int,
+        dx1: c_int,
+        dy1: c_int,
+        mask: c_uint,
+        filter: c_uint,
+    );
+    fn glReadPixels(
+        x: c_int,
+        y: c_int,
+        w: c_int,
+        h: c_int,
+        format: c_uint,
+        kind: c_uint,
+        pixels: *mut c_void,
+    );
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -184,7 +206,7 @@ async fn on_main<R: Runtime, F>(
 where
     F: FnOnce(*mut c_void) -> Result<NativeSnapshot, NativePlayerError> + Send + 'static,
 {
-    let (send, recv) = mpsc::sync_channel(1);
+    let (send, recv) = tokio::sync::oneshot::channel();
     let view = window
         .ns_view()
         .map_err(|e| NativePlayerError::Surface(e.to_string()))? as usize;
@@ -193,11 +215,7 @@ where
             let _ = send.send(op(view as *mut c_void));
         })
         .map_err(|e| NativePlayerError::Surface(e.to_string()))?;
-    tauri::async_runtime::spawn_blocking(move || {
-        recv.recv().map_err(|_| NativePlayerError::Disconnected)?
-    })
-    .await
-    .map_err(|_| NativePlayerError::Disconnected)?
+    recv.await.map_err(|_| NativePlayerError::Disconnected)?
 }
 
 async fn on_main_unit<R: Runtime, F>(
@@ -207,7 +225,7 @@ async fn on_main_unit<R: Runtime, F>(
 where
     F: FnOnce(*mut c_void) -> Result<(), NativePlayerError> + Send + 'static,
 {
-    let (send, recv) = mpsc::sync_channel(1);
+    let (send, recv) = tokio::sync::oneshot::channel();
     let view = window
         .ns_view()
         .map_err(|e| NativePlayerError::Surface(e.to_string()))? as usize;
@@ -216,11 +234,7 @@ where
             let _ = send.send(op(view as *mut c_void));
         })
         .map_err(|e| NativePlayerError::Surface(e.to_string()))?;
-    tauri::async_runtime::spawn_blocking(move || {
-        recv.recv().map_err(|_| NativePlayerError::Disconnected)?
-    })
-    .await
-    .map_err(|_| NativePlayerError::Disconnected)?
+    recv.await.map_err(|_| NativePlayerError::Disconnected)?
 }
 
 struct SurfacePlayer {
@@ -260,6 +274,8 @@ impl SurfacePlayer {
         let mut options = PlayerOptions::default();
         options.extra.insert("vo".into(), "libmpv".into());
         let mut player = Player::new(options)?;
+        // Never decode/play before the server-confirmed heartbeat allows the bridge to unpause.
+        player.pause(true)?;
         let factory = HttpMediaFactory::new(transport);
         factory.set_playback(playback.clone());
         player.register_stream("chill-media", std::sync::Arc::new(factory))?;
@@ -272,7 +288,7 @@ impl SurfacePlayer {
             context,
             framebuffer: Framebuffer::new(1, 1)?,
             media_id: playback.media_id,
-            paused: false,
+            paused: true,
             ended: false,
             error: None,
             loaded: false,
@@ -320,6 +336,18 @@ impl SurfacePlayer {
         self.snapshot()
     }
     fn mount(&mut self, css: NativeRect) -> Result<(), NativePlayerError> {
+        if ![css.x, css.y, css.width, css.height]
+            .into_iter()
+            .all(f64::is_finite)
+            || css.width <= 0.
+            || css.height <= 0.
+            || css.width > 4096.
+            || css.height > 2160.
+        {
+            return Err(NativePlayerError::Surface(
+                "rectangle lecteur invalide".into(),
+            ));
+        }
         let parent = unsafe { self.view.superview() }
             .ok_or_else(|| NativePlayerError::Surface("surface détachée".into()))?;
         let bounds = parent.bounds();
@@ -327,8 +355,8 @@ impl SurfacePlayer {
             .window()
             .map(|w| w.backingScaleFactor())
             .unwrap_or(1.);
-        let w = css.width.max(1.).min(bounds.size.width);
-        let h = css.height.max(1.).min(bounds.size.height);
+        let w = css.width.min(bounds.size.width).max(1.);
+        let h = css.height.min(bounds.size.height).max(1.);
         let x = css.x.max(0.).min((bounds.size.width - w).max(0.));
         let y = (bounds.size.height - css.y - h)
             .max(0.)
@@ -336,7 +364,10 @@ impl SurfacePlayer {
         self.view
             .setFrame(NSRect::new(NSPoint::new(x, y), NSSize::new(w, h)));
         self.context.makeCurrentContext();
-        self.framebuffer = Framebuffer::new((w * scale).ceil() as i32, (h * scale).ceil() as i32)?;
+        self.framebuffer = Framebuffer::new(
+            (w * scale).ceil().min(8192.) as i32,
+            (h * scale).ceil().min(4320.) as i32,
+        )?;
         self.view.setHidden(false);
         Ok(())
     }
@@ -358,17 +389,45 @@ impl SurfacePlayer {
             self.framebuffer.clear();
             self.renderer
                 .render(&mut self.framebuffer.descriptor(), true)?;
+            unsafe {
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, self.framebuffer.id);
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+                glBlitFramebuffer(
+                    0,
+                    0,
+                    self.framebuffer.w,
+                    self.framebuffer.h,
+                    0,
+                    0,
+                    self.framebuffer.w,
+                    self.framebuffer.h,
+                    0x4000,
+                    GL_LINEAR as c_uint,
+                );
+            }
             self.context.flushBuffer();
         }
         Ok(())
     }
     fn poll_and_render(&mut self) -> Result<(), NativePlayerError> {
         self.expire_if_needed()?;
-        match self.player.poll_event(Duration::ZERO) {
-            PlayerEvent::FileLoaded => self.apply_pending()?,
-            PlayerEvent::Ended { .. } | PlayerEvent::Shutdown => self.ended = true,
-            _ => {}
-        };
+        for _ in 0..32 {
+            match self.player.poll_event(Duration::ZERO) {
+                PlayerEvent::None => break,
+                PlayerEvent::FileLoaded => self.apply_pending()?,
+                PlayerEvent::Ended { reason, error } => {
+                    self.ended = true;
+                    if reason != 0 || error != 0 {
+                        self.error = Some(format!("lecture interrompue ({reason}/{error})"));
+                    }
+                }
+                PlayerEvent::Shutdown => {
+                    self.ended = true;
+                    self.error = Some("moteur arrêté".into());
+                }
+                _ => {}
+            }
+        }
         self.render_tick()
     }
     fn apply_pending(&mut self) -> Result<(), NativePlayerError> {
@@ -384,17 +443,45 @@ impl SurfacePlayer {
         }
         self.player.set_speed(pending.speed)?;
         self.speed = pending.speed;
-        for track in self.player.tracks()? {
-            if track.language.as_deref() == pending.audio_language.as_deref()
-                && matches!(track.kind, chill_player::TrackKind::Audio)
+        let tracks = self.player.tracks()?;
+        let wanted_audio = pending.audio_language.as_deref().and_then(language_key);
+        let wanted_subtitle = pending.subtitle_language.as_deref().and_then(language_key);
+        let audio = tracks
+            .iter()
+            .find(|track| {
+                matches!(track.kind, chill_player::TrackKind::Audio)
+                    && track.language.as_deref().and_then(language_key) == wanted_audio
+            })
+            .or_else(|| {
+                tracks.iter().find(|track| {
+                    matches!(track.kind, chill_player::TrackKind::Audio) && track.language.is_some()
+                })
+            })
+            .or_else(|| {
+                tracks
+                    .iter()
+                    .find(|track| matches!(track.kind, chill_player::TrackKind::Audio))
+            });
+        if let Some(track) = audio {
+            self.player.select_audio(track.id)?;
+            if wanted_audio.is_some()
+                && track.language.as_deref().and_then(language_key) != wanted_audio
             {
-                self.player.select_audio(track.id)?;
+                self.error = Some("langue audio préférée indisponible".into());
             }
-            if track.language.as_deref() == pending.subtitle_language.as_deref()
-                && matches!(track.kind, chill_player::TrackKind::Subtitle)
-            {
+        }
+        if let Some(wanted) = wanted_subtitle {
+            if let Some(track) = tracks.iter().find(|track| {
+                matches!(track.kind, chill_player::TrackKind::Subtitle)
+                    && track.language.as_deref().and_then(language_key) == Some(wanted)
+            }) {
                 self.player.select_subtitle(Some(track.id))?;
+            } else {
+                self.player.select_subtitle(None)?;
+                self.error = Some("sous-titres préférés indisponibles".into());
             }
+        } else {
+            self.player.select_subtitle(None)?;
         }
         self.loaded = true;
         Ok(())
@@ -406,7 +493,7 @@ impl SurfacePlayer {
             position: self.player.position_seconds()?,
             duration: self.player.duration_seconds()?,
             paused: self.paused,
-            buffering: false,
+            buffering: false, // replaced by Player::is_buffering once root lands the bounded property helper
             speed: self.speed,
             tracks: self.player.tracks()?,
             ended: self.ended,
@@ -425,6 +512,13 @@ struct PendingLoad {
     subtitle_language: Option<String>,
     speed: f64,
 }
+fn language_key(language: &str) -> Option<&'static str> {
+    match language.trim().to_ascii_lowercase().as_str() {
+        "en" | "eng" => Some("en"),
+        "fr" | "fra" | "fre" => Some("fr"),
+        _ => None,
+    }
+}
 fn open_gl_view(rect: NSRect) -> Result<Retained<NSOpenGLView>, NativePlayerError> {
     let mtm = MainThreadMarker::new()
         .ok_or_else(|| NativePlayerError::Surface("AppKit hors thread principal".into()))?;
@@ -436,6 +530,7 @@ fn open_gl_view(rect: NSRect) -> Result<Retained<NSOpenGLView>, NativePlayerErro
         24,
         NSOpenGLPFAAlphaSize,
         8,
+        NSOpenGLPFADoubleBuffer,
         0,
     ];
     let p = NonNull::new(a.as_mut_ptr())
@@ -501,7 +596,38 @@ impl Framebuffer {
         }
     }
     fn nonblank(&self) -> bool {
-        self.id != 0
+        // Debug-only assertion signal: sample actual FBO pixels, never resource identity.
+        let mut samples = [0u8; 4 * 9];
+        unsafe {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, self.id);
+            for (index, (x, y)) in [
+                (0, 0),
+                (self.w / 2, 0),
+                (self.w - 1, 0),
+                (0, self.h / 2),
+                (self.w / 2, self.h / 2),
+                (self.w - 1, self.h / 2),
+                (0, self.h - 1),
+                (self.w / 2, self.h - 1),
+                (self.w - 1, self.h - 1),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                glReadPixels(
+                    x.max(0),
+                    y.max(0),
+                    1,
+                    1,
+                    GL_RGBA,
+                    GL_UNSIGNED_BYTE,
+                    samples[index * 4..].as_mut_ptr().cast(),
+                );
+            }
+        }
+        samples
+            .chunks_exact(4)
+            .any(|pixel| pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0)
     }
 }
 impl Drop for Framebuffer {
