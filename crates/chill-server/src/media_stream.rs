@@ -34,32 +34,33 @@ const CHUNK_BYTES: usize = 64 * 1024;
 const MAX_SUBTITLE_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(serde::Serialize)]
-pub(crate) struct SubtitleCandidate { id:String, title:String, language:Option<String>, ambiguous:bool }
+pub(crate) struct SubtitleCandidate { id:String, title:String, language:Option<String>, ambiguous:bool, unavailable:bool }
 #[derive(serde::Deserialize)] pub(crate) struct SubtitleQuery { pub session:String, pub generation:u64 }
 
-fn subtitle_files(root:&FsPath, video:&FsPath)->io::Result<Vec<(String,std::path::PathBuf)>> {
+fn subtitle_files(root:&FsPath, video:&FsPath)->io::Result<Vec<(String,std::path::PathBuf,FileVersion)>> {
     let stem=video.file_stem().and_then(|v|v.to_str()).ok_or(io::ErrorKind::InvalidInput)?;
     let dir=video.parent().ok_or(io::ErrorKind::InvalidInput)?;
-    let mut out: Vec<(String, std::path::PathBuf)>=Vec::new();
+    let mut out: Vec<(String, std::path::PathBuf,FileVersion)>=Vec::new();
     for entry in std::fs::read_dir(dir)? { let entry=entry?; let path=entry.path();
         let Some(name)=path.file_name().and_then(|v|v.to_str()) else {continue};
         let valid=["srt","vtt","ass","ssa"].iter().any(|e|name.to_ascii_lowercase().ends_with(&format!(".{e}")));
-        if valid && (name==format!("{stem}.srt") || name.starts_with(&format!("{stem}."))) && open_indexed(root,&path).map(|(_,v)|v.size<=MAX_SUBTITLE_BYTES).unwrap_or(false) { out.push((name.into(),path)); }
+        if valid && (name==format!("{stem}.srt") || name.starts_with(&format!("{stem}."))) && let Ok((_,v))=open_indexed(root,&path) && v.size<=MAX_SUBTITLE_BYTES { out.push((name.into(),path,v)); }
     }
     out.sort_by(|a,b|a.0.cmp(&b.0)); Ok(out)
 }
+fn subtitle_id(name:&str, version:&FileVersion)->String { let mut h=std::collections::hash_map::DefaultHasher::new(); name.hash(&mut h);version.hash(&mut h);format!("sub-{:016x}",h.finish()) }
 fn language(name:&str, stem:&str)->Option<String>{ let rest=name.strip_prefix(stem)?.strip_prefix('.')?; let token=rest.split('.').next()?; (2..=16).contains(&token.len()).then(||token.to_ascii_lowercase()) }
 pub(crate) async fn subtitles(State(state):State<AppState>,Path((profile,media)):Path<(String,String)>,Query(q):Query<SubtitleQuery>)->Result<axum::Json<serde_json::Value>,ApiError>{
  let lease=state.playback.stream_lease_for_profile(&profile,&q.session,q.generation,&media)?; let root=lease.root.clone(); let path=lease.path.clone();
  let files=io_job(&state.playback,move||subtitle_files(&root,&path)).await?; state.playback.check_stream(&lease)?;
  let stem=lease.path.file_stem().and_then(|v|v.to_str()).unwrap_or("").to_owned(); let ambiguous=files.len()>1;
- Ok(axum::Json(serde_json::json!({"items":files.into_iter().enumerate().map(|(n,(title,_))|SubtitleCandidate{id:format!("s{n}"),language:language(&title,&stem),title,ambiguous}).collect::<Vec<_>>() }))) }
+ Ok(axum::Json(serde_json::json!({"items":files.into_iter().map(|(title,_,version)|SubtitleCandidate{id:subtitle_id(&title,&version),language:language(&title,&stem),title,ambiguous,unavailable:false}).collect::<Vec<_>>() }))) }
 pub(crate) async fn subtitle(State(state):State<AppState>,Path((profile,media,id)):Path<(String,String,String)>,Query(q):Query<SubtitleQuery>,headers:HeaderMap)->Result<Response,ApiError>{
- let n=id.strip_prefix('s').and_then(|v|v.parse::<usize>().ok()).ok_or(ApiError(StatusCode::NOT_FOUND,"SUBTITLE_NOT_FOUND"))?; let lease=state.playback.stream_lease_for_profile(&profile,&q.session,q.generation,&media)?; let root=lease.root.clone();let video=lease.path.clone();
- let path=io_job(&state.playback,move||subtitle_files(&root,&video).and_then(|v|v.get(n).map(|x|x.1.clone()).ok_or_else(||io::Error::from(io::ErrorKind::NotFound)))).await?;
- let root=lease.root.clone(); let (file,version)=io_job(&state.playback,move||open_indexed(&root,&path)).await?; if version.size>MAX_SUBTITLE_BYTES{return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE,"SUBTITLE_TOO_LARGE"))}; state.playback.check_stream(&lease)?;
+ let lease=state.playback.stream_lease_for_profile(&profile,&q.session,q.generation,&media)?; let root=lease.root.clone();let video=lease.path.clone(); let requested=id.clone();
+ let (path,expected)=io_job(&state.playback,move||subtitle_files(&root,&video).and_then(|v|v.into_iter().find(|(name,_,version)|subtitle_id(name,version)==requested).map(|(_,path,version)|(path,version)).ok_or_else(||io::Error::from(io::ErrorKind::NotFound)))).await?;
+ let root=lease.root.clone(); let (file,version)=io_job(&state.playback,move||open_indexed(&root,&path)).await?; if version!=expected{return Err(ApiError(StatusCode::PRECONDITION_FAILED,"SUBTITLE_CHANGED"))}; if version.size>MAX_SUBTITLE_BYTES{return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE,"SUBTITLE_TOO_LARGE"))}; state.playback.check_stream(&lease)?;
  let etag=version.etag(lease.root_revision); if headers.contains_key("if-match") && one_header(&headers,"if-match")?!=etag{return Err(ApiError(StatusCode::PRECONDITION_FAILED,"MEDIA_CHANGED"))};
- let bytes=io_job(&state.playback,move||{let mut v=Vec::with_capacity(version.size as usize);let mut f=file;f.read_to_end(&mut v)?; if v.iter().take(4096).any(|b|*b==0){return Err(io::ErrorKind::InvalidData.into())};Ok(v)}).await?;
+ let bytes=io_job(&state.playback,move||{let mut v=Vec::with_capacity(version.size as usize);let f=file;f.take(MAX_SUBTITLE_BYTES+1).read_to_end(&mut v)?; if v.len() as u64>MAX_SUBTITLE_BYTES || v.iter().take(4096).any(|b|*b==0) || std::str::from_utf8(&v).is_err(){return Err(io::ErrorKind::InvalidData.into())};Ok(v)}).await?;
  Response::builder().status(StatusCode::OK).header("content-type","text/plain; charset=utf-8").header("content-length",bytes.len()).header("etag",etag).header("cache-control","no-store").header("x-content-type-options","nosniff").body(Body::from(bytes)).map_err(|_|ApiError(StatusCode::INTERNAL_SERVER_ERROR,"STREAM_UNAVAILABLE"))
 }
 
