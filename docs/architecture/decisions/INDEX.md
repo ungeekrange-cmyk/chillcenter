@@ -17,3 +17,5 @@ Déclencheurs : frontière serveur/client, persistance, identité, contrat de se
 Après acceptation, changer une décision par un nouvel ADR avec `supersedes`, pas par une réécriture. Invalider les stories ou preuves qui consomment une décision modifiée.
 
 Complément d'implémentation, distinct des sept décisions approuvées en G-02 : [ADR-0008](ADR-0008-bounded-media-io.md), `IMPLEMENTED_DETAIL`, I/O NAS bornées et ouverture par descripteurs, CC-PLAY-001. Ne remplace aucun ADR accepté ; pas de nouvelle validation utilisateur revendiquée.
+
+[ADR-0009](ADR-0009-archive-validation.md), PROPOSED : validation ZIP/images et application portable transactionnelle. Revue indépendante en attente ; aucun changement de l'ADR-0006 accepté.

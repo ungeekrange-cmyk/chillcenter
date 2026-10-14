@@ -8,17 +8,17 @@ use axum::{
     response::Response,
     routing::{delete, get, post},
 };
+use chill_domain::import::{ArchiveDocument, ImportMapping, ImportResult, PreparedImport};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::{Read, Write},
     path::{Path as FsPath, PathBuf},
     sync::{
-        Mutex, OnceLock,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, SystemTime},
@@ -43,15 +43,67 @@ static UPLOAD_ACTIVE: AtomicBool = AtomicBool::new(false);
 struct Preview {
     path: PathBuf,
     created: SystemTime,
+    busy: Arc<AtomicBool>,
+    plan: Option<StoredPlan>,
+}
+#[derive(Clone)]
+struct StoredPlan {
+    id: String,
+    path: PathBuf,
+    root_revision: u64,
+}
+#[derive(Serialize)]
+struct PlanReady {
+    plan_id: String,
+    epoch: u64,
+    root_revision: u64,
+    conflicts: Vec<String>,
+    conflict_count: usize,
+    profiles: BTreeMap<String, String>,
+    already_imported: bool,
+    apply_supported: bool,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PlanRequest { profile_map: HashMap<String, ProfileTarget>, root_prefix: String, conflict_policy: String }
-#[derive(Deserialize)]
-#[serde(tag="kind", rename_all="snake_case", deny_unknown_fields)]
-enum ProfileTarget { Existing { id: String, expected_revision: u64 }, New { name: String } }
-#[derive(Serialize)]
-struct PlanReady { plan_id: String, epoch: u64, root_revision: u64, conflicts: Vec<String>, profiles: HashMap<String,String>, apply_supported: bool }
+struct ApplyRequest {
+    plan_id: String,
+    confirmed: bool,
+}
+struct PreviewGuard(Arc<AtomicBool>);
+impl Drop for PreviewGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+fn reserve_preview(
+    dir: &FsPath,
+    id: &str,
+) -> Result<(PathBuf, Option<StoredPlan>, PreviewGuard), ApiError> {
+    if uuid::Uuid::parse_str(id).is_err() {
+        return Err(ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"));
+    }
+    let mut records = previews()
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
+    cleanup_previews(dir, &mut records);
+    let preview = records
+        .get(dir)
+        .and_then(|p| p.get(id))
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"))?;
+    if preview
+        .busy
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err(ApiError(StatusCode::CONFLICT, "IMPORT_BUSY"));
+    }
+    Ok((
+        preview.path.clone(),
+        preview.plan.clone(),
+        PreviewGuard(preview.busy.clone()),
+    ))
+}
 
 struct UploadGuard;
 impl Drop for UploadGuard {
@@ -109,24 +161,194 @@ pub(crate) fn routes() -> Router<AppState> {
             post(stage_and_preview).layer(DefaultBodyLimit::max(MAX_COMPRESSED as usize)),
         )
         .route("/api/v1/admin/imports/{id}/plan", post(prepare_plan))
+        .route("/api/v1/admin/imports/{id}/apply", post(apply_plan))
         .route("/api/v1/admin/imports/{id}", delete(cancel_preview))
 }
 
-async fn prepare_plan(State(state): State<AppState>, Path(id): Path<String>, Json(request): Json<PlanRequest>) -> Result<Json<PlanReady>, ApiError> {
-    if uuid::Uuid::parse_str(&id).is_err() || !safe_relative(&request.root_prefix) || !matches!(request.conflict_policy.as_str(), "keep_destination"|"replace_conflicting") { return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_PLAN_INVALID")); }
-    let dir=import_dir(&state)?;
-    let path={ let mut records=previews().lock().map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"BUSY"))?; cleanup_previews(&dir,&mut records); records.get(&dir).and_then(|p|p.get(&id)).map(|p|p.path.clone()).ok_or(ApiError(StatusCode::NOT_FOUND,"IMPORT_NOT_FOUND"))? };
-    let document=tokio::task::spawn_blocking(move || read_archive_document(&path)).await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"IMPORT_INVALID"))??;
-    let profiles=document.get("profiles").and_then(Value::as_array).ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_PLAN_INVALID"))?;
-    if profiles.len()!=request.profile_map.len() { return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_MAPPING_INCOMPLETE")); }
-    let mut planned=HashMap::new(); let mut existing=HashSet::new();
-    for profile in profiles { let source=profile.get("id").and_then(Value::as_str).filter(|v|uuid::Uuid::parse_str(v).is_ok()).ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_PLAN_INVALID"))?; let target=request.profile_map.get(source).ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_MAPPING_INCOMPLETE"))?; match target { ProfileTarget::Existing{id,expected_revision:_}=>{if uuid::Uuid::parse_str(id).is_err()||!existing.insert(id.clone()){return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_MAPPING_AMBIGUOUS"));} planned.insert(source.into(),id.clone());}, ProfileTarget::New{name}=>{if name.trim().is_empty()||name.len()>80||name.chars().any(char::is_control){return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_PLAN_INVALID"));} planned.insert(source.into(),uuid::Uuid::new_v4().to_string());} } }
-    let expected: Vec<_> = request.profile_map.values().filter_map(|target| match target { ProfileTarget::Existing { id, expected_revision } => Some((id.clone(), *expected_revision)), ProfileTarget::New { .. } => None }).collect();
-    let epoch=state.database.call(move |store| { for (id, revision) in expected { if store.profiles()?.into_iter().find(|profile| profile.id == id).map(|profile| profile.revision) != Some(revision) { return Err("PROFILE_CONFLICT".into()); } } store.catalog_revision() }).await?;
-    Ok(Json(PlanReady{plan_id:uuid::Uuid::new_v4().to_string(),epoch,root_revision:0,conflicts:Vec::new(),profiles:planned,apply_supported:false}))
+async fn prepare_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<ImportMapping>,
+) -> Result<Json<PlanReady>, ApiError> {
+    let dir = import_dir(&state)?;
+    let (path, previous, _guard) = reserve_preview(&dir, &id)?;
+    let document = tokio::task::spawn_blocking(move || read_archive_document(&path))
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_INVALID"))??;
+    let library = state.library.clone();
+    let (plan, root_revision) = state
+        .database
+        .call(move |store| {
+            let library = library.lock().map_err(|_| "REQUEST_TIMEOUT")?;
+            let root = library.video_root.as_ref().ok_or("IMPORT_ROOT_REQUIRED")?;
+            Ok((
+                store.prepare_portable_import(document, &request, root)?,
+                library.revision,
+            ))
+        })
+        .await?;
+    let plan_id = uuid::Uuid::new_v4().to_string();
+    let plan_path = dir.join(format!("{plan_id}.plan"));
+    let bytes = serde_json::to_vec(&plan)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    if bytes.len() > MAX_DATA {
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
+    }
+    crate::config::atomic_private_write(&plan_path, &bytes)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    {
+        let mut records = previews()
+            .lock()
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
+        records
+            .get_mut(&dir)
+            .and_then(|p| p.get_mut(&id))
+            .ok_or(ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"))?
+            .plan = Some(StoredPlan {
+            id: plan_id.clone(),
+            path: plan_path,
+            root_revision,
+        });
+    }
+    if let Some(previous) = previous {
+        let _ = fs::remove_file(previous.path);
+    }
+    Ok(Json(PlanReady {
+        plan_id,
+        epoch: plan.epoch,
+        root_revision,
+        conflicts: plan.conflicts.iter().take(100).cloned().collect(),
+        conflict_count: plan.conflicts.len(),
+        profiles: plan
+            .profiles
+            .iter()
+            .map(|p| (p.source.clone(), p.id.clone()))
+            .collect(),
+        already_imported: plan.already_imported,
+        apply_supported: true,
+    }))
 }
-fn safe_relative(value:&str)->bool { value.is_empty() || (!FsPath::new(value).is_absolute() && !value.contains('\\') && value.split('/').all(|p|!p.is_empty()&&p!="."&&p!="..")) }
-fn read_archive_document(path:&FsPath)->Result<Value,ApiError>{let file=fs::File::open(path).map_err(|_|ApiError(StatusCode::NOT_FOUND,"IMPORT_NOT_FOUND"))?;let mut zip=zip::ZipArchive::new(file).map_err(|_|ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_INVALID"))?;let bytes=read_zip_limited(&mut zip,"data.json",MAX_DATA)?;serde_json::from_slice(&bytes).map_err(|_|ApiError(StatusCode::UNPROCESSABLE_ENTITY,"IMPORT_INVALID"))}
+fn read_archive_document(path: &FsPath) -> Result<ArchiveDocument, ApiError> {
+    let file =
+        fs::File::open(path).map_err(|_| ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"))?;
+    let mut zip = zip::ZipArchive::new(file)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    let bytes = read_zip_limited(&mut zip, "data.json", MAX_DATA)?;
+    let document: ArchiveDocument = serde_json::from_slice(&bytes)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    document
+        .validate()
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    Ok(document)
+}
+
+struct OwnedPosters {
+    paths: BTreeMap<String, String>,
+    committed: bool,
+}
+impl OwnedPosters {
+    fn keep_after_commit(&mut self) {
+        self.committed = true;
+    }
+}
+impl Drop for OwnedPosters {
+    fn drop(&mut self) {
+        if !self.committed {
+            for path in self.paths.values() {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+}
+async fn apply_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<ApplyRequest>,
+) -> Result<Json<ImportResult>, ApiError> {
+    if !request.confirmed {
+        return Err(ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "IMPORT_CONFIRMATION_REQUIRED",
+        ));
+    }
+    let dir = import_dir(&state)?;
+    let (archive, stored, _guard) = reserve_preview(&dir, &id)?;
+    let stored = stored
+        .filter(|p| p.id == request.plan_id)
+        .ok_or(ApiError(StatusCode::CONFLICT, "IMPORT_PLAN_STALE"))?;
+    let cache = state.config.data_dir.join("posters");
+    let plan_path = stored.path;
+    let (plan, mut posters) = tokio::task::spawn_blocking(move || {
+        let input = fs::File::open(&plan_path)
+            .map_err(|_| ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"))?;
+        let mut bytes = Vec::new();
+        input
+            .take(MAX_DATA as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+        if bytes.len() > MAX_DATA {
+            return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
+        }
+        let plan: PreparedImport = serde_json::from_slice(&bytes)
+            .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+        let _ = inspect_archive(&archive, &id)?;
+        let mut zip = zip::ZipArchive::new(
+            fs::File::open(&archive)
+                .map_err(|_| ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"))?,
+        )
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+        let mut posters = OwnedPosters {
+            paths: BTreeMap::new(),
+            committed: false,
+        };
+        let refs = plan
+            .media
+            .iter()
+            .filter(|p| {
+                !p.existing
+                    || plan.policy == chill_domain::import::ConflictPolicy::ReplaceConflicting
+            })
+            .filter_map(|p| p.poster_ref.as_ref())
+            .chain(
+                plan.sagas
+                    .iter()
+                    .filter(|p| {
+                        !p.existing
+                            || plan.policy
+                                == chill_domain::import::ConflictPolicy::ReplaceConflicting
+                    })
+                    .filter_map(|p| p.poster_ref.as_ref()),
+            )
+            .collect::<HashSet<_>>();
+        for reference in refs {
+            let bytes = read_zip_limited(&mut zip, reference, 8 * 1024 * 1024)?;
+            let path = chill_catalog::poster::store(&bytes, &cache)
+                .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_POSTER_INVALID"))?;
+            posters.paths.insert(reference.clone(), path);
+        }
+        Ok::<_, ApiError>((plan, posters))
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_INVALID"))??;
+    let library = state.library.clone();
+    // Ownership follows the transaction, not the HTTP response: a cancelled
+    // client must never delete artwork referenced by an already committed DB.
+    let result = state
+        .database
+        .call(move |store| {
+            let library = library.lock().map_err(|_| "REQUEST_TIMEOUT")?;
+            if library.revision != stored.root_revision {
+                return Err("IMPORT_PLAN_STALE".into());
+            }
+            let result = store.apply_portable_import(&plan, &posters.paths)?;
+            if !result.already_imported {
+                posters.keep_after_commit();
+            }
+            Ok(result)
+        })
+        .await?;
+    Ok(Json(result))
+}
 
 fn import_dir(state: &AppState) -> Result<PathBuf, ApiError> {
     let path = state.config.data_dir.join("imports");
@@ -147,6 +369,9 @@ fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String,
     let expired: Vec<_> = previews
         .iter()
         .filter_map(|(id, preview)| {
+            if preview.busy.load(Ordering::Acquire) {
+                return None;
+            }
             now.duration_since(preview.created)
                 .ok()
                 .filter(|age| *age >= PREVIEW_TTL)
@@ -156,6 +381,9 @@ fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String,
     for id in expired {
         if let Some(preview) = previews.remove(&id) {
             let _ = fs::remove_file(preview.path);
+            if let Some(plan) = preview.plan {
+                let _ = fs::remove_file(plan.path);
+            }
         }
     }
 }
@@ -266,6 +494,8 @@ async fn stage_and_preview(
         Preview {
             path: staged,
             created: SystemTime::now(),
+            busy: Arc::new(AtomicBool::new(false)),
+            plan: None,
         },
     );
     Ok(Json(ImportPreview {
@@ -274,7 +504,7 @@ async fn stage_and_preview(
         counts: summary.counts,
         profiles: summary.profiles,
         roots: ["library"],
-        apply_supported: false,
+        apply_supported: true,
     }))
 }
 
@@ -286,6 +516,7 @@ async fn cancel_preview(
         return Err(ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"));
     }
     let dir = import_dir(&state)?;
+    let (_, _, _guard) = reserve_preview(&dir, &id)?;
     let mut records = previews()
         .lock()
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
@@ -296,6 +527,9 @@ async fn cancel_preview(
         .ok_or(ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"))?;
     fs::remove_file(preview.path)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    if let Some(plan) = preview.plan {
+        let _ = fs::remove_file(plan.path);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -518,7 +752,7 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
         let mut checksums =
             vec![serde_json::json!({"reference":"data.json","sha256":hash_file(&data_stage)?})];
-        let mut poster_bytes = Vec::new();
+        let mut poster_hashes = BTreeMap::new();
         for poster in &posters {
             let source = poster_root.join(&poster.relative);
             let (mut source_file, expected) =
@@ -547,8 +781,9 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
                     "EXPORT_POSTER_CHANGED",
                 ));
             }
-            checksums.push(serde_json::json!({"reference":poster.reference,"sha256":format!("{:x}",Sha256::digest(&bytes))}));
-            poster_bytes.push((poster.reference.clone(), bytes));
+            let hash = format!("{:x}", Sha256::digest(&bytes));
+            checksums.push(serde_json::json!({"reference":poster.reference,"sha256":hash}));
+            poster_hashes.insert(poster.reference.clone(), hash);
         }
         let manifest = serde_json::to_vec(&serde_json::json!({"format_version":1,"export_id":id,"entries":checksums,"videos":false,"leases":false,"secrets":false})).map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "EXPORT_INVALID"))?;
         if manifest.len() > MAX_MANIFEST {
@@ -564,8 +799,30 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
         std::io::copy(&mut data_file, &mut zip)
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
-        for (reference, bytes) in poster_bytes {
-            zip.start_file(reference, options)
+        // Two passes keep at most one image in memory, regardless of library
+        // size. The second checksum refuses an image replaced in between.
+        for poster in &posters {
+            let source = poster_root.join(&poster.relative);
+            let (mut file, version) = crate::media_stream::open_indexed(&poster_root, &source)
+                .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_POSTER"))?;
+            if version.size > chill_domain::store::MAX_EXPORT_POSTER_BYTES {
+                return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "EXPORT_TOO_LARGE"));
+            }
+            let mut bytes = Vec::with_capacity(version.size as usize);
+            Read::by_ref(&mut file)
+                .take(chill_domain::store::MAX_EXPORT_POSTER_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_POSTER"))?;
+            if bytes.len() as u64 != version.size
+                || poster_hashes.get(&poster.reference)
+                    != Some(&format!("{:x}", Sha256::digest(&bytes)))
+            {
+                return Err(ApiError(
+                    StatusCode::PRECONDITION_FAILED,
+                    "EXPORT_POSTER_CHANGED",
+                ));
+            }
+            zip.start_file(&poster.reference, options)
                 .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
             zip.write_all(&bytes)
                 .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
@@ -652,7 +909,11 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::create_dir_all(&posters).unwrap();
         fs::write(root.join("movie.mp4"), b"video-never-exported").unwrap();
-        fs::write(posters.join("cover.png"), b"poster-bytes").unwrap();
+        fs::write(
+            posters.join("cover.png"),
+            include_bytes!("../../../icons/icon.png"),
+        )
+        .unwrap();
         let config = ServerConfig {
             data_dir: data.clone(),
             video_root: Some(root.clone()),
@@ -735,7 +996,7 @@ mod tests {
             .unwrap()
             .read_to_end(&mut poster)
             .unwrap();
-        assert_eq!(poster, b"poster-bytes");
+        assert_eq!(poster, include_bytes!("../../../icons/icon.png"));
         let expected = manifest["entries"]
             .as_array()
             .unwrap()
@@ -777,7 +1038,7 @@ mod tests {
         assert_eq!(preview["counts"]["media"], 1);
         assert_eq!(preview["profiles"][0]["id"], profile);
         assert_eq!(preview["roots"], serde_json::json!(["library"]));
-        assert_eq!(preview["apply_supported"], false);
+        assert_eq!(preview["apply_supported"], true);
         assert_eq!(
             before_profiles,
             database_profile_count(&data.join("catalog.sqlite"))
@@ -785,6 +1046,68 @@ mod tests {
         let preview_id = preview["preview_id"].as_str().unwrap();
         let staged = data.join("imports").join(format!("{preview_id}.zip"));
         assert!(staged.exists());
+        let plan_body = serde_json::json!({"profile_map":{profile.clone():{"kind":"new","name":"Imported archive"}},"root_prefix":"Imported","conflict_policy":"keep_destination"});
+        let request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/v1/admin/imports/{preview_id}/plan"))
+            .header("host", "localhost:8443")
+            .header("content-type", "application/json")
+            .body(Body::from(plan_body.to_string()))
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let plan: serde_json::Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(plan["apply_supported"], true);
+        assert_eq!(
+            before_profiles,
+            database_profile_count(&data.join("catalog.sqlite")),
+            "Preparing a plan is read-only"
+        );
+        let plan_id = plan["plan_id"].as_str().unwrap();
+        let apply_uri = format!("/api/v1/admin/imports/{preview_id}/apply");
+        let apply_body = serde_json::json!({"plan_id":plan_id,"confirmed":true});
+        for repeated in [false, true] {
+            let request = Request::builder()
+                .method("POST")
+                .uri(&apply_uri)
+                .header("host", "localhost:8443")
+                .header("content-type", "application/json")
+                .body(Body::from(apply_body.to_string()))
+                .unwrap();
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let result: serde_json::Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(result["already_imported"], repeated);
+            assert_eq!(
+                database_profile_count(&data.join("catalog.sqlite")),
+                before_profiles + 1
+            );
+        }
+        let imported = plan["profiles"][&profile].as_str().unwrap();
+        let check = rusqlite::Connection::open(data.join("catalog.sqlite")).unwrap();
+        let (language,rating,order):(String,i64,i64)=check.query_row("SELECT p.audio_language,s.rating,m.position FROM cc_preferences p JOIN cc_profile_state s ON s.profile_id=p.profile_id JOIN cc_playlists l ON l.profile_id=p.profile_id JOIN cc_playlist_members m ON m.playlist_id=l.id WHERE p.profile_id=?1",[imported],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        assert_eq!((language, rating, order), ("fr".into(), 4, 0));
+        let poster_path: String = check
+            .query_row(
+                "SELECT json_extract(data,'$.poster') FROM media WHERE id='Imported/movie.mp4'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            fs::read(poster_path).unwrap(),
+            include_bytes!("../../../icons/icon.png")
+        );
+        assert_eq!(
+            fs::read(root.join("movie.mp4")).unwrap(),
+            b"video-never-exported"
+        );
+        let staged_plan = data.join("imports").join(format!("{plan_id}.plan"));
+        assert!(staged_plan.is_file());
         let request = Request::builder()
             .method("DELETE")
             .uri(format!("/api/v1/admin/imports/{preview_id}"))
@@ -796,6 +1119,7 @@ mod tests {
             StatusCode::NO_CONTENT
         );
         assert!(!staged.exists());
+        assert!(!staged_plan.exists());
         let request = Request::builder()
             .uri("/api/v1/admin/exports/not-a-uuid")
             .header("host", "localhost:8443")

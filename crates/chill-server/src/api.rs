@@ -135,6 +135,7 @@ impl From<chill_domain::StoreFailure> for ApiError {
             MediaNotFound => Self(StatusCode::NOT_FOUND, "MEDIA_NOT_FOUND"),
             ProfileConflict => Self(StatusCode::CONFLICT, "PROFILE_CONFLICT"),
             ProfileNameTaken => Self(StatusCode::CONFLICT, "PROFILE_NAME_TAKEN"),
+            ImportPlanStale => Self(StatusCode::CONFLICT, "IMPORT_PLAN_STALE"),
             DatabaseOffline => Self(StatusCode::SERVICE_UNAVAILABLE, "DATABASE_OFFLINE"),
             RequestTimeout => Self(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"),
             InvalidOperation => Self(StatusCode::UNPROCESSABLE_ENTITY, "INVALID_OPERATION"),

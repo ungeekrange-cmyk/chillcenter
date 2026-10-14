@@ -6,6 +6,29 @@ use std::{
 };
 
 const MAX_BYTES: usize = 8 * 1024 * 1024;
+/// Validate the actual decoded image, not merely its signature. The pixel
+/// budget bounds work on the Pi; allocation limits additionally cap decoders.
+pub fn validate(bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() > MAX_BYTES {
+        return Err("Image trop volumineuse (8 MiB maximum).".into());
+    }
+    extension(bytes)?;
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|_| "Image invalide.")?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(4096);
+    limits.max_image_height = Some(4096);
+    limits.max_alloc = Some(64 * 1024 * 1024);
+    reader.limits(limits);
+    let decoded = reader
+        .decode()
+        .map_err(|_| "Image invalide ou dimensions trop grandes (4096 × 4096 maximum).")?;
+    if decoded.width() == 0 || decoded.height() == 0 {
+        return Err("Image vide.".into());
+    }
+    Ok(())
+}
 fn extension(bytes: &[u8]) -> Result<&'static str, String> {
     if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
         Ok("jpg")
@@ -43,6 +66,7 @@ pub fn store(bytes: &[u8], cache: &Path) -> Result<String, String> {
         return Err("Image trop volumineuse.".into());
     }
     let ext = extension(bytes)?;
+    validate(bytes)?;
     std::fs::create_dir_all(cache).map_err(|_| "Cache des affiches inaccessible.")?;
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -52,11 +76,18 @@ pub fn store(bytes: &[u8], cache: &Path) -> Result<String, String> {
     let mut output = OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(0o600)
         .open(&destination)
         .map_err(|_| "Impossible de créer l’affiche locale.")?;
-    output
+    use std::os::unix::fs::OpenOptionsExt;
+    let result = output
         .write_all(bytes)
-        .map_err(|_| "Impossible d’enregistrer l’affiche.")?;
+        .and_then(|()| output.sync_all())
+        .and_then(|()| File::open(cache)?.sync_all());
+    if result.is_err() {
+        let _ = std::fs::remove_file(&destination);
+        return Err("Impossible d’enregistrer l’affiche.".into());
+    }
     Ok(destination.to_string_lossy().into_owned())
 }
 
@@ -98,5 +129,7 @@ mod tests {
         assert_eq!(std::fs::read(&first).unwrap(), bytes);
         assert_eq!(std::fs::read(&second).unwrap(), bytes);
         assert!(store(b"<svg onload='evil()'/>", folder.path()).is_err());
+        assert!(store(b"\x89PNG\r\n\x1a\ninvalid", folder.path()).is_err());
+        assert!(store(b"\xff\xd8\xffinvalid", folder.path()).is_err());
     }
 }

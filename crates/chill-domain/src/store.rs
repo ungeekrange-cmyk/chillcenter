@@ -69,7 +69,7 @@ pub struct SagaView {
 
 pub struct Store {
     catalogue: Database,
-    personal: Connection,
+    pub(crate) personal: Connection,
 }
 
 impl Store {
@@ -153,6 +153,28 @@ impl Store {
         add_column_if_missing(&personal, "cc_profile_state", "last_session_id TEXT")?;
         add_column_if_missing(&personal, "cc_profile_state", "last_generation INTEGER")?;
         add_column_if_missing(&personal, "cc_profile_state", "last_sequence INTEGER")?;
+        // The epoch guards the entire imported state, including writes from a
+        // second connection (scanner). Every trigger is transactional.
+        for table in [
+            "cc_media_identity",
+            "cc_media_revision",
+            "cc_preferences",
+            "cc_series_speed",
+            "collection_members",
+            "collection_positions",
+            "collection_artwork",
+            "collection_revisions",
+        ] {
+            for (suffix, event) in [("i", "INSERT"), ("u", "UPDATE"), ("d", "DELETE")] {
+                personal.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS cc_epoch_{table}_{suffix} AFTER {event} ON {table} BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;")).map_err(db_error)?;
+            }
+        }
+        personal.execute_batch("CREATE TABLE IF NOT EXISTS cc_import_receipts(export_id TEXT NOT NULL,mapping TEXT NOT NULL,profiles TEXT NOT NULL DEFAULT '{}',PRIMARY KEY(export_id,mapping));").map_err(db_error)?;
+        add_column_if_missing(
+            &personal,
+            "cc_import_receipts",
+            "profiles TEXT NOT NULL DEFAULT '{}'",
+        )?;
         Ok(Self {
             catalogue,
             personal,
@@ -1647,7 +1669,7 @@ fn profile_collision(error: rusqlite::Error) -> String {
         db_error(error)
     }
 }
-fn valid_profile_name(name: &str) -> Result<String, String> {
+pub(crate) fn valid_profile_name(name: &str) -> Result<String, String> {
     let name = name.trim();
     if name.is_empty() || name.len() > 80 || name.chars().any(|c| c.is_control()) {
         Err("Nom de profil invalide.".into())
@@ -1655,7 +1677,7 @@ fn valid_profile_name(name: &str) -> Result<String, String> {
         Ok(name.into())
     }
 }
-fn valid_collection_name(name: &str) -> Result<String, String> {
+pub(crate) fn valid_collection_name(name: &str) -> Result<String, String> {
     let name = name.trim();
     if name.is_empty() || name.len() > 200 {
         Err("Nom de playlist invalide.".into())
@@ -1782,7 +1804,7 @@ mod tests {
     use tempfile::tempdir;
     #[test]
     fn failed_identity_extension_rolls_back_catalogue_scan_marker_and_mapping() {
-        let s = store();
+        let mut s = store();
         let before = serde_json::to_value(s.catalogue.list().unwrap()).unwrap();
         let marker: String = s
             .personal
@@ -2228,7 +2250,7 @@ mod tests {
 
     #[test]
     fn catalog_epoch_advances_for_committed_changes_and_not_rollback() {
-        let mut s = store();
+        let s = store();
         let before = s.catalog_revision().unwrap();
         let p = s.create_profile("Epoch").unwrap();
         assert!(s.catalog_revision().unwrap() > before);
