@@ -1120,7 +1120,7 @@ impl UiClient {
                 q,
             } => {
                 let profile = self.profile()?;
-                let mut query = vec![("offset", offset.to_string()), ("limit", "50".into())];
+                let mut query = vec![("offset", offset.to_string()), ("limit", "48".into())];
                 if let Some(category) = category.filter(|s| !s.is_empty()) {
                     query.push(("category", category));
                 }

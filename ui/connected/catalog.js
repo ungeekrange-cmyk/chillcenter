@@ -89,12 +89,15 @@ $("collection-rename").onsubmit=async e=>{e.preventDefault();if(!collectionView)
 $("collection-delete").onclick=()=>{$("collection-delete-confirm").hidden=false;};
 $("collection-delete-yes").onclick=async()=>{const cmd=collectionView&&{action:collectionKind==="playlist"?"delete_playlist":"delete_saga",id:collectionView.id};if(cmd&&collectionKind==="saga")cmd.expected_revision=collectionView.revision;if(cmd&&await run(cmd,false)){$("collection-dialog").close();collectionView=null;$("collection-delete-confirm").hidden=true;await openCollections(collectionKind);}};
 $("collection-delete-no").onclick=()=>{$("collection-delete-confirm").hidden=true;};
-let pickerOffset=0;
+let pickerOffset=0,pickerSelection=new Set();
 async function pickerPage(){const page=await run({action:"catalog",offset:pickerOffset,category:null,q:$("picker-search").value||null},false);if(!page)return;$("picker-items").replaceChildren();
-  for(const m of page.items){const b=button(m.title,async()=>{if(!collectionView)return;const r=await run({action:collectionKind==="playlist"?"add_playlist":"add_saga",id:collectionView.id,expected_revision:collectionView.revision,media_ids:[m.id]},false);if(r){$("picker-dialog").close();await openCollection(collectionView.id,collectionKind);}});b.disabled=collectionView.media_ids.includes(m.id);$("picker-items").append(b);}
+  for(const m of page.items){if(collectionView.media_ids.includes(m.id))continue;const b=button((pickerSelection.has(m.id)?"✓ ":"")+m.title,()=>{if(pickerSelection.has(m.id))pickerSelection.delete(m.id);else if(pickerSelection.size<1000)pickerSelection.add(m.id);pickerPage();});$("picker-items").append(b);}
+  $("picker-selected").textContent=pickerSelection.size+" sélectionnée(s)"+(pickerSelection.size>=1000?" — maximum atteint":"");
   $("picker-prev").disabled=!pickerOffset;$("picker-next").disabled=!page.has_more;
 }
-$("collection-add").onclick=async()=>{pickerOffset=0;$("picker-search").value="";await pickerPage();$("picker-dialog").showModal();};
+$("collection-add").onclick=async()=>{pickerOffset=0;pickerSelection=new Set();$("picker-search").value="";await pickerPage();$("picker-dialog").showModal();};
+$("picker-confirm").onclick=async()=>{if(!collectionView||!pickerSelection.size)return;const ids=[...pickerSelection];const r=await run({action:collectionKind==="playlist"?"add_playlist":"add_saga",id:collectionView.id,expected_revision:collectionView.revision,media_ids:ids},false);if(r){pickerSelection.clear();$("picker-dialog").close();await openCollection(collectionView.id,collectionKind);}};
+$("picker-cancel").onclick=()=>{pickerSelection.clear();$("picker-dialog").close();};
 $("picker-form").onsubmit=e=>{e.preventDefault();pickerOffset=0;pickerPage();};$("picker-prev").onclick=()=>{pickerOffset=Math.max(0,pickerOffset-50);pickerPage();};$("picker-next").onclick=()=>{pickerOffset+=50;pickerPage();};
 $("show-playlists").onclick=()=>openCollections();$("show-sagas").onclick=()=>openCollections("saga");
 for(const id of ["media-dialog","collections-dialog","collection-dialog","picker-dialog"]){const m=node("p",undefined,"dialog-message");m.setAttribute("role","status");m.setAttribute("aria-live","polite");$(id).prepend(m);$(id).querySelector(".dialog-close").onclick=()=>$(id).close();}
