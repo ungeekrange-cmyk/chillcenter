@@ -2,7 +2,7 @@ window.chillPlayerQa=async config=>{
  let step="boot";
  const assert=(ok,s)=>{if(!ok)throw Error(s);};
  const wait=async(check,seconds=25)=>{const end=Date.now()+seconds*1000;while(!check()){if(Date.now()>end)throw Error("timeout: "+$("message").textContent+" / "+$("player-note").textContent);await new Promise(r=>setTimeout(r,60));}};
- const call=async cmd=>{await wait(()=>!playerBusy);const v=await playerCall(cmd);assert(v,JSON.stringify(cmd)+" failed: "+$("message").textContent);return v;};
+ const call=async cmd=>{await wait(()=>!playerBusy);playerBusy=true;try{let failure;for(let attempt=0;attempt<20;attempt++){try{const v=await window.__TAURI__.core.invoke("player_command",{command:cmd});playerState=v;renderPlayer();return v;}catch(e){failure=e;if(e.code!=="CLIENT_BUSY")break;await new Promise(r=>setTimeout(r,80));}}throw Error("player_command action="+cmd.action+" status="+(failure?.status??"none")+" code="+(failure?.code??"none"));}finally{playerBusy=false;}};
  try{
   await window.chillReady;
   if(state.stage!=="connected"){
