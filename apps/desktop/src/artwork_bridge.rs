@@ -1,7 +1,7 @@
 use chill_client::ui::{UiClient, UiError};
 use serde::Deserialize;
 use serde_json::Value;
-use std::{fs::OpenOptions, io::Read, os::unix::fs::OpenOptionsExt, path::Path};
+use std::{fs::OpenOptions, io::Read, os::unix::fs::{OpenOptionsExt,MetadataExt}, path::Path};
 
 const MAX: usize = 8 * 1024 * 1024;
 #[derive(Deserialize)]
@@ -33,16 +33,20 @@ pub fn read_selected(path: &Path) -> Result<(Vec<u8>, &'static str), UiError> {
     }
     let mut file = OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
         .map_err(|_| err("Image non lisible."))?;
+    let opened=file.metadata().map_err(|_|err("Image non lisible."))?;
+    let version=|m:&std::fs::Metadata|(m.dev(),m.ino(),m.len(),m.mtime(),m.mtime_nsec(),m.ctime(),m.ctime_nsec());
+    if !opened.is_file()||version(&opened)!=version(&before){return Err(err("Image modifiée avant la lecture."));}
     let mut bytes = Vec::with_capacity(before.len() as usize);
     file.by_ref()
         .take(MAX as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| err("Image non lisible."))?;
     let after = file.metadata().map_err(|_| err("Image non lisible."))?;
-    if bytes.len() > MAX || after.len() != before.len() {
+    let named=std::fs::symlink_metadata(path).map_err(|_|err("Image modifiée pendant la lecture."))?;
+    if bytes.len() > MAX || version(&after)!=version(&opened)||version(&named)!=version(&opened)||bytes.len() as u64!=opened.len() {
         return Err(err("Image modifiée pendant la lecture."));
     }
     let mime = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {

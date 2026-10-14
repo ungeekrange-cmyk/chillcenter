@@ -537,11 +537,14 @@ fn main() {
                     include_str!("../../../ui/connected/catalog-qa.js"),
                     include_str!("../../../ui/connected/archive-qa.js"),
                     include_str!("../../../ui/connected/ai-qa.js"),
-                    include_str!("../../../ui/connected/deadline-qa.js")].join("\n"),
+                    include_str!("../../../ui/connected/deadline-qa.js"),
+                    include_str!("../../../ui/connected/formats-qa.js")].join("\n"),
                     if mode == "player" || mode == "next_series" || mode.starts_with("transfer_") {
                         "window.chillPlayerQa"
                     } else {
-                        if mode == "deadline" {
+                        if mode == "formats" {
+                            "window.chillFormatsQa"
+                        } else if mode == "deadline" {
                             "window.chillDeadlineQa"
                         } else if mode == "ai" {
                             "window.chillAiQa"
@@ -607,6 +610,10 @@ async fn qa_deadline_probe(
 #[tauri::command]
 fn qa_result(app: tauri::AppHandle, success: bool, detail: String) {
     if std::env::var_os("CHILL_UI_QA_URL").is_some() {
+        if detail.starts_with("TRACE ") {
+            println!("UI_QA_TRACE {}", detail.chars().take(300).collect::<String>());
+            return;
+        }
         println!(
             "UI_QA_RESULT {} {}",
             success,

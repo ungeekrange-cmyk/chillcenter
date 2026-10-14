@@ -1089,11 +1089,20 @@ fn load_library() -> Result<(Library, PathBuf), PlayerError> {
 }
 
 fn controlled_library_paths() -> Vec<PathBuf> {
+    library_paths_for_executable(std::env::current_exe().ok().as_deref())
+}
+
+fn library_paths_for_executable(executable: Option<&Path>) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    if let Ok(executable) = std::env::current_exe()
-        && let Some(contents) = executable.parent().and_then(Path::parent)
+    if let Some(executable) = executable
+        && let Some(bin) = executable.parent()
+        && let Some(contents) = bin.parent()
+        && bin.file_name().is_some_and(|name| name == "MacOS")
+        && contents.file_name().is_some_and(|name| name == "Contents")
     {
         paths.push(contents.join("Frameworks/libmpv.dylib"));
+        // A damaged standalone app must not silently depend on the build host.
+        return paths;
     }
     paths.extend([
         PathBuf::from("/opt/homebrew/opt/mpv/lib/libmpv.dylib"),
@@ -1155,6 +1164,12 @@ mod tests {
                 .iter()
                 .any(|path| path.ends_with("opt/mpv/lib/libmpv.dylib"))
         );
+    }
+
+    #[test]
+    fn standalone_bundle_never_falls_back_to_homebrew() {
+        assert_eq!(library_paths_for_executable(Some(Path::new("/Apps/Chill Center.app/Contents/MacOS/chillcenter-desktop"))), vec![PathBuf::from("/Apps/Chill Center.app/Contents/Frameworks/libmpv.dylib")]);
+        assert!(library_paths_for_executable(Some(Path::new("/tmp/debug/chillcenter-desktop"))).iter().any(|p|p.starts_with("/opt/homebrew")));
     }
 
     #[test]
