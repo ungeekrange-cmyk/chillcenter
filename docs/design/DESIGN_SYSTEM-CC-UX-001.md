@@ -1,0 +1,69 @@
+# Design System & UI Specification — CC-UX-001
+
+## 1. Overview & Brand Archetype
+
+Chill Center, auteur `/root`, 2026-10-14, statut **REVIEW_REQUESTED**. Reprendre l'interface Cinéfolio (`90c149b`) et le logo vectoriel approuvé. Demande : navigation latérale, recherche haute, administration basse, accès IA évident, catalogue sans pages, grandes fiches, TMDB configurable/automatique et lecteur standard.
+
+[Maquette interactive](prototype.html) sans réseau : affiches illustratives CSS, données fictives, aucune vidéo ou requête IA/TMDB. Elle ne modifie aucun serveur ni credential.
+
+## 2. Design Tokens
+
+### 2.1 Color Palette & Theme
+
+| Token | Clair | Sombre | Contraste mesuré | Usage |
+| --- | --- | --- | --- | --- |
+| Canvas / texte | `#f5f4ee` / `#20261f` | `#111713` / `#e9e8df` | 14,03 / 14,77 | Fond et texte principal |
+| Surface / secondaire | `#ffffff` / `#57634f` | `#1a211c` / `#a7aaa0` | 6,36 / 6,96 | Panneaux / métadonnées |
+| Accent / texte | `#71602f` / `#ffffff` | `#d8c995` / `#202017` | 6,15 / 9,93 | Boutons principaux |
+| Sidebar | `#eeefe7` | `#151c17` | Non audité globalement | Navigation |
+| Bordure | `#cdd5c7` | `#344039` | Non textuel à auditer | Séparateurs |
+
+Calcul sRGB WCAG, pas une certification AA de tous les états. Automatique/clair/sombre et ambiances saisonnières/événementielles existants conservés ; seul clair/sombre simulé ici.
+
+### 2.2 Typography
+
+Police système `-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`, sans téléchargement. Titres 30–34 px/600–650 ; corps 14 px ; métadonnées 12 px ; légendes 11 px. Temps tabulaires. Georgia n'est utilisée que dans les illustrations fictives.
+
+### 2.3 Spacing & Radius
+
+Base 4/8/12/16/24/32/48 px. Boutons 8 px, cartes 12 px, dialog 17 px. Sidebar 235 px, gouttières adaptatives. Transitions 150–200 ms, désactivées en reduced-motion.
+
+## 3. Core Component Library
+
+| Composant | Comportement et états | Accessibilité / garde-fous |
+| --- | --- | --- |
+| Sidebar | Catégories, sagas, listes ; IA et Administration en bas | Icônes nommées, sélection visible |
+| Recherche | En haut ; profil à droite ; filtres/tri conservés | Labels, Cmd/Ctrl-F, clavier |
+| Catalogue | Continu, aucun bouton de pagination | Grille virtualisée finale, affiches visibles chargées à la demande ; lots API internes autorisés, pas de plafond caché |
+| IA | Petit bouton catalogue + entrée sidebar | CLI Mac existant, périmètre, aperçu/confirmation/annulation ; jamais vidéos ni secrets |
+| Administration | Serveur, Bibliothèque, TMDB, Profils, Ce Mac | Scan/import ici ; premier démarrage/consentement TLS conservés |
+| TMDB | Clé v3 OU jeton Bearer, champ masqué, statut et effacement | Stockage serveur seul, zéro secret en réponse/logs/export/IA/persistance client |
+| Fiche | Jusqu'à 1180px/94vw, affiche ample et informations/actions | Dialog clavier/Escape, scroll si besoin, restitution focus |
+| Lecteur | Surface plein écran, barre basse superposée, icônes, −10/+30, seek, son, langues, vitesses | Masquage après 2,5s seulement en lecture ; toujours visible en pause/buffering/focus/menu ; retour pointeur/clavier |
+
+Automatisme TMDB proposé activé après saisie volontaire de clé : exact-match seulement, ambiguïtés à confirmer, pas d'écrasement manuel, traitement borné/reprenable, réessais limités et priorité aux flux vidéo. Scan non bloqué par TMDB. Contrat secret explicite et revue sécurité avant intégration. Une clé v3 n'est pas un jeton Bearer.
+
+« Lire » démarre dès les prérequis réseau/bail valides, sans attendre inutilement les sous-titres externes ; garder TLS, heartbeat et transfert confirmé. Plein écran respecte le ratio de vidéo (bandes normales possibles), sans étirement imposé. Moteur libmpv/FFmpeg conservé, serveur sans transcodage, client sans NAS.
+
+## 4. Accessibility & Responsiveness Checklist
+
+- [x] Contrastes des six paires textuelles calculés, pas d'audit AA complet revendiqué.
+- [x] Prototype contrôlé à 1440/1180/760/390px sans overflow horizontal.
+- [x] Labels/focus/dialog natif prévus ; simulation auto-hide/pause/fullscreen vérifiée.
+- [ ] Audit clavier complet/lecteur d'écran dans Tauri et états erreur/chargement.
+- [ ] Overlay réellement cliquable au-dessus de NSOpenGLView/AppKit, pas une simple capture DOM.
+- [ ] Frame vidéo vs écran réel, Escape/restauration ; sous-titres lents et baux.
+- [ ] Catalogue 2496/3000 et ressources ; profils/reprise/notes/IA/cache/ambiances/import sans régression.
+
+## 5. Mandatory User Validation Gate
+
+Gate [G-UI-PROJECT-CC-UX-001](../gates/G-UI-PROJECT-CC-UX-001.md), **PENDING**. Approbateur/date UTC/preuve : non reçus. Scope : navigation, thème/typo conservés, fiche et contrôles présentés ici. Changement substantiel de palette/navigation/composants invalide la validation ; correction technique conforme ne relance pas la discovery.
+
+Après validation : builder distinct des diagnostics, contrat TMDB/revue sécurité, tests ciblés et vrais essais Tauri, bundle Mac puis serveur seulement si modifié. Aucun code applicatif, bundle ou service changé à cette révision.
+
+## Références et vérification
+
+- [QuickTime Apple](https://support.apple.com/en-euro/guide/quicktime-player/qtp6cee0761b/mac) pour commandes au mouvement du pointeur ; pas de décision de remplacer libmpv par AVPlayer.
+- [Authentification TMDB](https://developer.themoviedb.org/docs/authentication-application) pour clé v3/Bearer.
+- `check-prototype.cjs` PASS le 2026-10-14, Chrome headless isolé avec HTTP(S) bloqué : fiche large, lecture simulée/pause/auto-hide/fullscreen, accès IA/TMDB, champ factice effacé/non persisté, responsive et zéro erreur JS. Captures inspectées par l'auteur, pas une revue indépendante.
+- Vidéo native, vrai TMDB et vrai IA : **NOT_RUN pour cette refonte**. [Diagnostic](../debug/BUG-0045-client-ui-port.md).

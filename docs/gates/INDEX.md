@@ -1,6 +1,6 @@
 # Index des validations
 
-[G-UI-PROJECT-CC-UX-001](G-UI-PROJECT-CC-UX-001.md) : **PENDING**, reprise visuelle Cinéfolio demandée le14octobre ; pas de remise applicative ni de nouvelle découverte globale.
+[G-UI-PROJECT-CC-UX-002](G-UI-PROJECT-CC-UX-002.md) : **PENDING**, ajustements demandés le14octobre : gestion en Administration, conseil en sidebar, logo seul agrandi. [r1](G-UI-PROJECT-CC-UX-001.md) STALE pour ce placement ; accord de principe humain et modifications consignés, pas de remise applicative ni nouvelle discovery.
 
 | Gate | Révision | État | Action autorisée |
 | --- | --- | --- | --- |

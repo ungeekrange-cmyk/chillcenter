@@ -1,8 +1,8 @@
-# Design System & UI Specification — CC-UX-001
+# Design System & UI Specification — CC-UX-002
 
 ## 1. Overview & Brand Archetype
 
-Chill Center, auteur `/root`, 2026-10-14, statut **REVIEW_REQUESTED**. Reprendre l'interface Cinéfolio (`90c149b`) et le logo vectoriel approuvé. Demande : navigation latérale, recherche haute, administration basse, accès IA évident, catalogue sans pages, grandes fiches, TMDB configurable/automatique et lecteur standard.
+Chill Center, auteur `/root`, 2026-10-14, statut **REVIEW_REQUESTED**. Reprendre l'interface Cinéfolio (`90c149b`) et le logo vectoriel approuvé. Demande : navigation latérale, recherche haute, administration basse, actions de gestion uniquement dans Administration, conseil IA distinct en sidebar, catalogue sans pages, grandes fiches, TMDB configurable/automatique et lecteur standard.
 
 [Maquette interactive](prototype.html) sans réseau : affiches illustratives CSS, données fictives, aucune vidéo ou requête IA/TMDB. Elle ne modifie aucun serveur ni credential.
 
@@ -26,17 +26,18 @@ Police système `-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`, sans 
 
 ### 2.3 Spacing & Radius
 
-Base 4/8/12/16/24/32/48 px. Boutons 8 px, cartes 12 px, dialog 17 px. Sidebar 235 px, gouttières adaptatives. Transitions 150–200 ms, désactivées en reduced-motion.
+Logo 96×96 px sur bureau, 48×48 px sur vue étroite. Aucun nom ou slogan à côté ; le lettrage intégré au SVG approuvé reste intact. Base 4/8/12/16/24/32/48 px. Boutons 8 px, cartes 12 px, dialog 17 px. Sidebar 235 px, gouttières adaptatives. Transitions 150–200 ms, désactivées en reduced-motion.
 
 ## 3. Core Component Library
 
 | Composant | Comportement et états | Accessibilité / garde-fous |
 | --- | --- | --- |
-| Sidebar | Catégories, sagas, listes ; IA et Administration en bas | Icônes nommées, sélection visible |
+| Sidebar | Logo seul agrandi, catégories, sagas, listes ; Demande de conseil et Administration en bas | Icônes nommées, sélection visible |
 | Recherche | En haut ; profil à droite ; filtres/tri conservés | Labels, Cmd/Ctrl-F, clavier |
 | Catalogue | Continu, aucun bouton de pagination | Grille virtualisée finale, affiches visibles chargées à la demande ; lots API internes autorisés, pas de plafond caché |
-| IA | Petit bouton catalogue + entrée sidebar | CLI Mac existant, périmètre, aperçu/confirmation/annulation ; jamais vidéos ni secrets |
-| Administration | Serveur, Bibliothèque, TMDB, Profils, Ce Mac | Scan/import ici ; premier démarrage/consentement TLS conservés |
+| Organisation IA | Petit bouton uniquement dans Administration, onglet Organisation IA | CLI Mac existant, périmètre, aperçu/confirmation/annulation ; jamais vidéos ni secrets |
+| Demande de conseil | Entrée sidebar, demande libre d'envies et suggestions de vidéos de la bibliothèque | Parcours de recherche/conseil en lecture seule, ouverture des fiches ; zéro mutation, pas de bouton Appliquer |
+| Administration | Recharger, compléter les fiches, organiser avec l'IA ; Serveur/Bibliothèque/TMDB/Organisation IA/Profils/Ce Mac | Trois actions retirées du catalogue ; recharger ne lance pas de scan ; scan/import ici ; premier démarrage/consentement TLS conservés |
 | TMDB | Clé v3 OU jeton Bearer, champ masqué, statut et effacement | Stockage serveur seul, zéro secret en réponse/logs/export/IA/persistance client |
 | Fiche | Jusqu'à 1180px/94vw, affiche ample et informations/actions | Dialog clavier/Escape, scroll si besoin, restitution focus |
 | Lecteur | Surface plein écran, barre basse superposée, icônes, −10/+30, seek, son, langues, vitesses | Masquage après 2,5s seulement en lecture ; toujours visible en pause/buffering/focus/menu ; retour pointeur/clavier |
@@ -57,13 +58,21 @@ Automatisme TMDB proposé activé après saisie volontaire de clé : exact-match
 
 ## 5. Mandatory User Validation Gate
 
-Gate [G-UI-PROJECT-CC-UX-001](../gates/G-UI-PROJECT-CC-UX-001.md), **PENDING**. Approbateur/date UTC/preuve : non reçus. Scope : navigation, thème/typo conservés, fiche et contrôles présentés ici. Changement substantiel de palette/navigation/composants invalide la validation ; correction technique conforme ne relance pas la discovery.
+Gate [G-UI-PROJECT-CC-UX-002](../gates/G-UI-PROJECT-CC-UX-002.md), **PENDING**. Approbateur/date UTC/preuve : non reçus. Retour humain CC-UX-001 : « Oui bien, mais » puis déplacement des trois actions dans Administration, remplacement sidebar par Demande de conseil ; second message retire slogan et nom à côté du logo et demande son agrandissement. Ces demandes sont intégrées ici. L'accord de principe est consigné, pas transformé en approbation de la révision CC-UX-002 non encore présentée. Scope : séparation gestion/conseil, branding et navigation révisés, thème/typo conservés, fiche et contrôles. Changement substantiel de palette/navigation/composants invalide la validation ; correction technique conforme ne relance pas la discovery.
 
 Après validation : builder distinct des diagnostics, contrat TMDB/revue sécurité, tests ciblés et vrais essais Tauri, bundle Mac puis serveur seulement si modifié. Aucun code applicatif, bundle ou service changé à cette révision.
+
+## Changements r2 et portée
+
+Les demandes utilisateur priment sur le placement IA proposé en r1. [Spec r1 conservée](DESIGN_SYSTEM-CC-UX-001.md), commit historique `386dbc4`. Lane de cette livraison : DEV_FAST pour la maquette/documentation uniquement ; pas de nouvelle frontière secret/IA exécutée.
+
+Le conseil réutilisera le mode recherche en lecture seule de l'IA existante, sans endpoint d'application ni modification de saga, fiche, note, vu ou playlist. Les suggestions concernent la bibliothèque ; ne pas inventer un titre disponible. Changement de profil/serveur invalide une réponse en cours. Les données nécessaires du seul profil actif sont envoyées sur action explicite, avec information sur le fournisseur externe. La maquette montre un exemple fixe clairement identifié, pas une vraie inférence.
+
+Aucune modification des ADR acceptés, pas de nouveau fournisseur/modèle/runtime ni de coût déclenché. Gouvernance r1 remplacée pour le placement/branding ; preuves bundle/Pi historiques inchangées et non utilisées comme validation de cette UI.
 
 ## Références et vérification
 
 - [QuickTime Apple](https://support.apple.com/en-euro/guide/quicktime-player/qtp6cee0761b/mac) pour commandes au mouvement du pointeur ; pas de décision de remplacer libmpv par AVPlayer.
 - [Authentification TMDB](https://developer.themoviedb.org/docs/authentication-application) pour clé v3/Bearer.
-- `check-prototype.cjs` PASS le 2026-10-14, Chrome headless isolé avec HTTP(S) bloqué : fiche large, lecture simulée/pause/auto-hide/fullscreen, accès IA/TMDB, champ factice effacé/non persisté, responsive et zéro erreur JS. Captures inspectées par l'auteur, pas une revue indépendante.
+- `check-prototype.cjs` PASS CC-UX-002 le 2026-10-14, Chrome headless isolé avec HTTP(S) bloqué : logo seul agrandi, gestion visible uniquement en Administration, conseil sans action de mutation, ouverture des fiches depuis suggestions fictives, fiche large, lecture simulée/pause/auto-hide/fullscreen, champ factice TMDB effacé/non persisté, responsive/clair-sombre et zéro erreur JS. Captures inspectées par l'auteur, pas une revue indépendante.
 - Vidéo native, vrai TMDB et vrai IA : **NOT_RUN pour cette refonte**. [Diagnostic](../debug/BUG-0045-client-ui-port.md).
