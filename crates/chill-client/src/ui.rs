@@ -525,6 +525,37 @@ impl UiClient {
             background_markers: BTreeMap::new(),
         })
     }
+    /// Runs immediately after the confirmed DELETE, before any fallible GET.
+    fn finish_profile_deletion(&mut self, profile: &str) -> Result<(), UiError> {
+        let conn = self
+            .connected
+            .as_mut()
+            .ok_or_else(|| invalid("Connectez un serveur."))?;
+        let server = conn.id.clone();
+        if conn.active.as_deref() == Some(profile) {
+            conn.active = None;
+        }
+        if let Some(profiles) = conn.profiles.as_array_mut() {
+            profiles.retain(|p| p["id"].as_str() != Some(profile));
+        }
+        if self
+            .catalog_cache
+            .as_ref()
+            .is_some_and(|c| c.server == server && c.profile == profile)
+        {
+            if let Some(task) = self.prefetch.take() {
+                task.abort();
+            }
+            self.catalog_cache = None;
+        }
+        if self.settings.last_profiles.get(&server).map(String::as_str) == Some(profile) {
+            self.settings.last_profiles.remove(&server);
+        }
+        let cleanup = crate::catalog_cache::purge_profile(&self.directory, &server, profile);
+        let saved = self.save();
+        cleanup?;
+        saved
+    }
     fn save(&mut self) -> Result<(), UiError> {
         self.save_with_directory_sync(|path| fs::File::open(path).and_then(|f| f.sync_all()))
     }
@@ -1828,6 +1859,7 @@ impl UiClient {
                     &[],
                     &[("x-chill-confirm-delete", id.clone())],
                 )?;
+                self.finish_profile_deletion(&id)?;
                 self.view()
             }
             UiCommand::SaveLibrary {
@@ -2185,14 +2217,36 @@ mod tests {
             client.dispatch(UiCommand::Playlists).unwrap()["items"],
             json!([])
         );
+        let sibling_id = uuid::Uuid::new_v4().to_string();
         let other = crate::catalog_cache::LocalCatalog::open(
             dir.path(),
             &server,
-            &uuid::Uuid::new_v4().to_string(),
+            &sibling_id,
             Arc::new(tokio::sync::Semaphore::new(1)),
         )
         .unwrap();
         assert!(other.document.is_none());
+        let sibling = dir
+            .path()
+            .join("catalog-cache")
+            .join(&server)
+            .join(sibling_id);
+        drop(other);
+        // Confirmed DELETE boundary: subsequent GET /profiles fails on port9.
+        // Cleanup must already be complete, never deferred to view().
+        client.finish_profile_deletion(&profile).unwrap();
+        assert!(client.view().is_err());
+        assert!(client.catalog_cache.is_none());
+        assert!(client.connected.as_ref().unwrap().active.is_none());
+        assert!(
+            !dir.path()
+                .join("catalog-cache")
+                .join(&server)
+                .join(&profile)
+                .exists()
+        );
+        assert!(sibling.is_dir());
+        assert!(client.dispatch(UiCommand::Sagas).is_err());
     }
     #[test]
     fn player_presentation_defaults_fullscreen_and_is_local_durable_and_transactional() {

@@ -19,6 +19,27 @@ fn error(message: &str) -> UiError {
         code: "CATALOG_CACHE".into(),
     }
 }
+pub(crate) fn purge_profile(root: &Path, server: &str, profile: &str) -> Result<(), UiError> {
+    uuid::Uuid::parse_str(server).map_err(|_| error("Serveur invalide."))?;
+    uuid::Uuid::parse_str(profile).map_err(|_| error("Profil invalide."))?;
+    let base = root.join("catalog-cache");
+    let server_dir = base.join(server);
+    let target = server_dir.join(profile);
+    for path in [&base, &server_dir, &target] {
+        match fs::symlink_metadata(path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Ok(m) if m.is_dir() && !m.file_type().is_symlink() => {}
+            _ => {
+                return Err(error(
+                    "Profil supprimé côté serveur ; cache local non effacé : dossier non sûr. Recharger pour réessayer.",
+                ));
+            }
+        }
+    }
+    fs::remove_dir_all(target).map_err(|_| {
+        error("Profil supprimé côté serveur ; cache local non effacé. Recharger pour réessayer.")
+    })
+}
 /// Only disposable catalogue caches are removed, after an authoritative profile
 /// list. Never recurse from an unvalidated root or follow a cache symlink.
 pub(crate) fn purge_orphans(
@@ -50,16 +71,7 @@ pub(crate) fn purge_orphans(
         if uuid::Uuid::parse_str(&id).is_err() || keep.contains(&id) {
             continue;
         }
-        let path = server_dir.join(&id);
-        let meta = fs::symlink_metadata(&path).map_err(|_| error("Cache non lisible."))?;
-        if !meta.is_dir() || meta.file_type().is_symlink() {
-            return Err(error("Cache de profil supprimé non nettoyé : lien refusé."));
-        }
-        fs::remove_dir_all(&path).map_err(|_| {
-            error(
-                "Profil supprimé côté serveur ; cache local non effacé. Recharger pour réessayer.",
-            )
-        })?;
+        purge_profile(root, server, &id)?;
     }
     Ok(())
 }
