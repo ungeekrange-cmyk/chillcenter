@@ -396,7 +396,7 @@ impl PlayerHost {
                     )
                     .await;
             }
-            s.clock.forget_credit();
+            abandon(s);
             return Ok(());
         }
         if s.snapshot.ended {
@@ -523,7 +523,7 @@ impl PlayerHost {
                 let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
                 s.snapshot.paused = true;
                 s.note = Some(e.message.clone());
-                s.clock.forget_credit();
+                abandon(s);
                 self.rendering.store(false, Ordering::Release);
                 return Err(e);
             }
@@ -532,7 +532,10 @@ impl PlayerHost {
             s.last_save = Instant::now();
             if let Err(e) = report(s, !s.snapshot.paused, s.desired_position.is_some()).await {
                 s.note = Some("Synchronisation de la reprise momentanément indisponible.".into());
-                s.clock.forget_credit();
+                let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
+                s.snapshot.paused = true;
+                abandon(s);
+                self.rendering.store(false, Ordering::Release);
                 return Err(e);
             }
         }
@@ -1112,6 +1115,16 @@ async fn release(s: &mut Session) -> Result<(), UiError> {
             .await?;
     }
     Ok(())
+}
+
+/// A local failure cannot revoke a remote lease while the network is down, but
+/// it must immediately stop every local renewal/control task and forget the
+/// capability. The server then expires its lease at the previously fixed
+/// deadline instead of the paused client continuing to hold it locally.
+fn abandon(s: &mut Session) {
+    s.controls = None;
+    s.lease = None;
+    s.clock.forget_credit();
 }
 async fn seek(s: &mut Session, w: &WebviewWindow, position: f64) -> Result<(), UiError> {
     if !position.is_finite() {

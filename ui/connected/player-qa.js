@@ -2,7 +2,7 @@ window.chillPlayerQa=async config=>{
  let step="boot";
  const assert=(ok,s)=>{if(!ok)throw Error(s);};
  const wait=async(check,seconds=25)=>{const end=Date.now()+seconds*1000;while(!check()){if(Date.now()>end)throw Error("timeout: "+$("message").textContent+" / "+$("player-note").textContent);await new Promise(r=>setTimeout(r,60));}};
- const call=async cmd=>{await wait(()=>!playerBusy);const v=await playerCall(cmd);assert(v,JSON.stringify(cmd)+" failed");return v;};
+ const call=async cmd=>{await wait(()=>!playerBusy);const v=await playerCall(cmd);assert(v,JSON.stringify(cmd)+" failed: "+$("message").textContent);return v;};
  try{
   await window.chillReady;
   if(state.stage!=="connected"){
@@ -16,11 +16,10 @@ window.chillPlayerQa=async config=>{
   await invoke({action:"set_watched",media_id:m.id,watched:false});
   step="native load";await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);
   await wait(()=>playerState.native?.debug_nonblank===true);assert(playerState.native.tracks.some(t=>t.kind==="Audio"),"audio missing");assert(playerState.native.tracks.some(t=>t.kind==="Subtitle"),"subtitle missing");
-  step="pause/save";await call({action:"pause"});assert(playerState.native.paused&&!playerState.active,"pause must release lease");
-  step="near-zero seek";await call({action:"seek",position:0.5});assert(Math.abs(playerState.position-0.5)<0.2,"paused target not saved");await call({action:"resume"});await wait(()=>playerState.native?.loaded&&!playerState.native.paused);
+  step="manual tracks persist pause/reload";const chosenAudio=playerState.native.tracks.find(t=>t.kind==="Audio"&&t.selected)||playerState.native.tracks.find(t=>t.kind==="Audio");await call({action:"audio",track_id:chosenAudio.id});await call({action:"subtitle",track_id:null});assert(playerState.native.tracks.filter(t=>t.kind==="Subtitle").every(t=>!t.selected),"subtitle off failed");await call({action:"pause"});assert(playerState.native.paused&&!playerState.active,"pause must release lease");await call({action:"resume"});await wait(()=>playerState.native?.loaded&&!playerState.native.paused);assert(playerState.native.tracks.some(t=>t.kind==="Audio"&&t.id===chosenAudio.id&&t.selected),"manual audio lost after reload");assert(playerState.native.tracks.filter(t=>t.kind==="Subtitle").every(t=>!t.selected),"manual subtitle off lost after reload");
+  step="near-zero seek";await call({action:"pause"});await call({action:"seek",position:0.5});assert(Math.abs(playerState.position-0.5)<0.2,"paused target not saved");await call({action:"resume"});await wait(()=>playerState.native?.loaded&&!playerState.native.paused);
   step="navigation bounds";await call({action:"jump",seconds:-10});await wait(()=>playerState.position<2);await call({action:"jump",seconds:30});await wait(()=>playerState.position>29&&playerState.position<34);
   step="speed";await call({action:"speed",speed:1.5});assert(playerState.native.speed===1.5,"speed failed");await call({action:"speed",speed:1});
-  step="track change";await call({action:"subtitle",track_id:null});assert(playerState.native.tracks.filter(t=>t.kind==="Subtitle").every(t=>!t.selected),"subtitle off failed");
   step="fullscreen";await call({action:"fullscreen"});await new Promise(r=>setTimeout(r,800));await call({action:"mount",rect:videoRect()});await call({action:"fullscreen"});await new Promise(r=>setTimeout(r,800));await call({action:"mount",rect:videoRect()});
   step="final window watch";await call({action:"seek",position:playerState.duration-12});await wait(()=>playerState.native?.ended,25);
   assert(!playerState.native.error,"unexpected EOF error");

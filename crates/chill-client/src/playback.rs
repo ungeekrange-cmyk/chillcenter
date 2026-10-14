@@ -7,9 +7,60 @@ pub use chill_domain::{
 };
 use reqwest::Method;
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PauseInstruction {
     pub token: String,
     pub remaining_ms: u64,
+}
+
+const MAX_CONTROL_EVENT_BYTES: usize = 8192;
+
+/// Consumes complete SSE frames from `pending`, returning the first pause
+/// instruction.  Keep parsing byte-oriented until a complete frame is found:
+/// a control token is security-sensitive and must never be recovered from
+/// invalid UTF-8 by replacement characters.
+fn take_pause_instruction(pending: &mut Vec<u8>) -> Result<Option<PauseInstruction>, ClientError> {
+    while let Some((end, delimiter_len)) = sse_frame_end(pending) {
+        let frame: String = std::str::from_utf8(&pending[..end])
+            .map_err(|_| ClientError::InvalidRangeResponse("Contrôle SSE non UTF-8".into()))?
+            .into();
+        pending.drain(..end + delimiter_len);
+
+        let mut event = None;
+        let mut data = None;
+        for line in frame.lines() {
+            let line = line.strip_suffix('\r').unwrap_or(line);
+            if line.starts_with(':') || line.is_empty() {
+                continue;
+            }
+            if let Some(value) = line.strip_prefix("event:") {
+                event = Some(value.trim_ascii());
+            } else if let Some(value) = line.strip_prefix("data:") {
+                if data.replace(value.trim()).is_some() {
+                    return Err(ClientError::InvalidRangeResponse("Contrôle SSE ambigu".into()));
+                }
+            }
+        }
+        if event == Some("pause") {
+            let data = data.ok_or_else(|| {
+                ClientError::InvalidRangeResponse("Contrôle pause sans données".into())
+            })?;
+            let instruction: PauseInstruction = serde_json::from_str(data)?;
+            if uuid::Uuid::parse_str(&instruction.token).is_err() || instruction.remaining_ms == 0 {
+                return Err(ClientError::InvalidRangeResponse("Contrôle pause invalide".into()));
+            }
+            return Ok(Some(instruction));
+        }
+    }
+    Ok(None)
+}
+
+fn sse_frame_end(bytes: &[u8]) -> Option<(usize, usize)> {
+    bytes
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|end| (end, 4))
+        .or_else(|| bytes.windows(2).position(|window| window == b"\n\n").map(|end| (end, 2)))
 }
 pub struct ControlSubscription {
     pub receiver: tokio::sync::mpsc::Receiver<PauseInstruction>,
@@ -146,24 +197,14 @@ impl Transport {
         }
         let mut pending = Vec::new();
         while let Some(chunk) = response.chunk().await? {
-            if pending.len().saturating_add(chunk.len()) > 8192 {
+            if pending.len().saturating_add(chunk.len()) > MAX_CONTROL_EVENT_BYTES {
                 return Err(ClientError::InvalidRangeResponse(
                     "Événement de contrôle trop volumineux".into(),
                 ));
             }
             pending.extend_from_slice(&chunk);
-            while let Some(end) = pending.windows(2).position(|w| w == b"\n\n") {
-                let block: String = String::from_utf8_lossy(&pending[..end]).into();
-                pending.drain(..end + 2);
-                if block.lines().any(|l| l.trim() == "event: pause") {
-                    let data = block
-                        .lines()
-                        .find_map(|l| l.strip_prefix("data:"))
-                        .ok_or_else(|| {
-                            ClientError::InvalidRangeResponse("Contrôle invalide".into())
-                        })?;
-                    return Ok(Some(serde_json::from_str(data.trim())?));
-                }
+            if let Some(instruction) = take_pause_instruction(&mut pending)? {
+                return Ok(Some(instruction));
             }
         }
         Ok(None)
@@ -318,6 +359,41 @@ impl Transport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TOKEN: &str = "0157d7cc-1180-4aa6-9970-3be76f7e8237";
+
+    #[test]
+    fn control_sse_accepts_chunked_comments_and_axum_pause_frame() {
+        let mut pending = Vec::new();
+        for chunk in [
+            b": keepalive\r\n\r\n".as_slice(),
+            b"event: ".as_slice(),
+            b"pause\r\ndata: {\"token\":\"0157d7cc-1180-4aa6-9970-3be76f7e8237\",\"remaining_ms\":1200}\r\n\r\n".as_slice(),
+        ] {
+            pending.extend_from_slice(chunk);
+            let instruction = take_pause_instruction(&mut pending).unwrap();
+            if let Some(instruction) = instruction {
+                assert_eq!(instruction.token, TOKEN);
+                assert_eq!(instruction.remaining_ms, 1200);
+                return;
+            }
+        }
+        panic!("chunked pause instruction was not parsed");
+    }
+
+    #[test]
+    fn control_sse_rejects_invalid_utf8_token_and_delimiters() {
+        let mut invalid_utf8 = b"event: pause\ndata: {\"token\":\"".to_vec();
+        invalid_utf8.push(0xff);
+        invalid_utf8.extend_from_slice(b"\",\"remaining_ms\":1}\n\n");
+        assert!(take_pause_instruction(&mut invalid_utf8).is_err());
+
+        let mut bad_token = format!("event: pause\ndata: {{\"token\":\"not-a-token\",\"remaining_ms\":1}}\n\n").into_bytes();
+        assert!(take_pause_instruction(&mut bad_token).is_err());
+
+        let mut incomplete = b"event: pause\ndata: {}\n".to_vec();
+        assert!(take_pause_instruction(&mut incomplete).unwrap().is_none());
+    }
     #[test]
     fn profile_scope_cannot_inject_paths() {
         for id in ["../other", "x/y", "x?q=1", ""] {

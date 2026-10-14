@@ -1,6 +1,6 @@
 window.chillCatalogQa=async config=>{
  let step="boot";const assert=(ok,text)=>{if(!ok)throw Error(text);};
- const wait=async fn=>{const end=Date.now()+25000;while(!fn()){if(Date.now()>end)throw Error("timeout "+$("message").textContent);await new Promise(r=>setTimeout(r,70));}};
+ const wait=async fn=>{const end=Date.now()+25000;while(!fn()){if(Date.now()>end)throw Error("timeout "+$("message").textContent+" / "+$("player-note").textContent+" / "+JSON.stringify(playerState.native));await new Promise(r=>setTimeout(r,70));}};
  try{
   await window.chillReady;if(state.stage!=="connected"){
    await connect(config.address);if(state.stage==="trust")await run({action:"approve",token:state.token});
@@ -19,7 +19,7 @@ window.chillCatalogQa=async config=>{
   step="saga commune UI";await openCollections("saga");$("collection-create").elements.name.value="Saga Tauri "+Date.now();$("collection-create").requestSubmit();await wait(()=>!busy&&collectionKind==="saga"&&$("collection-dialog").open);const sagaId=collectionView.id;
   await invoke({action:"add_saga",id:sagaId,expected_revision:collectionView.revision,media_ids:[a.id,b.id]});await openCollection(sagaId,"saga");assert(collectionView.media_ids.length===2,"saga members missing");$("collection-dialog").close();
   step="isolation profils";await run({action:"create_profile",name:"Autre QA "+Date.now()});const other=state.profiles.find(p=>p.id!==profile&&p.name.startsWith("Autre QA"));await selectProfile(other.id);assert(!(await invoke({action:"playlists"})).items.some(p=>p.id===id),"playlist leaked");assert((await invoke({action:"sagas"})).items.some(s=>s.id===sagaId),"saga not common");assert(!$("collection-dialog").open,"old dialog persists");await selectProfile(profile);
-  step="external native subtitle";await window.chillPlay(a.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);assert(playerState.external_subtitles.length,"external fixture missing");const ext=playerState.external_subtitles[0];await playerCall({action:"external_subtitle",id:ext.id});await wait(()=>playerState.native.tracks.some(t=>t.kind==="Subtitle"&&t.title===ext.title));await playerCall({action:"stop"});
+  step="external native subtitle";await window.chillPlay(a.id);await wait(()=>playerState.native?.loaded);if(playerState.native.ended){await playerCall({action:"seek",position:0});await playerCall({action:"resume"});}await wait(()=>playerState.native?.loaded&&!playerState.native.paused);assert(playerState.external_subtitles.length,"external fixture missing");const ext=playerState.external_subtitles[0];await playerCall({action:"external_subtitle",id:ext.id});await wait(()=>playerState.native.tracks.some(t=>t.kind==="Subtitle"&&t.title===ext.title));await playerCall({action:"stop"});
   await window.__TAURI__.core.invoke("qa_result",{success:true,detail:"Tauri-detail-CAS-playlist-order-rename-common-saga-profile-isolation-external-subtitle"});
  }catch(e){await window.__TAURI__.core.invoke("qa_result",{success:false,detail:step+": "+e.message});}
 };
