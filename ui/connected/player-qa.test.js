@@ -24,7 +24,7 @@ test('timer-sensitive player QA waits for a visibility event instead of polling 
 test('debug player launch prepares the native application before evaluating QA',()=>{
  const host=fs.readFileSync(__dirname+'/../../apps/desktop/src/main.rs','utf8');
  const native=fs.readFileSync(__dirname+'/../../apps/desktop/src/native_player.rs','utf8');
- const prepare=host.indexOf('if mode == "player" {');
+ const prepare=host.indexOf('if mode == "player" &&');
  const evaluate=host.indexOf('webview.eval(format!(',prepare);
  assert.ok(prepare>=0&&evaluate>prepare&&host.slice(prepare,evaluate).includes('qa_prepare_visible_player(webview)'),'player QA must prepare visibility before evaluation');
  assert.match(native,/\#\[cfg\(debug_assertions\)\][\s\S]*qa_prepare_visible_player/);
