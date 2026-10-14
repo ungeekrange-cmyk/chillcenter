@@ -276,6 +276,7 @@ impl From<ClientError> for UiError {
             "PROFILE_CONFLICT" | "CONFIG_CONFLICT" => {
                 "Modification concurrente : rechargez les données avant de réessayer."
             }
+            "CONFIG_DURABILITY_UNKNOWN" => "Réglage serveur appliqué, mais durabilité disque non confirmée. Rechargez son état avant de réessayer.",
             "TMDB_NOT_CONFIGURED" => {
                 "TMDB n’est pas configuré sur le serveur. Ajoutez le jeton côté serveur puis réessayez."
             }
@@ -446,6 +447,9 @@ impl UiClient {
         })
     }
     fn save(&mut self) -> Result<(), UiError> {
+        self.save_with_directory_sync(|path|fs::File::open(path).and_then(|f|f.sync_all()))
+    }
+    fn save_with_directory_sync(&mut self,sync:impl FnOnce(&std::path::Path)->std::io::Result<()>)->Result<(),UiError>{
         use std::os::unix::fs::OpenOptionsExt;
         self.settings.trust = self
             .trust
@@ -468,6 +472,7 @@ impl UiClient {
         .map_err(|_| invalid("Enregistrement local impossible."))?;
         fs::rename(temporary, self.directory.join("client.json"))
             .map_err(|_| invalid("Enregistrement local impossible."))?;
+        sync(&self.directory).map_err(|_|UiError{message:"Réglages publiés, mais durabilité non confirmée. Rouvrez l’application pour vérifier leur état avant de réessayer.".into(),status:None,code:"LOCAL_DURABILITY_UNKNOWN".into()})?;
         Ok(())
     }
     fn request(
@@ -1625,6 +1630,18 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn settings_directory_sync_failure_is_explicit_and_reopen_reads_published_state(){
+        let dir=tempfile::tempdir().unwrap();let mut client=UiClient::open(dir.path()).unwrap();
+        client.settings.theme="dark".into();
+        let error=client.save_with_directory_sync(|parent|{
+            assert_eq!(parent,dir.path());assert!(parent.join("client.json").is_file());
+            Err(std::io::Error::other("injected directory fsync failure"))
+        }).unwrap_err();
+        assert_eq!(error.code,"LOCAL_DURABILITY_UNKNOWN");
+        assert_eq!(UiClient::open(dir.path()).unwrap().settings.theme,"dark");
+        client.save().unwrap();assert_eq!(UiClient::open(dir.path()).unwrap().settings.theme,"dark");
+    }
     #[test]
     fn provider_and_unavailable_commands_are_closed_and_bounded() {
         let search: UiCommand = serde_json::from_value(

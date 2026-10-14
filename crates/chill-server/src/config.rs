@@ -162,6 +162,9 @@ impl LibrarySettings {
         root: Option<PathBuf>,
         expected_revision: u64,
     ) -> Result<(), String> {
+        self.update_with_writer(config,root,expected_revision,atomic_private_write)
+    }
+    fn update_with_writer(&mut self,config:&ServerConfig,root:Option<PathBuf>,expected_revision:u64,writer:impl FnOnce(&Path,&[u8])->Result<(),String>)->Result<(),String>{
         if self.revision != expected_revision {
             return Err("CONFIG_CONFLICT".into());
         }
@@ -173,9 +176,10 @@ impl LibrarySettings {
             revision: self.revision.checked_add(1).ok_or("Révision invalide.")?,
         };
         let data = serde_json::to_vec_pretty(&updated).map_err(|_| "Sérialisation impossible.")?;
-        atomic_private_write(&config.data_dir.join("library.json"), &data)?;
+        let published=writer(&config.data_dir.join("library.json"), &data);
+        if let Err(error)=&published {if error!="CONFIG_DURABILITY_UNKNOWN"{return published;}}
         *self = updated;
-        Ok(())
+        published
     }
 }
 
@@ -195,6 +199,9 @@ fn validate_absolute(path: &Path) -> Result<(), String> {
 /// Unique staging file, restrictive permissions, fsync, rename, parent fsync.
 /// No truncation of an existing file and no private key visible through a permissive umask.
 pub(crate) fn atomic_private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    atomic_private_write_with_sync(path,bytes,|parent|fs::File::open(parent).and_then(|directory|directory.sync_all()))
+}
+fn atomic_private_write_with_sync(path:&Path,bytes:&[u8],sync:impl FnOnce(&Path)->std::io::Result<()>)->Result<(),String>{
     use std::os::unix::fs::OpenOptionsExt;
     let parent = path.parent().ok_or("Chemin de configuration invalide.")?;
     let stage = parent.join(format!(".chillcenter-{}.tmp", uuid::Uuid::new_v4()));
@@ -209,9 +216,7 @@ pub(crate) fn atomic_private_write(path: &Path, bytes: &[u8]) -> Result<(), Stri
             .and_then(|_| file.sync_all())
             .map_err(|_| "Écriture de configuration impossible.")?;
         fs::rename(&stage, path).map_err(|_| "Enregistrement de configuration impossible.")?;
-        fs::File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|_| "Synchronisation de configuration impossible.")?;
+        sync(parent).map_err(|_| "CONFIG_DURABILITY_UNKNOWN")?;
         Ok(())
     })();
     if result.is_err() {
@@ -223,6 +228,19 @@ pub(crate) fn atomic_private_write(path: &Path, bytes: &[u8]) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rename_publication_and_directory_durability_are_distinguished(){
+        let dir=tempfile::tempdir().unwrap();let config=ServerConfig{data_dir:dir.path().into(),..Default::default()};
+        let mut settings=LibrarySettings::load(&config).unwrap();
+        let error=settings.update_with_writer(&config,Some("/mnt/new".into()),0,|path,bytes|atomic_private_write_with_sync(path,bytes,|_|Err(std::io::Error::other("injected fsync")))).unwrap_err();
+        assert_eq!(error,"CONFIG_DURABILITY_UNKNOWN");assert_eq!(settings.revision,1);
+        assert_eq!(LibrarySettings::load(&config).unwrap(),settings);
+        assert_eq!(settings.update(&config,Some("/mnt/stale".into()),0).unwrap_err(),"CONFIG_CONFLICT");
+        let before=settings.clone();let published=fs::read(dir.path().join("library.json")).unwrap();
+        assert!(settings.update_with_writer(&config,None,1,|_,_|Err("before rename".into())).is_err());
+        assert_eq!(settings,before);assert_eq!(fs::read(dir.path().join("library.json")).unwrap(),published);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(),1,"owned stage cleaned after error");
+    }
 
     #[test]
     fn address_and_mount_are_not_fixed() {

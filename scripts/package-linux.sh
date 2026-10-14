@@ -115,8 +115,9 @@ if ! ln "$stage/package.sha256" "$checksum"; then
   exit 1
 fi
 if ! ln "$archive_stage" "$output"; then
-  rm -f "$checksum"
-  echo "Archive destination appeared during packaging; nothing was replaced." >&2
+  # Do not unlink a public name that another process may have replaced meanwhile.
+  # Leave the published checksum as evidence of the interrupted operation.
+  echo "Archive destination appeared during packaging; nothing was replaced. Checksum publication remains at $checksum; inspect it before choosing a new output." >&2
   exit 1
 fi
 echo "Local Linux package: $output"

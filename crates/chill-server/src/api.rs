@@ -258,11 +258,17 @@ async fn update_library(
         {
             return Err(ApiError(StatusCode::CONFLICT, "SCAN_ACTIVE"));
         }
-        settings
-            .update(&state.config, body.video_root, body.expected_revision)
+        let before=settings.revision;
+        let result=settings.update(&state.config, body.video_root, body.expected_revision);
+        // A rename followed by failed directory fsync still published a new root.
+        // Invalidate old grants even when durable persistence cannot be promised.
+        if settings.revision!=before{state.playback.clear();}
+        result
             .map_err(|error| {
                 if error == "CONFIG_CONFLICT" {
                     ApiError(StatusCode::CONFLICT, "CONFIG_CONFLICT")
+                } else if error == "CONFIG_DURABILITY_UNKNOWN" {
+                    ApiError(StatusCode::SERVICE_UNAVAILABLE,"CONFIG_DURABILITY_UNKNOWN")
                 } else {
                     ApiError(StatusCode::BAD_REQUEST, "CONFIG_INVALID_OR_UNWRITABLE")
                 }
