@@ -4,16 +4,18 @@
 (function (root) {
   const Mp4 = typeof module !== "undefined" ? require("./mp4.js") : root.ChillMp4;
   const Mkv = typeof module !== "undefined" ? require("./mkv.js") : root.ChillMkv;
+  const Avi = typeof module !== "undefined" ? require("./avi.js") : root.ChillAvi;
+  const Soft = typeof module !== "undefined" ? require("./soft-video.js") : root.ChillSoft;
   const { RangeReader } = typeof module !== "undefined" ? require("./range-reader.js") : root.ChillRangeReader;
   const fail = message => Object.assign(new Error(message), { code: "PLAYER_ERROR" });
-  const LABELS = { "ac-3": "AC-3", "ec-3": "E-AC-3", flac: "FLAC", opus: "Opus" };
+  const LABELS = { "ac-3": "AC-3", "ec-3": "E-AC-3", flac: "FLAC", opus: "Opus", xvid: "Xvid (MPEG-4)", dx50: "DivX (MPEG-4)", divx: "DivX (MPEG-4)", mp4v: "MPEG-4" };
   const codecLabel = c => LABELS[c] || (/^mp4a\.6B/i.test(c || "") ? "MP3" : /^mp4a/.test(c || "") ? "AAC" : (c || "inconnu").split(".")[0]);
 
   function sniffContainer(head) {
     const tag = String.fromCharCode(...head.subarray(4, 8));
     if (tag === "ftyp" || tag === "moov" || tag === "mdat" || tag === "free" || tag === "wide") return "mp4";
     if (head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3) return "mkv";
-    if (String.fromCharCode(...head.subarray(0, 4)) === "RIFF") return "avi";
+    if (String.fromCharCode(...head.subarray(0, 4)) === "RIFF" && String.fromCharCode(...head.subarray(8, 12)) === "AVI ") return "avi";
     return "unknown";
   }
 
@@ -33,25 +35,41 @@
       this.reader = new RangeReader({ mediaId, lease, fetch: this.d.fetch });
       await this.reader.open();
       const kind = sniffContainer(this.reader.head);
-      if (kind === "avi") throw fail("Format AVI : lecture dans le navigateur pas encore disponible dans cette version.");
-      if (kind !== "mp4" && kind !== "mkv") throw fail("Format de fichier non reconnu.");
-      this.src = kind === "mp4" ? new Mp4.Mp4Source(this.reader) : new Mkv.MkvSource(this.reader);
+      if (kind === "unknown") throw fail("Format de fichier non reconnu.");
+      this.src = kind === "mp4" ? new Mp4.Mp4Source(this.reader) : kind === "mkv" ? new Mkv.MkvSource(this.reader) : new Avi.AviSource(this.reader);
       this.movie = await this.src.open();
+      // MP3 is not accepted inside audio/mp4 everywhere (Chromium builds): fall back to a bare MPEG audio stream.
+      for (const t of this.movie.tracks) {
+        if (t.kind === "audio" && t.codec === "mp4a.6B" && !MS.isTypeSupported(t.mime) && MS.isTypeSupported("audio/mpeg")) { t.mime = "audio/mpeg"; t.rawStream = true; }
+      }
       const supported = t => t.mime && MS.isTypeSupported(t.mime);
-      const video = this.movie.tracks.find(t => t.kind === "video" && supported(t));
+      let video = this.movie.tracks.find(t => t.kind === "video" && supported(t));
+      let softTrack = null, softEntry = null;
       if (!video) {
         const v = this.movie.tracks.find(t => t.kind === "video");
-        throw fail(v ? `Codec vidéo ${codecLabel(v.codec || v.type)} non pris en charge par ce navigateur.` : "Aucune piste vidéo.");
+        if (!v) throw fail("Aucune piste vidéo.");
+        softEntry = Soft.decoders.find(v);
+        if (!softEntry || !this.src.rawRead) {
+          throw fail(v.decoder || !v.mime
+            ? `Le décodeur logiciel ${codecLabel(v.codec || v.type)} n'est pas installé : cette vidéo n'est pas encore lisible dans le navigateur.`
+            : `Codec vidéo ${codecLabel(v.codec || v.type)} non pris en charge par ce navigateur.`);
+        }
+        softTrack = v;
       }
       this.audio = this.movie.tracks.filter(t => t.kind === "audio" && supported(t));
       const missing = this.movie.tracks.filter(t => t.kind === "audio" && !supported(t));
       if (missing.length) this.notice = `Audio non pris en charge par ce navigateur : ${[...new Set(missing.map(t => codecLabel(t.codec || t.type)))].join(", ")}.`;
       if (!this.audio.length && missing.length) this.notice += " Lecture sans son.";
       this.activeAudio = this.audio[0] || null;
+      if (softTrack && !this.activeAudio) throw fail("Cette vidéo nécessite le décodage logiciel, et son audio n'est pas pris en charge par ce navigateur : lecture impossible pour l'instant.");
 
-      this.video = this.d.document.createElement("video");
+      // Software video: the audio element is the master clock, frames are painted on a canvas.
+      this.video = this.d.document.createElement(softTrack ? "audio" : "video");
       this.video.playsInline = true; this.video.preload = "auto";
-      this.host.replaceChildren(this.video);
+      if (softTrack) {
+        this.canvas = this.d.document.createElement("canvas");
+        this.host.replaceChildren(this.canvas, this.video);
+      } else this.host.replaceChildren(this.video);
       this.bind();
       this.ms = new MS();
       this.url = this.d.URL.createObjectURL(this.ms);
@@ -60,25 +78,45 @@
       if (this.movie.duration) this.ms.duration = this.movie.duration;
       for (const t of [video, this.activeAudio].filter(Boolean)) {
         const sb = this.ms.addSourceBuffer(t.mime);
-        sb.mode = "segments"; sb.timestampOffset = t.shift;
-        this.streams.push({ track: t, sb, done: false });
+        if (!t.rawStream) { sb.mode = "segments"; sb.timestampOffset = t.shift; }
+        this.streams.push({ track: t, sb, done: false, needOffset: true });
       }
       this.src.setActive?.(this.streams.map(x => x.track.id));
       this.cache = this.cacheSeconds();
-      for (const s of this.streams) await this.append(s.sb, Mp4.initSegment(s.track));
+      for (const s of this.streams) if (!s.track.rawStream) await this.append(s.sb, Mp4.initSegment(s.track));
       this.video.playbackRate = speed || 1; this.rate = speed || 1;
       await this.rewind(startAt || 0);
       this.video.currentTime = startAt || 0;
-      this.probeHardware(video);
+      if (softTrack) await this.initSoft(softTrack, softEntry, startAt || 0);
+      else this.probeHardware(video);
       await this.pump();
       this.started = true;
+    }
+
+    async initSoft(track, entry, startAt) {
+      const decoder = await entry.create(track);
+      this.canvas.width = track.width || 2; this.canvas.height = track.height || 2;
+      const ctx = this.canvas.getContext("2d");
+      this.soft = new Soft.SoftVideo({
+        src: this.src, track, decoder, clock: { time: () => this.video.currentTime }, ctx,
+        resize: (w, h) => { this.canvas.width = w; this.canvas.height = h; },
+        makeImage: (w, h) => ctx.createImageData(w, h),
+        raf: f => this.d.requestAnimationFrame(f), caf: h => this.d.cancelAnimationFrame(h),
+      });
+      this.softLabel = entry.label || "Décodeur logiciel (WebAssembly)";
+      await this.soft.reset(startAt);
+      this.soft.start();
     }
 
     bind() {
       const v = this.video;
       v.addEventListener("error", () => { this.errorText = "Le navigateur n'a pas pu décoder cette vidéo."; });
       v.addEventListener("timeupdate", () => this.pump());
-      v.addEventListener("seeking", () => { if (this.started && !this.isBuffered(v.currentTime)) this.reposition(v.currentTime); });
+      v.addEventListener("seeking", () => {
+        if (!this.started) return;
+        if (!this.isBuffered(v.currentTime)) this.reposition(v.currentTime);
+        this.soft?.reset(v.currentTime); // the decoder always restarts from the keyframe before the target
+      });
       v.addEventListener("waiting", () => this.pump());
     }
     async probeHardware(t) {
@@ -122,7 +160,7 @@
       return t;
     }
     isBuffered(t) { return this.streams.every(s => this.bufferedEnd(s.sb, t) > t + 0.05); }
-    async rewind(t) { await this.src.seek(t); for (const s of this.streams) s.done = false; }
+    async rewind(t) { await this.src.seek(t); for (const s of this.streams) { s.done = false; s.needOffset = true; } }
     async reposition(t) {
       this.epoch++;
       await this.waitIdle();
@@ -153,7 +191,9 @@
       const fragment = await this.src.next(s.track.id);
       if (epoch !== this.epoch || this.closed) return false;
       if (!fragment) { s.done = true; return false; }
-      await this.append(s.sb, fragment.data);
+      let bytes = fragment.data;
+      if (s.track.rawStream && s.needOffset && fragment.startTime !== undefined) { s.sb.timestampOffset = fragment.startTime; s.needOffset = false; bytes = Mp4.mp3Resync(bytes); }
+      await this.append(s.sb, bytes);
       return epoch === this.epoch;
     }
 
@@ -171,9 +211,9 @@
       this.epoch++; await this.waitIdle();
       await this.removeRange(s.sb, 0, Infinity);
       if (s.track.mime !== next.mime) s.sb.changeType(next.mime);
-      s.track = next; s.sb.timestampOffset = next.shift; this.activeAudio = next;
+      s.track = next; if (!next.rawStream) s.sb.timestampOffset = next.shift; this.activeAudio = next; s.needOffset = true;
       this.src.setActive?.(this.streams.map(x => x.track.id));
-      await this.append(s.sb, Mp4.initSegment(next));
+      if (!next.rawStream) await this.append(s.sb, Mp4.initSegment(next));
       await this.reposition(this.video.currentTime);
     }
     snapshot() {
@@ -181,13 +221,14 @@
       if (!v) return { loaded: false, paused: true, buffering: false, ended: false, error: this.errorText, position: 0, duration: 0, speed: this.rate, volume: 100, tracks: [] };
       return {
         loaded: v.readyState >= 1, paused: v.paused, buffering: !v.paused && !v.ended && v.readyState < 3, ended: v.ended,
-        error: this.errorText, notice: this.notice, position: v.currentTime || 0, duration: this.movie.duration, speed: v.playbackRate, volume: Math.round(v.volume * 100),
+        error: this.errorText || this.soft?.errorText || null, notice: this.notice, position: v.currentTime || 0, duration: this.movie.duration, speed: v.playbackRate, volume: Math.round(v.volume * 100),
         tracks: (this.audio || []).map((t, i) => ({ id: t.id, kind: "Audio", language: t.language, title: codecLabel(t.codec), selected: t === this.activeAudio, original: i === 0 })),
-        hardware_decoder: this.hardware, decoder: "Décodeur du navigateur",
+        hardware_decoder: this.soft ? "no" : this.hardware, decoder: this.soft ? this.softLabel : "Décodeur du navigateur",
       };
     }
     close() {
       this.closed = true; this.epoch++;
+      try { this.soft?.close(); } catch { /* ignore */ }
       try { this.video?.pause(); this.video?.removeAttribute("src"); this.video?.load(); } catch { /* ignore */ }
       if (this.url) this.d.URL.revokeObjectURL(this.url);
       this.host?.replaceChildren();
@@ -197,6 +238,6 @@
   const api = { MseEngine, sniffContainer };
   if (typeof module !== "undefined") module.exports = api;
   else if (root.MediaSource && root.ChillEngines) {
-    root.ChillEngines.factories.push(host => new MseEngine(host, { fetch: (...a) => root.fetch(...a), MediaSource: root.MediaSource, document: root.document, URL: root.URL, storage: root.localStorage, navigator: root.navigator }));
+    root.ChillEngines.factories.push(host => new MseEngine(host, { fetch: (...a) => root.fetch(...a), MediaSource: root.MediaSource, document: root.document, URL: root.URL, storage: root.localStorage, navigator: root.navigator, requestAnimationFrame: f => root.requestAnimationFrame(f), cancelAnimationFrame: h => root.cancelAnimationFrame(h) }));
   }
 })(typeof window !== "undefined" ? window : globalThis);

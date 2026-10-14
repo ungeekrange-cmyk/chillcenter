@@ -1,9 +1,15 @@
 # ADR-0014 — Évaluation d'un décodeur MPEG-4 ASP (Xvid) en WebAssembly pour l'AVI web
 
-- Status : `PROPOSED` — **évaluation seulement, aucune adoption** ; rien n'a été téléchargé ni installé. Date : `2026-10-14`.
+- Status : `PROPOSED` — direction **B** demandée par l'utilisateur (voir l'historique) ; **aucun décodeur adopté, rien téléchargé ni installé**. Date : `2026-10-14`.
 - Decision Owner / Author Instance : `/root` ; Reviewer Instance : à désigner (≠ auteur).
 - Branche : `codex/web-pwa`. Supersedes / Superseded By : `NONE` / `NONE`. Complète ADR-0013 (qui réserve le WASM à un ADR dédié).
 - Related Items : ADR-0012/0013, [preuve Pi](../../implementation/WEB-PI-READONLY-EVIDENCE.md), F-22.
+
+## Historique de la décision utilisateur (14 octobre 2026)
+
+1. Choix de l'**option A** (« message explicite + renvoi vers le client Mac, spike plus tard si besoin »).
+2. **Aussitôt remplacé** par : « force le max sans client mac. Le but est même un client léger multi plateforme ». Le client web ne doit donc **pas** dépendre du client Mac, y compris pour l'AVI : l'option A, dont le repli est le client Mac, n'est **plus retenue** ; la direction est l'**option B** (décodeur MPEG-4 ASP en WASM + second moteur de lecture), à réaliser par étapes.
+3. La condition « rien n'est téléchargé avant accord » reste en vigueur : les parties réalisables sans téléchargement (démuxeur AVI en JS pur, moteur canvas, interface de décodeur, tests avec décodeur factice) sont faites en premier ; la compilation du décodeur réel nécessite l'outillage listé en bas de ce document et un accord explicite.
 
 ## Contexte
 
@@ -66,9 +72,33 @@ Le relevé améliore le dossier de B : **99 % des AVI sont en SD et 99 % ont de 
 
 Décision utilisateur requise. Rien n'est téléchargé ni installé tant qu'elle n'est pas prise.
 
+## Réalisé sans aucun téléchargement (14 octobre 2026, branche `codex/web-pwa`)
+
+| Pièce | État | Vérification |
+| --- | --- | --- |
+| Démuxeur AVI en JS pur (`web/src/avi.js`) : `idx1`, OpenDML (non testé faute de fichier > 1 Gio), temps vidéo par position d'image, audio CBR/VBR, MP3 | Fait | 3 tests ffmpeg + **8 AVI réels du Pi ouverts sur 8** (Xvid 432×336 à 640×480, 23,98 et 25 i/s, dts monotones, saut sur keyframe) |
+| Chemin vidéo logiciel (`web/src/soft-video.js`) : échantillons bruts → décodeur enfichable → canvas, cadencé par l'horloge audio, file bornée, saut, reset, vidage final, conversion I420→RGBA | Fait | 7 tests avec décodeur factice ; **dans le navigateur** avec un vrai AVI + MP3 : écart image/son ≤ 30 ms en lecture, après saut (même hors tampon), en pause et à ×2 ; fin de vidéo détectée |
+| Audio MP3 en flux brut `audio/mpeg` quand `audio/mp4` ne l'accepte pas (constaté sur ce Chromium) + **resynchronisation sur frontière de trame** (des AVI du catalogue découpent les trames entre chunks : première synchro à l'octet 84 sur un fichier réel) | Fait | 2 tests MP3 ; navigateur OK |
+| Interface de décodeur `ChillSoft.decoders.register({match, create})` ; message clair tant qu'aucun décodeur n'est installé | Fait | Test : « Le décodeur logiciel Xvid (MPEG-4) n'est pas installé… » |
+
+**Manque encore : le décodeur MPEG-4 ASP lui-même** (l'unique pièce WebAssembly). Tout le reste du chemin AVI est prêt et éprouvé avec un décodeur factice.
+
+## Téléchargements nécessaires pour le décodeur réel — soumis à ton accord, rien n'est téléchargé
+
+Choix technique, cohérent avec « léger et stable » : **pas de libav.js ni ffmpeg.wasm**. On compile un module minimal à partir des sources de FFmpeg, avec notre propre enveloppe C d'une centaine de lignes (ouverture du décodeur `mpeg4`, envoi d'un paquet, récupération d'une image I420), puis on **fige le `.wasm` dans le dépôt** (aucune dépendance suivie à l'exécution).
+
+| Élément à télécharger | Source | Taille (estimation à confirmer avant téléchargement) | Raison |
+| --- | --- | --- | --- |
+| Archive des sources de FFmpeg, une version précise (par ex. une 7.x stable) | ffmpeg.org (somme SHA-256 publiée à vérifier) | ≈ 10–12 Mio compressée | Seul le décodeur `mpeg4` et son parseur y seront compilés |
+| Chaîne Emscripten : image Docker `emscripten/emsdk` à tag figé (Docker est déjà installé ici) ou emsdk | Docker Hub / dépôt Emscripten | de l'ordre de 1 à 2 Gio (outillage de build, jamais livré) | Compiler en WebAssembly |
+
+Aucun autre élément. Configuration visée : `--disable-everything --enable-decoder=mpeg4 --enable-parser=mpeg4video`, **sans** `--enable-gpl` ni `--enable-nonfree` ; module attendu de l'ordre de quelques centaines de Kio (**estimation**, à mesurer). Livrables dans le dépôt : `.wasm` + glue JS (< 20 Kio estimé), le **numéro de version exact de FFmpeg, la somme SHA-256 de l'archive, la ligne `configure`** et l'avis de licence LGPL ; l'obligation LGPL de fournir les sources est remplie par ces références et l'archive d'origine.
+
+Critères d'arrêt du spike (chiffrés, SD uniquement ≤ 720 px de large) : ≥ 30 images/s soutenues en décodage seul à 640×480 sur le Mac et sur l'appareil le plus faible visé ; `.wasm` < 1 Mio ; aucune erreur de désynchronisation sur 10 min de lecture ; mémoire < 150 Mio. Au-delà de ces critères, l'option est abandonnée et ADR-0014 est remplacé.
+
 ## À vérifier avant tout engagement (non fait)
 
-- Existence de fragments de configuration `decoder-mpeg4` / `demuxer-avi` dans libav.js et taille réelle d'une variante réduite (build local nécessaire : téléchargements d'outillage soumis à ton accord).
+- Taille réelle du module `mpeg4` minimal et débit mesuré en WASM (build local : voir la liste de téléchargements ci-dessus).
 - Licence de chaque composant lié dans la variante, ligne `configure` sans `--enable-gpl` ni `--enable-nonfree`.
 - `VideoDecoder.isConfigSupported()` pour MPEG-4 ASP sur les navigateurs cibles.
 - ~~Résolutions et codecs audio réels des AVI du catalogue~~ : **fait** (voir le relevé) ; reste 1 AVI illisible à examiner.

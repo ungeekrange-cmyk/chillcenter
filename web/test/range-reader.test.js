@@ -48,6 +48,7 @@ test("a server that ignores Range with a full 200 body is refused", async () => 
 test("container sniffing", () => {
   assert.equal(sniffContainer(Uint8Array.from([0, 0, 0, 24, 102, 116, 121, 112])), "mp4");
   assert.equal(sniffContainer(Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0])), "mkv");
-  assert.equal(sniffContainer(Uint8Array.from([82, 73, 70, 70, 0, 0, 0, 0])), "avi");
+  assert.equal(sniffContainer(Uint8Array.from([82, 73, 70, 70, 0, 0, 0, 0, 65, 86, 73, 32])), "avi");
+  assert.equal(sniffContainer(Uint8Array.from([82, 73, 70, 70, 0, 0, 0, 0, 87, 65, 86, 69])), "unknown", "WAV is not AVI");
   assert.equal(sniffContainer(new Uint8Array(8)), "unknown");
 });

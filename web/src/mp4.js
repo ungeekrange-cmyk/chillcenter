@@ -293,6 +293,18 @@
       return this.movie;
     }
     seek(seconds) { for (const t of this.movie.tracks) this.cursor.set(t.id, sampleAtTime(t, seconds)); }
+    /** Raw samples [{data, key, dts, cts, dur}] from index `from` (for software decoders). */
+    async rawRead(track, from, count) {
+      const to = Math.min(track.count, from + count), chunks = [];
+      for (const [a, b] of sampleRanges(track, from, to)) chunks.push({ a, bytes: await this.reader.read(a, b) });
+      const out = [];
+      for (let i = from; i < to; i++) {
+        const o = track.offsets[i], n = track.sizes[i], c = chunks.find(x => o >= x.a && o + n <= x.a + x.bytes.length);
+        if (!c) throw fail("Échantillon hors plage lue.");
+        out.push({ data: c.bytes.subarray(o - c.a, o - c.a + n), key: Boolean(track.sync[i]), dts: track.dts[i], cts: track.cts[i], dur: track.dur[i] });
+      }
+      return out;
+    }
     async next(trackId) {
       const track = this.movie.tracks.find(t => t.id === trackId);
       const from = this.cursor.get(trackId);
@@ -301,12 +313,35 @@
       const chunks = [];
       for (const [a, b] of sampleRanges(track, plan.from, plan.to)) chunks.push({ a, bytes: await this.reader.read(a, b) });
       const data = (off, size) => { for (const c of chunks) if (off >= c.a && off + size <= c.a + c.bytes.length) return c.bytes.subarray(off - c.a, off - c.a + size); throw fail("Échantillon vidéo hors plage lue."); };
-      const out = buildFragment(track, plan.from, plan.to, (this.seq = (this.seq || 0) + 1), data);
       this.cursor.set(trackId, plan.to);
-      return { data: out };
+      if (track.rawStream) { // e.g. MP3: appended as a bare byte stream, timed by the engine
+        const parts = []; for (let i = plan.from; i < plan.to; i++) parts.push(data(track.offsets[i], track.sizes[i]));
+        return { data: concat(parts), startTime: track.dts[plan.from] / track.timescale + (track.shift || 0) };
+      }
+      return { data: buildFragment(track, plan.from, plan.to, (this.seq = (this.seq || 0) + 1), data) };
     }
   }
 
-  const api = { boxes, parseMoov, initSegment, planFragment, sampleRanges, buildFragment, sampleAtTime, locateMoov, concat, box, full, u32b, sampleEntry, Mp4Source };
+  // ---- MPEG audio layer III -----------------------------------------------------------------
+  const MP3_BR1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], MP3_BR2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
+  const MP3_SR = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
+  /** Length in bytes of the layer III frame whose header starts at i, or 0 if there is no valid header. */
+  function mp3FrameLength(b, i) {
+    if (i + 4 > b.length || b[i] !== 0xff || (b[i + 1] & 0xe0) !== 0xe0) return 0;
+    const version = (b[i + 1] >> 3) & 3, layer = (b[i + 1] >> 1) & 3, bi = b[i + 2] >> 4, si = (b[i + 2] >> 2) & 3;
+    if (version === 1 || layer !== 1 || bi === 0 || bi === 15 || si === 3) return 0;
+    const br = (version === 3 ? MP3_BR1 : MP3_BR2)[bi] * 1000, sr = MP3_SR[version][si], pad = (b[i + 2] >> 1) & 1;
+    return Math.floor((version === 3 ? 144 : 72) * br / sr) + pad;
+  }
+  /** Drops leading bytes up to the first frame whose successor is also valid (AVI chunks are not frame aligned). */
+  function mp3Resync(data, scan = 8192) {
+    for (let i = 0; i < Math.min(data.length - 4, scan); i++) {
+      const len = mp3FrameLength(data, i);
+      if (len && (i + len + 4 > data.length || mp3FrameLength(data, i + len))) return i === 0 ? data : data.subarray(i);
+    }
+    return data;
+  }
+
+  const api = { mp3Resync, mp3FrameLength, boxes, parseMoov, initSegment, planFragment, sampleRanges, buildFragment, sampleAtTime, locateMoov, concat, box, full, u32b, sampleEntry, Mp4Source };
   if (typeof module !== "undefined") module.exports = api; else root.ChillMp4 = api;
 })(typeof window !== "undefined" ? window : globalThis);

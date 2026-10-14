@@ -44,3 +44,7 @@ Un bail volatil par fichier, acquis puis libéré aussitôt (aucune progression,
 Xvid 354, DX50 13, H.264 1 ; largeur ≤ ≈ 720 px pour 366 fichiers ; audio MP3 stéréo 364, AC-3 4 ; une seule piste audio. Détail et conséquences dans [ADR-0014](../architecture/decisions/ADR-0014-web-avi-xvid-decoder-evaluation.md).
 
 Écritures déclarées : uniquement les baux volatils (mémoire du serveur). Aucune interruption ni erreur 409 pendant le relevé.
+
+## Complément — démuxeur AVI sur de vrais fichiers (même jour, même cadre lecture seule)
+
+Ouverture par `AviSource` de **8 AVI réels** (8 sur 8) : Xvid, de 432×336 à 640×480, 23,98 ou 25 i/s, durées de 41 s à 4 545 s, index `idx1` lu en quelques centaines de ms, keyframes plausibles (ex. 935 sur 113 636 images), dts strictement croissants, saut à mi-durée tombant sur une keyframe. Lecture de quelques échantillons vidéo bruts et de 3 fragments audio par fichier. Constat : sur 1 fichier, les chunks MP3 **ne commencent pas sur une frontière de trame** (première synchro à l'octet 84) ; une resynchronisation a été ajoutée et testée. Écritures déclarées : baux volatils uniquement (≈ 13 acquisitions/libérations, aucune progression). Aucun titre relevé.

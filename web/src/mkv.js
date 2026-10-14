@@ -370,11 +370,12 @@
       const q = this.queues.get(trackId);
       while (!q.length) { if (this.eof) return null; const more = await this.ingest(); if (!more && !q.length) return null; }
       const batch = q.shift();
+      if (track.rawStream) return { data: concat(batch.samples.map(s => s.data)), startTime: batch.dts[0] / track.timescale };
       const data = (off, size) => batch.samples[off].data;
       return { data: Mp4.buildFragment({ ...batch, id: track.id }, 0, batch.count, ++this.seq, data) };
     }
   }
 
-  const api = { MkvSource, parseCluster, blockFrames, children, readVint, Pipeline, ID };
+  const api = { MkvSource, parseCluster, blockFrames, children, readVint, Pipeline, ID, buildTrack };
   if (typeof module !== "undefined") module.exports = api; else root.ChillMkv = api;
 })(typeof window !== "undefined" ? window : globalThis);

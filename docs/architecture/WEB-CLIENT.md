@@ -30,7 +30,7 @@ Démux, décodage, rendu, sous-titres, cache de lecture et horloge de visionnage
 | Bail, heartbeat 5 s, progression, `WatchClock`, enchaînement | `player-web.js`, `watch-clock.js` | Implémenté, testé avec moteur factice |
 | Lecture MP4/MOV (codecs au choix du navigateur : H.264, HEVC, VP9, AV1, AAC, Opus…) | `mp4.js` (démux + remux fMP4 en JS pur), `range-reader.js`, `mse-engine.js` ; le navigateur décode ([ADR-0013](decisions/ADR-0013-web-playback-engine.md)) | Implémenté ; vérifié sur fichier généré VP9/Opus, **pas encore sur un fichier réel du NAS ni sur le Pi** |
 | Lecture MKV/WebM | `mkv.js` : démuxeur EBML en JS pur (Cues pour les sauts, sinon parcours des en-têtes de clusters ; laçage Xiph/EBML/fixe ; réordonnancement des B-frames en flux) | Implémenté ; vérifié sur fichiers générés (H.264/AAC avec B-frames, VP9/Opus), **pas encore sur un MKV réel du NAS** |
-| Lecture AVI | À décider après inventaire des codecs réels | **Non démarré** |
+| Lecture AVI (Xvid/DivX + MP3, 15 % du catalogue) | `avi.js` (démuxeur JS pur) + `soft-video.js` (décodeur enfichable → canvas, horloge audio) ; le décodeur MPEG-4 ASP en WASM reste à compiler ([ADR-0014](decisions/ADR-0014-web-avi-xvid-decoder-evaluation.md)) | Démux et rendu **prêts et vérifiés** (décodeur factice) ; **décodeur réel non installé**, téléchargements soumis à accord |
 | AC-3/E-AC-3/DTS, MPEG-4 ASP, ASS complet | Non décodés par le navigateur : piste alternative sinon message ; aucun WASM sans ADR | Limite assumée |
 | Transfert confirmé de lecture, SSE | `player-web.js` | À faire |
 | Admin : bibliothèque, profils, scan, préférences | Pont | Implémenté |
@@ -58,7 +58,7 @@ Base `/api/2026-10-14`. `GET /server` est lu au démarrage et le client refuse u
 
 | Vérification | Résultat |
 | --- | --- |
-| `node --test web/test/*.test.js` : pont, JSON 64 bits, `WatchClock`, contrôleur de lecture (moteur factice), lecteur `Range`, démuxeurs MP4 et MKV sur fichiers ffmpeg (H.264/AAC avec B-frames, VP9/Opus, `moov` en fin de fichier) dont fMP4 reconstruit décodé sans erreur par ffmpeg | 32/32 PASS (ffmpeg requis pour les tests MP4/MKV) |
+| `node --test web/test/*.test.js` : pont, JSON 64 bits, `WatchClock`, contrôleur de lecture (moteur factice), lecteur `Range`, démuxeurs MP4 et MKV sur fichiers ffmpeg (H.264/AAC avec B-frames, VP9/Opus, `moov` en fin de fichier) dont fMP4 reconstruit décodé sans erreur par ffmpeg | 45/45 PASS (ffmpeg requis pour les tests MP4/MKV/AVI/MP3) |
 | Lecture réelle dans le navigateur intégré, contre un serveur factice servant en `Range` un MP4 VP9/Opus, un MKV VP9/Opus et un MKV H.264 (3 B-frames)/AAC de 40 s : bail, `If-Match`, saut +30 s, vitesse ×1,5, saut hors tampon, retour arrière, tampon borné (~20 s), fin de vidéo, libération du bail, révision 64 bits exacte | PASS |
 | `node scripts/build-web.mjs`, UI Mac chargée dans le navigateur intégré contre une API **factice** locale (HTTP, 3 fiches) : connexion, choix de profil, grille catalogue, aucune erreur console | PASS (aperçu visuel seul) |
 | Rust : garde d'origine, service statique, tests ajoutés (`api.rs`, `web_static.rs`) | **NOT_RUN** — `cargo` absent ; code non compilé |
@@ -69,4 +69,3 @@ Ces résultats ne valident ni l'AVI, ni un fichier réel du NAS, ni le débit su
 ## Essai sur le Pi (lecture seule)
 
 Voir [WEB-PI-READONLY-EVIDENCE](../implementation/WEB-PI-READONLY-EVIDENCE.md) : 21 fichiers réels ouverts par les démuxeurs, inventaire du catalogue (MKV 78 %, AVI 15 % tous Xvid dans l'échantillon, MP4 7 %), AC-3 fréquent. LAVI
-AVI : coût et options dans [ADR-0014](decisions/ADR-0014-web-avi-xvid-decoder-evaluation.md) (décision utilisateur en attente).

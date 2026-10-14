@@ -35,3 +35,7 @@ Demande utilisateur (14 octobre 2026) : technologies **le moins sujettes aux cha
 ## Validation
 
 Tests Node sur fichiers MP4 et MKV générés (H.264/AAC avec B-frames, VP9/Opus), lecture réelle dans le navigateur intégré (MP4 VP9/Opus, MKV VP9/Opus, MKV H.264/AAC avec B-frames), à compléter par un essai sur Mac/Safari/Chrome avec de vrais fichiers du NAS après autorisation. Revue indépendante non faite.
+
+## Constat ultérieur (14 octobre 2026)
+
+Le MP3 (`mp4a.6B`) **n'est pas accepté dans `audio/mp4`** par le Chromium du navigateur intégré, alors que `audio/mpeg` (flux MPEG brut) l'est. Le moteur retombe donc sur un flux brut pour le MP3 (MP4, MKV, AVI), avec resynchronisation sur frontière de trame. Cette adaptation reste en JS pur, sans dépendance. Le support dépend du navigateur : à contrôler sur Safari/Firefox/Chrome cibles.
