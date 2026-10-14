@@ -33,6 +33,8 @@ pub struct FingerprintTarget {
     pub media_id: String,
     pub path: PathBuf,
     pub media_revision: u64,
+    pub observed_file_version_token: Option<String>,
+    pub evidence_current: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -56,10 +58,25 @@ impl Store {
         if !media.available {
             return Err("FINGERPRINT_UNAVAILABLE".into());
         }
+        let path = PathBuf::from(media.path);
+        let (observed_file_version_token, evidence_current) = self
+            .personal
+            .query_row(
+                "SELECT file_version_token,
+                    state='complete' AND source_path=?2 AND partial_sha256 IS NOT NULL
+                 FROM cc_media_fingerprint WHERE stable_id=?1",
+                params![media_id, path.to_string_lossy()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(db)?
+            .unwrap_or((None, false));
         Ok(FingerprintTarget {
             media_id: media_id.to_owned(),
-            path: PathBuf::from(media.path),
+            path,
             media_revision: self.media_revision(media_id)?,
+            observed_file_version_token,
+            evidence_current,
         })
     }
 
@@ -75,7 +92,10 @@ impl Store {
         let mut query = self
             .personal
             .prepare(
-                "SELECT i.stable_id,COALESCE(r.revision,1),m.data
+                "SELECT i.stable_id,COALESCE(r.revision,1),m.data,f.file_version_token,
+                    COALESCE(f.state='complete'
+                      AND f.source_path=json_extract(m.data,'$.path')
+                      AND f.partial_sha256 IS NOT NULL,0)
              FROM cc_media_identity i
              JOIN media m ON m.id=i.legacy_id
              LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id
@@ -95,11 +115,71 @@ impl Store {
                     media_id: row.get(0)?,
                     media_revision: row.get::<_, i64>(1)? as u64,
                     path: PathBuf::from(media.path),
+                    observed_file_version_token: row.get(3)?,
+                    evidence_current: row.get(4)?,
                 })
             })
             .map_err(db)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db)
+    }
+
+    /// Returns one deterministic bounded page for the background stat/partial
+    /// evidence pump. A caller-provided cursor guarantees that failed rows do
+    /// not starve later identities within one scan pass.
+    pub fn fingerprint_scan_targets_after(
+        &self,
+        after: &str,
+        limit: usize,
+    ) -> Result<Vec<FingerprintTarget>, String> {
+        if limit == 0 || limit > 32 {
+            return Err("FINGERPRINT_INVALID".into());
+        }
+        let mut query = self
+            .personal
+            .prepare(
+                "SELECT i.stable_id,COALESCE(r.revision,1),m.data,f.file_version_token,
+                    COALESCE(f.state='complete'
+                      AND f.source_path=json_extract(m.data,'$.path')
+                      AND f.partial_sha256 IS NOT NULL,0)
+                 FROM cc_media_identity i
+                 JOIN media m ON m.id=i.legacy_id
+                 LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id
+                 LEFT JOIN cc_media_fingerprint f ON f.stable_id=i.stable_id
+                 WHERE json_extract(m.data,'$.available')=1 AND i.stable_id>?1
+                   AND (f.stable_id IS NULL OR f.state NOT IN ('queued','running'))
+                 ORDER BY i.stable_id LIMIT ?2",
+            )
+            .map_err(db)?;
+        query
+            .query_map(params![after, limit as i64], |row| {
+                let media: chill_catalog::model::Media =
+                    serde_json::from_str(&row.get::<_, String>(2)?)
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                Ok(FingerprintTarget {
+                    media_id: row.get(0)?,
+                    media_revision: row.get::<_, i64>(1)? as u64,
+                    path: PathBuf::from(media.path),
+                    observed_file_version_token: row.get(3)?,
+                    evidence_current: row.get(4)?,
+                })
+            })
+            .map_err(db)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db)
+    }
+
+    pub fn mark_fingerprint_target_queued(
+        &self,
+        target: &FingerprintTarget,
+        kind: FingerprintKind,
+    ) -> Result<(), String> {
+        if self.media_revision(&target.media_id)? != target.media_revision
+            || self.media_path(&target.media_id)? != target.path
+        {
+            return Err("FINGERPRINT_STALE".into());
+        }
+        self.mark_fingerprint_queued(&target.media_id, kind)
     }
 
     pub fn mark_fingerprint_queued(
@@ -137,6 +217,37 @@ impl Store {
         Ok(())
     }
 
+    pub fn mark_fingerprint_unchanged(
+        &self,
+        target: &FingerprintTarget,
+        file_version_token: &str,
+    ) -> Result<(), String> {
+        if !sha256(file_version_token)
+            || self.media_revision(&target.media_id)? != target.media_revision
+            || self.media_path(&target.media_id)? != target.path
+        {
+            return Err("FINGERPRINT_STALE".into());
+        }
+        if self
+            .personal
+            .execute(
+                "UPDATE cc_media_fingerprint SET state='complete'
+                 WHERE stable_id=?1 AND state='running' AND source_path=?2
+                   AND file_version_token=?3 AND partial_sha256 IS NOT NULL",
+                params![
+                    target.media_id,
+                    target.path.to_string_lossy(),
+                    file_version_token
+                ],
+            )
+            .map_err(db)?
+            != 1
+        {
+            return Err("FINGERPRINT_STALE".into());
+        }
+        Ok(())
+    }
+
     pub fn mark_fingerprint_failed(&self, media_id: &str) -> Result<(), String> {
         self.personal
             .execute(
@@ -150,13 +261,15 @@ impl Store {
     /// CAS-publishes evidence only while the stable identity still names the
     /// same catalogue revision. A completed full proof may reuse the existing
     /// protected reassociation transaction, but only for one unique old/new pair.
-    pub fn save_fingerprint(
+    pub fn save_fingerprint_versioned(
         &self,
         target: &FingerprintTarget,
         evidence: &FingerprintEvidence,
+        file_version_token: &str,
     ) -> Result<Option<String>, String> {
         if evidence.byte_size == 0
             || !sha256(&evidence.partial_sha256)
+            || !sha256(file_version_token)
             || evidence
                 .full_sha256
                 .as_ref()
@@ -168,8 +281,8 @@ impl Store {
         }
         let byte_size = i64::try_from(evidence.byte_size).map_err(|_| "FINGERPRINT_INVALID")?;
         self.personal.execute(
-            "INSERT INTO cc_media_fingerprint(stable_id,byte_size,partial_sha256,full_sha256,source_path,state,requested_kind)
-             VALUES(?1,?2,?3,?4,?5,'complete',CASE WHEN ?4 IS NULL THEN 'partial' ELSE 'full' END)
+            "INSERT INTO cc_media_fingerprint(stable_id,byte_size,partial_sha256,full_sha256,source_path,file_version_token,state,requested_kind)
+             VALUES(?1,?2,?3,?4,?5,?6,'complete',CASE WHEN ?4 IS NULL THEN 'partial' ELSE 'full' END)
              ON CONFLICT(stable_id) DO UPDATE SET byte_size=excluded.byte_size,
                partial_sha256=excluded.partial_sha256,
                full_sha256=CASE
@@ -177,10 +290,12 @@ impl Store {
                  WHEN cc_media_fingerprint.source_path=excluded.source_path
                   AND cc_media_fingerprint.byte_size=excluded.byte_size
                   AND cc_media_fingerprint.partial_sha256=excluded.partial_sha256
+                  AND cc_media_fingerprint.file_version_token=excluded.file_version_token
                  THEN cc_media_fingerprint.full_sha256 ELSE NULL END,
                source_path=excluded.source_path,
+               file_version_token=excluded.file_version_token,
                state='complete',requested_kind=excluded.requested_kind",
-            params![target.media_id, byte_size, evidence.partial_sha256, evidence.full_sha256, target.path.to_string_lossy()],
+            params![target.media_id, byte_size, evidence.partial_sha256, evidence.full_sha256, target.path.to_string_lossy(), file_version_token],
         ).map_err(db)?;
         let Some(full) = evidence.full_sha256.as_deref() else {
             return Ok(None);
@@ -194,6 +309,7 @@ impl Store {
              JOIN media m ON m.id=i.legacy_id
              LEFT JOIN cc_media_revision r ON r.stable_id=f.stable_id
              WHERE f.byte_size=?1 AND f.full_sha256=?2 AND f.state='complete'
+               AND f.file_version_token IS NOT NULL
                AND f.source_path=json_extract(m.data,'$.path') ORDER BY f.stable_id",
             )
             .map_err(db)?;
@@ -232,14 +348,24 @@ impl Store {
         Ok(Some(source.clone()))
     }
 
+    #[cfg(test)]
+    pub fn save_fingerprint(
+        &self,
+        target: &FingerprintTarget,
+        evidence: &FingerprintEvidence,
+    ) -> Result<Option<String>, String> {
+        self.save_fingerprint_versioned(target, evidence, &"0".repeat(64))
+    }
+
     pub fn fingerprint_status(&self, media_id: &str) -> Result<FingerprintStatus, String> {
         self.legacy_id(media_id)?;
         self.personal
             .query_row(
                 "SELECT
-               CASE WHEN f.source_path=json_extract(m.data,'$.path') THEN f.state ELSE 'stale' END,
-               CASE WHEN f.source_path<>json_extract(m.data,'$.path') THEN NULL
-                    WHEN f.full_sha256 IS NOT NULL THEN 'full'
+               CASE WHEN f.state='failed' THEN 'failed'
+                    WHEN f.source_path=json_extract(m.data,'$.path') THEN f.state ELSE 'stale' END,
+               CASE WHEN f.state='failed' OR f.source_path<>json_extract(m.data,'$.path') THEN NULL
+                    WHEN f.full_sha256 IS NOT NULL AND f.file_version_token IS NOT NULL THEN 'full'
                     WHEN f.partial_sha256 IS NOT NULL THEN 'partial' ELSE NULL END
              FROM cc_media_fingerprint f
              JOIN cc_media_identity i ON i.stable_id=f.stable_id
@@ -318,7 +444,7 @@ mod tests {
             .unwrap();
         let old = store.fingerprint_target(&source).unwrap();
         store
-            .save_fingerprint(&old, &evidence(Some(&"b".repeat(64))))
+            .save_fingerprint_versioned(&old, &evidence(Some(&"b".repeat(64))), &"1".repeat(64))
             .unwrap();
         store.snapshot(vec![media("new.mp4", true)]).unwrap();
         let target = store
@@ -331,7 +457,11 @@ mod tests {
         let capture = store.fingerprint_target(&target).unwrap();
         assert_eq!(
             store
-                .save_fingerprint(&capture, &evidence(Some(&"b".repeat(64))))
+                .save_fingerprint_versioned(
+                    &capture,
+                    &evidence(Some(&"b".repeat(64))),
+                    &"2".repeat(64),
+                )
                 .unwrap(),
             Some(source.clone())
         );
@@ -349,6 +479,15 @@ mod tests {
                 .as_deref(),
             Some("full")
         );
+        let transferred_token: String = store
+            .personal
+            .query_row(
+                "SELECT file_version_token FROM cc_media_fingerprint WHERE stable_id=?1",
+                [&source],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(transferred_token, "2".repeat(64));
         let portable = store.export_json().unwrap().to_string();
         assert!(!portable.contains("partial_sha256"));
         assert!(!portable.contains(&"b".repeat(64)));
@@ -523,5 +662,41 @@ mod tests {
         );
         assert_eq!(store.catalog(&profile.id).unwrap().len(), 2);
         assert_eq!(store.media(&profile.id, &target).unwrap().rating, Some(2));
+    }
+
+    #[test]
+    fn migration_conservatively_drops_unversioned_full_strength() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("db.sqlite");
+        let mut store = Store::open(&path).unwrap();
+        store.snapshot(vec![media("old.mp4", true)]).unwrap();
+        let profile = store.create_profile("A").unwrap();
+        let id = store.catalog(&profile.id).unwrap()[0].id.clone();
+        let target = store.fingerprint_target(&id).unwrap();
+        store
+            .save_fingerprint(&target, &evidence(Some(&"f".repeat(64))))
+            .unwrap();
+        store
+            .personal
+            .execute(
+                "UPDATE cc_media_fingerprint SET file_version_token=NULL WHERE stable_id=?1",
+                [&id],
+            )
+            .unwrap();
+        drop(store);
+
+        let reopened = Store::open(&path).unwrap();
+        let status = reopened.fingerprint_status(&id).unwrap();
+        assert_eq!(status.state, "complete");
+        assert_eq!(status.strength.as_deref(), Some("partial"));
+        let full: Option<String> = reopened
+            .personal
+            .query_row(
+                "SELECT full_sha256 FROM cc_media_fingerprint WHERE stable_id=?1",
+                [&id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(full, None);
     }
 }

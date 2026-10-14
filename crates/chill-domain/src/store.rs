@@ -116,6 +116,7 @@ impl Store {
                 partial_sha256 TEXT CHECK(partial_sha256 IS NULL OR length(partial_sha256)=64),
                 full_sha256 TEXT CHECK(full_sha256 IS NULL OR length(full_sha256)=64),
                 source_path TEXT,
+                file_version_token TEXT CHECK(file_version_token IS NULL OR length(file_version_token)=64),
                 state TEXT NOT NULL CHECK(state IN ('queued','running','complete','failed')),
                 requested_kind TEXT NOT NULL CHECK(requested_kind IN ('partial','full'))
              );
@@ -219,6 +220,47 @@ impl Store {
         add_column_if_missing(&personal, "cc_profile_state", "last_generation INTEGER")?;
         add_column_if_missing(&personal, "cc_profile_state", "last_sequence INTEGER")?;
         add_column_if_missing(&personal, "cc_media_fingerprint", "source_path TEXT")?;
+        add_column_if_missing(
+            &personal,
+            "cc_media_fingerprint",
+            "file_version_token TEXT CHECK(file_version_token IS NULL OR length(file_version_token)=64)",
+        )?;
+        // A content hash captured before physical-version provenance existed is
+        // not sufficient for automatic reassociation. Keep its partial evidence,
+        // but conservatively remove only the unproven full strength.
+        personal
+            .execute(
+                "UPDATE cc_media_fingerprint SET full_sha256=NULL
+                 WHERE full_sha256 IS NOT NULL AND file_version_token IS NULL",
+                [],
+            )
+            .map_err(db_error)?;
+        // apply_reassociation copies the target evidence while both rows still
+        // exist. Keep the private invalidation token in that same transaction
+        // without exposing it through the reassociation/API contracts.
+        personal
+            .execute_batch(
+                "CREATE TRIGGER IF NOT EXISTS cc_fingerprint_version_reassociation
+             AFTER UPDATE OF source_path ON cc_media_fingerprint
+             WHEN NEW.source_path IS NOT OLD.source_path AND EXISTS(
+               SELECT 1 FROM cc_media_fingerprint other
+               JOIN cc_media_identity oi ON oi.stable_id=other.stable_id
+               JOIN media om ON om.id=oi.legacy_id
+               WHERE other.stable_id<>NEW.stable_id AND other.source_path=NEW.source_path
+                 AND other.source_path=json_extract(om.data,'$.path')
+             )
+             BEGIN
+               UPDATE cc_media_fingerprint SET file_version_token=(
+                 SELECT other.file_version_token FROM cc_media_fingerprint other
+                 JOIN cc_media_identity oi ON oi.stable_id=other.stable_id
+                 JOIN media om ON om.id=oi.legacy_id
+                 WHERE other.stable_id<>NEW.stable_id AND other.source_path=NEW.source_path
+                   AND other.source_path=json_extract(om.data,'$.path')
+                 ORDER BY other.stable_id LIMIT 1
+               ) WHERE stable_id=NEW.stable_id;
+             END;",
+            )
+            .map_err(db_error)?;
         // The epoch guards the entire imported state, including writes from a
         // second connection (scanner). Every trigger is transactional.
         for table in [
