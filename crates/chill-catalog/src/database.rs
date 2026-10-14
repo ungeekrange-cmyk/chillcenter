@@ -1,4 +1,4 @@
-use crate::model::{Collection, Media, MediaPatch, SeriesPatch, SeriesProvider, Settings, now};
+use crate::model::{Collection, Media, MediaPatch, SeriesPatch, SeriesProvider, Settings, now, merge_association, merge_enrichment};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::{
     collections::{HashMap, HashSet},
@@ -132,6 +132,54 @@ impl Database {
         .map_err(db_error)?;
         tx.commit().map_err(db_error)?;
         Ok(media)
+    }
+
+    /// Applies an explicitly selected or refreshed provider record only when the
+    /// item still equals the snapshot that was sent to TMDB.  This is deliberately
+    /// separate from ordinary patches: a slow provider response must never win
+    /// over a local correction or a personal poster import.
+    pub fn apply_provider(
+        &self,
+        original: &Media,
+        downloaded: Media,
+        explicit_association: bool,
+    ) -> Result<Media, String> {
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(db_error)?;
+        let latest = self.get(&original.id)?;
+        let merged = if explicit_association {
+            merge_association(original, &latest, downloaded)
+        } else {
+            merge_enrichment(original, &latest, downloaded)
+        };
+        // A provider refresh is only safe if fields it owns have not been
+        // changed after the snapshot. `merge_*` preserves unrelated changes;
+        // reject the request if it would silently discard a provider field.
+        if latest.tmdb_id != original.tmdb_id
+            || latest.poster != original.poster
+            || latest.poster_custom != original.poster_custom
+            || (!explicit_association
+                && (latest.title != original.title
+                    || latest.series != original.series
+                    || latest.overview != original.overview
+                    || latest.year != original.year
+                    || latest.genres != original.genres))
+        {
+            return Err("La fiche a changé pendant la requête. Vos corrections sont conservées ; relancez l’opération.".into());
+        }
+        tx.execute(
+            "UPDATE media SET data=?1 WHERE id=?2",
+            params![
+                serde_json::to_string(&merged).map_err(|_| "Métadonnées invalides.")?,
+                merged.id
+            ],
+        )
+        .map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        Ok(merged)
     }
 
     /// Commit a downloaded provider poster only after success, preserving a concurrent import.

@@ -293,11 +293,27 @@ impl Tmdb {
         if !response.status().is_success() {
             return Err("Image TMDB indisponible.".into());
         }
-        let bytes = body_limited(response, 5 * 1024 * 1024).await?;
-        if !bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-            return Err("Image TMDB invalide.".into());
-        }
+        let bytes = body_limited(response, 8 * 1024 * 1024).await?;
         crate::poster::store(&bytes, cache)
+    }
+
+    /// Fetch a provider poster without refreshing any metadata.  The fixed
+    /// TMDB image host and `download_artwork` validation are intentionally
+    /// shared with saga artwork selection.
+    pub async fn restore_poster(
+        &self,
+        kind: &str,
+        id: i64,
+        cache: &Path,
+    ) -> Result<String, String> {
+        if id <= 0 || !["movie", "tv"].contains(&kind) {
+            return Err("Identifiant TMDB invalide.".into());
+        }
+        let details = self.get(&format!("{kind}/{id}"), &[]).await?;
+        let path = details["poster_path"]
+            .as_str()
+            .ok_or("TMDB n’a pas fourni d’affiche. Votre affiche personnelle est conservée.")?;
+        self.download_artwork(path, cache).await
     }
 
     pub async fn enrich(
@@ -379,31 +395,8 @@ impl Tmdb {
         {
             // A changed association must not keep an unrelated old TMDB poster.
             // Only TMDB's fixed image host; no URL or filesystem path supplied by AI.
-            if poster_path.starts_with('/')
-                && !poster_path.contains("..")
-                && !poster_path.contains(['?', '#'])
-            {
-                let file = cache.join(format!("{kind}-{id}.jpg"));
-                if file.exists() {
-                    media.poster = Some(file.to_string_lossy().into_owned());
-                } else if let Ok(response) = self
-                    .client
-                    .get(format!("https://image.tmdb.org/t/p/w342{poster_path}"))
-                    .send()
-                    .await
-                    && response.status().is_success()
-                    && let Ok(bytes) = body_limited(response, 5 * 1024 * 1024).await
-                    && bytes.starts_with(&[0xff, 0xd8])
-                {
-                    std::fs::create_dir_all(cache)
-                        .map_err(|_| "Impossible de créer le cache des jaquettes.")?;
-                    let temp = file.with_extension("pending");
-                    std::fs::write(&temp, bytes)
-                        .map_err(|_| "Impossible d’enregistrer la jaquette.")?;
-                    std::fs::rename(&temp, &file)
-                        .map_err(|_| "Impossible d’enregistrer la jaquette.")?;
-                    media.poster = Some(file.to_string_lossy().into_owned());
-                }
+            if let Ok(poster) = self.download_artwork(poster_path, cache).await {
+                media.poster = Some(poster);
             }
         }
         Ok(media)

@@ -68,7 +68,7 @@ pub struct SagaView {
 }
 
 pub struct Store {
-    catalogue: Database,
+    pub(crate) catalogue: Database,
     pub(crate) personal: Connection,
 }
 

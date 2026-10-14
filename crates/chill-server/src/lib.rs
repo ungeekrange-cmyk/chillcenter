@@ -9,3 +9,4 @@ pub mod playback;
 #[cfg(test)]
 mod playback_tests;
 pub mod tls;
+pub mod tmdb_api;
