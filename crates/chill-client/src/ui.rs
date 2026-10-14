@@ -168,6 +168,10 @@ pub enum UiCommand {
     TmdbRestorePoster { media_id: String, expected_revision: u64 },
     Unavailable { offset: usize, limit: usize },
     ForgetUnavailable { media_ids: Vec<String>, expected_epoch: u64, confirmed: bool },
+    ReassociationProposals { offset: usize },
+    ConfirmReassociation { source_id: String, target_id: String, expected_source_revision: u64, expected_target_revision: u64, expected_epoch: u64, confirmed: bool },
+    FingerprintStatus { media_id: String },
+    RequestFullFingerprint { media_id: String, confirmed: bool },
     Theme {
         theme: String,
     },
@@ -709,6 +713,19 @@ impl UiClient {
                 if !confirmed || media_ids.is_empty() || media_ids.len()>48 { return Err(invalid("Confirmation ou sélection indisponible invalide.")); }
                 self.request(HttpMethod::POST,"/api/v1/admin/unavailable",Some(&json!({"media_ids":media_ids,"expected_epoch":expected_epoch,"confirmed":true})),&[],&[])
             }
+            UiCommand::ReassociationProposals { offset } => {
+                if offset > i64::MAX as usize { return Err(invalid("Page de réassociation invalide.")); }
+                self.profile()?;
+                self.request(HttpMethod::GET,"/api/v1/admin/reassociations",None,&[("offset",offset.to_string()),("limit","48".into())],&[])
+            }
+            UiCommand::ConfirmReassociation { source_id, target_id, expected_source_revision, expected_target_revision, expected_epoch, confirmed } => {
+                valid_id(&source_id)?; valid_id(&target_id)?;
+                if !confirmed || source_id==target_id { return Err(invalid("Confirmation de réassociation invalide.")); }
+                self.profile()?;
+                self.request(HttpMethod::POST,"/api/v1/admin/reassociations",Some(&json!({"confirmed":true,"source_id":source_id,"target_id":target_id,"expected_source_revision":expected_source_revision,"expected_target_revision":expected_target_revision,"expected_epoch":expected_epoch})),&[],&[])
+            }
+            UiCommand::FingerprintStatus { media_id } => { valid_id(&media_id)?; self.profile()?; self.request(HttpMethod::GET,&format!("/api/v1/admin/media/{media_id}/fingerprint"),None,&[],&[]) }
+            UiCommand::RequestFullFingerprint { media_id, confirmed } => { valid_id(&media_id)?; if !confirmed{return Err(invalid("Confirmation d’empreinte complète requise."));} self.profile()?; self.request(HttpMethod::POST,&format!("/api/v1/admin/media/{media_id}/fingerprint"),Some(&json!({"complete":true})),&[],&[]) }
             UiCommand::Artwork { media_id } => {
                 valid_id(&media_id)?;
                 let p = self.profile()?;
@@ -1433,6 +1450,10 @@ mod tests {
         assert!(serde_json::from_value::<UiCommand>(json!({"action":"tmdb_candidates","media_id":"x","url":"https://evil"})).is_err());
         let remove: UiCommand = serde_json::from_value(json!({"action":"forget_unavailable","media_ids":["a"],"expected_epoch":1,"confirmed":true})).unwrap();
         assert!(matches!(remove, UiCommand::ForgetUnavailable { confirmed: true, .. }));
+        let source=uuid::Uuid::new_v4().to_string(); let target=uuid::Uuid::new_v4().to_string();
+        let confirm: UiCommand=serde_json::from_value(json!({"action":"confirm_reassociation","source_id":source,"target_id":target,"expected_source_revision":1,"expected_target_revision":2,"expected_epoch":3,"confirmed":true})).unwrap();
+        assert!(matches!(confirm,UiCommand::ConfirmReassociation { .. }));
+        assert!(serde_json::from_value::<UiCommand>(json!({"action":"request_full_fingerprint","media_id":"bad","confirmed":true,"path":"/nas/x"})).is_err());
     }
     #[test]
     fn failed_initial_connection_discards_provisional_trust_and_never_persists_it() {

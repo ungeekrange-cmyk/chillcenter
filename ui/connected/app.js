@@ -13,6 +13,7 @@ async function run(command, update=true) {
 }
 function render(){
   if(window.adminContextChanged)window.adminContextChanged();
+  if(window.identityContextChanged)window.identityContextChanged();
   if(window.aiContextChanged)window.aiContextChanged();
   if(window.catalogProfileChanged)window.catalogProfileChanged();
   if(window.refreshAppearance)window.refreshAppearance();
