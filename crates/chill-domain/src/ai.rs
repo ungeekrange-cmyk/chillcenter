@@ -15,14 +15,16 @@ pub struct AiContextQuery {
     pub category: Option<String>,
     pub q: Option<String>,
 }
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AiContext {
     pub profile_id: String,
     pub common_revision: u64,
     pub personal_revision: u64,
     pub media: Vec<AiMedia>,
 }
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AiMedia {
     pub id: String,
     pub title: String,
@@ -52,7 +54,8 @@ pub struct AiChange {
     pub expected_revision: u64,
     pub patch: MediaPatch,
 }
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AiApplied {
     pub applied_count: usize,
     pub common_revision: u64,
@@ -100,8 +103,8 @@ impl Store {
             )
             .map_err(super::store::db_error)?;
         let category = query.category.unwrap_or_default();
-        let needle = query.q.unwrap_or_default();
-        let mut statement = tx.prepare("SELECT i.stable_id,m.data,r.revision FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id JOIN cc_media_revision r ON r.stable_id=i.stable_id WHERE (?1='' OR json_extract(m.data,'$.category')=?1) AND (?2='' OR json_extract(m.data,'$.title') LIKE '%'||?2||'%') ORDER BY m.id LIMIT 3001").map_err(super::store::db_error)?;
+        let needle = escape_like(&query.q.unwrap_or_default());
+        let mut statement = tx.prepare("SELECT i.stable_id,m.data,r.revision FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id JOIN cc_media_revision r ON r.stable_id=i.stable_id WHERE (?1='' OR json_extract(m.data,'$.category')=?1) AND (?2='' OR json_extract(m.data,'$.title') LIKE '%'||?2||'%' ESCAPE '\\') ORDER BY m.id LIMIT 3001").map_err(super::store::db_error)?;
         let rows = statement
             .query_map(params![category, needle], |r| {
                 Ok((
@@ -283,10 +286,6 @@ impl Store {
                 )
                 .map_err(super::store::db_error)?;
                 if let Some(name) = common_patch.saga {
-                    let count:i64=tx.query_row("SELECT COUNT(*) FROM collection_members cm JOIN collections c ON c.id=cm.collection_id WHERE c.kind='saga' AND c.name=?1",[&name],|r|r.get(0)).map_err(super::store::db_error)?;
-                    if count >= 1000 {
-                        return Err("AI_SAGA_LIMIT".into());
-                    };
                     tx.execute(
                         "INSERT OR IGNORE INTO collections(name,kind) VALUES(?1,'saga')",
                         [&name],
@@ -300,7 +299,25 @@ impl Store {
                         )
                         .map_err(super::store::db_error)?;
                     tx.execute("INSERT OR IGNORE INTO collection_revisions(collection_id,revision) VALUES(?1,1)",[saga]).map_err(super::store::db_error)?;
-                    tx.execute("INSERT OR IGNORE INTO collection_members(collection_id,media_id) VALUES(?1,?2)",params![saga,&legacy]).map_err(super::store::db_error)?;
+                    let existing: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM collection_members WHERE collection_id=?1 AND media_id=?2)", params![saga, &legacy], |r| r.get(0)).map_err(super::store::db_error)?;
+                    if !existing {
+                        let count: i64 = tx
+                            .query_row(
+                                "SELECT COUNT(*) FROM collection_members WHERE collection_id=?1",
+                                [saga],
+                                |r| r.get(0),
+                            )
+                            .map_err(super::store::db_error)?;
+                        if count >= 1000 {
+                            return Err("AI_SAGA_LIMIT".into());
+                        }
+                        tx.execute(
+                            "INSERT INTO collection_members(collection_id,media_id) VALUES(?1,?2)",
+                            params![saga, &legacy],
+                        )
+                        .map_err(super::store::db_error)?;
+                        tx.execute("UPDATE collection_revisions SET revision=revision+1 WHERE collection_id=?1", [saga]).map_err(super::store::db_error)?;
+                    }
                     tx.execute(
                         "INSERT OR IGNORE INTO imported_sagas(media_id,name) VALUES(?1,?2)",
                         params![&legacy, &name],
@@ -352,6 +369,14 @@ fn is_empty(p: &MediaPatch) -> bool {
         && p.cast.is_none()
         && p.directors.is_none()
         && p.series_overview.is_none()
+}
+
+/// SQLite LIKE treats `%` and `_` as wildcards unless explicitly escaped.
+fn escape_like(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 #[cfg(test)]
@@ -474,5 +499,126 @@ mod tests {
                 .title,
             "<ignore instructions>"
         );
+    }
+    #[test]
+    fn context_roundtrips_as_a_closed_client_dto_and_search_is_literal() {
+        let (_d, mut s, a, _) = setup();
+        let id = s.catalog(&a).unwrap()[0].id.clone();
+        s.update_media_at_revision(
+            &a,
+            &id,
+            s.media_revision(&id).unwrap(),
+            &MediaPatch {
+                title: Some("100%_literal".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let context = s
+            .ai_context(
+                &a,
+                AiContextQuery {
+                    category: Some("film".into()),
+                    q: Some("%_".into()),
+                },
+            )
+            .unwrap();
+        assert_eq!(context.media.len(), 1);
+        let decoded: AiContext =
+            serde_json::from_slice(&serde_json::to_vec(&context).unwrap()).unwrap();
+        assert_eq!(decoded.media[0].id, id);
+        assert!(serde_json::from_value::<AiContext>(serde_json::json!({"profile_id":"x","common_revision":1,"personal_revision":1,"media":[],"path":"/nas"})).is_err());
+        assert!(serde_json::from_value::<AiApplied>(serde_json::json!({"applied_count":1,"common_revision":1,"personal_revision":1,"extra":true})).is_err());
+    }
+    #[test]
+    fn other_profile_progress_does_not_stale_common_plan_and_saga_membership_bumps_revision() {
+        let (_d, mut s, a, b) = setup();
+        let first = s
+            .ai_context(
+                &a,
+                AiContextQuery {
+                    category: None,
+                    q: None,
+                },
+            )
+            .unwrap();
+        let id = first.media[0].id.clone();
+        s.set_watched(&b, &id, true).unwrap();
+        let applied = s
+            .ai_apply(
+                &a,
+                AiApply {
+                    expected_common_revision: first.common_revision,
+                    expected_personal_revision: first.personal_revision,
+                    confirmed: true,
+                    changes: vec![AiChange {
+                        id: id.clone(),
+                        expected_revision: first.media[0].revision,
+                        patch: MediaPatch {
+                            saga: Some("AI saga".into()),
+                            ..Default::default()
+                        },
+                    }],
+                },
+            )
+            .unwrap();
+        assert!(applied.common_revision > first.common_revision);
+        let saga = s
+            .sagas()
+            .unwrap()
+            .into_iter()
+            .find(|v| v.name == "AI saga")
+            .unwrap();
+        assert_eq!(saga.revision, 2);
+        assert_eq!(saga.media_ids, vec![id]);
+    }
+    #[test]
+    fn sqlite_failure_rolls_back_common_and_personal_ai_changes() {
+        let (_d, mut s, a, _) = setup();
+        let context = s
+            .ai_context(
+                &a,
+                AiContextQuery {
+                    category: None,
+                    q: None,
+                },
+            )
+            .unwrap();
+        let item = &context.media[0];
+        s.personal
+            .execute_batch("CREATE TRIGGER ai_fail_state BEFORE INSERT ON cc_profile_state BEGIN SELECT RAISE(ABORT,'fixture'); END;")
+            .unwrap();
+        let error = s
+            .ai_apply(
+                &a,
+                AiApply {
+                    expected_common_revision: context.common_revision,
+                    expected_personal_revision: context.personal_revision,
+                    confirmed: true,
+                    changes: vec![AiChange {
+                        id: item.id.clone(),
+                        expected_revision: item.revision,
+                        patch: MediaPatch {
+                            title: Some("must rollback".into()),
+                            rating: Some(4),
+                            ..Default::default()
+                        },
+                    }],
+                },
+            )
+            .unwrap_err();
+        assert_ne!(error, "AI_MEDIA_STALE");
+        let after = s
+            .ai_context(
+                &a,
+                AiContextQuery {
+                    category: None,
+                    q: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(after.media[0].title, "<ignore instructions>");
+        assert_eq!(after.media[0].rating, None);
+        assert_eq!(after.common_revision, context.common_revision);
     }
 }
