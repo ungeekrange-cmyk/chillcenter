@@ -2,9 +2,24 @@
 use crate::{ClientError, Transport, is_opaque_id};
 pub use chill_domain::{
     AcquirePlayback, Lease, NextVideo, PersonalState, PlaybackContext, PlaybackControl,
-    PlaybackGrant, PlaybackInfo, Progress, ReleasePlayback,
+    PlaybackGrant, PlaybackInfo, Progress, ReleasePlayback, TransferAck, TransferConfirmation,
+    TransferOffer, TransferPhase, TransferProposal, TransferStatus,
 };
 use reqwest::Method;
+#[derive(Debug, serde::Deserialize)]
+pub struct PauseInstruction {
+    pub token: String,
+    pub remaining_ms: u64,
+}
+pub struct ControlSubscription {
+    pub receiver: tokio::sync::mpsc::Receiver<PauseInstruction>,
+    task: tokio::task::JoinHandle<()>,
+}
+impl Drop for ControlSubscription {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ExternalSubtitle {
     pub id: String,
@@ -43,6 +58,116 @@ pub fn valid_speed_value(speed: f64) -> bool {
     chill_domain::valid_speed(speed)
 }
 impl Transport {
+    pub async fn propose_transfer(
+        &self,
+        profile: &str,
+        target: &AcquirePlayback,
+    ) -> Result<TransferOffer, ClientError> {
+        self.request_json(
+            Method::POST,
+            &profile_path(profile, "transfer/propose")?,
+            Some(&TransferProposal {
+                target: target.clone(),
+            }),
+        )
+        .await
+    }
+    pub async fn confirm_transfer(
+        &self,
+        profile: &str,
+        token: &str,
+    ) -> Result<TransferStatus, ClientError> {
+        self.request_json(
+            Method::POST,
+            &profile_path(profile, "transfer/confirm")?,
+            Some(&TransferConfirmation {
+                token: token.into(),
+            }),
+        )
+        .await
+    }
+    pub async fn transfer_status(
+        &self,
+        profile: &str,
+        token: &str,
+    ) -> Result<TransferStatus, ClientError> {
+        self.json_with_options::<(), _>(
+            Method::GET,
+            &profile_path(profile, "transfer/status")?,
+            None,
+            &[("token", token.into())],
+            &[],
+        )
+        .await
+    }
+    pub async fn acknowledge_transfer(
+        &self,
+        profile: &str,
+        ack: &TransferAck,
+    ) -> Result<TransferStatus, ClientError> {
+        self.request_json(
+            Method::POST,
+            &profile_path(profile, "transfer/ack")?,
+            Some(ack),
+        )
+        .await
+    }
+    pub fn subscribe_controls(&self, profile: String, lease: Lease) -> ControlSubscription {
+        let transport = self.clone();
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        let task = tokio::spawn(async move {
+            loop {
+                if sender.is_closed() {
+                    break;
+                }
+                if let Ok(Some(event)) = transport.wait_pause(&profile, &lease).await {
+                    let _ = sender.send(event).await;
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        });
+        ControlSubscription { receiver, task }
+    }
+    async fn wait_pause(
+        &self,
+        profile: &str,
+        lease: &Lease,
+    ) -> Result<Option<PauseInstruction>, ClientError> {
+        let path = profile_path(profile, "events")?;
+        let mut response = self
+            .asynchronous
+            .get(self.endpoint.request_url(&path)?)
+            .query(&subtitle_query(lease))
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            return Err(ClientError::Http(response.status()));
+        }
+        let mut pending = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if pending.len().saturating_add(chunk.len()) > 8192 {
+                return Err(ClientError::InvalidRangeResponse(
+                    "Événement de contrôle trop volumineux".into(),
+                ));
+            }
+            pending.extend_from_slice(&chunk);
+            while let Some(end) = pending.windows(2).position(|w| w == b"\n\n") {
+                let block: String = String::from_utf8_lossy(&pending[..end]).into();
+                pending.drain(..end + 2);
+                if block.lines().any(|l| l.trim() == "event: pause") {
+                    let data = block
+                        .lines()
+                        .find_map(|l| l.strip_prefix("data:"))
+                        .ok_or_else(|| {
+                            ClientError::InvalidRangeResponse("Contrôle invalide".into())
+                        })?;
+                    return Ok(Some(serde_json::from_str(data.trim())?));
+                }
+            }
+        }
+        Ok(None)
+    }
     pub async fn external_subtitles(
         &self,
         profile: &str,

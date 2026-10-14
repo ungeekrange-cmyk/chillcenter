@@ -3,8 +3,9 @@ use crate::native_player::{self, LeaseDeadline, NativeAction, NativeRect, Native
 use chill_client::{
     Transport,
     playback::{
-        AcquirePlayback, ExternalSubtitle, Lease, NextVideo, PlaybackContext, PlaybackControl,
-        PlaybackInfo, ReleasePlayback,
+        AcquirePlayback, ControlSubscription, ExternalSubtitle, Lease, NextVideo, PlaybackContext,
+        PlaybackControl, PlaybackGrant, PlaybackInfo, ReleasePlayback, TransferAck, TransferOffer,
+        TransferPhase, TransferStatus,
     },
     ui::{PlaybackConnection, UiError},
     watch_clock::{Observation, WatchClock},
@@ -31,6 +32,8 @@ pub enum PlayerCommand {
         context: Option<PlaybackContext>,
     },
     Status,
+    ConfirmTransfer,
+    RefuseTransfer,
     Next {
         expected_id: String,
     },
@@ -96,12 +99,27 @@ struct Session {
     next: Option<NextVideo>,
     external: Vec<ExternalSubtitle>,
     selected_external: Option<String>,
+    audio_override: Option<i64>,
+    subtitle_override: Option<Option<i64>>,
     subtitle_cache: Vec<(String, std::path::PathBuf)>,
     cache_dir: std::path::PathBuf,
+    controls: Option<ControlSubscription>,
+}
+struct PendingTransfer {
+    connection: PlaybackConnection,
+    info: PlaybackInfo,
+    rect: NativeRect,
+    context: PlaybackContext,
+    offer: TransferOffer,
+    confirmed: bool,
+    last_poll: Instant,
+    remaining_ms: u64,
 }
 #[derive(Default)]
 pub struct PlayerHost {
     session: Option<Session>,
+    pending: Option<PendingTransfer>,
+    last_error: Option<String>,
     pub rendering: Arc<AtomicBool>,
     pub cache_dir: std::path::PathBuf,
 }
@@ -136,7 +154,7 @@ impl PlayerHost {
             }
         });
         let sent = Instant::now();
-        let grant = c
+        let acquired = c
             .transport
             .acquire_playback(
                 &c.profile_id,
@@ -146,7 +164,47 @@ impl PlayerHost {
                     context: context.clone(),
                 },
             )
-            .await?;
+            .await;
+        let grant = match acquired {
+            Ok(grant) => grant,
+            Err(chill_client::ClientError::Api { code, .. }) if code == "PLAYBACK_ACTIVE" => {
+                let offer = c
+                    .transport
+                    .propose_transfer(
+                        &c.profile_id,
+                        &AcquirePlayback {
+                            media_id: info.media.id.clone(),
+                            device_id: c.device_id.clone(),
+                            context: context.clone(),
+                        },
+                    )
+                    .await?;
+                self.pending = Some(PendingTransfer {
+                    connection: c,
+                    info,
+                    rect,
+                    context,
+                    offer,
+                    confirmed: false,
+                    last_poll: Instant::now(),
+                    remaining_ms: 0,
+                });
+                return self.view();
+            }
+            Err(e) => return Err(e.into()),
+        };
+        self.install(w, c, info, rect, context, grant, sent).await
+    }
+    async fn install(
+        &mut self,
+        w: &WebviewWindow,
+        c: PlaybackConnection,
+        info: PlaybackInfo,
+        rect: NativeRect,
+        context: PlaybackContext,
+        grant: PlaybackGrant,
+        sent: Instant,
+    ) -> Result<Value, UiError> {
         let remaining = conservative(grant.lease.remaining_ms, sent);
         let loaded = native_player::load(
             w,
@@ -189,6 +247,10 @@ impl PlayerHost {
                 .await;
             return Err(native_error(e));
         }
+        let controls = Some(
+            c.transport
+                .subscribe_controls(c.profile_id.clone(), grant.lease.clone()),
+        );
         self.session = Some(Session {
             transport: c.transport,
             profile: c.profile_id,
@@ -207,23 +269,93 @@ impl PlayerHost {
             next: None,
             external: Vec::new(),
             selected_external: None,
+            audio_override: None,
+            subtitle_override: None,
             subtitle_cache: Vec::new(),
             cache_dir: self.cache_dir.clone(),
+            controls,
         });
         self.view()
     }
     pub fn view(&self) -> Result<Value, UiError> {
+        if let Some(p) = &self.pending {
+            return Ok(
+                json!({"stage":"transfer","title":p.info.media.title,"confirmed":p.confirmed,"remaining_ms":p.remaining_ms,"note":"Ce profil lit déjà une vidéo sur un autre appareil. Confirmez pour y interrompre la lecture et la reprendre ici."}),
+            );
+        }
         Ok(match &self.session {
-            None => json!({"stage":"closed"}),
+            None => json!({"stage":"closed","error":self.last_error}),
             Some(s) => {
                 json!({"stage":"player","media_id":s.info.media.id,"title":s.info.media.title,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some(),"context":s.context,"next":s.next,"autoplay_seconds":s.info.preferences.autoplay_seconds,"external_subtitles":s.external})
             }
         })
     }
     pub async fn tick(&mut self, w: &WebviewWindow) -> Result<(), UiError> {
+        if let Some(p) = self.pending.as_mut() {
+            if p.confirmed && p.last_poll.elapsed() >= Duration::from_secs(1) {
+                p.last_poll = Instant::now();
+                let sent = Instant::now();
+                match p
+                    .connection
+                    .transport
+                    .transfer_status(&p.connection.profile_id, &p.offer.token)
+                    .await
+                {
+                    Ok(status) => {
+                        self.finish_transfer(w, status, sent).await?;
+                    }
+                    Err(e) => {
+                        self.last_error = Some(UiError::from(e).message);
+                        self.pending = None;
+                    }
+                }
+            }
+            return Ok(());
+        }
         let Some(s) = &mut self.session else {
             return Ok(());
         };
+        if let Some(event) = s.controls.as_mut().and_then(|c| c.receiver.try_recv().ok()) {
+            self.rendering.store(false, Ordering::Release);
+            let playing = !s.snapshot.paused;
+            let previous = s.snapshot.clone();
+            if let Ok(mut snapshot) =
+                native_player::action(w, NativeAction::Pause { paused: true }).await
+            {
+                if snapshot.position.is_none() {
+                    snapshot.position = previous.position;
+                }
+                if snapshot.duration.is_none() {
+                    snapshot.duration = previous.duration;
+                }
+                s.snapshot = snapshot;
+                s.controls = None;
+                if let Some(lease) = s.lease.take() {
+                    let obs = observation(s, playing, false);
+                    if let Some(progress) = s.clock.event(&lease, obs, Instant::now()) {
+                        let ack = TransferAck {
+                            token: event.token,
+                            lease: control(&lease),
+                            progress,
+                        };
+                        if s.transport
+                            .acknowledge_transfer(&s.profile, &ack)
+                            .await
+                            .is_err()
+                        {
+                            s.note=Some("Lecture interrompue pour transfert ; synchronisation finale indisponible.".into());
+                        } else {
+                            s.note = Some("Lecture transférée vers l'autre appareil.".into());
+                        }
+                    } else {
+                        s.note=Some("Lecture interrompue pour transfert ; l'autre appareil attend l'échéance du bail.".into());
+                    }
+                }
+                s.clock.forget_credit();
+                return Ok(());
+            }
+            return Ok(());
+        }
         let previous = s.snapshot.clone();
         s.snapshot = native_player::action(w, NativeAction::Poll)
             .await
@@ -240,6 +372,16 @@ impl PlayerHost {
         }
         if s.snapshot.error.is_some() {
             self.rendering.store(false, Ordering::Release);
+            if let Some(l) = &s.lease {
+                if matches!(s.transport.heartbeat_playback(&s.profile,&control(l)).await,Err(chill_client::ClientError::Api{code,..}) if code=="TRANSFER_PENDING")
+                {
+                    let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
+                    s.snapshot.paused = true;
+                    s.snapshot.position = s.snapshot.position.or(previous.position);
+                    s.note = Some("Interruption pour transfert en cours…".into());
+                    return Ok(());
+                }
+            }
             let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
             s.snapshot.paused = true;
             if let Some(l) = s.lease.take() {
@@ -309,9 +451,13 @@ impl PlayerHost {
                                 .as_deref()
                                 .is_some_and(|l| language_equal(l, preferred))
                     });
-                    let chosen = s.selected_external.clone().or_else(|| {
-                        (!has_integrated && matched.len() == 1).then(|| matched[0].clone())
-                    });
+                    let chosen = if s.subtitle_override.is_some() {
+                        None
+                    } else {
+                        s.selected_external.clone().or_else(|| {
+                            (!has_integrated && matched.len() == 1).then(|| matched[0].clone())
+                        })
+                    };
                     if let Some(id) = chosen {
                         if add_external(s, w, &id).await.is_err() {
                             s.note = Some(
@@ -324,6 +470,29 @@ impl PlayerHost {
                     }
                 }
                 Err(_) => s.note = Some("Impossible de vérifier les sous-titres externes.".into()),
+            }
+            if let Some(track_id) = s.audio_override {
+                if s.snapshot
+                    .tracks
+                    .iter()
+                    .any(|t| t.id == track_id && t.kind == TrackKind::Audio)
+                {
+                    s.snapshot = native_player::action(w, NativeAction::Audio { track_id })
+                        .await
+                        .map_err(native_error)?;
+                }
+            }
+            if let Some(track_id) = s.subtitle_override {
+                if track_id.is_none()
+                    || s.snapshot
+                        .tracks
+                        .iter()
+                        .any(|t| Some(t.id) == track_id && t.kind == TrackKind::Subtitle)
+                {
+                    s.snapshot = native_player::action(w, NativeAction::Subtitle { track_id })
+                        .await
+                        .map_err(native_error)?;
+                }
             }
             s.snapshot = native_player::action(w, NativeAction::Pause { paused: false })
                 .await
@@ -374,6 +543,27 @@ impl PlayerHost {
         w: &WebviewWindow,
         cmd: PlayerCommand,
     ) -> Result<Value, UiError> {
+        if matches!(cmd, PlayerCommand::RefuseTransfer) {
+            if self.pending.as_ref().is_some_and(|p| p.confirmed) {
+                return Err(error("Le transfert est déjà confirmé."));
+            }
+            self.pending = None;
+            return self.view();
+        }
+        if matches!(cmd, PlayerCommand::ConfirmTransfer) {
+            let p = self
+                .pending
+                .as_ref()
+                .ok_or_else(|| error("Aucun transfert proposé."))?;
+            let sent = Instant::now();
+            let status = p
+                .connection
+                .transport
+                .confirm_transfer(&p.connection.profile_id, &p.offer.token)
+                .await?;
+            self.pending.as_mut().unwrap().confirmed = true;
+            return self.finish_transfer(w, status, sent).await;
+        }
         if let PlayerCommand::Next { expected_id } = &cmd {
             uuid_check(expected_id)?;
             let s = self
@@ -437,7 +627,7 @@ impl PlayerHost {
             PlayerCommand::Resume => {
                 if s.lease.is_none() {
                     let sent = Instant::now();
-                    let g = s
+                    let acquired = s
                         .transport
                         .acquire_playback(
                             &s.profile,
@@ -447,7 +637,25 @@ impl PlayerHost {
                                 context: s.context.clone(),
                             },
                         )
-                        .await?;
+                        .await;
+                    let g = match acquired {
+                        Ok(g) => g,
+                        Err(chill_client::ClientError::Api { code, .. })
+                            if code == "PLAYBACK_ACTIVE" =>
+                        {
+                            let c = PlaybackConnection {
+                                transport: s.transport.clone(),
+                                profile_id: s.profile.clone(),
+                                device_id: s.device.clone(),
+                                server_id: String::new(),
+                            };
+                            let media = s.info.media.id.clone();
+                            let rect = s.rect;
+                            let context = s.context.clone();
+                            return self.start(w, c, media, rect, Some(context)).await;
+                        }
+                        Err(e) => return Err(e.into()),
+                    };
                     s.clock = WatchClock::default();
                     let loaded = native_player::load(
                         w,
@@ -463,6 +671,11 @@ impl PlayerHost {
                     )
                     .await;
                     s.lease = Some(g.lease);
+                    s.controls =
+                        Some(s.transport.subscribe_controls(
+                            s.profile.clone(),
+                            s.lease.as_ref().unwrap().clone(),
+                        ));
                     s.snapshot = match loaded {
                         Ok(snapshot) => snapshot,
                         Err(e) => {
@@ -563,6 +776,7 @@ impl PlayerHost {
                 s.snapshot = native_player::action(w, NativeAction::Audio { track_id })
                     .await
                     .map_err(native_error)?;
+                s.audio_override = Some(track_id);
             }
             PlayerCommand::Subtitle { track_id } => {
                 s.selected_external = None;
@@ -577,6 +791,7 @@ impl PlayerHost {
                 s.snapshot = native_player::action(w, NativeAction::Subtitle { track_id })
                     .await
                     .map_err(native_error)?;
+                s.subtitle_override = Some(track_id);
             }
             PlayerCommand::Fullscreen => {
                 w.set_fullscreen(
@@ -586,6 +801,7 @@ impl PlayerHost {
                 .map_err(|_| error("Plein écran indisponible."))?;
             }
             PlayerCommand::ExternalSubtitle { id } => {
+                s.subtitle_override = None;
                 if !s.snapshot.loaded {
                     return Err(error("Attendez le chargement de la vidéo."));
                 }
@@ -616,6 +832,31 @@ impl PlayerHost {
     }
     pub async fn stop(&mut self, w: &WebviewWindow) -> Result<(), UiError> {
         self.rendering.store(false, Ordering::Release);
+        self.last_error = None;
+        if let Some(p) = self.pending.take() {
+            if p.confirmed {
+                if let Ok(status) = p
+                    .connection
+                    .transport
+                    .transfer_status(&p.connection.profile_id, &p.offer.token)
+                    .await
+                {
+                    if let Some(lease) = status.lease {
+                        let _ = p
+                            .connection
+                            .transport
+                            .release_playback(
+                                &p.connection.profile_id,
+                                &ReleasePlayback {
+                                    lease: control(&lease),
+                                    progress: None,
+                                },
+                            )
+                            .await;
+                    }
+                }
+            }
+        }
         if let Some(mut s) = self.session.take() {
             if let Ok(snapshot) = native_player::action(w, NativeAction::Poll).await {
                 s.snapshot = snapshot;
@@ -631,6 +872,54 @@ impl PlayerHost {
             }
         }
         Ok(())
+    }
+    async fn finish_transfer(
+        &mut self,
+        w: &WebviewWindow,
+        status: TransferStatus,
+        sent: Instant,
+    ) -> Result<Value, UiError> {
+        match status.phase {
+            TransferPhase::AwaitingAck => {
+                if let Some(p) = self.pending.as_mut() {
+                    p.remaining_ms = status.remaining_ms;
+                }
+                self.view()
+            }
+            TransferPhase::Expired => {
+                self.pending = None;
+                self.last_error = Some("Le transfert a expiré. Relancez la vidéo.".into());
+                self.view()
+            }
+            TransferPhase::Activated => {
+                let p = self
+                    .pending
+                    .take()
+                    .ok_or_else(|| error("Transfert annulé."))?;
+                let lease = status
+                    .lease
+                    .ok_or_else(|| error("Réponse de transfert invalide."))?;
+                if lease.profile_id != p.connection.profile_id
+                    || lease.device_id != p.connection.device_id
+                    || lease.media_id != p.info.media.id
+                {
+                    return Err(error("Réponse de transfert invalide."));
+                }
+                let personal = status
+                    .personal
+                    .ok_or_else(|| error("Reprise de transfert absente."))?;
+                self.install(
+                    w,
+                    p.connection,
+                    p.info,
+                    p.rect,
+                    p.context,
+                    PlaybackGrant { lease, personal },
+                    sent,
+                )
+                .await
+            }
+        }
     }
 }
 fn stream(l: &Lease) -> PlaybackStream {
@@ -781,7 +1070,19 @@ async fn report(s: &mut Session, playing: bool, seek: bool) -> Result<(), UiErro
     let Some(l) = s.lease.as_ref() else {
         return Ok(());
     };
-    let obs = Observation {
+    let obs = observation(s, playing, seek);
+    if let Some(event) = s.clock.event(l, obs, Instant::now()) {
+        if let Err(error) = s.transport.report_progress(&s.profile, &event).await {
+            s.clock.forget_credit();
+            return Err(error.into());
+        }
+        s.clock.acknowledge(event, Instant::now());
+        s.last_save = Instant::now();
+    }
+    Ok(())
+}
+fn observation(s: &Session, playing: bool, seek: bool) -> Observation {
+    Observation {
         position_ms: (s
             .desired_position
             .or(s.snapshot.position)
@@ -794,18 +1095,10 @@ async fn report(s: &mut Session, playing: bool, seek: bool) -> Result<(), UiErro
         playing,
         buffering: s.snapshot.buffering,
         seek,
-    };
-    if let Some(event) = s.clock.event(l, obs, Instant::now()) {
-        if let Err(error) = s.transport.report_progress(&s.profile, &event).await {
-            s.clock.forget_credit();
-            return Err(error.into());
-        }
-        s.clock.acknowledge(event, Instant::now());
-        s.last_save = Instant::now();
     }
-    Ok(())
 }
 async fn release(s: &mut Session) -> Result<(), UiError> {
+    s.controls = None;
     if let Some(l) = s.lease.take() {
         s.clock.forget_credit();
         s.transport
@@ -846,8 +1139,10 @@ async fn seek(s: &mut Session, w: &WebviewWindow, position: f64) -> Result<(), U
             .await?;
         s.clock = WatchClock::default();
         s.lease = Some(g.lease);
-        report(s, false, true).await?;
-        release(s).await?;
+        let saved = report(s, false, true).await;
+        let released = release(s).await;
+        saved?;
+        released?;
     } else {
         s.snapshot = native_player::action(w, NativeAction::Seek { seconds: target })
             .await

@@ -11,6 +11,7 @@ async function playerCall(command,quiet=false){
 }
 window.chillPlay=async (media_id,context=null)=>{
   clearNext();
+  $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
   $("player-panel").hidden=false;document.body.classList.add("player-open");$("player-note").textContent="Chargement de la vidéo…";
   const started=await playerCall({action:"start",media_id,rect:videoRect(),context});
   if(!started){hidePlayer();return;}
@@ -57,7 +58,16 @@ function tracksSelect(id,tracks,selected,off){
   select.value=selected===undefined?(off?"off":select.firstChild?.value||""):String(selected);
 }
 function renderPlayer(){
-  if(playerState.stage!=="player"){hidePlayer();return;}
+  if(playerState.stage==="transfer"){
+    $("player-panel").hidden=false;document.body.classList.add("player-open");clearNext();
+    $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note;
+    $("native-video").hidden=true;document.querySelector(".player-controls").hidden=true;document.querySelector(".player-seek").hidden=true;$("player-decoder").textContent="";
+    $("player-transfer").hidden=false;$("transfer-confirm").hidden=playerState.confirmed;$("transfer-refuse").hidden=playerState.confirmed;
+    $("transfer-wait").textContent=playerState.confirmed?"Attente de l'arrêt de l'autre appareil (au plus "+Math.ceil(playerState.remaining_ms/1000)+" s)…":"Sans confirmation, la lecture continue sur l'autre appareil.";
+    return;
+  }
+  if(playerState.stage!=="player"){const error=playerState.error;hidePlayer();if(error)message(error);return;}
+  $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
   const n=playerState.native;$("player-panel").hidden=false;document.body.classList.add("player-open");
   $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note||n.error||n.notice||(n.ended?"Lecture terminée.":!n.loaded?"Chargement de la vidéo…":n.buffering?"Mise en mémoire tampon…":"");
   $("player-pause").textContent=n.paused?"Lecture":"Pause";$("player-speed").value=String(n.speed);
@@ -72,6 +82,7 @@ function renderPlayer(){
   renderNext();
 }
 $("player-next-now").onclick=launchNext;$("player-next-cancel").onclick=cancelNext;
+$("transfer-confirm").onclick=()=>playerCall({action:"confirm_transfer"});$("transfer-refuse").onclick=()=>playerCall({action:"refuse_transfer"});
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&nextDeadline!==null)cancelNext();});
 $("player-pause").onclick=()=>playerCall({action:playerState.native?.paused?"resume":"pause"});
 $("player-back").onclick=()=>playerCall({action:"jump",seconds:-10});$("player-forward").onclick=()=>playerCall({action:"jump",seconds:30});
