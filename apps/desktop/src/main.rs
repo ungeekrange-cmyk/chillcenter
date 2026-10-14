@@ -207,7 +207,7 @@ fn main() {
                     include_str!("../../../ui/connected/qa.js"),
                     include_str!("../../../ui/connected/player-qa.js"),
                     include_str!("../../../ui/connected/catalog-qa.js"),
-                    if mode == "player" {
+                    if mode == "player" || mode.starts_with("transfer_") {
                         "window.chillPlayerQa"
                     } else {
                         if mode == "catalog" {
