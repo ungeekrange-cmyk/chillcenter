@@ -94,6 +94,9 @@ async fn run() -> Result<(), String> {
     let certificates = tls::ensure(&config, time::OffsetDateTime::now_utc())?;
     let rustls = tls::load(&certificates).await?;
     let state = AppState {
+        tmdb_jobs: Arc::new(chill_server::tmdb_api::TmdbJobService::initialize(
+            &config.data_dir,
+        )?),
         playback: Default::default(),
         scan: Arc::new(Mutex::new(chill_server::catalog_api::ScanStatus::default())),
         database: DatabaseActor::open(config.data_dir.join("catalog.sqlite"))?,

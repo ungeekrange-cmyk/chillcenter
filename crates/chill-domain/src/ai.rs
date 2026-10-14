@@ -14,6 +14,9 @@ const MAX_JSON: usize = 1024 * 1024;
 pub struct AiContextQuery {
     pub category: Option<String>,
     pub q: Option<String>,
+    pub watched: Option<bool>,
+    pub available: Option<bool>,
+    pub categories: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -102,17 +105,41 @@ impl Store {
                 |r| r.get(0),
             )
             .map_err(super::store::db_error)?;
+        if query.category.is_some() && query.categories.is_some() {
+            return Err("AI_CONTEXT_INVALID".into());
+        }
+        let categories = query
+            .categories
+            .map(|v| {
+                let parts = v.split(',').collect::<Vec<_>>();
+                if parts.is_empty()
+                    || parts.len() > 4
+                    || parts
+                        .iter()
+                        .any(|p| !["film", "serie", "documentaire", "spectacle"].contains(p))
+                    || parts.iter().collect::<std::collections::HashSet<_>>().len() != parts.len()
+                {
+                    return Err("AI_CONTEXT_INVALID");
+                }
+                Ok(parts.join(","))
+            })
+            .transpose()?;
         let category = query.category.unwrap_or_default();
         let needle = escape_like(&query.q.unwrap_or_default());
-        let mut statement = tx.prepare("SELECT i.stable_id,m.data,r.revision FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id JOIN cc_media_revision r ON r.stable_id=i.stable_id WHERE (?1='' OR json_extract(m.data,'$.category')=?1) AND (?2='' OR json_extract(m.data,'$.title') LIKE '%'||?2||'%' ESCAPE '\\' OR (json_extract(m.data,'$.category')='serie' AND COALESCE(json_extract(m.data,'$.series'),json_extract(m.data,'$.title')) LIKE '%'||?2||'%' ESCAPE '\\')) ORDER BY m.id LIMIT 3001").map_err(super::store::db_error)?;
+        let watched = query.watched.map(i64::from);
+        let available = query.available.map(i64::from);
+        let mut statement = tx.prepare("SELECT i.stable_id,m.data,r.revision FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id JOIN cc_media_revision r ON r.stable_id=i.stable_id WHERE (?1='' OR json_extract(m.data,'$.category')=?1) AND (?2='' OR json_extract(m.data,'$.title') LIKE '%'||?2||'%' ESCAPE '\\' OR (json_extract(m.data,'$.category')='serie' AND COALESCE(json_extract(m.data,'$.series'),json_extract(m.data,'$.title')) LIKE '%'||?2||'%' ESCAPE '\\')) AND (?3 IS NULL OR COALESCE((SELECT watched FROM cc_profile_state WHERE profile_id=?4 AND stable_media_id=i.stable_id),0)=?3) AND (?5 IS NULL OR COALESCE(json_extract(m.data,'$.available'),0)=?5) AND (?6 IS NULL OR instr(','||?6||',',','||json_extract(m.data,'$.category')||',')>0) ORDER BY m.id LIMIT 3001").map_err(super::store::db_error)?;
         let rows = statement
-            .query_map(params![category, needle], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                ))
-            })
+            .query_map(
+                params![category, needle, watched, profile, available, categories],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, i64>(2)?,
+                    ))
+                },
+            )
             .map_err(super::store::db_error)?;
         let mut media = Vec::new();
         for row in rows {
@@ -433,6 +460,9 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
@@ -442,12 +472,51 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
         let wire = serde_json::to_string(&x).unwrap();
         assert!(x.media[0].watched && !y.media[0].watched);
         assert!(!wire.contains("/nas") && !wire.contains("poster") && !wire.contains("secret"));
+    }
+    #[test]
+    fn context_filters_personal_watched_and_common_availability_before_returning_media() {
+        let (dir, mut store, a, b) = setup();
+        let mut unavailable = media("unavailable.mkv");
+        unavailable.available = false;
+        store.snapshot(vec![media("one.mkv"), unavailable]).unwrap();
+        let watched = store.catalog(&a).unwrap()[0].id.clone();
+        store.set_watched(&a, &watched, true).unwrap();
+        let only_unwatched_available = store
+            .ai_context(
+                &a,
+                AiContextQuery {
+                    category: None,
+                    q: None,
+                    watched: Some(false),
+                    available: Some(true),
+                    categories: None,
+                },
+            )
+            .unwrap();
+        assert!(only_unwatched_available.media.is_empty());
+        let other_profile = store
+            .ai_context(
+                &b,
+                AiContextQuery {
+                    category: None,
+                    q: None,
+                    watched: Some(false),
+                    available: Some(true),
+                    categories: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(other_profile.media.len(), 1, "watched is profile-scoped");
+        drop(dir);
     }
     #[test]
     fn duplicate_or_stale_plan_has_no_partial_write() {
@@ -458,6 +527,9 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
@@ -491,7 +563,10 @@ mod tests {
                 &a,
                 AiContextQuery {
                     category: None,
-                    q: None
+                    q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 }
             )
             .unwrap()
@@ -520,6 +595,9 @@ mod tests {
                 AiContextQuery {
                     category: Some("film".into()),
                     q: Some("%_".into()),
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
@@ -539,6 +617,9 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
@@ -581,6 +662,9 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
@@ -614,6 +698,9 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
@@ -647,6 +734,9 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: Some("Needle".into()),
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
@@ -657,6 +747,9 @@ mod tests {
                 AiContextQuery {
                     category: Some("film".into()),
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap()
@@ -668,6 +761,9 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();
@@ -723,6 +819,9 @@ mod tests {
                 AiContextQuery {
                     category: None,
                     q: None,
+                    watched: None,
+                    available: None,
+                    categories: None,
                 },
             )
             .unwrap();

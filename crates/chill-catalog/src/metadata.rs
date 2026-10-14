@@ -75,7 +75,11 @@ fn artwork_results(results: &Value, source: &str, output: &mut Vec<ArtworkCandid
 
 pub struct Tmdb {
     client: reqwest::Client,
-    token: String,
+    credential: Credential,
+}
+enum Credential {
+    Bearer(String),
+    ApiKey(String),
 }
 async fn body_limited(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>, String> {
     if response.content_length().is_some_and(|n| n > limit as u64) {
@@ -157,9 +161,23 @@ fn presentation(media: &mut Media, details: &Value, episode: Option<&Value>, kin
 
 impl Tmdb {
     pub fn new(token: String) -> Result<Self, String> {
-        if token.trim().is_empty() {
+        let token = token.trim();
+        if token.is_empty() {
             return Err("Ajoutez votre jeton de lecture TMDB dans les réglages.".into());
         }
+        let credential = if let Some(token) = token.strip_prefix("Bearer ") {
+            if valid_bearer(token) {
+                Credential::Bearer(token.into())
+            } else {
+                return Err("Identifiant TMDB invalide.".into());
+            }
+        } else if valid_v3_key(token) {
+            Credential::ApiKey(token.into())
+        } else if valid_bearer(token) {
+            Credential::Bearer(token.into())
+        } else {
+            return Err("Identifiant TMDB invalide.".into());
+        };
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .redirect(reqwest::redirect::Policy::none())
@@ -170,14 +188,18 @@ impl Tmdb {
             ))
             .build()
             .map_err(|_| "Client TMDB indisponible.")?;
-        Ok(Self { client, token })
+        Ok(Self { client, credential })
     }
 
     async fn get(&self, endpoint: &str, query: &[(&str, &str)]) -> Result<Value, String> {
-        let response = self
+        let request = self
             .client
-            .get(format!("https://api.themoviedb.org/3/{endpoint}"))
-            .bearer_auth(&self.token)
+            .get(format!("https://api.themoviedb.org/3/{endpoint}"));
+        let request = match &self.credential {
+            Credential::Bearer(token) => request.bearer_auth(token),
+            Credential::ApiKey(key) => request.query(&[("api_key", key)]),
+        };
+        let response = request
             .query(&[("language", "fr-FR")])
             .query(query)
             .send()
@@ -427,6 +449,29 @@ impl Tmdb {
         series.poster = None;
         let enriched = self.enrich(series, id, "tv", cache).await?;
         series_provider(&enriched)
+    }
+}
+
+fn valid_v3_key(value: &str) -> bool {
+    value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn valid_bearer(value: &str) -> bool {
+    (20..=2048).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() && !byte.is_ascii_whitespace())
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_explicit_tmdb_credential_shapes_without_retaining_the_input() {
+        assert!(Tmdb::new("aabbccddeeff00112233445566778899".into()).is_ok());
+        assert!(Tmdb::new(format!("Bearer {}", "x".repeat(64))).is_ok());
+        assert!(Tmdb::new("not a credential".into()).is_err());
     }
 }
 
