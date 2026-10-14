@@ -720,12 +720,22 @@ impl Store {
             ],
         )
         .map_err(db)?;
+        // Obtain the reply while rollback is still possible. Commit must be
+        // the last fallible operation so ownership of staged artwork cannot
+        // be lost through a cancelled or failed post-commit read.
+        let epoch = tx
+            .query_row(
+                "SELECT revision FROM cc_catalog_epoch WHERE id=1",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(db)? as u64;
         tx.commit().map_err(db)?;
         Ok(ImportResult {
             already_imported: false,
             media: plan.media.len(),
             profiles: plan.profiles.len(),
-            epoch: self.catalog_revision()?,
+            epoch,
         })
     }
 }
@@ -733,6 +743,58 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn successful_commit_never_requires_a_fallible_post_commit_read() {
+        use rusqlite::hooks::{AuthAction, Authorization};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("db.sqlite")).unwrap();
+        let d = document();
+        let plan = store
+            .prepare_portable_import(d.clone(), &mapping(&d), Path::new("/srv/video"))
+            .unwrap();
+        let committed = Arc::new(AtomicBool::new(false));
+        let flag = committed.clone();
+        store
+            .personal
+            .commit_hook(Some(move || {
+                flag.store(true, Ordering::Release);
+                false
+            }))
+            .unwrap();
+        let flag = committed.clone();
+        store
+            .personal
+            .authorizer(Some(move |context: rusqlite::hooks::AuthContext<'_>| {
+                if flag.load(Ordering::Acquire)
+                    && matches!(
+                        context.action,
+                        AuthAction::Read {
+                            table_name: "cc_catalog_epoch",
+                            ..
+                        }
+                    )
+                {
+                    Authorization::Deny
+                } else {
+                    Authorization::Allow
+                }
+            }))
+            .unwrap();
+        let result = store
+            .apply_portable_import(&plan, &BTreeMap::new())
+            .unwrap();
+        assert!(committed.load(Ordering::Acquire));
+        assert!(!result.already_imported);
+        assert!(
+            store.catalog_revision().is_err(),
+            "The injected post-commit read denial must actually be active"
+        );
+        assert_eq!(store.profiles().unwrap().len(), 1);
+    }
     fn document() -> ArchiveDocument {
         let p = uuid::Uuid::new_v4().to_string();
         let a = uuid::Uuid::new_v4().to_string();
