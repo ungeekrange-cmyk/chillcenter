@@ -162,6 +162,12 @@ pub enum UiCommand {
     },
     StartScan,
     ScanStatus,
+    TmdbCandidates { media_id: String, query: Option<String> },
+    TmdbSelect { media_id: String, expected_revision: u64, tmdb_id: i64, kind: String, scope: String },
+    TmdbRefresh { media_id: String, expected_revision: u64, scope: String },
+    TmdbRestorePoster { media_id: String, expected_revision: u64 },
+    Unavailable { offset: usize, limit: usize },
+    ForgetUnavailable { media_ids: Vec<String>, expected_epoch: u64, confirmed: bool },
     Theme {
         theme: String,
     },
@@ -221,6 +227,10 @@ impl From<ClientError> for UiError {
             "PROFILE_CONFLICT" | "CONFIG_CONFLICT" => {
                 "Modification concurrente : rechargez les données avant de réessayer."
             }
+            "TMDB_NOT_CONFIGURED" => "TMDB n’est pas configuré sur le serveur. Ajoutez le jeton côté serveur puis réessayez.",
+            "TMDB_UNAVAILABLE" => "TMDB est momentanément indisponible. Les informations et affiches actuelles sont conservées.",
+            "TMDB_ASSOCIATION_MISSING" => "Cette fiche n’est pas encore associée à TMDB. Recherchez puis choisissez une fiche.",
+            "TMDB_SCOPE_INVALID" => "Cette portée ne convient pas à la fiche sélectionnée.",
             _ if status == Some(404) => {
                 "Profil ou élément supprimé : reconnectez/rechargez le serveur."
             }
@@ -674,6 +684,31 @@ impl UiClient {
     }
     pub fn dispatch(&mut self, command: UiCommand) -> Result<Value, UiError> {
         match command {
+            UiCommand::TmdbCandidates { media_id, query } => {
+                valid_id(&media_id)?; let p=self.profile()?;
+                self.request(HttpMethod::GET,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/candidates"),None,&[("query",query.unwrap_or_default())],&[])
+            }
+            UiCommand::TmdbSelect { media_id, expected_revision, tmdb_id, kind, scope } => {
+                valid_id(&media_id)?;
+                if tmdb_id<=0 || !["movie","tv"].contains(&kind.as_str()) || !["media","series"].contains(&scope.as_str()) { return Err(invalid("Choix TMDB invalide.")); }
+                let p=self.profile()?;
+                self.request(HttpMethod::POST,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb"),Some(&json!({"expected_revision":expected_revision,"tmdb_id":tmdb_id,"kind":kind,"scope":scope})),&[],&[])
+            }
+            UiCommand::TmdbRefresh { media_id, expected_revision, scope } => {
+                valid_id(&media_id)?; if !["media","series"].contains(&scope.as_str()) { return Err(invalid("Portée TMDB invalide.")); }
+                let p=self.profile()?; self.request(HttpMethod::POST,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/refresh"),Some(&json!({"expected_revision":expected_revision,"scope":scope})),&[],&[])
+            }
+            UiCommand::TmdbRestorePoster { media_id, expected_revision } => {
+                valid_id(&media_id)?; let p=self.profile()?; self.request(HttpMethod::POST,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/poster/restore"),Some(&json!({"expected_revision":expected_revision})),&[],&[])
+            }
+            UiCommand::Unavailable { offset, limit } => {
+                if limit==0 || limit>48 { return Err(invalid("Page indisponible invalide.")); }
+                self.request(HttpMethod::GET,"/api/v1/admin/unavailable",None,&[("offset",offset.to_string()),("limit",limit.to_string())],&[])
+            }
+            UiCommand::ForgetUnavailable { media_ids, expected_epoch, confirmed } => {
+                if !confirmed || media_ids.is_empty() || media_ids.len()>48 { return Err(invalid("Confirmation ou sélection indisponible invalide.")); }
+                self.request(HttpMethod::POST,"/api/v1/admin/unavailable",Some(&json!({"media_ids":media_ids,"expected_epoch":expected_epoch,"confirmed":true})),&[],&[])
+            }
             UiCommand::Artwork { media_id } => {
                 valid_id(&media_id)?;
                 let p = self.profile()?;
@@ -1391,6 +1426,14 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn provider_and_unavailable_commands_are_closed_and_bounded() {
+        let search: UiCommand = serde_json::from_value(json!({"action":"tmdb_candidates","media_id":"abc","query":"film"})).unwrap();
+        assert!(matches!(search, UiCommand::TmdbCandidates { .. }));
+        assert!(serde_json::from_value::<UiCommand>(json!({"action":"tmdb_candidates","media_id":"x","url":"https://evil"})).is_err());
+        let remove: UiCommand = serde_json::from_value(json!({"action":"forget_unavailable","media_ids":["a"],"expected_epoch":1,"confirmed":true})).unwrap();
+        assert!(matches!(remove, UiCommand::ForgetUnavailable { confirmed: true, .. }));
+    }
     #[test]
     fn failed_initial_connection_discards_provisional_trust_and_never_persists_it() {
         let dir = tempfile::tempdir().unwrap();
