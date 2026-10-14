@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Remise locale effective — Pi en attente de confirmation
+
+Interface/API source9277ac4 et carrierd257441 promus localement, bundle `artifacts/macos/Chill Center-9277ac4.app` et archive Linux disponibles ; [release](releases/REL-UX-API-001.md). La protection d'exécution a refusé la bascule du service Pi : demander confirmation explicite de l'arrêt/sauvegarde privée/remplacement atomique/restart avant de reprendre, sans contournement. Pi reste R7 ; nouveau client requiert serveur daté donc attendre sa mise à jour. Le seul binaire neuf est staged surPi, pas actif. Ancienne app, profil foyer, NAS/config/TLS conservés ; aucune validation Pi du nouveau contrat annoncée.
+
 ## Point actuel — interface/API approuvées, livraison coordonnée en cours
 
 14 octobre2026 : interface Cinéfolio CC-UX-002 intégrée au vrai client Tauri, Administration regroupée, conseil filtré, catalogue continu virtualisé, fiches/séries/sagas/listes et configuration/enrichissement TMDB raccordés. API HTTPS canonique `/api/2026-10-14`, alias `/api/v1`, [guide tiers](api/INTEGRATION-FR.md) et OpenAPI public. Source exacte9277ac4 ; [triple revue indépendante APPROVED](gates/G-DEV-CC-UX-API-001.md), 289Rust/47Node/clippy et deux parcours lecteur natif visibles frais PASS. Les erreurs antérieures sont conservées, pas requalifiées.
