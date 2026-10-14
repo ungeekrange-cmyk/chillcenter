@@ -24,6 +24,7 @@ pub enum StoreFailure {
     ImportPlanStale,
     DatabaseOffline,
     RequestTimeout,
+    FingerprintBusy,
     AiConfirmationRequired,
     AiPlanInvalid,
     InvalidOperation,
@@ -47,6 +48,8 @@ impl From<String> for StoreFailure {
                 Self::DatabaseOffline
             }
             "REQUEST_TIMEOUT" => Self::RequestTimeout,
+            "FINGERPRINT_BUSY" => Self::FingerprintBusy,
+            "FINGERPRINT_STALE" => Self::ProfileConflict,
             "AI_CONFIRMATION_REQUIRED" => Self::AiConfirmationRequired,
             "AI_CONTEXT_INVALID" | "AI_CONTEXT_TOO_LARGE" | "AI_PLAN_INVALID" | "AI_SAGA_CLEAR_AMBIGUOUS" | "AI_SAGA_FILM_ONLY" | "AI_SAGA_LIMIT" => Self::AiPlanInvalid,
             "AI_COMMON_STALE" | "AI_PERSONAL_STALE" | "AI_MEDIA_STALE" => Self::ProfileConflict,

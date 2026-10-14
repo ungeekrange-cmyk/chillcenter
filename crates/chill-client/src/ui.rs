@@ -277,6 +277,7 @@ impl From<ClientError> for UiError {
                 "Modification concurrente : rechargez les données avant de réessayer."
             }
             "CONFIG_DURABILITY_UNKNOWN" => "Réglage serveur appliqué, mais durabilité disque non confirmée. Rechargez son état avant de réessayer.",
+            "FINGERPRINT_BUSY" => "Une empreinte est déjà en cours. Attendez son résultat puis relancez explicitement si nécessaire.",
             "TMDB_NOT_CONFIGURED" => {
                 "TMDB n’est pas configuré sur le serveur. Ajoutez le jeton côté serveur puis réessayez."
             }

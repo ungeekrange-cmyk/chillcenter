@@ -1951,6 +1951,9 @@ mod tests {
         let id=s.stable_id("New.mp4").unwrap();assert_eq!(s.media_revision(&id).unwrap(),1);
         assert_eq!(s.fingerprint_target(&id).unwrap().media_revision,1);
         assert_eq!(s.fingerprint_status(&id).unwrap().state,"not_requested");
+        s.mark_fingerprint_queued(&id,crate::fingerprint::FingerprintKind::Partial).unwrap();
+        let queued=s.fingerprint_status(&id).unwrap();assert_eq!(queued.state,"queued");assert_eq!(queued.strength,None);
+        s.mark_fingerprint_running(&id,1).unwrap();assert_eq!(s.fingerprint_status(&id).unwrap().state,"running");
     }
     #[test]
     fn failed_identity_extension_rolls_back_catalogue_scan_marker_and_mapping() {

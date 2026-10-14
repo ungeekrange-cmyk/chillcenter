@@ -138,6 +138,7 @@ impl From<chill_domain::StoreFailure> for ApiError {
             ImportPlanStale => Self(StatusCode::CONFLICT, "IMPORT_PLAN_STALE"),
             DatabaseOffline => Self(StatusCode::SERVICE_UNAVAILABLE, "DATABASE_OFFLINE"),
             RequestTimeout => Self(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"),
+            FingerprintBusy => Self(StatusCode::SERVICE_UNAVAILABLE,"FINGERPRINT_BUSY"),
             AiConfirmationRequired => Self(StatusCode::UNPROCESSABLE_ENTITY, "AI_CONFIRMATION_REQUIRED"),
             AiPlanInvalid => Self(StatusCode::UNPROCESSABLE_ENTITY, "AI_PLAN_INVALID"),
             InvalidOperation => Self(StatusCode::UNPROCESSABLE_ENTITY, "INVALID_OPERATION"),

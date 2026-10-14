@@ -363,8 +363,9 @@ impl Store {
             .query_row(
                 "SELECT
                CASE WHEN f.state='failed' THEN 'failed'
+                    WHEN f.state IN ('queued','running') THEN f.state
                     WHEN f.source_path=json_extract(m.data,'$.path') THEN f.state ELSE 'stale' END,
-               CASE WHEN f.state='failed' OR f.source_path<>json_extract(m.data,'$.path') THEN NULL
+               CASE WHEN f.state IN ('failed','queued','running') OR f.source_path<>json_extract(m.data,'$.path') THEN NULL
                     WHEN f.full_sha256 IS NOT NULL AND f.file_version_token IS NOT NULL THEN 'full'
                     WHEN f.partial_sha256 IS NOT NULL THEN 'partial' ELSE NULL END
              FROM cc_media_fingerprint f
