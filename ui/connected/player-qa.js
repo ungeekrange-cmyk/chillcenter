@@ -32,7 +32,7 @@ window.chillPlayerQa=async config=>{
 window.chillTransferQa=async config=>{
  let step="boot";const assert=(ok,s)=>{if(!ok)throw Error(s);};
  const wait=async(check,seconds=35)=>{const end=Date.now()+seconds*1000;while(!check()){if(Date.now()>end)throw Error("timeout "+step+" / "+$("player-note").textContent);await new Promise(r=>setTimeout(r,80));}};
- const call=async cmd=>{for(let i=0;i<20;i++){try{return await window.__TAURI__.core.invoke("player_command",{command:cmd});}catch(e){if(e.code!=="CLIENT_BUSY"||i===19)throw Error("player_command action="+cmd.action+" status="+(e.status??"none")+" code="+(e.code??"none"));await new Promise(r=>setTimeout(r,80));}}};
+ const call=async cmd=>{for(let i=0;i<20;i++){try{const value=await window.__TAURI__.core.invoke("player_command",{command:cmd});playerState=value;renderPlayer();return value;}catch(e){if(e.code!=="CLIENT_BUSY"||i===19)throw Error("player_command action="+cmd.action+" status="+(e.status??"none")+" code="+(e.code??"none"));await new Promise(r=>setTimeout(r,80));}}};
  try{
   await window.chillReady;
   step="connect";if(state.stage!=="connected"){await connect(config.address);if(state.stage==="trust")await run({action:"approve",token:state.token});}
