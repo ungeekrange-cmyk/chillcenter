@@ -127,6 +127,26 @@ impl Store {
                 PRIMARY KEY(playlist_id, stable_media_id), UNIQUE(playlist_id, position)
              );
              CREATE TABLE IF NOT EXISTS cc_imports (export_id TEXT PRIMARY KEY);
+             CREATE TABLE IF NOT EXISTS cc_catalog_epoch (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
+             INSERT OR IGNORE INTO cc_catalog_epoch(id,revision) VALUES(1,0);
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_media_i AFTER INSERT ON media BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_media_u AFTER UPDATE ON media BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_media_d AFTER DELETE ON media BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_profiles_i AFTER INSERT ON cc_profiles BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_profiles_u AFTER UPDATE ON cc_profiles BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_profiles_d AFTER DELETE ON cc_profiles BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_state_i AFTER INSERT ON cc_profile_state BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_state_u AFTER UPDATE ON cc_profile_state BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_state_d AFTER DELETE ON cc_profile_state BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_list_i AFTER INSERT ON cc_playlists BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_list_u AFTER UPDATE ON cc_playlists BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_list_d AFTER DELETE ON cc_playlists BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_members_i AFTER INSERT ON cc_playlist_members BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_members_u AFTER UPDATE ON cc_playlist_members BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_members_d AFTER DELETE ON cc_playlist_members BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_collections_i AFTER INSERT ON collections BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_collections_u AFTER UPDATE ON collections BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_collections_d AFTER DELETE ON collections BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              PRAGMA user_version=3;"
         ).map_err(db_error)?;
         // Existing development databases may predate ordered progress guards.
@@ -154,6 +174,18 @@ impl Store {
             })
             .map_err(db_error)?
             .collect::<Result<_, _>>()
+            .map_err(db_error)
+    }
+
+    /// Cheap stale-plan token maintained by SQLite triggers across Store connections.
+    pub fn catalog_revision(&self) -> Result<u64, String> {
+        self.personal
+            .query_row(
+                "SELECT revision FROM cc_catalog_epoch WHERE id=1",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|value| value as u64)
             .map_err(db_error)
     }
 
@@ -1220,9 +1252,11 @@ impl Store {
     ) -> Result<(), String> {
         self.require_playlist(profile, id)?;
         let name = valid_collection_name(name)?;
-        let tx=self.personal.unchecked_transaction().map_err(db_error)?;
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
         let duplicate:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM cc_playlists WHERE profile_id=?1 AND name=?2 AND id<>?3)",params![profile,name,id],|r|r.get(0)).map_err(db_error)?;
-        if duplicate { return Err("PLAYLIST_NAME_CONFLICT".into()); }
+        if duplicate {
+            return Err("PLAYLIST_NAME_CONFLICT".into());
+        }
         if tx.execute("UPDATE cc_playlists SET name=?1,revision=revision+1 WHERE id=?2 AND profile_id=?3 AND revision=?4",params![name,id,profile,expected as i64]).map_err(db_error)? != 1 { return Err("La playlist a changé entre-temps.".into()); }
         tx.commit().map_err(db_error)?;
         Ok(())
@@ -1748,7 +1782,7 @@ mod tests {
     use tempfile::tempdir;
     #[test]
     fn failed_identity_extension_rolls_back_catalogue_scan_marker_and_mapping() {
-        let mut s = store();
+        let s = store();
         let before = serde_json::to_value(s.catalogue.list().unwrap()).unwrap();
         let marker: String = s
             .personal
@@ -1889,11 +1923,34 @@ mod tests {
     }
     #[test]
     fn playlist_duplicate_rename_is_conflict_and_does_not_change_revision_or_order() {
-        let mut s=store(); let a=s.create_profile("A").unwrap(); let b=s.create_profile("B").unwrap(); let ids:Vec<_>=s.catalog(&a.id).unwrap().into_iter().map(|m|m.id).collect();
-        let first=s.create_playlist_with_members(&a.id,"Première",&ids).unwrap(); let second=s.create_playlist_with_members(&a.id,"Deuxième",&[]).unwrap();
-        assert_eq!(s.rename_playlist_at_revision(&a.id,&second.id,"Première",second.revision).unwrap_err(),"PLAYLIST_NAME_CONFLICT");
-        let after=s.playlist(&a.id,&second.id).unwrap(); assert_eq!(after.name,"Deuxième");assert_eq!(after.revision,second.revision);assert_eq!(s.playlist(&a.id,&first.id).unwrap().media_ids,ids);
-        let other=s.create_playlist_with_members(&b.id,"Première",&[]).unwrap(); assert_eq!(other.name,"Première");
+        let mut s = store();
+        let a = s.create_profile("A").unwrap();
+        let b = s.create_profile("B").unwrap();
+        let ids: Vec<_> = s
+            .catalog(&a.id)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        let first = s
+            .create_playlist_with_members(&a.id, "Première", &ids)
+            .unwrap();
+        let second = s
+            .create_playlist_with_members(&a.id, "Deuxième", &[])
+            .unwrap();
+        assert_eq!(
+            s.rename_playlist_at_revision(&a.id, &second.id, "Première", second.revision)
+                .unwrap_err(),
+            "PLAYLIST_NAME_CONFLICT"
+        );
+        let after = s.playlist(&a.id, &second.id).unwrap();
+        assert_eq!(after.name, "Deuxième");
+        assert_eq!(after.revision, second.revision);
+        assert_eq!(s.playlist(&a.id, &first.id).unwrap().media_ids, ids);
+        let other = s
+            .create_playlist_with_members(&b.id, "Première", &[])
+            .unwrap();
+        assert_eq!(other.name, "Première");
     }
     #[test]
     fn saga_boundary_roundtrips_scanned_stable_ids_without_touching_personal_state() {
@@ -2167,6 +2224,23 @@ mod tests {
                 .rating,
             None
         );
+    }
+
+    #[test]
+    fn catalog_epoch_advances_for_committed_changes_and_not_rollback() {
+        let mut s = store();
+        let before = s.catalog_revision().unwrap();
+        let p = s.create_profile("Epoch").unwrap();
+        assert!(s.catalog_revision().unwrap() > before);
+        let after = s.catalog_revision().unwrap();
+        let tx = s.personal.unchecked_transaction().unwrap();
+        tx.execute(
+            "UPDATE cc_profiles SET name='Rolled back' WHERE id=?1",
+            [&p.id],
+        )
+        .unwrap();
+        tx.rollback().unwrap();
+        assert_eq!(s.catalog_revision().unwrap(), after);
     }
 
     #[test]
