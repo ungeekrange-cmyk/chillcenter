@@ -38,7 +38,6 @@ const MAX_STAGING_DISK: u64 = MAX_COMPRESSED * 2;
 /// Deliberately process-local: previews are only short lived, read-only staging
 /// handles.  No import decision is persisted until the later apply endpoint.
 static PREVIEWS: OnceLock<Mutex<HashMap<PathBuf, HashMap<String, Preview>>>> = OnceLock::new();
-static UPLOAD_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 struct Preview {
     path: PathBuf,
@@ -105,17 +104,91 @@ fn reserve_preview(
     ))
 }
 
-struct UploadGuard;
-impl Drop for UploadGuard {
-    fn drop(&mut self) {
-        UPLOAD_ACTIVE.store(false, Ordering::Release);
+struct PartialFile(Option<PathBuf>);
+impl PartialFile {
+    fn keep(mut self) {
+        self.0.take();
     }
 }
-struct PartialFile(PathBuf);
 impl Drop for PartialFile {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+        if let Some(path) = &self.0 {
+            let _ = fs::remove_file(path);
+        }
     }
+}
+// Reservations outlive cancelled async waits because ownership follows the
+// actual blocking write/inspection, not the HTTP task.
+static RESERVED: OnceLock<Mutex<HashMap<PathBuf, u64>>> = OnceLock::new();
+struct DiskReservation {
+    dir: PathBuf,
+    bytes: u64,
+}
+impl Drop for DiskReservation {
+    fn drop(&mut self) {
+        if let Ok(mut ledger) = RESERVED.get_or_init(Default::default).lock() {
+            let bytes = ledger.entry(self.dir.clone()).or_default();
+            *bytes = bytes.saturating_sub(self.bytes);
+        }
+    }
+}
+fn reserve_disk(dir: &FsPath, bytes: u64) -> Result<DiskReservation, ApiError> {
+    let mut ledger = RESERVED
+        .get_or_init(Default::default)
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    let pending = ledger.entry(dir.to_path_buf()).or_default();
+    if staging_usage(dir)?
+        .saturating_add(*pending)
+        .saturating_add(bytes)
+        > MAX_STAGING_DISK
+    {
+        return Err(ApiError(
+            StatusCode::INSUFFICIENT_STORAGE,
+            "IMPORT_STAGING_FULL",
+        ));
+    }
+    *pending += bytes;
+    Ok(DiskReservation {
+        dir: dir.to_path_buf(),
+        bytes,
+    })
+}
+struct StagedUpload {
+    dir: PathBuf,
+    id: String,
+    kept: bool,
+    cancelled:Arc<AtomicBool>,
+}
+impl Drop for StagedUpload {
+    fn drop(&mut self) {
+        if !self.kept {
+            self.cancelled.store(true,Ordering::Release);
+            if let Ok(mut records) = previews().lock() {
+                if let Some(items) = records.get_mut(&self.dir) {
+                    items.remove(&self.id);
+                }
+            }
+            for ext in ["partial", "zip"] {
+                let _ = fs::remove_file(self.dir.join(format!("{}.{}", self.id, ext)));
+            }
+        }
+    }
+}
+static INSPECTION_SLOTS: OnceLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Semaphore>>>> =
+    OnceLock::new();
+fn inspection_slot(dir: &FsPath) -> Result<Arc<tokio::sync::OwnedSemaphorePermit>, ApiError> {
+    let mut slots = INSPECTION_SLOTS
+        .get_or_init(Default::default)
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    slots
+        .entry(dir.to_path_buf())
+        .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(1)))
+        .clone()
+        .try_acquire_owned()
+        .map(Arc::new)
+        .map_err(|_| ApiError(StatusCode::TOO_MANY_REQUESTS, "IMPORT_INSPECTION_BUSY"))
 }
 
 #[derive(Serialize)]
@@ -171,14 +244,21 @@ async fn prepare_plan(
     Json(request): Json<ImportMapping>,
 ) -> Result<Json<PlanReady>, ApiError> {
     let dir = import_dir(&state)?;
+    let work = inspection_slot(&dir)?;
     let (path, previous, _guard) = reserve_preview(&dir, &id)?;
-    let document = tokio::task::spawn_blocking(move || read_archive_document(&path))
-        .await
-        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_INVALID"))??;
+    let block_work = work.clone();
+    let document = tokio::task::spawn_blocking(move || {
+        let _work = block_work;
+        read_archive_document(&path)
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_INVALID"))??;
     let library = state.library.clone();
+    let actor_work = work.clone();
     let (plan, root_revision) = state
         .database
         .call(move |store| {
+            let _work = actor_work;
             let library = library.lock().map_err(|_| "REQUEST_TIMEOUT")?;
             let root = library.video_root.as_ref().ok_or("IMPORT_ROOT_REQUIRED")?;
             Ok((
@@ -194,6 +274,8 @@ async fn prepare_plan(
     if bytes.len() > MAX_DATA {
         return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
     }
+    let plan_guard = PartialFile(Some(plan_path.clone()));
+    let _reservation = reserve_disk(&dir, bytes.len() as u64)?;
     crate::config::atomic_private_write(&plan_path, &bytes)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
     {
@@ -213,6 +295,9 @@ async fn prepare_plan(
     if let Some(previous) = previous {
         let _ = fs::remove_file(previous.path);
     }
+    // Registry now owns this exact plan. Forget only the guard, not a leaked
+    // upload path; cleanup_previews reclaims it on expiration/cancellation.
+    plan_guard.keep();
     Ok(Json(PlanReady {
         plan_id,
         epoch: plan.epoch,
@@ -272,13 +357,16 @@ async fn apply_plan(
         ));
     }
     let dir = import_dir(&state)?;
+    let work = inspection_slot(&dir)?;
     let (archive, stored, _guard) = reserve_preview(&dir, &id)?;
     let stored = stored
         .filter(|p| p.id == request.plan_id)
         .ok_or(ApiError(StatusCode::CONFLICT, "IMPORT_PLAN_STALE"))?;
     let cache = state.config.data_dir.join("posters");
     let plan_path = stored.path;
+    let block_work = work.clone();
     let (plan, mut posters) = tokio::task::spawn_blocking(move || {
+        let _work = block_work;
         let input = fs::File::open(&plan_path)
             .map_err(|_| ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"))?;
         let mut bytes = Vec::new();
@@ -331,11 +419,13 @@ async fn apply_plan(
     .await
     .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_INVALID"))??;
     let library = state.library.clone();
+    let actor_work = work.clone();
     // Ownership follows the transaction, not the HTTP response: a cancelled
     // client must never delete artwork referenced by an already committed DB.
     let result = state
         .database
         .call(move |store| {
+            let _work = actor_work;
             let library = library.lock().map_err(|_| "REQUEST_TIMEOUT")?;
             if library.revision != stored.root_revision {
                 return Err("IMPORT_PLAN_STALE".into());
@@ -354,17 +444,23 @@ fn import_dir(state: &AppState) -> Result<PathBuf, ApiError> {
     let path = state.config.data_dir.join("imports");
     fs::create_dir_all(&path)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"));
+    }
     Ok(path)
 }
+/// Recover expired service staging even before the first administration visit.
+/// The source ZIP selected by a user is never part of this directory.
+pub fn initialize_staging(state:&AppState)->Result<(),ApiError>{let dir=import_dir(state)?;let mut records=previews().lock().map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"IMPORT_STORAGE"))?;cleanup_previews(&dir,&mut records);Ok(())}
 
 fn previews() -> &'static Mutex<HashMap<PathBuf, HashMap<String, Preview>>> {
     PREVIEWS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String, Preview>>) {
-    let Some(previews) = records.get_mut(dir) else {
-        return;
-    };
+    let previews = records.entry(dir.to_path_buf()).or_default();
     let now = SystemTime::now();
     let expired: Vec<_> = previews
         .iter()
@@ -386,34 +482,84 @@ fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String,
             }
         }
     }
+    // After restart there is no registry. Recover only recognizable,
+    // expired service-owned staging; unrelated files are never deleted.
+    let active: HashSet<_> = previews
+        .iter()
+        .flat_map(|(id, p)| {
+            [
+                Some(format!("{id}.zip")),
+                Some(format!("{id}.partial")),
+                p.plan.as_ref().map(|p| format!("{}.plan", p.id)),
+            ]
+        })
+        .flatten()
+        .collect();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.take(4096).flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            if !managed_staging(name) || active.contains(name) {
+                continue;
+            }
+            if let Ok(meta) = fs::symlink_metadata(entry.path()) {
+                if meta.is_file()
+                    && !meta.file_type().is_symlink()
+                    && meta
+                        .modified()
+                        .ok()
+                        .and_then(|time| now.duration_since(time).ok())
+                        .is_some_and(|age| age >= PREVIEW_TTL)
+                {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+    }
 }
 
-fn staging_usage(dir: &FsPath) -> u64 {
-    fs::read_dir(dir).ok().into_iter().flatten().filter_map(|entry| {
-        let entry = entry.ok()?;
-        let name = entry.file_name();
-        let name = name.to_str()?;
-        let (id, ext) = name.rsplit_once('.')?;
-        (uuid::Uuid::parse_str(id).is_ok() && matches!(ext, "partial" | "zip" | "plan" | "tmp"))
-            .then(|| entry.metadata().ok().map(|m| m.len())).flatten()
-    }).sum()
+fn managed_staging(name: &str) -> bool {
+    let name = name.strip_prefix(".chillcenter-").unwrap_or(name);
+    name.rsplit_once('.').is_some_and(|(id, ext)| {
+        uuid::Uuid::parse_str(id).is_ok() && matches!(ext, "partial" | "zip" | "plan" | "tmp")
+    })
+}
+fn staging_usage(dir: &FsPath) -> Result<u64, ApiError> {
+    let entries = fs::read_dir(dir)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    let mut bytes = 0u64;
+    for (index, entry) in entries.enumerate() {
+        if index >= 4096 {
+            return Err(ApiError(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "IMPORT_STAGING_FULL",
+            ));
+        }
+        let entry =
+            entry.map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+        let meta = fs::symlink_metadata(entry.path())
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+        if !meta.is_file() || meta.file_type().is_symlink() {
+            return Err(ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"));
+        }
+        bytes = bytes.saturating_add(meta.len());
+    }
+    Ok(bytes)
 }
 
 async fn stage_and_preview(
     State(state): State<AppState>,
     body: Body,
 ) -> Result<Json<ImportPreview>, ApiError> {
-    if UPLOAD_ACTIVE
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return Err(ApiError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "IMPORT_UPLOAD_BUSY",
-        ));
-    }
-    let _upload_guard = UploadGuard;
     let dir = import_dir(&state)?;
+    let work = inspection_slot(&dir)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut stage_guard = StagedUpload {
+        dir: dir.clone(),
+        id: id.clone(),
+        kept: false,
+        cancelled:Arc::new(AtomicBool::new(false)),
+    };
     {
         let mut records = previews()
             .lock()
@@ -426,19 +572,26 @@ async fn stage_and_preview(
                 "IMPORT_PREVIEW_BUSY",
             ));
         }
+        records.get_mut(&dir).unwrap().insert(
+            id.clone(),
+            Preview {
+                path: dir.join(format!("{id}.zip")),
+                created: SystemTime::now(),
+                busy: Arc::new(AtomicBool::new(true)),
+                plan: None,
+            },
+        );
     }
-    let id = uuid::Uuid::new_v4().to_string();
     let partial = dir.join(format!("{id}.partial"));
-    let partial_guard = PartialFile(partial.clone());
     let staged = dir.join(format!("{id}.zip"));
-    let mut options = tokio::fs::OpenOptions::new();
-    options
-        .write(true)
-        .create_new(true);
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
     #[cfg(unix)]
     options.mode(0o600);
-    let mut output = options.open(&partial)
-        .await
+    let mut output = options
+        .open(&partial)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
     let mut bytes = 0u64;
     let mut stream = body.into_data_stream();
@@ -452,28 +605,38 @@ async fn stage_and_preview(
             let _ = tokio::fs::remove_file(&partial).await;
             return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
         }
-        if staging_usage(&dir).saturating_add(chunk.len() as u64) > MAX_STAGING_DISK {
-            return Err(ApiError(StatusCode::INSUFFICIENT_STORAGE, "IMPORT_STAGING_FULL"));
-        }
-        tokio::io::AsyncWriteExt::write_all(&mut output, &chunk)
-            .await
-            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+        let reservation = reserve_disk(&dir, chunk.len() as u64)?;
+        let block_work = work.clone();
+        output = tokio::task::spawn_blocking(move || {
+            let _work = block_work;
+            let _reservation = reservation;
+            output
+                .write_all(&chunk)
+                .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+            Ok::<_, ApiError>(output)
+        })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))??;
     }
-    tokio::io::AsyncWriteExt::flush(&mut output)
-        .await
-        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
-    output
-        .sync_all()
-        .await
-        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
-    drop(output);
+    let block_work = work.clone();
+    tokio::task::spawn_blocking(move || {
+        let _work = block_work;
+        output.flush().and_then(|()| output.sync_all())
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?
+    .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
     fs::rename(&partial, &staged)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
-    let staged_guard = PartialFile(staged.clone());
     let inspect_id = id.clone();
+    let inspect_permit = work.clone();
+    let cancelled=stage_guard.cancelled.clone();
     let checked = tokio::task::spawn_blocking({
         let path = staged.clone();
-        move || inspect_archive(&path, &inspect_id)
+        move || {
+            let _permit = inspect_permit;
+            inspect_archive_cancellable(&path, &inspect_id,&cancelled)
+        }
     })
     .await
     .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_INVALID"))?;
@@ -497,8 +660,7 @@ async fn stage_and_preview(
             plan: None,
         },
     );
-    std::mem::forget(partial_guard);
-    std::mem::forget(staged_guard);
+    stage_guard.kept = true;
     Ok(Json(ImportPreview {
         preview_id: id,
         export_id: summary.export_id,
@@ -541,6 +703,25 @@ struct ArchiveSummary {
 }
 
 fn inspect_archive(path: &FsPath, preview_id: &str) -> Result<ArchiveSummary, ApiError> {
+    inspect_archive_cancellable(path,preview_id,&AtomicBool::new(false))
+}
+fn inspect_archive_cancellable(path:&FsPath,preview_id:&str,cancelled:&AtomicBool)->Result<ArchiveSummary,ApiError>{
+    let check_cancel=||if cancelled.load(Ordering::Acquire){Err(ApiError(StatusCode::REQUEST_TIMEOUT,"IMPORT_CANCELLED"))}else{Ok(())};
+    check_cancel()?;
+    #[cfg(test)]
+    if let Some(gate) = INSPECTION_GATES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap()
+        .get(path.parent().unwrap())
+        .cloned()
+    {
+        gate.entered.store(true, Ordering::Release);
+        let mut released = gate.released.lock().unwrap();
+        while !*released {
+            released = gate.wake.wait(released).unwrap();
+        }
+    }
     let file = fs::File::open(path)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
     let mut zip = zip::ZipArchive::new(file)
@@ -551,6 +732,7 @@ fn inspect_archive(path: &FsPath, preview_id: &str) -> Result<ArchiveSummary, Ap
     let mut names = HashSet::new();
     let mut total = 0u64;
     for index in 0..zip.len() {
+        check_cancel()?;
         let entry = zip
             .by_index(index)
             .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
@@ -598,6 +780,7 @@ fn inspect_archive(path: &FsPath, preview_id: &str) -> Result<ArchiveSummary, Ap
         .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
     let mut checksum_names = HashSet::new();
     for item in entries {
+        check_cancel()?;
         let name = item
             .get("reference")
             .and_then(|v| v.as_str())
@@ -884,6 +1067,15 @@ fn hash_file(path: &std::path::Path) -> Result<String, ApiError> {
 }
 
 #[cfg(test)]
+struct InspectionGate {
+    entered: AtomicBool,
+    released: Mutex<bool>,
+    wake: std::sync::Condvar,
+}
+#[cfg(test)]
+static INSPECTION_GATES: OnceLock<Mutex<HashMap<PathBuf, Arc<InspectionGate>>>> = OnceLock::new();
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
@@ -899,6 +1091,144 @@ mod tests {
         sync::{Arc, Mutex},
     };
     use tower::ServiceExt;
+    #[test]
+    fn staging_disk_accounts_orphans_plans_and_inflight_reservations_fail_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let orphan = dir.path().join(format!("{}.zip", uuid::Uuid::new_v4()));
+        let file = fs::File::create(&orphan).unwrap();
+        file.set_len(MAX_STAGING_DISK - 16).unwrap();
+        assert_eq!(staging_usage(dir.path()).unwrap(), MAX_STAGING_DISK - 16);
+        let held = reserve_disk(dir.path(), 8).unwrap();
+        assert!(reserve_disk(dir.path(), 9).is_err());
+        drop(held);
+        let plan = dir.path().join(format!("{}.plan", uuid::Uuid::new_v4()));
+        fs::write(&plan, [0u8; 16]).unwrap();
+        assert!(reserve_disk(dir.path(), 1).is_err());
+        assert!(staging_usage(&dir.path().join("absent")).is_err());
+        fs::remove_file(&plan).unwrap();
+        std::os::unix::fs::symlink("/does/not/exist", &plan).unwrap();
+        assert!(staging_usage(dir.path()).is_err());
+    }
+    #[test]
+    fn restart_sweep_removes_only_expired_managed_staging_and_preserves_busy_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = SystemTime::now() - PREVIEW_TTL - Duration::from_secs(1);
+        let orphan = dir.path().join(format!("{}.zip", uuid::Uuid::new_v4()));
+        let plan = dir.path().join(format!("{}.plan", uuid::Uuid::new_v4()));
+        let note = dir.path().join("user-note.txt");
+        let active_id = uuid::Uuid::new_v4().to_string();
+        let active = dir.path().join(format!("{active_id}.partial"));
+        for path in [&orphan, &plan, &note, &active] {
+            let mut file = fs::File::create(path).unwrap();
+            file.write_all(b"fixture").unwrap();
+            file.set_times(fs::FileTimes::new().set_modified(old))
+                .unwrap();
+        }
+        let mut records = HashMap::new();
+        records.insert(
+            dir.path().to_path_buf(),
+            HashMap::from([(
+                active_id,
+                Preview {
+                    path: active.clone(),
+                    created: old,
+                    busy: Arc::new(AtomicBool::new(true)),
+                    plan: None,
+                },
+            )]),
+        );
+        cleanup_previews(dir.path(), &mut records);
+        assert!(!orphan.exists());
+        assert!(!plan.exists());
+        assert!(note.exists());
+        assert!(active.exists());
+        // No in-memory registry after restart: filesystem TTL still works.
+        records.clear();
+        cleanup_previews(dir.path(), &mut records);
+        assert!(!active.exists());
+        assert!(note.exists());
+    }
+    #[tokio::test]
+    async fn cancelled_http_inspection_reclaims_stage_but_keeps_real_worker_slot() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        fs::create_dir_all(&data).unwrap();
+        let config = ServerConfig {
+            data_dir: data.clone(),
+            ..Default::default()
+        };
+        let certificate = tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
+        let database = DatabaseActor::open(data.join("catalog.sqlite")).unwrap();
+        let state = AppState {
+            playback: PlaybackService::default(),
+            database,
+            library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
+            config: Arc::new(config),
+            certificate: Arc::new(Mutex::new(certificate.schedule)),
+            scan: Arc::new(Mutex::new(Default::default())),
+        };
+        let dir = import_dir(&state).unwrap();
+        let gate = Arc::new(InspectionGate {
+            entered: AtomicBool::new(false),
+            released: Mutex::new(false),
+            wake: std::sync::Condvar::new(),
+        });
+        INSPECTION_GATES
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap()
+            .insert(dir.clone(), gate.clone());
+        struct ReleaseOnDrop(Arc<InspectionGate>);
+        impl Drop for ReleaseOnDrop {
+            fn drop(&mut self) {
+                *self.0.released.lock().unwrap() = true;
+                self.0.wake.notify_all();
+            }
+        }
+        let release = ReleaseOnDrop(gate.clone());
+        let app = router(state);
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/admin/imports")
+            .header("host", "localhost:8443")
+            .body(Body::from("invalid synthetic ZIP"))
+            .unwrap();
+        let task = tokio::spawn(app.oneshot(req));
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !gate.entered.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
+        assert!(previews().lock().unwrap().get(&dir).unwrap().is_empty());
+        assert!(
+            inspection_slot(&dir).is_err(),
+            "A cancelled waiter must not release a still-running blocking inspection"
+        );
+        drop(release);
+        INSPECTION_GATES
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap()
+            .remove(&dir);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if let Ok(slot) = inspection_slot(&dir) {
+                    drop(slot);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(database_profile_count(&data.join("catalog.sqlite")), 0);
+    }
 
     #[tokio::test]
     async fn export_route_streams_checked_portable_zip_without_secrets_or_paths() {
