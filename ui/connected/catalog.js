@@ -171,7 +171,7 @@ async function pickerPage(){const page=await run(catalogCommand({category:"",q:$
 $("collection-add").onclick=async()=>{pickerOffset=0;pickerSelection=new Set();$("picker-search").value="";await pickerPage();$("picker-dialog").showModal();};
 $("picker-confirm").onclick=async()=>{if(!collectionView||!pickerSelection.size)return;const ids=[...pickerSelection];const r=await run({action:collectionKind==="playlist"?"add_playlist":"add_saga",id:collectionView.id,expected_revision:collectionView.revision,media_ids:ids},false);if(r){pickerSelection.clear();$("picker-dialog").close();await openCollection(collectionView.id,collectionKind);}};
 $("picker-cancel").onclick=()=>{pickerSelection.clear();$("picker-dialog").close();};
-$("picker-form").onsubmit=e=>{e.preventDefault();pickerOffset=0;pickerPage();};$("picker-prev").onclick=()=>{pickerOffset=Math.max(0,pickerOffset-50);pickerPage();};$("picker-next").onclick=()=>{pickerOffset+=50;pickerPage();};
+$("picker-form").onsubmit=e=>{e.preventDefault();pickerOffset=0;pickerPage();};$("picker-prev").onclick=()=>{pickerOffset=Math.max(0,pickerOffset-CATALOG_PAGE_SIZE);pickerPage();};$("picker-next").onclick=()=>{pickerOffset+=CATALOG_PAGE_SIZE;pickerPage();};
 $("show-playlists").onclick=()=>openCollections();$("show-sagas").onclick=()=>openCollections("saga");
 for(const id of ["media-dialog","collections-dialog","collection-dialog","picker-dialog"]){const m=node("p",undefined,"dialog-message");m.setAttribute("role","status");m.setAttribute("aria-live","polite");$(id).prepend(m);$(id).querySelector(".dialog-close").onclick=()=>$(id).close();}
 let artworkQueue=[],artworkLoading=false;

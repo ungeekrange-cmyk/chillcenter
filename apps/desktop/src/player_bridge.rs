@@ -938,19 +938,20 @@ fn uuid_check(s: &str) -> Result<(), UiError> {
     }
 }
 fn language_equal(a: &str, b: &str) -> bool {
-    fn norm(s: &str) -> &str {
-        match s.split(['-', '_']).next().unwrap_or("") {
-            "eng" => "en",
-            "fra" | "fre" => "fr",
-            "deu" | "ger" => "de",
-            "spa" => "es",
-            "ita" => "it",
-            s => s,
-        }
-    }
-    let a = a.to_ascii_lowercase();
-    let b = b.to_ascii_lowercase();
-    norm(&a) == norm(&b) && !b.is_empty()
+    let a=language_key(a); let b=language_key(b);
+    a.is_some() && a==b
+}
+// Both integrated and external tracks use the same language comparison.
+// Empty/invalid input is disabled; valid unknown codes remain distinct so an
+// absent preference triggers the visible fallback, never a None==None match.
+pub(crate) fn language_key(s:&str)->Option<String>{
+    let normalized=s.trim().split(['-','_']).next()?.to_ascii_lowercase();
+    if !(2..=3).contains(&normalized.len())||!normalized.bytes().all(|b|b.is_ascii_alphabetic()){return None;}
+    Some(match normalized.as_str(){
+        "eng"=>"en", "fra"|"fre"=>"fr", "deu"|"ger"=>"de", "spa"=>"es", "ita"=>"it",
+        "jpn"=>"ja", "por"=>"pt", "zho"|"chi"=>"zh", "rus"=>"ru", "nld"|"dut"=>"nl", "kor"=>"ko",
+        s=>s,
+    }.to_owned())
 }
 async fn add_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<(), UiError> {
     let candidate = s
@@ -1156,4 +1157,22 @@ async fn seek(s: &mut Session, w: &WebviewWindow, position: f64) -> Result<(), U
         report(s, !s.snapshot.paused, true).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod language_tests {
+    use super::*;
+    #[test]
+    fn supported_and_absent_preferences_have_one_shared_key() {
+        for (a,b) in [("en-US","eng"),(" FR_ca ","fre"),("de","ger"),("JA","jpn"),("pt-BR","por")] {
+            assert!(language_equal(a,b));
+        }
+        assert_eq!(language_key("ja").as_deref(),Some("ja"));
+        assert_ne!(language_key("ja"),language_key("eng"));
+        assert!(!language_equal("", ""));
+        assert!(!language_equal("und", "ja"));
+        assert!(!language_equal("unknown", "unknown"));
+        assert_eq!(language_key(""),None);
+        assert_eq!(language_key("../../"),None);
+    }
 }

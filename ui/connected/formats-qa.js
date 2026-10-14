@@ -18,6 +18,23 @@ window.chillFormatsQa=async config=>{
    await player({action:"stop"});hidePlayer();
    if(m.category!=="serie"){await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);assert(playerState.native.speed===1,"film must reopen at 1x");await player({action:"stop"});hidePlayer();}
   }
-  await window.__TAURI__.core.invoke("qa_result",{success:true,detail:"native-Tauri-MKV-MP4-AVI-integrated-audio-ASS-external-ASS-seven-rates-seek-film-reset"});
+  const tracksMedia=p.items.find(x=>x.path.endsWith("Tracks (2026).mkv"));
+  for(const language of ["ja","fr"]){
+   step="language fallback "+language;await trace(step);
+   state=await ui({action:"save_preferences",audio_language:language,subtitle_language:language,autoplay_seconds:null});render();
+   await window.chillPlay(tracksMedia.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);await wait(()=>playerState.native?.debug_nonblank);
+   const n=playerState.native,audio=n.tracks.filter(t=>t.kind==="Audio"),subtitles=n.tracks.filter(t=>t.kind==="Subtitle");
+   assert(!subtitles.some(t=>t.selected),"absent or ambiguous subtitle must not auto-select");
+   if(language==="ja"){
+    const fallback=audio.find(t=>t.original)||audio[0];assert(audio.find(t=>t.selected)?.id===fallback.id,"missing audio preference must use original or first track");
+    assert((n.notice||playerState.note||"").includes("indisponible"),"missing preferred language notice absent");
+   }else{
+    assert(audio.some(t=>t.selected&&/^(fra|fr)$/.test(t.language)),"French audio preference not selected");
+    assert(playerState.external_subtitles.filter(t=>!t.unavailable&&/^(fra|fr)$/.test(t.language)).length>=2,"ambiguity fixture missing");
+    assert((playerState.note||"").includes("Plusieurs sous-titres"),"ambiguous external tracks must request manual choice");
+   }
+   await player({action:"stop"});hidePlayer();
+  }
+  await window.__TAURI__.core.invoke("qa_result",{success:true,detail:"native-Tauri-MKV-MP4-AVI-integrated-audio-ASS-external-ASS-seven-rates-seek-film-reset-language-fallback-ambiguous-subtitles"});
  }catch(e){await window.__TAURI__.core.invoke("qa_result",{success:false,detail:step+": "+(e.message||e.code||e)});}
 };

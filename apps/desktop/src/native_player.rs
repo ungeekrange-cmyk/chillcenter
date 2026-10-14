@@ -632,7 +632,7 @@ impl SurfacePlayer {
         if let Some(wanted) = wanted_subtitle {
             if let Some(track) = tracks.iter().find(|track| {
                 matches!(track.kind, chill_player::TrackKind::Subtitle)
-                    && track.language.as_deref().and_then(language_key) == Some(wanted)
+                    && track.language.as_deref().and_then(language_key).as_deref() == Some(wanted.as_str())
             }) {
                 self.player.select_subtitle(Some(track.id))?;
             } else {
@@ -817,12 +817,8 @@ struct PendingLoad {
     subtitle_language: Option<String>,
     speed: f64,
 }
-fn language_key(language: &str) -> Option<&'static str> {
-    match language.trim().to_ascii_lowercase().as_str() {
-        "en" | "eng" => Some("en"),
-        "fr" | "fra" | "fre" => Some("fr"),
-        _ => None,
-    }
+fn language_key(language: &str) -> Option<String> {
+    crate::player_bridge::language_key(language)
 }
 fn open_gl_view(rect: NSRect) -> Result<Retained<NSOpenGLView>, NativePlayerError> {
     let mtm = MainThreadMarker::new()
