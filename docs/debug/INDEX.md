@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+InstallationPi14octobre : [0040 garde roinitial](BUG-0040-pi-install-ro-first-option.md), [0041 CLIexit1](BUG-0041-pi-help-smoke-exit.md), [0042 cwdNAS](BUG-0042-pi-nas-check-cwd.md), [0043 cwdservice](BUG-0043-systemd-workspace-cwd.md), causesconfirmées/correctionsopérateurrévues. Service désormaisactif, sourceRustinchangée ; [0044 querysonde](BUG-0044-pi-probe-catalog-query.md) corrigé dans le harnais, pas serveur. Toutesrevuesdéfavorablesconservées, [releasePi](../releases/REL-PI-001.md) et [preuvesmédiasréelles](../releases/REL-PI-001-media-evidence.md) gouvernent le dernier état ; pas tout133ACPASS.
+
 Révision `CC-DOC-001`. Ce journal sera relu avant chaque nouvelle intervention. Les risques ne sont pas des bugs démontrés et les incidents historiques ne sont pas de nouveaux défauts Chill Center.
 
 | ID | Type | État | Preuve / effet |

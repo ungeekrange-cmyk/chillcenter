@@ -10,6 +10,7 @@ ConditionPathIsMountPoint=/srv/volumes/video
 Type=simple
 User=chillcenter
 Group=chillcenter
+WorkingDirectory=/usr/lib/chillcenter
 UMask=0077
 ExecStart=/usr/lib/chillcenter/chill-server --config /etc/chillcenter/server.json
 Restart=on-failure

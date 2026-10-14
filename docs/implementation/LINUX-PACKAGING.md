@@ -86,6 +86,8 @@ manuelle après vérification. Les vidéos et le NAS ne sont jamais inclus.
 
 ## Preuves restant nécessaires
 
+Installation réelle du14octobre2026 : voir [REL-PI-001](../releases/REL-PI-001.md), désormaisactif avec archiveARM64 immuable et overlayWorkingDirectory. L'unitésource fixe aussi `WorkingDirectory=/usr/lib/chillcenter` pour éviter que le cwd implicite `/` déclenche la protection du stockage. Pour CLIoffline backup/restore/recover, se placer dans ce répertoire séparé des données avant les commandes, sousUIDservice et servicearrêté. Les lignesNOT_RUNci-dessous sont le checkpoint packaging initial ; seul le rapportPi courant peut les clôturer.
+
 - Installation, démarrage et arrêt sur un vrai Pi 3 : `NOT_RUN`.
 - Montage NAS réel, droits lecture seule et absence de secrets : `NOT_RUN`.
 - TLS avec horloge réelle, accès LAN et absence d'exposition Internet :

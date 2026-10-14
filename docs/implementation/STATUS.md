@@ -1,4 +1,6 @@
-# État d'implémentation — remise logicielle, G-04 à valider
+# État d'implémentation — remise acceptée avec réserves
+
+Mise à jourPi14octobre : serveur ARM64 actif sur192.168.1.42:8443, TLS/confinement/NASRO validés indépendamment. Scan2496/10,14s et premières lecturesAVI/MKV/MP4 PASS ; chargelongue en cours. [REL-PI-001](../releases/REL-PI-001.md) et [preuvesmédias](../releases/REL-PI-001-media-evidence.md) gouvernent les derniers gates/limites ; les paragraphes ci-dessous conservent leurs checkpoints historiques, pas une promesse133ACtousPASS.
 
 ## Situation actuelle (2026-10-14)
 

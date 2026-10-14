@@ -2,7 +2,7 @@
 
 Vidéothèque familiale issue de Cinéfolio : serveur Linux économe, client Mac Apple Silicon, profils et lecteur intégré.
 
-État au14 octobre2026 : périmètre, architecture et33 user stories validés ; source logicielle126da0a approuvable après revues indépendantes code/tests/sécurité. Lecteur **natif libmpv/FFmpeg dans Tauri**, flux HTTPS/Range sans transcodage serveur, profils/reprise/transfert/enchaînement, catalogue/métadonnées/sagas/playlists, archives/import/CLI Cinéfolio, IA avec aperçu et ambiances sont raccordés. Scan exclusivement dans Administration.255 tests Rust,24 tests Node et7 tests de packaging passent ; parcours réels Tauri avec fixtures vidéo, deux lecteurs/transfert et archives. Pi/Linux/NAS déclarés prêts, Chill Center non installé : essais LinuxARM/Pi/systemd/NAS/Wi-Fi et fournisseurs réels restent **non exécutés** ; aucun «133 AC tous validés» n'est revendiqué. Voir [la remise et les limites](docs/implementation/COMPLETION-EVIDENCE.md).
+État au 14 octobre 2026 : remise logicielle126da0a acceptée avec réserves. Client Tauri/libmpv/FFmpeg et serveur Linux sans transcodage, catalogue/profils/reprise/transfert/enchaînement/archives/IA/ambiances raccordés ; scan uniquement Administration. Le serveur ARM64 tourne désormais sur le Pi3B+/Debian13.7 à **192.168.1.42:8443**, avec NAS en lecture seule et HTTPS vérifiés indépendamment. Scan réel2 496vidéos et premières lectures AVI/MKV/MP4 PASS ; charges longues en cours, pas133ACtousPASS. [Installation et preuves](docs/releases/REL-PI-001.md), [tests médias](docs/releases/REL-PI-001-media-evidence.md), [remise logicielle](docs/implementation/COMPLETION-EVIDENCE.md) (255Rust/24Node/7packagingPASS et trois revuesfavorables).
 
 ## Lire le projet
 

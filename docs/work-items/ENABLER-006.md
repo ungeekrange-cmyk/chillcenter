@@ -1,5 +1,7 @@
 # ENABLER-006 — Mesurer ressources et trois lectures sur le Pi
 
+14octobre2026 : IN_PROGRESS. Pi3B+/Debian13.7/NASRO installé et vérifié, dataset2496 réel (pas3000), troisformats10sPASS, CPU/RSSidle puis deuxHD30min en cours avant3lecteurs. Voir [preuves exécutées/limites](../releases/REL-PI-001-media-evidence.md) ; ne pas clore l'enabler sur les seules preuves logicielles ou un échantillon inachevé.
+
 - Type : ENABLER ; aucune user story technique déguisée.
 - Révision : CC-STORIES-001 ; statut documentaire : REVIEW_REQUESTED.
 - Estimation : 5 points ; Mesures bout en bout sur matériel réel et profils de charge, aucune complexité déduite de la seule résolution.

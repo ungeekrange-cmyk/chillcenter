@@ -1,5 +1,7 @@
 # Remise logicielle CC-COMPLETE-001
 
+Mise à jour14octobre : G-04 accepté avec réserves ; crossbuildARM64 et Pi/NASRO inventairePASS. ConnexionSSH partagée désormais établie ; installation non confirmée et lectures/perfNOT_RUN. [État et gates d'installation](../releases/REL-PI-001.md). La suite conserve la remise précédente, pas le dernier état d'approbation.
+
 2026-10-14 · périmètre CC-STORIES-001,33 stories/133 critères stables · G-03 approuvé · G-04 prêt à remise après l'artefact final, pas une validation déjà obtenue. Source finale : `126da0af167ee62588d92d90297f2dfc51962676`, base utilisateur `2a085486f4579d4cf27c98b254bd29fea9d73547`. Les commits documentaires ultérieurs ne changent pas les sources revues. Aucun push ni installation Pi/foyer.
 
 ## Livrable

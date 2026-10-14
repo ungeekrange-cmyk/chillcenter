@@ -1,0 +1,14 @@
+[package]
+name = "chillcenter-pi-operator-probe"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+
+# Isolated operator harness: never linked into the shipped server or app.
+[workspace]
+[dependencies]
+chill-client = { path = "../../crates/chill-client" }
+chill-player = { path = "../../crates/chill-player" }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+uuid = { version = "1", features = ["v4"] }

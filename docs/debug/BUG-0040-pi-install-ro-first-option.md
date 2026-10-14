@@ -1,0 +1,11 @@
+# BUG-0040 — Installation Pi : option ro en première position
+
+2026-10-14 10:21UTC. ROOT_CAUSE_CONFIRMED. Diagnostic `/root`, auteur du correctif distinct `/root/pi_deployer`.
+
+Symptôme : installerSHA `ef3bbfcb8e1762af3262b9f0c9136572512f2bb7b2d574f2bc7897217ed70a82`, archiveSHA `67645c79a1544cb9c00ff2408c6f89df12699b9f299fe749e6944aaa54739c2a`, source126da0a, PiDebian13ARM64 : les contrôles locaux passent puis arrêt1 avant staging/useradd. Inventaire après échec : compte, unités, binaire, configuration, données et staging tous absents ; rollback stop/disable sans objet.
+
+H1 seule : la regex du garde NAS refuse `ro` lorsque cette option est la première, car `(^|,)` ne reconnaît pas la limite précédée d'un espace dans la ligne complète. Prévision : gardeexit1 alors que le token d'options ro existe. Expérience SSH en lecture seule : findmnt affiche la ligne CIFS exacte avec options `ro,nosuid,nodev,noexec,...`; grep du gardeexit1 ; extractionOPTIONS/tokenisation virgules/grep-x ro exit0. CONFIRMED. Autofs donne aussi une ligne distincte rw ; il faut sélectionner le vrai montage CIFS plutôt que considérer le premier rw ou ignorer le contrôle.
+
+Correction minimale autorisée : aux deux gardes, comparer champs TARGET/SOURCE/FSTYPE puis découper OPTIONS et tester le token exact ro. Garder fail-closed, refuser rw/autresources/fstypes/chemins, ajouter régression locale couvrant roinitial/rointérieur/autofs+cifs/absencecifs/rw. Aucun changement produit/service/NAS/compte. G-INTEGRATION-PI-001 ancien script STALE jusqu'aux relectures indépendantes du nouveau SHA et de l'archive manifeste actualisée. Diagnostic terminé, pas de patch par son auteur, aucune seconde hypothèse.
+
+Suivi indépendant : r2 rejeté par test/sécurité SEC-PI-002 car options rw+ro et doublons CIFS pouvaient être acceptés. Auteur distinct a resserré r3 : un seul CIFS exact, ro présent, rw absent. InstallerSHA3bda4aa4d392924ae93cdd20b5726a97aa669206bc06f2cff3b31efed0e13629, testSHA c842677a8e2b08960f5431d93cce8b81f79627dd5ede93029a6df3911a69e35d. Ancienregex RED, r3 GREEN : roinitial/autofs et rointerne autorisés ; rw/contradictory/duplicate/wrong refusés. Tous les candidats/échecs historiques conservés. Aucun bug dans les codecs ni changement du binaire serveur.
