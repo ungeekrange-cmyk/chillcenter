@@ -155,6 +155,14 @@ pub enum UiCommand {
     Artwork {
         media_id: String,
     },
+    SagaArtwork {
+        id: String,
+    },
+    SagaMemberArtwork {
+        id: String,
+        expected_revision: u64,
+        media_id: String,
+    },
     GroupRating {
         media_id: String,
         rating: Option<u8>,
@@ -162,16 +170,53 @@ pub enum UiCommand {
     },
     StartScan,
     ScanStatus,
-    TmdbCandidates { media_id: String, query: Option<String> },
-    TmdbSelect { media_id: String, expected_revision: u64, tmdb_id: i64, kind: String, scope: String },
-    TmdbRefresh { media_id: String, expected_revision: u64, scope: String },
-    TmdbRestorePoster { media_id: String, expected_revision: u64 },
-    Unavailable { offset: usize, limit: usize },
-    ForgetUnavailable { media_ids: Vec<String>, expected_epoch: u64, confirmed: bool },
-    ReassociationProposals { offset: usize },
-    ConfirmReassociation { source_id: String, target_id: String, expected_source_revision: u64, expected_target_revision: u64, expected_epoch: u64, confirmed: bool },
-    FingerprintStatus { media_id: String },
-    RequestFullFingerprint { media_id: String, confirmed: bool },
+    TmdbCandidates {
+        media_id: String,
+        query: Option<String>,
+    },
+    TmdbSelect {
+        media_id: String,
+        expected_revision: u64,
+        tmdb_id: i64,
+        kind: String,
+        scope: String,
+    },
+    TmdbRefresh {
+        media_id: String,
+        expected_revision: u64,
+        scope: String,
+    },
+    TmdbRestorePoster {
+        media_id: String,
+        expected_revision: u64,
+    },
+    Unavailable {
+        offset: usize,
+        limit: usize,
+    },
+    ForgetUnavailable {
+        media_ids: Vec<String>,
+        expected_epoch: u64,
+        confirmed: bool,
+    },
+    ReassociationProposals {
+        offset: usize,
+    },
+    ConfirmReassociation {
+        source_id: String,
+        target_id: String,
+        expected_source_revision: u64,
+        expected_target_revision: u64,
+        expected_epoch: u64,
+        confirmed: bool,
+    },
+    FingerprintStatus {
+        media_id: String,
+    },
+    RequestFullFingerprint {
+        media_id: String,
+        confirmed: bool,
+    },
     Theme {
         theme: String,
     },
@@ -231,9 +276,15 @@ impl From<ClientError> for UiError {
             "PROFILE_CONFLICT" | "CONFIG_CONFLICT" => {
                 "Modification concurrente : rechargez les données avant de réessayer."
             }
-            "TMDB_NOT_CONFIGURED" => "TMDB n’est pas configuré sur le serveur. Ajoutez le jeton côté serveur puis réessayez.",
-            "TMDB_UNAVAILABLE" => "TMDB est momentanément indisponible. Les informations et affiches actuelles sont conservées.",
-            "TMDB_ASSOCIATION_MISSING" => "Cette fiche n’est pas encore associée à TMDB. Recherchez puis choisissez une fiche.",
+            "TMDB_NOT_CONFIGURED" => {
+                "TMDB n’est pas configuré sur le serveur. Ajoutez le jeton côté serveur puis réessayez."
+            }
+            "TMDB_UNAVAILABLE" => {
+                "TMDB est momentanément indisponible. Les informations et affiches actuelles sont conservées."
+            }
+            "TMDB_ASSOCIATION_MISSING" => {
+                "Cette fiche n’est pas encore associée à TMDB. Recherchez puis choisissez une fiche."
+            }
             "TMDB_SCOPE_INVALID" => "Cette portée ne convient pas à la fiche sélectionnée.",
             _ if status == Some(404) => {
                 "Profil ou élément supprimé : reconnectez/rechargez le serveur."
@@ -689,43 +740,146 @@ impl UiClient {
     pub fn dispatch(&mut self, command: UiCommand) -> Result<Value, UiError> {
         match command {
             UiCommand::TmdbCandidates { media_id, query } => {
-                valid_id(&media_id)?; let p=self.profile()?;
-                self.request(HttpMethod::GET,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/candidates"),None,&[("query",query.unwrap_or_default())],&[])
-            }
-            UiCommand::TmdbSelect { media_id, expected_revision, tmdb_id, kind, scope } => {
                 valid_id(&media_id)?;
-                if tmdb_id<=0 || !["movie","tv"].contains(&kind.as_str()) || !["media","series"].contains(&scope.as_str()) { return Err(invalid("Choix TMDB invalide.")); }
-                let p=self.profile()?;
+                let query = query.unwrap_or_default();
+                valid_tmdb_query(&query)?;
+                let p = self.profile()?;
+                self.request(
+                    HttpMethod::GET,
+                    &format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/candidates"),
+                    None,
+                    &[("query", query)],
+                    &[],
+                )
+            }
+            UiCommand::TmdbSelect {
+                media_id,
+                expected_revision,
+                tmdb_id,
+                kind,
+                scope,
+            } => {
+                valid_id(&media_id)?;
+                if tmdb_id <= 0
+                    || !["movie", "tv"].contains(&kind.as_str())
+                    || !["media", "series"].contains(&scope.as_str())
+                {
+                    return Err(invalid("Choix TMDB invalide."));
+                }
+                let p = self.profile()?;
                 self.request(HttpMethod::POST,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb"),Some(&json!({"expected_revision":expected_revision,"tmdb_id":tmdb_id,"kind":kind,"scope":scope})),&[],&[])
             }
-            UiCommand::TmdbRefresh { media_id, expected_revision, scope } => {
-                valid_id(&media_id)?; if !["media","series"].contains(&scope.as_str()) { return Err(invalid("Portée TMDB invalide.")); }
-                let p=self.profile()?; self.request(HttpMethod::POST,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/refresh"),Some(&json!({"expected_revision":expected_revision,"scope":scope})),&[],&[])
+            UiCommand::TmdbRefresh {
+                media_id,
+                expected_revision,
+                scope,
+            } => {
+                valid_id(&media_id)?;
+                if !["media", "series"].contains(&scope.as_str()) {
+                    return Err(invalid("Portée TMDB invalide."));
+                }
+                let p = self.profile()?;
+                self.request(
+                    HttpMethod::POST,
+                    &format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/refresh"),
+                    Some(&json!({"expected_revision":expected_revision,"scope":scope})),
+                    &[],
+                    &[],
+                )
             }
-            UiCommand::TmdbRestorePoster { media_id, expected_revision } => {
-                valid_id(&media_id)?; let p=self.profile()?; self.request(HttpMethod::POST,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/poster/restore"),Some(&json!({"expected_revision":expected_revision})),&[],&[])
+            UiCommand::TmdbRestorePoster {
+                media_id,
+                expected_revision,
+            } => {
+                valid_id(&media_id)?;
+                let p = self.profile()?;
+                self.request(
+                    HttpMethod::POST,
+                    &format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/poster/restore"),
+                    Some(&json!({"expected_revision":expected_revision})),
+                    &[],
+                    &[],
+                )
             }
             UiCommand::Unavailable { offset, limit } => {
-                if limit==0 || limit>48 { return Err(invalid("Page indisponible invalide.")); }
-                self.request(HttpMethod::GET,"/api/v1/admin/unavailable",None,&[("offset",offset.to_string()),("limit",limit.to_string())],&[])
+                if limit == 0 || limit > 48 {
+                    return Err(invalid("Page indisponible invalide."));
+                }
+                self.request(
+                    HttpMethod::GET,
+                    "/api/v1/admin/unavailable",
+                    None,
+                    &[("offset", offset.to_string()), ("limit", limit.to_string())],
+                    &[],
+                )
             }
-            UiCommand::ForgetUnavailable { media_ids, expected_epoch, confirmed } => {
-                if !confirmed || media_ids.is_empty() || media_ids.len()>48 { return Err(invalid("Confirmation ou sélection indisponible invalide.")); }
+            UiCommand::ForgetUnavailable {
+                media_ids,
+                expected_epoch,
+                confirmed,
+            } => {
+                if !confirmed || media_ids.is_empty() || media_ids.len() > 48 {
+                    return Err(invalid("Confirmation ou sélection indisponible invalide."));
+                }
                 self.request(HttpMethod::POST,"/api/v1/admin/unavailable",Some(&json!({"media_ids":media_ids,"expected_epoch":expected_epoch,"confirmed":true})),&[],&[])
             }
             UiCommand::ReassociationProposals { offset } => {
-                if offset > i64::MAX as usize { return Err(invalid("Page de réassociation invalide.")); }
+                if offset > i64::MAX as usize {
+                    return Err(invalid("Page de réassociation invalide."));
+                }
                 self.profile()?;
-                self.request(HttpMethod::GET,"/api/v1/admin/reassociations",None,&[("offset",offset.to_string()),("limit","48".into())],&[])
+                self.request(
+                    HttpMethod::GET,
+                    "/api/v1/admin/reassociations",
+                    None,
+                    &[("offset", offset.to_string()), ("limit", "48".into())],
+                    &[],
+                )
             }
-            UiCommand::ConfirmReassociation { source_id, target_id, expected_source_revision, expected_target_revision, expected_epoch, confirmed } => {
-                valid_id(&source_id)?; valid_id(&target_id)?;
-                if !confirmed || source_id==target_id { return Err(invalid("Confirmation de réassociation invalide.")); }
+            UiCommand::ConfirmReassociation {
+                source_id,
+                target_id,
+                expected_source_revision,
+                expected_target_revision,
+                expected_epoch,
+                confirmed,
+            } => {
+                valid_id(&source_id)?;
+                valid_id(&target_id)?;
+                if !confirmed || source_id == target_id {
+                    return Err(invalid("Confirmation de réassociation invalide."));
+                }
                 self.profile()?;
                 self.request(HttpMethod::POST,"/api/v1/admin/reassociations",Some(&json!({"confirmed":true,"source_id":source_id,"target_id":target_id,"expected_source_revision":expected_source_revision,"expected_target_revision":expected_target_revision,"expected_epoch":expected_epoch})),&[],&[])
             }
-            UiCommand::FingerprintStatus { media_id } => { valid_id(&media_id)?; self.profile()?; self.request(HttpMethod::GET,&format!("/api/v1/admin/media/{media_id}/fingerprint"),None,&[],&[]) }
-            UiCommand::RequestFullFingerprint { media_id, confirmed } => { valid_id(&media_id)?; if !confirmed{return Err(invalid("Confirmation d’empreinte complète requise."));} self.profile()?; self.request(HttpMethod::POST,&format!("/api/v1/admin/media/{media_id}/fingerprint"),Some(&json!({"complete":true})),&[],&[]) }
+            UiCommand::FingerprintStatus { media_id } => {
+                valid_id(&media_id)?;
+                self.profile()?;
+                self.request(
+                    HttpMethod::GET,
+                    &format!("/api/v1/admin/media/{media_id}/fingerprint"),
+                    None,
+                    &[],
+                    &[],
+                )
+            }
+            UiCommand::RequestFullFingerprint {
+                media_id,
+                confirmed,
+            } => {
+                valid_id(&media_id)?;
+                if !confirmed {
+                    return Err(invalid("Confirmation d’empreinte complète requise."));
+                }
+                self.profile()?;
+                self.request(
+                    HttpMethod::POST,
+                    &format!("/api/v1/admin/media/{media_id}/fingerprint"),
+                    Some(&json!({"complete":true})),
+                    &[],
+                    &[],
+                )
+            }
             UiCommand::Artwork { media_id } => {
                 valid_id(&media_id)?;
                 let p = self.profile()?;
@@ -741,6 +895,38 @@ impl UiClient {
                 let src = crate::artwork::preview_data_uri(&data)
                     .map_err(|_| invalid("Affiche non prise en charge."))?;
                 Ok(json!({"src": src}))
+            }
+            UiCommand::SagaArtwork { id } => {
+                valid_collection_id(&id)?;
+                let p = self.profile()?;
+                let c = self
+                    .connected
+                    .as_ref()
+                    .ok_or_else(|| invalid("Serveur absent."))?;
+                let data = self.runtime.block_on(c.transport.get_binary(
+                    &format!("/api/v1/profiles/{p}/sagas/{id}/artwork"),
+                    &[],
+                    8 * 1024 * 1024,
+                ))?;
+                let src = crate::artwork::preview_data_uri(&data)
+                    .map_err(|_| invalid("Affiche non prise en charge."))?;
+                Ok(json!({"src": src}))
+            }
+            UiCommand::SagaMemberArtwork {
+                id,
+                expected_revision,
+                media_id,
+            } => {
+                valid_collection_id(&id)?;
+                valid_id(&media_id)?;
+                let p = self.profile()?;
+                self.request(
+                    HttpMethod::PUT,
+                    &format!("/api/v1/profiles/{p}/sagas/{id}/poster/member"),
+                    Some(&json!({"expected_revision":expected_revision,"media_id":media_id})),
+                    &[],
+                    &[],
+                )
             }
             UiCommand::Saga { id } => {
                 valid_collection_id(&id)?;
@@ -1354,6 +1540,12 @@ fn valid_id(id: &str) -> Result<(), UiError> {
         .map(|_| ())
         .map_err(|_| invalid("Identifiant invalide."))
 }
+fn valid_tmdb_query(query: &str) -> Result<(), UiError> {
+    if query.chars().count() > 500 {
+        return Err(invalid("Recherche TMDB trop longue."));
+    }
+    Ok(())
+}
 fn valid_series_name(name: &str) -> Result<(), UiError> {
     if name.trim().is_empty() || name.len() > 500 {
         return Err(invalid("Série invalide."));
@@ -1435,15 +1627,60 @@ mod tests {
     use super::*;
     #[test]
     fn provider_and_unavailable_commands_are_closed_and_bounded() {
-        let search: UiCommand = serde_json::from_value(json!({"action":"tmdb_candidates","media_id":"abc","query":"film"})).unwrap();
+        let search: UiCommand = serde_json::from_value(
+            json!({"action":"tmdb_candidates","media_id":"abc","query":"film"}),
+        )
+        .unwrap();
         assert!(matches!(search, UiCommand::TmdbCandidates { .. }));
-        assert!(serde_json::from_value::<UiCommand>(json!({"action":"tmdb_candidates","media_id":"x","url":"https://evil"})).is_err());
+        assert!(valid_tmdb_query(&"x".repeat(500)).is_ok());
+        assert!(valid_tmdb_query(&"x".repeat(501)).is_err());
+        assert!(
+            serde_json::from_value::<UiCommand>(
+                json!({"action":"tmdb_candidates","media_id":"x","url":"https://evil"})
+            )
+            .is_err()
+        );
         let remove: UiCommand = serde_json::from_value(json!({"action":"forget_unavailable","media_ids":["a"],"expected_epoch":1,"confirmed":true})).unwrap();
-        assert!(matches!(remove, UiCommand::ForgetUnavailable { confirmed: true, .. }));
-        let source=uuid::Uuid::new_v4().to_string(); let target=uuid::Uuid::new_v4().to_string();
+        assert!(matches!(
+            remove,
+            UiCommand::ForgetUnavailable {
+                confirmed: true,
+                ..
+            }
+        ));
+        let source = uuid::Uuid::new_v4().to_string();
+        let target = uuid::Uuid::new_v4().to_string();
         let confirm: UiCommand=serde_json::from_value(json!({"action":"confirm_reassociation","source_id":source,"target_id":target,"expected_source_revision":1,"expected_target_revision":2,"expected_epoch":3,"confirmed":true})).unwrap();
-        assert!(matches!(confirm,UiCommand::ConfirmReassociation { .. }));
+        assert!(matches!(confirm, UiCommand::ConfirmReassociation { .. }));
         assert!(serde_json::from_value::<UiCommand>(json!({"action":"request_full_fingerprint","media_id":"bad","confirmed":true,"path":"/nas/x"})).is_err());
+    }
+    #[test]
+    fn saga_artwork_commands_are_closed_and_scoped() {
+        let media_id = uuid::Uuid::new_v4().to_string();
+        let preview: UiCommand = serde_json::from_value(json!({
+            "action":"saga_artwork",
+            "id":"saga_42"
+        }))
+        .unwrap();
+        assert!(matches!(preview, UiCommand::SagaArtwork { .. }));
+        let copy: UiCommand = serde_json::from_value(json!({
+            "action":"saga_member_artwork",
+            "id":"saga_42",
+            "expected_revision":7,
+            "media_id":media_id
+        }))
+        .unwrap();
+        assert!(matches!(copy, UiCommand::SagaMemberArtwork { .. }));
+        assert!(
+            serde_json::from_value::<UiCommand>(json!({
+                "action":"saga_member_artwork",
+                "id":"saga_42",
+                "expected_revision":7,
+                "media_id":uuid::Uuid::new_v4().to_string(),
+                "url":"https://example.invalid/poster.jpg"
+            }))
+            .is_err()
+        );
     }
     #[test]
     fn failed_initial_connection_discards_provisional_trust_and_never_persists_it() {

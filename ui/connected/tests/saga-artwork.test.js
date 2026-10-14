@@ -1,0 +1,10 @@
+"use strict";
+const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
+const source=fs.readFileSync(require.resolve("../catalog.js"),"utf8"),start=source.indexOf("function tmdbCommand"),end=source.indexOf("\nif(typeof module",start);
+assert.notEqual(start,-1,"catalog artwork command helpers must be present");
+const helpers=vm.runInNewContext(source.slice(start,end)+";({tmdbCommand,sagaArtworkCommand,sagaMemberArtworkCommand})");
+assert.deepEqual(JSON.parse(JSON.stringify(helpers.tmdbCommand("search","00000000-0000-4000-8000-000000000000",3,"media","Le titre choisi"))),{action:"tmdb_candidates",media_id:"00000000-0000-4000-8000-000000000000",query:"Le titre choisi"});
+assert.deepEqual(JSON.parse(JSON.stringify(helpers.sagaArtworkCommand("saga_42"))),{action:"saga_artwork",id:"saga_42"});
+const copy=JSON.parse(JSON.stringify(helpers.sagaMemberArtworkCommand("saga_42",7,"00000000-0000-4000-8000-000000000000")));
+assert.deepEqual(copy,{action:"saga_member_artwork",id:"saga_42",expected_revision:7,media_id:"00000000-0000-4000-8000-000000000000"});
+assert.equal(JSON.stringify(copy).includes("url"),false,"member artwork is a fixed server-side copy, never a web URL");
