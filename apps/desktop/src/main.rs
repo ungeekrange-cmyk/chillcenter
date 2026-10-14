@@ -456,6 +456,15 @@ fn main() {
             }
         });
         let render_window = window.clone();
+        let guard_window = window.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut timer = tokio::time::interval(std::time::Duration::from_millis(250));
+            timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                timer.tick().await;
+                let _ = native_player::deadline_tick(&guard_window).await;
+            }
+        });
         let render_bridge = bridge.clone();
         tauri::async_runtime::spawn(async move {
             let mut timer = tokio::time::interval(std::time::Duration::from_millis(16));
@@ -491,6 +500,8 @@ fn main() {
                     let w = closing_window.clone();
                     let app = handle.clone();
                     tauri::async_runtime::spawn(async move {
+                        // Pause before waiting behind an in-flight network operation.
+                        let _ = native_player::close_if_loaded(&w).await;
                         bridge.player.lock().await.stop(&w).await.ok();
                         app.exit(0);
                     });
@@ -507,6 +518,7 @@ fn main() {
             artwork_command,
             admin_command,
             ai_command,
+            qa_deadline_probe,
             qa_result
         ])
         .on_page_load(|webview, payload| {
@@ -519,16 +531,19 @@ fn main() {
             ) {
                 let mode = std::env::var("CHILL_UI_QA_MODE").unwrap_or_default();
                 let _ = webview.eval(format!(
-                    "{}\n{}\n{}\n{}\n{}\n{}({});",
-                    include_str!("../../../ui/connected/qa.js"),
+                    "{}\n{}({});",
+                    [include_str!("../../../ui/connected/qa.js"),
                     include_str!("../../../ui/connected/player-qa.js"),
                     include_str!("../../../ui/connected/catalog-qa.js"),
                     include_str!("../../../ui/connected/archive-qa.js"),
                     include_str!("../../../ui/connected/ai-qa.js"),
+                    include_str!("../../../ui/connected/deadline-qa.js")].join("\n"),
                     if mode == "player" || mode == "next_series" || mode.starts_with("transfer_") {
                         "window.chillPlayerQa"
                     } else {
-                        if mode == "ai" {
+                        if mode == "deadline" {
+                            "window.chillDeadlineQa"
+                        } else if mode == "ai" {
                             "window.chillAiQa"
                         } else if mode == "admin_archive" {
                             "window.chillArchiveQa"
@@ -553,6 +568,40 @@ fn main() {
     builder
         .run(tauri::generate_context!())
         .expect("Chill Center startup");
+}
+#[cfg(debug_assertions)]
+#[tauri::command]
+async fn qa_deadline_probe(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Bridge>,
+) -> Result<Value, UiError> {
+    if std::env::var("CHILL_UI_QA_MODE").as_deref() != Ok("deadline")
+        || !std::env::var("CHILL_UI_QA_URL").is_ok_and(|v| v.starts_with("https://127.0.0.1:"))
+    {
+        return Err(ai_bridge::error("QA indisponible.", "QA_DISABLED"));
+    }
+    let bridge = state.inner().clone();
+    let _permit = bridge
+        .slot
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| ai_bridge::error("QA interrompue.", "QA_FAILED"))?;
+    let _host = bridge.player.lock().await;
+    let rendering_before = bridge
+        .rendering
+        .swap(false, std::sync::atomic::Ordering::AcqRel);
+    let result=async {
+        native_player::action(&window,native_player::NativeAction::LeaseDeadline{remaining_ms:500}).await.map_err(|_|ai_bridge::error("QA lecteur indisponible.","QA_FAILED"))?;
+        let initially_paused=native_player::guard_paused(&window).await.map_err(|_|ai_bridge::error("QA lecteur indisponible.","QA_FAILED"))?;
+        tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+        let paused=native_player::guard_paused(&window).await.map_err(|_|ai_bridge::error("QA lecteur indisponible.","QA_FAILED"))?;
+        Ok(serde_json::json!({"initially_paused":initially_paused,"paused":paused,"rendering":bridge.rendering.load(std::sync::atomic::Ordering::Acquire),"ui_slot_held":bridge.slot.available_permits()==0,"host_mutex_held":bridge.player.try_lock().is_err()}))
+    }.await;
+    bridge
+        .rendering
+        .store(rendering_before, std::sync::atomic::Ordering::Release);
+    result
 }
 #[cfg(debug_assertions)]
 #[tauri::command]

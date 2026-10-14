@@ -7,6 +7,7 @@ fn main() {
             "admin_command",
             "ai_command",
             "qa_result",
+            "qa_deadline_probe",
         ]),
     ))
     .expect("Tauri configuration");

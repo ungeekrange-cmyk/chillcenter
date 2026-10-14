@@ -238,6 +238,60 @@ pub async fn render_tick<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Na
     .await
 }
 
+/// Safety pulse independent of rendering, UI dispatch and the host's network mutex.
+pub async fn deadline_tick<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), NativePlayerError> {
+    on_main_unit(window, |_view| {
+        PLAYER.with(|slot| {
+            if let Some(state) = slot.borrow().clone() {
+                state.borrow_mut().expire_if_needed()?;
+            }
+            Ok(())
+        })
+    })
+    .await
+}
+pub async fn close_if_loaded<R: Runtime>(
+    window: &WebviewWindow<R>,
+) -> Result<(), NativePlayerError> {
+    on_main_unit(window, |_view| {
+        PLAYER.with(|slot| {
+            if let Some(state) = slot.borrow().clone() {
+                let mut state = state.borrow_mut();
+                state.player.pause(true)?;
+                state.paused = true;
+                state.view.setHidden(true);
+            }
+            Ok(())
+        })
+    })
+    .await
+}
+#[cfg(debug_assertions)]
+pub async fn guard_paused<R: Runtime>(
+    window: &WebviewWindow<R>,
+) -> Result<bool, NativePlayerError> {
+    // Read the native guard flag only. A normal snapshot/poll expires the player
+    // itself and would mask a broken independent watchdog in the regression.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    window
+        .run_on_main_thread(move || {
+            let out = PLAYER.with(|slot| slot.borrow().as_ref().map(|state| state.borrow().paused));
+            let _ = tx.send(out);
+        })
+        .map_err(|e| NativePlayerError::Surface(e.to_string()))?;
+    rx.await
+        .map_err(|_| NativePlayerError::Disconnected)?
+        .ok_or_else(|| NativePlayerError::Surface("aucun lecteur chargé".into()))
+}
+fn deadline_has_passed(
+    now: Instant,
+    wall: SystemTime,
+    deadline: Instant,
+    wall_deadline: SystemTime,
+) -> bool {
+    now >= deadline || wall >= wall_deadline
+}
+
 async fn on_main<R: Runtime, F>(
     window: &WebviewWindow<R>,
     op: F,
@@ -464,7 +518,12 @@ impl SurfacePlayer {
         Ok(())
     }
     fn expired(&self) -> bool {
-        Instant::now() >= self.deadline_instant || SystemTime::now() >= self.deadline_wall
+        deadline_has_passed(
+            Instant::now(),
+            SystemTime::now(),
+            self.deadline_instant,
+            self.deadline_wall,
+        )
     }
     fn expire_if_needed(&mut self) -> Result<(), NativePlayerError> {
         if self.expired() && !self.paused {
@@ -603,6 +662,39 @@ impl SurfacePlayer {
             #[cfg(debug_assertions)]
             debug_nonblank: Some(self.framebuffer.nonblank()),
         })
+    }
+}
+
+#[cfg(test)]
+mod deadline_clock_tests {
+    use super::*;
+    #[test]
+    fn wall_clock_expiry_covers_a_monotonic_clock_that_did_not_advance_during_suspend() {
+        let now = Instant::now();
+        let wall = SystemTime::UNIX_EPOCH + Duration::from_secs(100);
+        assert!(deadline_has_passed(
+            now,
+            wall,
+            now + Duration::from_secs(30),
+            wall - Duration::from_secs(1)
+        ));
+    }
+    #[test]
+    fn backward_wall_clock_never_extends_monotonic_expiry() {
+        let now = Instant::now();
+        let wall = SystemTime::UNIX_EPOCH + Duration::from_secs(100);
+        assert!(deadline_has_passed(
+            now,
+            wall,
+            now - Duration::from_secs(1),
+            wall + Duration::from_secs(30)
+        ));
+        assert!(!deadline_has_passed(
+            now,
+            wall,
+            now + Duration::from_secs(1),
+            wall + Duration::from_secs(1)
+        ));
     }
 }
 
