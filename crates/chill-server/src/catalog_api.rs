@@ -7,11 +7,11 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
 };
-use chill_catalog::model::MediaPatch;
-use chill_domain::{PlaybackContext, store::CatalogQuery};
+use chill_catalog::model::{MediaPatch, SeriesPatch};
+use chill_domain::{PlaybackContext, catalog_browser::BrowserQuery};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{io::Read, os::unix::io::FromRawFd};
+use std::io::Read;
 use std::{process::Stdio, time::Duration};
 
 #[derive(Clone, Default, Serialize)]
@@ -24,6 +24,15 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/admin/scan", get(scan_status).post(start_scan))
         .route("/api/v1/profiles/{profile}/catalog", get(catalog))
+        .route("/api/v1/sagas/{saga}/artwork",get(common_saga_artwork))
+        .route(
+            "/api/v1/admin/unavailable",
+            get(unavailable).post(forget_unavailable),
+        )
+        .route(
+            "/api/v1/profiles/{profile}/media/{media}/related",
+            get(related),
+        )
         .route(
             "/api/v1/profiles/{profile}/media/{media}",
             get(detail).put(update_media),
@@ -44,7 +53,22 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/profiles/{profile}/media/{media}/subtitles/{id}",
             get(crate::media_stream::subtitle),
         )
-        .route("/api/v1/profiles/{profile}/series/{series}", get(series))
+        .route(
+            "/api/v1/profiles/{profile}/series/{series}",
+            get(series).put(edit_series),
+        )
+        .route(
+            "/api/v1/profiles/{profile}/sagas/{saga}/artwork",
+            get(saga_artwork),
+        )
+        .route(
+            "/api/v1/profiles/{profile}/sagas/{saga}/poster",
+            put(upload_saga_poster).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
+        .route(
+            "/api/v1/profiles/{profile}/sagas/{saga}/poster/member",
+            put(saga_member_poster),
+        )
         .route(
             "/api/v1/profiles/{profile}/sagas",
             get(sagas).post(create_saga),
@@ -133,28 +157,16 @@ async fn artwork(
         .call(move |s| s.artwork_path(&profile, &media))
         .await?;
     let cache = state.config.data_dir.join("posters");
-    let canonical = std::fs::canonicalize(&path)
+    tokio::task::spawn_blocking(move || cached_artwork(&cache, &path))
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "ARTWORK_UNAVAILABLE"))?
+}
+fn cached_artwork(cache: &std::path::Path, path: &std::path::Path) -> Result<Response, ApiError> {
+    let (mut file, version) = crate::media_stream::open_indexed(cache, path)
         .map_err(|_| ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"))?;
-    let root = std::fs::canonicalize(&cache)
-        .map_err(|_| ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"))?;
-    if !canonical.starts_with(&root) {
+    if version.size > 8 * 1024 * 1024 {
         return Err(ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"));
     }
-    // Canonicalization alone is not sufficient: refuse a symlink swapped in
-    // between validation and read. Cache directories are service-owned.
-    use std::ffi::CString;
-    let raw = unsafe {
-        libc::open(
-            CString::new(canonical.as_os_str().as_encoded_bytes())
-                .map_err(|_| ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"))?
-                .as_ptr(),
-            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-        )
-    };
-    if raw < 0 {
-        return Err(ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"));
-    }
-    let mut file = unsafe { std::fs::File::from_raw_fd(raw) };
     let mut bytes = Vec::new();
     file.by_ref()
         .take((8 * 1024 * 1024 + 1) as u64)
@@ -175,10 +187,7 @@ async fn artwork(
     Ok((
         [
             (header::CONTENT_TYPE, kind),
-            (
-                header::CACHE_CONTROL,
-                "private, max-age=31536000, immutable",
-            ),
+            (header::CACHE_CONTROL, "private, no-cache"),
         ],
         bytes,
     )
@@ -225,15 +234,169 @@ async fn series(
     Path((profile, series)): Path<(String, String)>,
 ) -> Result<Json<Value>, ApiError> {
     let key = series.clone();
-    let members = state
+    let (members, revision) = state
         .database
-        .call(move |store| store.series(&profile, &key))
+        .call(move |store| Ok((store.series(&profile, &key)?, store.common_revision()?)))
         .await?;
     let total = members.len();
     let watched = members.iter().filter(|m| m.watched).count();
     Ok(Json(
-        json!({"name":series,"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}}),
+        json!({"name":series,"revision":revision,"metadata":members.first().and_then(|m|m.series_metadata.clone()),"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}}),
     ))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SharedSeriesEdit {
+    expected_revision: u64,
+    patch: SeriesPatch,
+}
+async fn edit_series(
+    State(state): State<AppState>,
+    Path((profile, series)): Path<(String, String)>,
+    Json(body): Json<SharedSeriesEdit>,
+) -> Result<Json<Value>, ApiError> {
+    let next = body.patch.name.trim().to_string();
+    let result = state
+        .database
+        .call(move |s| {
+            s.update_shared_series(&profile, &series, body.expected_revision, &body.patch)?;
+            Ok((s.series(&profile, &next)?, s.common_revision()?))
+        })
+        .await?;
+    Ok(Json(json!({"episodes":result.0,"revision":result.1})))
+}
+#[derive(Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct UnavailableQuery {
+    offset: usize,
+    limit: usize,
+}
+impl Default for UnavailableQuery {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            limit: 48,
+        }
+    }
+}
+async fn unavailable(
+    State(state): State<AppState>,
+    Query(q): Query<UnavailableQuery>,
+) -> Result<Json<chill_domain::administration::UnavailablePage>, ApiError> {
+    Ok(Json(
+        state
+            .database
+            .call(move |s| s.unavailable_page(q.offset, q.limit))
+            .await?,
+    ))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForgetUnavailable {
+    expected_epoch: u64,
+    media_ids: Vec<String>,
+    confirmed: bool,
+}
+async fn forget_unavailable(
+    State(state): State<AppState>,
+    Json(body): Json<ForgetUnavailable>,
+) -> Result<Json<Value>, ApiError> {
+    if !body.confirmed {
+        return Err(ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "CONFIRMATION_REQUIRED",
+        ));
+    }
+    state
+        .database
+        .call(move |s| s.forget_unavailable(&body.media_ids, body.expected_epoch))
+        .await?;
+    Ok(Json(json!({"removed":true})))
+}
+async fn related(
+    State(state): State<AppState>,
+    Path((profile, id)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(
+        json!({"items":state.database.call(move|s|s.related(&profile,&id)).await?}),
+    ))
+}
+async fn saga_artwork(
+    State(state): State<AppState>,
+    Path((profile, id)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let path = state
+        .database
+        .call(move |s| s.saga_artwork_path(&profile, &id))
+        .await?;
+    let cache = state.config.data_dir.join("posters");
+    tokio::task::spawn_blocking(move || cached_artwork(&cache, &path))
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "ARTWORK_UNAVAILABLE"))?
+}
+async fn common_saga_artwork(State(state):State<AppState>,Path(id):Path<String>)->Result<Response,ApiError>{let path=state.database.call(move|s|s.common_saga_artwork_path(&id)).await?;let cache=state.config.data_dir.join("posters");tokio::task::spawn_blocking(move||cached_artwork(&cache,&path)).await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"ARTWORK_UNAVAILABLE"))?}
+async fn upload_saga_poster(
+    State(state): State<AppState>,
+    Path((profile, id)): Path<(String, String)>,
+    Query(q): Query<PosterRevision>,
+    bytes: Bytes,
+) -> Result<Json<Value>, ApiError> {
+    let cache = state.config.data_dir.join("posters");
+    let saga = state
+        .database
+        .call(move |s| {
+            let path = chill_catalog::poster::store(&bytes, &cache)?;
+            if let Err(e) =
+                s.set_saga_artwork_at_revision(&profile, &id, q.expected_revision, &path)
+            {
+                let _ = std::fs::remove_file(&path);
+                return Err(e);
+            }
+            s.saga(&id)
+        })
+        .await?;
+    Ok(Json(json!({"saga":saga})))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemberPoster {
+    expected_revision: u64,
+    media_id: String,
+}
+async fn saga_member_poster(
+    State(state): State<AppState>,
+    Path((profile, id)): Path<(String, String)>,
+    Json(body): Json<MemberPoster>,
+) -> Result<Json<Value>, ApiError> {
+    let cache = state.config.data_dir.join("posters");
+    let saga = state
+        .database
+        .call(move |s| {
+            let members = s.saga(&id)?;
+            if !members.media_ids.contains(&body.media_id) {
+                return Err("Ce film n'appartient pas à cette saga.".into());
+            }
+            let source = s.artwork_path(&profile, &body.media_id)?;
+            let (file, version) = crate::media_stream::open_indexed(&cache, &source)
+                .map_err(|_| "Affiche inaccessible.")?;
+            if version.size > 8 * 1024 * 1024 {
+                return Err("Affiche trop volumineuse.".into());
+            }
+            let mut bytes = Vec::new();
+            file.take(8 * 1024 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| "Affiche inaccessible.")?;
+            let path = chill_catalog::poster::store(&bytes, &cache)?;
+            if let Err(e) =
+                s.set_saga_artwork_at_revision(&profile, &id, body.expected_revision, &path)
+            {
+                let _ = std::fs::remove_file(&path);
+                return Err(e);
+            }
+            s.saga(&id)
+        })
+        .await?;
+    Ok(Json(json!({"saga":saga})))
 }
 async fn sagas(
     State(state): State<AppState>,
@@ -605,32 +768,14 @@ async fn playback_info(
             .await?,
     ))
 }
-#[derive(Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct PageQuery {
-    offset: usize,
-    limit: usize,
-    category: Option<String>,
-    q: Option<String>,
-}
 async fn catalog(
     State(state): State<AppState>,
     Path(profile): Path<String>,
-    Query(query): Query<PageQuery>,
+    Query(query): Query<BrowserQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let page = state
         .database
-        .call(move |store| {
-            store.catalog_page(
-                &profile,
-                &CatalogQuery {
-                    offset: query.offset,
-                    limit: query.limit,
-                    category: query.category,
-                    title_contains: query.q,
-                },
-            )
-        })
+        .call(move |store| store.browse_catalog(&profile, &query))
         .await?;
     Ok(Json(json!({"items":page.items,"has_more":page.has_more})))
 }

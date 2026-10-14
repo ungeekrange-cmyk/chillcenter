@@ -81,6 +81,11 @@ impl Store {
             .map_err(db_error)?;
         personal.execute_batch(
             "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
+             CREATE TABLE IF NOT EXISTS cc_common_epoch (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
+             INSERT OR IGNORE INTO cc_common_epoch(id,revision) VALUES(1,0);
+             CREATE TRIGGER IF NOT EXISTS cc_common_media_i AFTER INSERT ON media BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_media_u AFTER UPDATE ON media BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_media_d AFTER DELETE ON media BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TABLE IF NOT EXISTS cc_profiles (
                 id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 revision INTEGER NOT NULL DEFAULT 1
@@ -892,6 +897,7 @@ impl Store {
         let mut collections = self.catalogue.collections()?;
         self.ensure_identities(&self.catalogue.list()?)?;
         for collection in &mut collections {
+            if collection.kind=="saga"{collection.media_ids=self.saga_order(&collection.id)?;collection.poster=collection.poster.as_ref().map(|_|format!("/api/v1/sagas/{}/artwork",collection.id));}
             collection.media_ids = collection
                 .media_ids
                 .iter()
@@ -954,14 +960,12 @@ impl Store {
             .into_iter()
             .filter(|c| c.kind == "saga")
             .map(|c| {
-                let media_ids = c
-                    .media_ids
+                let order=self.saga_order(&c.id)?;
+                let media_ids = order
                     .iter()
                     .map(|legacy| self.stable_id(legacy))
                     .collect::<Result<Vec<_>, _>>()?;
-                let poster = c
-                    .poster
-                    .filter(|p| !Path::new(p).is_absolute() && !p.starts_with("file:"));
+                let poster = c.poster.as_ref().map(|_|format!("/api/v1/sagas/{}/artwork",c.id));
                 Ok(SagaView {
                     revision: self.catalogue.saga_revision(&c.id)?,
                     id: c.id,
@@ -1019,16 +1023,7 @@ impl Store {
         expected: &[String],
         desired: &[String],
     ) -> Result<SagaView, String> {
-        let expected = expected
-            .iter()
-            .map(|stable| self.legacy_id(stable))
-            .collect::<Result<Vec<_>, _>>()?;
-        let desired = desired
-            .iter()
-            .map(|stable| self.legacy_id(stable))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.catalogue
-            .reorder_saga_at_revision(id, revision, &expected, &desired)?;
+        self.reorder_common_saga(id,revision,expected,desired)?;
         self.saga(id)
     }
     pub fn delete_saga_at_revision(&mut self, id: &str, revision: u64) -> Result<(), String> {
@@ -1399,7 +1394,15 @@ impl Store {
         }
         out.write_all(b"],\"sagas\":")
             .map_err(|_| "Export de staging inaccessible.")?;
-        serde_json::to_writer(&mut *out, &saga_export(&self.personal, self)?)
+        let mut sagas=saga_export(&self.personal,self)?;
+        for saga in &mut sagas{
+            let id=saga.id.parse::<i64>().map_err(|_|"Saga invalide.")?;
+            let path:Option<String>=self.personal.query_row("SELECT poster FROM collection_artwork WHERE collection_id=?1",[id],|r|r.get(0)).optional().map_err(db_error)?;
+            if let Some(relative)=path.as_ref().and_then(|p|Path::new(p).strip_prefix(poster_root).ok()).filter(|p|p.components().all(|c|matches!(c,std::path::Component::Normal(_)))){
+                let reference=format!("posters/saga-{id}.bin");saga.poster=Some(reference.clone());posters.push(ArchivePoster{reference,relative:relative.to_path_buf()});
+            }
+        }
+        serde_json::to_writer(&mut *out, &sagas)
             .map_err(|_| "Export invalide.")?;
         out.write_all(b",\"personal\":[")
             .map_err(|_| "Export de staging inaccessible.")?;
@@ -1500,7 +1503,7 @@ impl Store {
             .optional()
             .map_err(db_error)
     }
-    fn require_profile(&self, id: &str) -> Result<(), String> {
+    pub(crate) fn require_profile(&self, id: &str) -> Result<(), String> {
         self.profile(id)?
             .map(|_| ())
             .ok_or_else(|| "Profil introuvable.".into())
@@ -1524,7 +1527,7 @@ impl Store {
         tx.execute("INSERT OR IGNORE INTO cc_media_revision(stable_id,revision) SELECT stable_id,1 FROM cc_media_identity", []).map_err(db_error)?;
         tx.commit().map_err(db_error)
     }
-    fn stable_id(&self, legacy: &str) -> Result<String, String> {
+    pub(crate) fn stable_id(&self, legacy: &str) -> Result<String, String> {
         self.personal
             .query_row(
                 "SELECT stable_id FROM cc_media_identity WHERE legacy_id=?1",
@@ -1533,7 +1536,7 @@ impl Store {
             )
             .map_err(media_lookup_error)
     }
-    fn legacy_id(&self, stable: &str) -> Result<String, String> {
+    pub(crate) fn legacy_id(&self, stable: &str) -> Result<String, String> {
         self.personal
             .query_row(
                 "SELECT legacy_id FROM cc_media_identity WHERE stable_id=?1",
@@ -1542,7 +1545,7 @@ impl Store {
             )
             .map_err(media_lookup_error)
     }
-    fn profile_view(&self, profile: &str, mut media: Media) -> Result<Media, String> {
+    pub(crate) fn profile_view(&self, profile: &str, mut media: Media) -> Result<Media, String> {
         let stable = self.stable_id(&media.id)?;
         let state = state(&self.personal, profile, &stable)?;
         media.id = stable;
@@ -1775,7 +1778,7 @@ fn saga_export(connection: &Connection, store: &Store) -> Result<Vec<Collection>
         let (id, name) = row.map_err(db_error)?;
         let mut members = connection
             .prepare(
-                "SELECT media_id FROM collection_members WHERE collection_id=?1 ORDER BY rowid",
+                "SELECT m.media_id FROM collection_members m LEFT JOIN collection_positions p ON p.collection_id=m.collection_id AND p.media_id=m.media_id JOIN media d ON d.id=m.media_id WHERE m.collection_id=?1 ORDER BY p.position IS NULL,p.position,json_extract(d.data,'$.year') IS NULL,json_extract(d.data,'$.year'),json_extract(d.data,'$.title') COLLATE NOCASE,m.rowid",
             )
             .map_err(db_error)?;
         let legacy = members

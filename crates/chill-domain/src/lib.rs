@@ -1,3 +1,5 @@
+pub mod administration;
+pub mod catalog_browser;
 pub mod import;
 pub mod store;
 pub mod types;
