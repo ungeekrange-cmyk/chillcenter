@@ -1,6 +1,7 @@
 pub mod api;
 pub mod archive_api;
 pub mod export_jobs;
+pub mod identity_api;
 pub mod catalog_api;
 pub mod config;
 pub mod connection;

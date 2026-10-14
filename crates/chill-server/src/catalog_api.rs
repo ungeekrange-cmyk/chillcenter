@@ -106,7 +106,6 @@ pub fn routes() -> Router<AppState> {
             put(order_playlist),
         )
         .route("/api/v1/profiles/{profile}/playback/next", post(next_video))
-        .route("/api/v1/admin/media/{media}/reassociate", post(reassociate))
         .route(
             "/api/v1/profiles/{profile}/media/{media}/playback-info",
             get(playback_info),
@@ -661,22 +660,6 @@ async fn next_video(
             .call(move |s| s.next_video(&profile, &body.media_id, &body.context))
             .await?,
     ))
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Reassociate {
-    relative_path: String,
-}
-async fn reassociate(
-    State(state): State<AppState>,
-    Path(media): Path<String>,
-    Json(body): Json<Reassociate>,
-) -> Result<Json<Value>, ApiError> {
-    state
-        .database
-        .call(move |s| s.confirm_media_reassociation(&media, &body.relative_path))
-        .await?;
-    Ok(Json(json!({"reassociated":true})))
 }
 async fn playback_info(
     State(state): State<AppState>,

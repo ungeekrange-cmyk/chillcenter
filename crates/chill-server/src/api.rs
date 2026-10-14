@@ -153,6 +153,7 @@ pub fn router(state: AppState) -> Router {
         .merge(crate::archive_api::routes())
         .merge(crate::export_jobs::routes())
         .merge(crate::catalog_api::routes())
+        .merge(crate::identity_api::routes())
         .merge(crate::tmdb_api::routes())
         .merge(crate::playback::routes())
         .route("/api/v1/server", get(server))
