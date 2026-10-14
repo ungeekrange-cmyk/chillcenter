@@ -1,6 +1,8 @@
 # REL-PI-001 — Première installation Linux / NAS
 
-14 octobre 2026 · état **VERIFIED_RUNTIME_SCOPED**, service/TLS/NASRO vérifiés indépendamment, scan et premières lectures réelles PASS ; charge longue encore IN_PROGRESS.
+14 octobre 2026 · état **VERIFIED_RUNTIME_SCOPED**, service/TLS/NASRO vérifiés indépendamment, scan2496préservé, premières lectures réellesPASS ; essaislongsterminés, capacité3flux **FAILED**(Dune2<80%tempsréel), exact2Dune10min **QUALIFIED_PASS**avecstallsDune2. [Vérificationfinaledistincte](REL-PI-001-final-media-verification.md), [preuve/mesures](REL-PI-001-media-evidence.md). Les mentionsen cours/NOT_RUNplusbas sont historiques ; pasrequalificationenPASS desrisquesrestants.
+
+ArtefactR7immuable remis dans `artifacts/linux/chillcenter-server-126da0a-pi64-r7.tar.gz` +SHA256`ed485f99e14ab8953b7d007959ab9fc35a11a006d4d989260a703fe9be6ebee2`, runtimeoverlay`10-working-directory.conf`SHA256`6bad2f8c529705b246253bb8d593d7ae58155b2eb23bacac7afb404e01a5bf1a` etreceiptJSON. NouveauclientMac624f244 et [tamponconfigurable](REL-MAC-CACHE-001.md) livrésséparément ; aucunredéploiementPi pourcesréglages. Ancienclient126conservé. TroisprofilsQA retirésaprèsfins, catalogueSQL2496etservicePID3016/NRestarts0activeconfirmés.
 
 ## Métadonnées et autorisation
 

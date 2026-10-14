@@ -1,9 +1,9 @@
 # ADR-0010 — Tampon client : une minute d'avance, retour d'environ 30 secondes
 
-- Statut : PROPOSED, détail de l'ADR-0004, aucun remplacement de celui-ci.
+- Statut : ACCEPTED après revue indépendante624f244, détail de l'ADR-0004, aucun remplacement de celui-ci.
 - Date : 2026-10-14 ; auteur /root ; propriétaire lecteur Mac.
 - Base : c58da7e614b54890e0ef0207f4679d9b02cfca0e, branche codex/pi-install.
-- Révision : CC-CACHE-002 ; revue indépendante du delta configurable : PENDING.
+- Révision : CC-CACHE-002 ; revue indépendante/root/pi_integration_gate APPROVED au SHA624f2447b5c0ede6b4a053ea3fa7b82db85c0121 le2026-10-14T12:27:05Z. [Rapport](../../reviews/chillcenter-cache-code-test-624f244.md) SHA256bbbe5cc009515c094e645792b620b9f1d1db97cbed0729ccab931fcfbc8bd19c ; [gate](../../gates/G-DEV-CC-CACHE-002.md). Ce changement de statut ne réécrit pas la décision revue.
 - Revue initiale27bd5b2 : code/tests APPROVED, ADR CHANGES_REQUESTED ; rapport conservé dans la preuve de livraison.
 - Supersedes / superseded_by : NONE / NONE.
 - Exigences : F-02/03/04/09, ADR-0003/0004, ENABLER-006.

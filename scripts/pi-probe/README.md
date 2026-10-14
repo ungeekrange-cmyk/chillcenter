@@ -1,6 +1,6 @@
 # Sonde opérateur Pi / NAS
 
-Harnais distinct des binaires livrés. Il utilise le transport épinglé et le lecteur libmpv/FFmpeg du produit. Il ne lit jamais un chemin NAS depuis le Mac. Son build a passé ; les essais Pi restent NOT_RUN tant que l'installation n'est pas confirmée.
+Harnais distinct des binaires livrés. Il utilise le transport épinglé et le lecteur libmpv/FFmpeg du produit. Il ne lit jamais un chemin NAS depuis le Mac. Installation réelle et scan2496 confirmés14octobre2026 ; [preuves](../../docs/releases/REL-PI-001-media-evidence.md) des troisformats, deuxHD30min et troisfluxDune/720p : capacitétriple **nonvalidée**, Dune2progression<80%. La propriétébuffered_ahead_seconds est une approximation mpv, pas une garantie60s. L'optionlocaleMio du client graphique n'est pas chargée par ce harnais ; il emploie PlayerOptions::default128/64Mio.
 
 Avant usage : installation vérifiée sur192.168.1.42:8443, certificat public récupéré via SSH approuvé puis empreinte SHA256 SPKI vérifiée. Ne jamais extraire la clé privée. `--authorized-pi-tests` et l'empreinte exacte sont obligatoires. Aucun `-k` ni remplacement de la confiance de l'application.
 

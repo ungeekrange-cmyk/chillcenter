@@ -1,0 +1,22 @@
+DECODE_READY {"audio_tracks":1,"codec":"H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10","container":"MP4","duration":8936.16,"estimated_average_mbps":2.6390375839286673,"file_bytes":2947857762,"hardware":"videotoolbox-copy","headless":true,"load_seconds":7.400069542,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","seek":45.0,"speed_controls":true,"subtitle_tracks":0}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":59.776,"elapsed":31,"position":75.52,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":290}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":59.861333,"elapsed":62,"position":106.52,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":580}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":93,"position":137.4,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":860}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":124,"position":168.16,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":1137}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":155,"position":199.0,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":1420}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":187,"position":229.72,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":1704}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":218,"position":262.04,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":1989}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":249,"position":293.08,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":2265}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":279,"position":323.76,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":2546}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":59.904,"elapsed":311,"position":355.12,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":2828}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":342,"position":386.64,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":3113}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":373,"position":417.2,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":3397}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":59.349333,"elapsed":404,"position":448.2,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":3687}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":435,"position":479.24,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":3978}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":466,"position":510.04,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":4270}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":496,"position":540.64,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":4552}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":527,"position":571.64,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":4845}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":558,"position":602.72,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":5130}
+PROGRESS {"buffer_samples":0,"buffered_ahead_seconds":60.010667,"elapsed":589,"position":633.52,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":5417}
+DECODE_COMPLETE {"buffer_samples":0,"position":643.84,"profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","samples":5514,"wall_seconds":600.0746375}
+PLAYBACK_PASS {"duration":8936.16,"elapsed_seconds":600,"last_position":643.84,"media":"9cc99991-1e29-4b9e-b5d2-e1c381448ac2","profile":"781d0ebd-bb9d-4e33-b9a7-9339f864b5f0","released_lease_refused":true,"resume_other_device":true}

@@ -1,6 +1,8 @@
 # ENABLER-006 — Mesurer ressources et trois lectures sur le Pi
 
-14octobre2026 : IN_PROGRESS. Pi3B+/Debian13.7/NASRO installé et vérifié, dataset2496 réel (pas3000), troisformats10sPASS, CPU/RSSidle puis deuxHD30min en cours avant3lecteurs. Voir [preuves exécutées/limites](../releases/REL-PI-001-media-evidence.md) ; ne pas clore l'enabler sur les seules preuves logicielles ou un échantillon inachevé.
+14octobre2026 : IN_PROGRESS, mesures exécutées avec échecs, nonDONE. Pi3B+/Debian13.7/NASRO installé et vérifié, dataset2496 réel (pas3000), troisformats10sPASS, deuxHD30minterminés avecstallsMKV, puis3fluxréels(Dune1/Dune2/720p)30min : **Dune2exit1/progression<80%**, pascapacité3validée malgréRSS24,23Mio/CPUmax22,95%d'uncœur/swap0. Essaiadditionnel deuxDune10minterminéexit0/PASSmaisbuffer184débutDune2, pasfluiditéuniverselle. Voir [preuves exécutées/limites](../releases/REL-PI-001-media-evidence.md) ; ne pas clore l'enabler sur compilation, moyenneCPU ou lecture partielle. Les statuts documentaires anciens ci-dessous conservent leurhistorique.
+
+Correction fonctionnelle utilisateur14octobre : le budgetclient64Mio deEXIT-03historique est remplacé par [ADR0010CC-CACHE-002](../architecture/decisions/ADR-0010-client-playback-cache.md), cibleavance60s/défaut128/64Mio, configurationlocale16–512/0–256Mio, plafonds approximatifs de paquets, pasRSS. Les mesuresmémoireclient anciennes sontSTALE ; seuils serveur restentinchangés. Dataset3000/RSSwebviewmax/pannesphysiques/backseeksansrefetch encoreNOT_RUN.
 
 - Type : ENABLER ; aucune user story technique déguisée.
 - Révision : CC-STORIES-001 ; statut documentaire : REVIEW_REQUESTED.

@@ -1,0 +1,22 @@
+DECODE_READY {"audio_tracks":1,"codec":"H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10","container":"MKV/EBML","duration":10016.215,"estimated_average_mbps":6.835636047349223,"file_bytes":8558400039,"hardware":"videotoolbox-copy","headless":true,"load_seconds":0.450366834,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","seek":45.0,"speed_controls":true,"subtitle_tracks":11}
+PROGRESS {"buffer_samples":51,"buffered_ahead_seconds":0.0,"elapsed":31,"position":69.736,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":291}
+PROGRESS {"buffer_samples":117,"buffered_ahead_seconds":1.71,"elapsed":62,"position":93.343,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":581}
+PROGRESS {"buffer_samples":148,"buffered_ahead_seconds":2.88,"elapsed":93,"position":120.787,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":866}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":7.968,"elapsed":124,"position":147.689,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":1146}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":22.314,"elapsed":154,"position":178.387,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":1425}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":24.108,"elapsed":185,"position":209.167,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":1709}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":21.855,"elapsed":216,"position":239.99,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":1993}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":16.892,"elapsed":247,"position":270.854,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":2272}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":20.604,"elapsed":278,"position":301.676,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":2554}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":19.311,"elapsed":309,"position":332.791,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":2833}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":16.225,"elapsed":340,"position":363.53,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":3116}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":10.01,"elapsed":370,"position":394.311,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":3400}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":6.656,"elapsed":401,"position":425.3,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":3692}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":11.845,"elapsed":432,"position":455.956,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":3978}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":19.712,"elapsed":463,"position":486.861,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":4270}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":25.651,"elapsed":494,"position":517.851,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":4556}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":23.565,"elapsed":525,"position":548.757,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":4847}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":16.057,"elapsed":556,"position":579.537,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":5130}
+PROGRESS {"buffer_samples":184,"buffered_ahead_seconds":8.592,"elapsed":587,"position":610.693,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":5418}
+DECODE_COMPLETE {"buffer_samples":184,"position":623.248,"profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","samples":5536,"wall_seconds":600.166468584}
+PLAYBACK_PASS {"duration":10016.215,"elapsed_seconds":600,"last_position":623.248,"media":"dbecd05a-8407-4878-b020-c22e212bd108","profile":"4b83d743-ebe3-4c10-9ae3-3eca5fc3a478","released_lease_refused":true,"resume_other_device":true}

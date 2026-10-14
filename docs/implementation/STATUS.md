@@ -1,6 +1,8 @@
 # État d'implémentation — remise acceptée avec réserves
 
-Mise à jourPi14octobre : serveur ARM64 actif sur192.168.1.42:8443, TLS/confinement/NASRO validés indépendamment. Scan2496/10,14s et premières lecturesAVI/MKV/MP4 PASS ; chargelongue en cours. [REL-PI-001](../releases/REL-PI-001.md) et [preuvesmédias](../releases/REL-PI-001-media-evidence.md) gouvernent les derniers gates/limites ; les paragraphes ci-dessous conservent leurs checkpoints historiques, pas une promesse133ACtousPASS.
+Mise à jourPi14octobre : serveur ARM64 actif sur192.168.1.42:8443, TLS/confinement/NASRO validés indépendamment, scan2496conservé. Essaisréels2HD30min/3fluxDune+72030min/2Dune10minterminés : **Dune2à3échoueprogression<80%, à2passeavecstallsdébut** ; capacitéfluide3nonvalidée, pasdiagnosticdecausesupposé. RSSPimax24,36Mio/swap0/PIDstable. QA3profilsretirés, vidéosconservées. [REL-PI-001](../releases/REL-PI-001.md) et [preuvesmédias](../releases/REL-PI-001-media-evidence.md) gouvernent les derniers gates/limites ; les paragraphes ci-dessous conservent leurs checkpoints historiques, pas une promesse133ACtousPASS.
+
+ClientMac624f244 : nouveau [tamponconfigurable](../releases/REL-MAC-CACHE-001.md), Administration16–512Mioavant/0–256arrière,défaut128/64,cibleavance60s/retourvariable≈30s. StockageparMac, effetprochainlancement,passerveur/profil ; revuescode/tests/ADR/sécuritéAPPROVED,259Rust/27Node/clippyPASSetbundle75Mio/signature/loader/API2.5PASS. Ancienbundle126conservé ; Pi source126/R7inchangé. Testsgraphiqueshumains/RSSmax/backseeknorefetchnonexécutés ; matérialitéNAS/Wi-Fi ne se déduit pas de ces succès logiciels.
 
 ## Situation actuelle (2026-10-14)
 
