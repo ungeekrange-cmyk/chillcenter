@@ -1,10 +1,10 @@
 //! Allowlisted UI operations. No JS-supplied HTTP paths, headers or local/NAS paths.
 use crate::{
-    ClientError, HttpMethod, PresentedCertificate, ServerEndpoint, Transport, TrustEventKind,
-    TrustStore, inspect_certificate,
+    inspect_certificate, ClientError, HttpMethod, PresentedCertificate, ServerEndpoint, Transport,
+    TrustEventKind, TrustStore,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
     fs,
@@ -54,6 +54,12 @@ pub enum UiCommand {
         offset: usize,
         category: Option<String>,
         q: Option<String>,
+        genre: Option<String>,
+        year: Option<u16>,
+        watched: Option<bool>,
+        sort: Option<String>,
+        grouped: Option<bool>,
+        available: Option<bool>,
     },
     SetWatched {
         media_id: String,
@@ -1118,15 +1124,17 @@ impl UiClient {
                 offset,
                 category,
                 q,
+                genre,
+                year,
+                watched,
+                sort,
+                grouped,
+                available,
             } => {
                 let profile = self.profile()?;
-                let mut query = vec![("offset", offset.to_string()), ("limit", "48".into())];
-                if let Some(category) = category.filter(|s| !s.is_empty()) {
-                    query.push(("category", category));
-                }
-                if let Some(q) = q.filter(|s| !s.is_empty()) {
-                    query.push(("q", q));
-                }
+                let query = catalog_query(
+                    offset, category, q, genre, year, watched, sort, grouped, available,
+                )?;
                 self.request(
                     HttpMethod::GET,
                     &format!("/api/v1/profiles/{profile}/catalog"),
@@ -1188,6 +1196,65 @@ fn fingerprint(bytes: &[u8; 32]) -> String {
         .map(|b| format!("{b:02x}"))
         .collect::<Vec<_>>()
         .join(":")
+}
+fn catalog_query(
+    offset: usize,
+    category: Option<String>,
+    q: Option<String>,
+    genre: Option<String>,
+    year: Option<u16>,
+    watched: Option<bool>,
+    sort: Option<String>,
+    grouped: Option<bool>,
+    available: Option<bool>,
+) -> Result<Vec<(&'static str, String)>, UiError> {
+    let mut query = vec![("offset", offset.to_string()), ("limit", "48".into())];
+    if let Some(category) = category.filter(|s| !s.is_empty()) {
+        if !["film", "serie", "spectacle", "documentaire"].contains(&category.as_str()) {
+            return Err(invalid("Catégorie invalide."));
+        }
+        query.push(("category", category));
+    }
+    if let Some(q) = q.filter(|s| !s.is_empty()) {
+        query.push(("q", q));
+    }
+    if let Some(genre) = genre.filter(|s| !s.is_empty()) {
+        if genre.chars().count() > 200 {
+            return Err(invalid("Genre trop long."));
+        }
+        query.push(("genre", genre));
+    }
+    if let Some(year) = year {
+        if year != 0 && !(1850..=2200).contains(&year) {
+            return Err(invalid("Année invalide."));
+        }
+        query.push(("year", year.to_string()));
+    }
+    if let Some(watched) = watched {
+        query.push(("watched", watched.to_string()));
+    }
+    if let Some(sort) = sort.filter(|s| !s.is_empty()) {
+        if ![
+            "title_asc",
+            "title_desc",
+            "year_asc",
+            "year_desc",
+            "added_desc",
+            "rating_desc",
+        ]
+        .contains(&sort.as_str())
+        {
+            return Err(invalid("Tri invalide."));
+        }
+        query.push(("sort", sort));
+    }
+    if let Some(grouped) = grouped {
+        query.push(("grouped", grouped.to_string()));
+    }
+    if let Some(available) = available {
+        query.push(("available", available.to_string()));
+    }
+    Ok(query)
 }
 fn valid_id(id: &str) -> Result<(), UiError> {
     uuid::Uuid::parse_str(id)
@@ -1275,13 +1342,11 @@ mod tests {
                 subject: "isolated fixture".into(),
             },
         });
-        assert!(
-            client
-                .dispatch(UiCommand::Approve {
-                    token: "approval-token".into()
-                })
-                .is_err()
-        );
+        assert!(client
+            .dispatch(UiCommand::Approve {
+                token: "approval-token".into()
+            })
+            .is_err());
         assert!(client.connected.is_none());
         assert_eq!(*client.trust.read().unwrap(), before);
         assert_eq!(UiClient::open(dir.path()).unwrap().settings.trust, before);
@@ -1301,11 +1366,9 @@ mod tests {
             at_unix: 2,
             kind: TrustEventKind::KeyReplacedAfterKnownExpiry,
         });
-        assert!(
-            renewal_notice(&trust, 1)
-                .unwrap()
-                .contains("acceptée automatiquement")
-        );
+        assert!(renewal_notice(&trust, 1)
+            .unwrap()
+            .contains("acceptée automatiquement"));
         assert!(renewal_notice(&trust, 2).is_none());
     }
     #[test]
@@ -1360,15 +1423,13 @@ mod tests {
         // persistence boundary, without a mock HTTP stack or production test hook.
         client.connected.as_mut().unwrap().active = Some(uuid::Uuid::new_v4().to_string());
         client.directory = dir.path().join("unavailable-settings-directory");
-        assert!(
-            client
-                .commit_selected_view(
-                    "server".into(),
-                    Some(a.clone()),
-                    Ok(json!({"stage":"connected"}))
-                )
-                .is_err()
-        );
+        assert!(client
+            .commit_selected_view(
+                "server".into(),
+                Some(a.clone()),
+                Ok(json!({"stage":"connected"}))
+            )
+            .is_err());
         assert_eq!(client.profile().unwrap(), a);
         assert_eq!(client.settings.last_profiles["server"], a);
         assert_eq!(
@@ -1401,29 +1462,84 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut client = UiClient::open(dir.path()).unwrap();
         assert_eq!(client.dispatch(UiCommand::Boot).unwrap()["stage"], "server");
-        assert!(
-            client
-                .dispatch(UiCommand::Approve {
-                    token: "forged".into()
-                })
-                .is_err()
+        assert!(client
+            .dispatch(UiCommand::Approve {
+                token: "forged".into()
+            })
+            .is_err());
+        assert!(client
+            .dispatch(UiCommand::Catalog {
+                offset: 0,
+                category: None,
+                q: None,
+                genre: None,
+                year: None,
+                watched: None,
+                sort: None,
+                grouped: None,
+                available: None,
+            })
+            .is_err());
+        assert!(client
+            .dispatch(UiCommand::SelectProfile {
+                id: uuid::Uuid::new_v4().to_string()
+            })
+            .is_err());
+    }
+    #[test]
+    fn catalog_query_only_emits_allowlisted_filters() {
+        let query = catalog_query(
+            48,
+            Some("serie".into()),
+            Some("episode".into()),
+            Some("Drame".into()),
+            Some(0),
+            Some(false),
+            Some("rating_desc".into()),
+            Some(true),
+            Some(true),
+        )
+        .unwrap();
+        assert_eq!(
+            query,
+            vec![
+                ("offset", "48".into()),
+                ("limit", "48".into()),
+                ("category", "serie".into()),
+                ("q", "episode".into()),
+                ("genre", "Drame".into()),
+                ("year", "0".into()),
+                ("watched", "false".into()),
+                ("sort", "rating_desc".into()),
+                ("grouped", "true".into()),
+                ("available", "true".into())
+            ]
         );
-        assert!(
-            client
-                .dispatch(UiCommand::Catalog {
-                    offset: 0,
-                    category: None,
-                    q: None
-                })
-                .is_err()
-        );
-        assert!(
-            client
-                .dispatch(UiCommand::SelectProfile {
-                    id: uuid::Uuid::new_v4().to_string()
-                })
-                .is_err()
-        );
+        assert!(catalog_query(
+            0,
+            None,
+            None,
+            Some("x".repeat(201)),
+            None,
+            None,
+            None,
+            None,
+            None
+        )
+        .is_err());
+        assert!(catalog_query(0, None, None, None, Some(1849), None, None, None, None).is_err());
+        assert!(catalog_query(
+            0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("random".into()),
+            None,
+            None
+        )
+        .is_err());
     }
     #[test]
     fn theme_persists_on_this_device() {
