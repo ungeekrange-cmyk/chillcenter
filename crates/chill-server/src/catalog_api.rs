@@ -24,7 +24,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/admin/scan", get(scan_status).post(start_scan))
         .route("/api/v1/profiles/{profile}/catalog", get(catalog))
-        .route("/api/v1/sagas/{saga}/artwork",get(common_saga_artwork))
+        .route("/api/v1/sagas/{saga}/artwork", get(common_saga_artwork))
         .route(
             "/api/v1/admin/unavailable",
             get(unavailable).post(forget_unavailable),
@@ -328,7 +328,19 @@ async fn saga_artwork(
         .await
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "ARTWORK_UNAVAILABLE"))?
 }
-async fn common_saga_artwork(State(state):State<AppState>,Path(id):Path<String>)->Result<Response,ApiError>{let path=state.database.call(move|s|s.common_saga_artwork_path(&id)).await?;let cache=state.config.data_dir.join("posters");tokio::task::spawn_blocking(move||cached_artwork(&cache,&path)).await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"ARTWORK_UNAVAILABLE"))?}
+async fn common_saga_artwork(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let path = state
+        .database
+        .call(move |s| s.common_saga_artwork_path(&id))
+        .await?;
+    let cache = state.config.data_dir.join("posters");
+    tokio::task::spawn_blocking(move || cached_artwork(&cache, &path))
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "ARTWORK_UNAVAILABLE"))?
+}
 async fn upload_saga_poster(
     State(state): State<AppState>,
     Path((profile, id)): Path<(String, String)>,
@@ -814,6 +826,7 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
                 .map_err(|_| ())?
                 .map_err(|_| ())?;
             crate::fingerprint::enqueue_scan_candidates(state.clone()).await;
+            crate::tmdb_api::enqueue_auto(state.clone()).await;
             Ok(count)
         }
         .await;

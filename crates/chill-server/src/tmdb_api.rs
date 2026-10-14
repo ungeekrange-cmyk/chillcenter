@@ -279,6 +279,27 @@ async fn eligible_ids(state: &AppState, profile: &str) -> Result<Vec<String>, Ap
     }
     Ok(ids)
 }
+pub async fn enqueue_auto(state: AppState) {
+    let Ok(Some(config)) = stored_credential(&state) else {
+        return;
+    };
+    if !config.auto_enrich {
+        return;
+    }
+    let Some(profile) = config.auto_profile_id else {
+        return;
+    };
+    let Ok(ids) = eligible_ids(&state, &profile).await else {
+        return;
+    };
+    let Ok(job) = state.tmdb_jobs.create(profile, ids) else {
+        return;
+    };
+    let service = state.tmdb_jobs.clone();
+    tokio::spawn(async move {
+        run_job(state, service, job.job_id).await;
+    });
+}
 fn exact_candidate(
     media: &chill_catalog::model::Media,
     candidates: Vec<chill_catalog::metadata::Candidate>,
@@ -311,7 +332,7 @@ async fn run_job(state: AppState, service: Arc<TmdbJobService>, id: String) {
         None => return,
     };
     for media_id in job.media_ids.clone() {
-        if state.playback.fingerprint_should_pause() {
+        while state.playback.fingerprint_should_pause() {
             if let Ok(mut jobs) = service.jobs.lock() {
                 if let Some(j) = jobs.get_mut(&id) {
                     j.status = JobStatus::PausedPlayback;
@@ -319,7 +340,6 @@ async fn run_job(state: AppState, service: Arc<TmdbJobService>, id: String) {
             }
             let _ = service.persist();
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            continue;
         }
         let cancelled = service.status(&id).is_none_or(|j| j.cancelled);
         if cancelled {
