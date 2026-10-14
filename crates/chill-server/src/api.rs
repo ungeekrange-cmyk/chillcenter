@@ -187,29 +187,45 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .nest(crate::api_version::PREFIX, api.clone())
         .nest("/api/v1", api)
+        .fallback(crate::web_static::serve)
         .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), same_origin))
         .layer(middleware::from_fn(crate::api_version::normalize_response))
         .with_state(state)
 }
 
-/// No CORS. Native Rust requests have no Origin; any browser-origin request is
-/// refused for now (web client is explicitly deferred). Host must name this server.
+/// No CORS. Native Rust requests have no Origin. A browser request is accepted
+/// only when it is same-origin with this server (the bundled web client, ADR-0012):
+/// `Sec-Fetch-Site: same-origin`, and `Origin`, when present, equal to `https://<Host>`.
+/// Everything else (cross-site, same-site, other origins) is refused. Host must name this server.
 async fn same_origin(
     State(state): State<AppState>,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, ApiError> {
-    if request.headers().contains_key("origin") || request.headers().contains_key("sec-fetch-site")
-    {
-        return Err(ApiError(StatusCode::FORBIDDEN, "BROWSER_ORIGIN_REFUSED"));
-    }
     let host = request
         .headers()
         .get("host")
         .and_then(|h| h.to_str().ok())
         .or_else(|| request.uri().authority().map(|a| a.as_str()))
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "HOST_REQUIRED"))?;
+    let header = |name: &str| request.headers().get(name).map(|v| v.to_str().ok());
+    let browser_allowed = match (header("sec-fetch-site"), header("origin")) {
+        (None, None) => true,
+        (Some(Some("same-origin")), None) => true,
+        (Some(Some("same-origin")), Some(Some(origin))) => {
+            origin.eq_ignore_ascii_case(&format!("https://{host}"))
+        }
+        // `none` is a user-typed navigation: static page only, never the API.
+        (Some(Some("none")), None) => {
+            !request.uri().path().starts_with("/api/")
+                && request.method() == axum::http::Method::GET
+        }
+        _ => false,
+    };
+    if !browser_allowed {
+        return Err(ApiError(StatusCode::FORBIDDEN, "BROWSER_ORIGIN_REFUSED"));
+    }
     let authority: axum::http::uri::Authority = host
         .parse()
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "HOST_INVALID"))?;
@@ -734,6 +750,56 @@ mod tests {
         assert_eq!(
             app.oneshot(rebound).await.unwrap().status(),
             StatusCode::FORBIDDEN
+        );
+    }
+
+    #[tokio::test]
+    async fn same_origin_browser_is_accepted_and_cross_site_is_refused() {
+        let (dir, app) = setup();
+        let with = |site: &str, origin: Option<&str>, path: &str| {
+            let mut r = request("GET", path, Value::Null);
+            r.headers_mut().insert("sec-fetch-site", site.parse().unwrap());
+            if let Some(origin) = origin {
+                r.headers_mut().insert("origin", origin.parse().unwrap());
+            }
+            r
+        };
+        let status = |r| {
+            let app = app.clone();
+            async move { app.oneshot(r).await.unwrap().status() }
+        };
+        assert_eq!(
+            status(with("same-origin", None, "/api/v1/server")).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(with(
+                "same-origin",
+                Some("https://localhost:8443"),
+                "/api/v1/server"
+            ))
+            .await,
+            StatusCode::OK
+        );
+        for refused in [
+            with("cross-site", None, "/api/v1/server"),
+            with("same-site", None, "/api/v1/server"),
+            with("none", None, "/api/v1/server"),
+            with("same-origin", Some("https://other.example"), "/api/v1/server"),
+        ] {
+            assert_eq!(status(refused).await, StatusCode::FORBIDDEN);
+        }
+        // Without a web directory the static fallback is a plain 404; with one it serves.
+        assert_eq!(
+            status(with("none", None, "/")).await,
+            StatusCode::NOT_FOUND
+        );
+        std::fs::create_dir(dir.path().join("web")).unwrap();
+        std::fs::write(dir.path().join("web/index.html"), b"<!doctype html>").unwrap();
+        assert_eq!(status(with("none", None, "/")).await, StatusCode::OK);
+        assert_eq!(
+            status(with("none", None, "/.env")).await,
+            StatusCode::NOT_FOUND
         );
     }
 

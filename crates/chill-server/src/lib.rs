@@ -16,3 +16,4 @@ pub mod playback;
 mod playback_tests;
 pub mod tls;
 pub mod tmdb_api;
+mod web_static;
