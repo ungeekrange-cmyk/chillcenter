@@ -191,8 +191,8 @@ async fn admin_command(
     .await
     .map_err(|_| error("Client interrompu.", "ADMIN_BUSY"))??;
     let job = match &command {
-        C::Import => bridge.administration.begin(connection, "import")?,
-        C::Export => bridge.administration.begin(connection, "export")?,
+        C::Import {} => bridge.administration.begin(connection, "import")?,
+        C::Export {} => bridge.administration.begin(connection, "export")?,
         C::Status { id } | C::Save { id } | C::Plan { id, .. } | C::Apply { id, .. } => {
             let job = bridge.administration.get(id)?;
             {
@@ -206,7 +206,7 @@ async fn admin_command(
         C::Cancel { .. } => unreachable!(),
     };
     match command {
-        C::Import => {
+        C::Import {} => {
             let selected = archive_choice(&app, false).await?;
             if let Some(path) = selected {
                 let file = match tauri::async_runtime::spawn_blocking(move || {
@@ -234,7 +234,7 @@ async fn admin_command(
                 return Ok(serde_json::json!({"cancelled":true}));
             }
         }
-        C::Export => {
+        C::Export {} => {
             tauri::async_runtime::spawn(admin_bridge::export(job.clone()));
         }
         C::Save { .. } => {

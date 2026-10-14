@@ -28,8 +28,8 @@ pub fn error(message: &str, code: &str) -> UiError {
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AdminCommand {
-    Import,
-    Export,
+    Import {},
+    Export {},
     Status { id: String },
     Cancel { id: String },
     Save { id: String },
@@ -521,10 +521,22 @@ mod tests {
                 .is_err()
         );
         assert!(
+            serde_json::from_value::<AdminCommand>(json!({"action":"export","url":"https://bad"}))
+                .is_err()
+        );
+        assert!(
             serde_json::from_value::<AdminCommand>(
                 json!({"action":"save","id":"x","url":"https://bad"})
             )
             .is_err()
         );
+        assert!(matches!(
+            serde_json::from_value::<AdminCommand>(json!({"action":"import"})),
+            Ok(AdminCommand::Import {})
+        ));
+        assert!(matches!(
+            serde_json::from_value::<AdminCommand>(json!({"action":"export"})),
+            Ok(AdminCommand::Export {})
+        ));
     }
 }
