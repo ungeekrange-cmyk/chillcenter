@@ -80,6 +80,14 @@ pub enum UiCommand {
     Series {
         name: String,
     },
+    EditSeries {
+        series: String,
+        expected_revision: u64,
+        patch: Value,
+    },
+    RelatedMedia {
+        media_id: String,
+    },
     Sagas,
     Playlists,
     Playlist {
@@ -817,14 +825,40 @@ impl UiClient {
                 )
             }
             UiCommand::Series { name } => {
-                if name.is_empty() || name.len() > 500 {
-                    return Err(invalid("Série invalide."));
-                }
+                valid_series_name(&name)?;
                 let p = self.profile()?;
                 let segment = percent_segment(&name);
                 self.request(
                     HttpMethod::GET,
                     &format!("/api/v1/profiles/{p}/series/{segment}"),
+                    None,
+                    &[],
+                    &[],
+                )
+            }
+            UiCommand::EditSeries {
+                series,
+                expected_revision,
+                patch,
+            } => {
+                valid_series_name(&series)?;
+                let payload = series_edit_payload(expected_revision, patch)?;
+                let p = self.profile()?;
+                let segment = percent_segment(&series);
+                self.request(
+                    HttpMethod::PUT,
+                    &format!("/api/v1/profiles/{p}/series/{segment}"),
+                    Some(&payload),
+                    &[],
+                    &[],
+                )
+            }
+            UiCommand::RelatedMedia { media_id } => {
+                valid_id(&media_id)?;
+                let p = self.profile()?;
+                self.request(
+                    HttpMethod::GET,
+                    &format!("/api/v1/profiles/{p}/media/{media_id}/related"),
                     None,
                     &[],
                     &[],
@@ -1261,6 +1295,23 @@ fn valid_id(id: &str) -> Result<(), UiError> {
         .map(|_| ())
         .map_err(|_| invalid("Identifiant invalide."))
 }
+fn valid_series_name(name: &str) -> Result<(), UiError> {
+    if name.trim().is_empty() || name.len() > 500 {
+        return Err(invalid("Série invalide."));
+    }
+    Ok(())
+}
+fn series_edit_payload(expected_revision: u64, patch: Value) -> Result<Value, UiError> {
+    let allowed = ["name", "year", "genres", "overview", "cast", "directors"];
+    let object = patch
+        .as_object()
+        .filter(|o| o.keys().all(|key| allowed.contains(&key.as_str())))
+        .ok_or_else(|| invalid("Champs communs de série invalides."))?;
+    if let Some(name) = object.get("name").and_then(Value::as_str) {
+        valid_series_name(name)?;
+    }
+    Ok(json!({"expected_revision":expected_revision,"patch":patch}))
+}
 fn valid_collection_id(id: &str) -> Result<(), UiError> {
     if id.is_empty()
         || id.len() > 128
@@ -1540,6 +1591,14 @@ mod tests {
             None
         )
         .is_err());
+    }
+    #[test]
+    fn series_edit_payload_is_closed_and_keeps_the_revision_outside_the_patch() {
+        let payload = series_edit_payload(9, json!({"name":"Série", "year":0, "genres":["Drame"], "overview":"Commun", "cast":[], "directors":[]})).unwrap();
+        assert_eq!(payload["expected_revision"], 9);
+        assert_eq!(payload["patch"]["name"], "Série");
+        assert!(series_edit_payload(1, json!({"series":"wrong key"})).is_err());
+        assert!(series_edit_payload(1, json!({"name":""})).is_err());
     }
     #[test]
     fn theme_persists_on_this_device() {
