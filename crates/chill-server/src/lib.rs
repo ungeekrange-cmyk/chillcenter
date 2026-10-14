@@ -2,6 +2,7 @@ pub mod api;
 pub mod ai_api;
 pub mod archive_api;
 pub mod export_jobs;
+pub mod fingerprint;
 pub mod identity_api;
 pub mod catalog_api;
 pub mod config;

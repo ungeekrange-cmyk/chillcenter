@@ -3,7 +3,6 @@ use crate::Store;
 use chill_catalog::model::Media;
 use rusqlite::{TransactionBehavior, params};
 use serde::Serialize;
-use std::path::Path;
 
 fn db(_: rusqlite::Error) -> String {
     "REASSOCIATION_INVALID".into()
@@ -17,15 +16,10 @@ fn decode(value: String) -> Result<Media, String> {
 fn encode(value: &Media) -> Result<String, String> {
     serde_json::to_string(value).map_err(|_| "REASSOCIATION_INVALID".into())
 }
-fn stem(path: &str) -> Option<String> {
-    let file = Path::new(path).file_stem()?.to_str()?;
-    let compact: String = file.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    (!compact.is_empty()).then(|| compact.to_ascii_lowercase())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fingerprint::{FingerprintEvidence, FingerprintKind};
     use chill_catalog::model::Media;
     fn media(id: &str, title: &str) -> Media {
         Media {
@@ -73,7 +67,21 @@ mod tests {
             .create_collection(&profile_a.id, "Liste", "playlist")
             .unwrap();
         store
-            .collection_member_add_bulk(&profile_a.id, &list.id, &[source.clone()])
+            .collection_member_add_bulk(&profile_a.id, &list.id, std::slice::from_ref(&source))
+            .unwrap();
+        let old_target = store.fingerprint_target(&source).unwrap();
+        store
+            .mark_fingerprint_queued(&source, FingerprintKind::Partial)
+            .unwrap();
+        store
+            .save_fingerprint(
+                &old_target,
+                &FingerprintEvidence {
+                    byte_size: 42,
+                    partial_sha256: "a".repeat(64),
+                    full_sha256: None,
+                },
+            )
             .unwrap();
         store
             .snapshot(vec![media("Films/Old Renamed.mkv", "New metadata")])
@@ -87,7 +95,20 @@ mod tests {
             .find(|m| m.path == "Films/Old Renamed.mkv")
             .unwrap()
             .id;
+        let new_target = store.fingerprint_target(&target).unwrap();
+        store
+            .save_fingerprint(
+                &new_target,
+                &FingerprintEvidence {
+                    byte_size: 42,
+                    partial_sha256: "a".repeat(64),
+                    full_sha256: None,
+                },
+            )
+            .unwrap();
         let page = store.reassociation_proposals(0, 48).unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].label, "probable");
         let request = ReassociationConfirmation {
             source_id: source.clone(),
             target_id: target.clone(),
@@ -142,13 +163,16 @@ impl Store {
             return Err("REASSOCIATION_INVALID".into());
         }
         let epoch = self.catalog_revision()?;
-        let mut unavailable=self.personal.prepare("SELECT i.stable_id,i.relative_path,COALESCE(r.revision,1) FROM cc_media_identity i JOIN media m ON m.id=i.legacy_id LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id WHERE json_extract(m.data,'$.available')=0 ORDER BY i.relative_path LIMIT ?1 OFFSET ?2").map_err(db)?;
+        let mut unavailable=self.personal.prepare("SELECT i.stable_id,i.relative_path,COALESCE(r.revision,1),f.byte_size,f.partial_sha256,f.full_sha256 FROM cc_media_identity i JOIN media m ON m.id=i.legacy_id LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id JOIN cc_media_fingerprint f ON f.stable_id=i.stable_id WHERE json_extract(m.data,'$.available')=0 AND f.state='complete' AND f.source_path=json_extract(m.data,'$.path') AND f.byte_size IS NOT NULL AND f.partial_sha256 IS NOT NULL ORDER BY i.relative_path LIMIT ?1 OFFSET ?2").map_err(db)?;
         let sources = unavailable
             .query_map(params![limit as i64 + 1, offset as i64], |r| {
                 Ok((
                     r.get::<_, String>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, i64>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, Option<String>>(5)?,
                 ))
             })
             .map_err(db)?
@@ -156,25 +180,24 @@ impl Store {
             .map_err(db)?;
         let has_more = sources.len() > limit;
         let mut items = Vec::new();
-        for (source_id, source_path, source_rev) in sources.into_iter().take(limit) {
-            let Some(source_stem) = stem(&source_path) else {
-                continue;
-            };
-            let mut candidates=self.personal.prepare("SELECT i.stable_id,i.relative_path,COALESCE(r.revision,1) FROM cc_media_identity i JOIN media m ON m.id=i.legacy_id LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id WHERE json_extract(m.data,'$.available')=1 ORDER BY i.relative_path").map_err(db)?;
+        for (source_id, _source_path, source_rev, byte_size, partial, full) in sources.into_iter().take(limit) {
+            let mut candidates=self.personal.prepare("SELECT i.stable_id,i.relative_path,COALESCE(r.revision,1),f.full_sha256 FROM cc_media_identity i JOIN media m ON m.id=i.legacy_id LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id JOIN cc_media_fingerprint f ON f.stable_id=i.stable_id WHERE json_extract(m.data,'$.available')=1 AND f.state='complete' AND f.source_path=json_extract(m.data,'$.path') AND f.byte_size=?1 AND f.partial_sha256=?2 ORDER BY i.relative_path").map_err(db)?;
             for candidate in candidates
-                .query_map([], |r| {
+                .query_map(params![byte_size, partial], |r| {
                     Ok((
                         r.get::<_, String>(0)?,
                         r.get::<_, String>(1)?,
                         r.get::<_, i64>(2)?,
+                        r.get::<_, Option<String>>(3)?,
                     ))
                 })
                 .map_err(db)?
             {
-                let (target_id, target_path, target_rev) = candidate.map_err(db)?;
-                if source_id == target_id || stem(&target_path).as_deref() != Some(&source_stem) {
+                let (target_id, target_path, target_rev, target_full) = candidate.map_err(db)?;
+                if source_id == target_id {
                     continue;
                 }
+                let full_matches = full.as_ref().zip(target_full.as_ref()).is_some_and(|(a,b)| a == b);
                 items.push(ReassociationProposal {
                     source_id: source_id.clone(),
                     target_id,
@@ -183,7 +206,11 @@ impl Store {
                     expected_catalogue_epoch: epoch,
                     target_relative_path: target_path,
                     label: "probable".into(),
-                    reason: "Nom de fichier normalisé identique ; confirmation obligatoire.".into(),
+                    reason: if full_matches {
+                        "Empreinte complète identique mais réassociation automatique non applicable ; confirmation obligatoire."
+                    } else {
+                        "Taille et échantillons identiques ; confirmation obligatoire."
+                    }.into(),
                 });
             }
         }
@@ -248,6 +275,18 @@ impl Store {
         tx.execute(
             "DELETE FROM cc_media_revision WHERE stable_id=?1",
             [&request.target_id],
+        )
+        .map_err(db)?;
+        tx.execute(
+            "UPDATE cc_media_fingerprint SET
+               byte_size=(SELECT byte_size FROM cc_media_fingerprint WHERE stable_id=?1),
+               partial_sha256=(SELECT partial_sha256 FROM cc_media_fingerprint WHERE stable_id=?1),
+               full_sha256=(SELECT full_sha256 FROM cc_media_fingerprint WHERE stable_id=?1),
+               source_path=(SELECT source_path FROM cc_media_fingerprint WHERE stable_id=?1),
+               state=(SELECT state FROM cc_media_fingerprint WHERE stable_id=?1),
+               requested_kind=(SELECT requested_kind FROM cc_media_fingerprint WHERE stable_id=?1)
+             WHERE stable_id=?2 AND EXISTS(SELECT 1 FROM cc_media_fingerprint WHERE stable_id=?1)",
+            params![request.target_id, request.source_id],
         )
         .map_err(db)?;
         tx.execute(

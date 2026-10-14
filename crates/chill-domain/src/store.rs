@@ -110,6 +110,17 @@ impl Store {
                 stable_id TEXT PRIMARY KEY REFERENCES cc_media_identity(stable_id) ON DELETE CASCADE,
                 revision INTEGER NOT NULL DEFAULT 1
              );
+             CREATE TABLE IF NOT EXISTS cc_media_fingerprint (
+                stable_id TEXT PRIMARY KEY REFERENCES cc_media_identity(stable_id) ON DELETE CASCADE,
+                byte_size INTEGER CHECK(byte_size > 0),
+                partial_sha256 TEXT CHECK(partial_sha256 IS NULL OR length(partial_sha256)=64),
+                full_sha256 TEXT CHECK(full_sha256 IS NULL OR length(full_sha256)=64),
+                source_path TEXT,
+                state TEXT NOT NULL CHECK(state IN ('queued','running','complete','failed')),
+                requested_kind TEXT NOT NULL CHECK(requested_kind IN ('partial','full'))
+             );
+             CREATE INDEX IF NOT EXISTS cc_media_fingerprint_match
+                ON cc_media_fingerprint(byte_size,partial_sha256,full_sha256);
              CREATE TABLE IF NOT EXISTS cc_profile_state (
                 profile_id TEXT NOT NULL REFERENCES cc_profiles(id) ON DELETE CASCADE,
                 stable_media_id TEXT NOT NULL REFERENCES cc_media_identity(stable_id),
@@ -207,6 +218,7 @@ impl Store {
         add_column_if_missing(&personal, "cc_profile_state", "last_session_id TEXT")?;
         add_column_if_missing(&personal, "cc_profile_state", "last_generation INTEGER")?;
         add_column_if_missing(&personal, "cc_profile_state", "last_sequence INTEGER")?;
+        add_column_if_missing(&personal, "cc_media_fingerprint", "source_path TEXT")?;
         // The epoch guards the entire imported state, including writes from a
         // second connection (scanner). Every trigger is transactional.
         for table in [

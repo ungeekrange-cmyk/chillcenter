@@ -58,6 +58,16 @@ impl Default for PlaybackService {
         }
     }
 }
+impl PlaybackService {
+    /// Fingerprint workers must stop issuing reads while any live playback
+    /// lease exists. Expired leases do not keep maintenance suspended.
+    pub(crate) fn fingerprint_should_pause(&self) -> bool {
+        let now = Instant::now();
+        self.book
+            .lock()
+            .map_or(true, |book| book.entries.values().any(|entry| now < entry.deadline))
+    }
+}
 #[derive(Clone)]
 pub(crate) struct StreamLease {
     pub session: String,
@@ -1221,6 +1231,16 @@ mod tests {
             media_id: l.media_id.clone(),
             media_revision: l.media_revision,
         }
+    }
+    #[test]
+    fn live_lease_suspends_fingerprint_until_revoked() {
+        let (mut book, now, request, stream) = prepared();
+        book.acquire("profile".into(), request, stream, now).unwrap();
+        let service = PlaybackService::default();
+        *service.book.lock().unwrap() = book;
+        assert!(service.fingerprint_should_pause());
+        service.revoke_profile("profile");
+        assert!(!service.fingerprint_should_pause());
     }
     fn event(l: &Lease, sequence: u64, position: u64, credit: u64) -> Progress {
         Progress {

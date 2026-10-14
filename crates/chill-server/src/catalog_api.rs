@@ -813,6 +813,7 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
                 .await
                 .map_err(|_| ())?
                 .map_err(|_| ())?;
+            crate::fingerprint::enqueue_scan_candidates(state.clone()).await;
             Ok(count)
         }
         .await;
