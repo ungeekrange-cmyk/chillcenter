@@ -1,8 +1,8 @@
 # Contexte du projet
 
-## Lot corrections catalogue/cache — candidat en cours
+## Lot corrections catalogue/cache — source revue, bascule Pi suspendue
 
-14octobre2026 : demande utilisateur locale, cache catalogue SQLite/images par serveur/profil, sagas sans attendre l'image, couvertures mosaïque/personnelles des listes, menu profil initiale, actions Administration visibles et suite20s/nouvelle saison/clic/annulation/auto. Voir [preuves](implementation/CATALOG-CACHE-EVIDENCE.md), ADR0013 et BUG0055–0058. Native next/shell locales PASS, source/bundle/Pi exacts à finaliser, pas de promotion revendiquée ici. Autorisation de sauvegarde privée/bascule Pi reçue ; NAS/configuration intacts. L'utilisateur demande de limiter les tests aux bugs signalés : pas de nouveau parcours général du lecteur.
+14octobre2026 : source finale7a0f480 et serveur07358f7 revus indépendamment APPROVED ; bundle Mac7a0 reconstruit. Cache catalogue SQLite/images par serveur/profil, navigation/suggestions locales, échec de synchronisation sans répétition à chaque clic, scan concurrent refusé de façon bornée, purge immédiate après suppression confirmée. Sagas/listes/menu profil/Administration et suite20s : [release](releases/REL-CATALOG-CACHE-001.md), [preuves](implementation/CATALOG-CACHE-EVIDENCE.md), ADR0013 accepté et BUG0055–0058. Bascule Pi autorisée mais PAS exécutée : l'opérateur refuse les connexions sortantes TMDB pendant un enrichissement1348/2496, autre tâche queued0/2483 au dernier relevé. Question utilisateur attendre/interrompre posée ; ancien servicePID5145/hash1eb24… préservé, NAS/configuration intacts. Ne pas lancer le nouveau client contre l'ancien serveur sans routes snapshot. L'utilisateur demande de limiter les tests aux bugs signalés : aucun nouveau parcours général du lecteur.
 
 ## Dernier client — corrections visuelles574d255
 

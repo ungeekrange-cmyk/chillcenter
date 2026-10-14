@@ -1,6 +1,6 @@
 # Index des décisions techniques
 
-[ADR-0013](ADR-0013-client-catalog-mirror.md), PROPOSED,14octobre2026 : miroir SQLite et affiches persistées, API additive, opérations lecteur séparées ; revue exacte en attente.
+[ADR-0013](ADR-0013-client-catalog-mirror.md), ACCEPTED,14octobre2026 : miroir SQLite et affiches persistées, API additive, opérations lecteur séparées ; revues indépendantes exactes APPROVED sur07358f7/7a0f480, réserve P2 nettoyage serveur documentée.
 
 [ADR-0012](ADR-0012-client-player-and-collection-pages.md), IMPLEMENTED_DETAIL,14octobre2026 : plein écran initial réglable parMac, panneau droit intégral, collections et sélection par vignettes en pages. Correction utilisateur directe ; aucun changement moteur/serveur/API. Voir la release REL-MAC-UI-PANELS-001 pour les preuves, pas une validation visuelle humaine supposée.
 

@@ -1,6 +1,6 @@
 # ADR-0013 — miroir local du catalogue et séparation des opérations
 
-Date : 2026-10-14. Statut PROPOSED (candidat implémenté, revue indépendante en attente). Auteur/propriétaire `/root`. Branche `codex/catalog-cache-and-client-fixes`, base `ae0ce44`. Supersedes : règle de lecture réseau systématique de CC-DOC-001 §3/10 ; complète ADR0002/0004/0010/0012. Superseded_by NONE. Exigences : demande utilisateur directe du14octobre, BUG0055–0057.
+Date : 2026-10-14. Statut ACCEPTED (demande fonctionnelle utilisateur et revue indépendante serveur/ADR APPROVED sur07358f7, étendue sans changement serveur à7a0f480). Auteur/propriétaire `/root`. Branche `codex/catalog-cache-and-client-fixes`, base `ae0ce44`. Supersedes : règle de lecture réseau systématique de CC-DOC-001 §3/10 ; complète ADR0002/0004/0010/0012. Superseded_by NONE. Exigences : demande utilisateur directe du14octobre, BUG0055–0057.
 
 ## Contexte et options
 
@@ -28,4 +28,4 @@ Pas de dépendance/coût cloud/auth/transcodage/NAS nouveau. Tables/triggers add
 
 ## Validation
 
-Navigation locale sans serveur joignable, persistance/isolation, pagination cohérente, révisions ciblées/profil supprimé, CAS affiches et archive2, DOM et lecteur natif : résultats exacts dans `docs/implementation/CATALOG-CACHE-EVIDENCE.md`. Mesures Pi à réaliser après mise à jour autorisée ; fixtures Mac ne prouvent pas les NFR matériels. Validation visuelle humaine distincte. Revue indépendante ADR PENDING ; décision fonctionnelle demandée directement par l'utilisateur, pas de reprise de découverte imposée.
+Navigation locale sans serveur joignable, persistance/isolation, pagination cohérente, révisions ciblées/profil supprimé, CAS affiches et archive2, DOM et lecteur natif : résultats exacts dans `docs/implementation/CATALOG-CACHE-EVIDENCE.md`. Mesures Pi à réaliser après mise à jour autorisée ; fixtures Mac ne prouvent pas les NFR matériels. Validation visuelle humaine distincte. Revue indépendante ADR APPROVED, traces dans `docs/reviews/catalog-cache-final.md` ; décision fonctionnelle demandée directement par l'utilisateur, pas de reprise de découverte imposée.

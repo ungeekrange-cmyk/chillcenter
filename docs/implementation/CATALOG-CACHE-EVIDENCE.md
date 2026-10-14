@@ -1,6 +1,6 @@
 # Corrections catalogue/cache — preuves du lot
 
-14octobre2026. Branche `codex/catalog-cache-and-client-fixes`, base `ae0ce44`. Candidat non encore promu à la rédaction ; source exacte et artefacts seront liés dans la remise finale. Revue préliminaire serveur CHANGES_REQUESTED conservée, pas une approbation du nouveau candidat. ADR0013, BUG0055–0058. Auteur principal `/root`, UI `/root/client_ui_fixes`, premier serveur `/root/server_sync_and_playlist`, contrat `/root/api_snapshot_docs`.
+14octobre2026. Branche `codex/catalog-cache-and-client-fixes`, base `ae0ce44`. Source finale7a0f480, serveur compilé07358f7 inchangé ensuite. Artefacts et état effectif dans [REL-CATALOG-CACHE-001](../releases/REL-CATALOG-CACHE-001.md). Revues successives CHANGES_REQUESTED conservées puis APPROVED exactes dans [rapport](../reviews/catalog-cache-final.md). ADR0013, BUG0055–0058. Auteur principal `/root`, UI `/root/client_ui_fixes`, premier serveur `/root/server_sync_and_playlist`, contrat `/root/api_snapshot_docs`.
 
 ## Vérifié
 
@@ -14,9 +14,16 @@
 - Vrai Tauri finale, nouvelles bases/client/port18633 : `UI_QA_RESULT true next-new-season-banner-20-click-cancel-closes-auto-0-series-speed`, exit0, traces visibles. Test du bandeau/clic/annulation/auto en mode panneau droit pour isoler cette régression, pas nouvelle validation plein écran. Mode shell/port18631 exit0 : `native-Tauri-shell-sidebar-search-admin-logo-wide-detail-series-drilldown-saga-playlist-picker-TMDB-secret-advice-filters`. Cette vérification, déjà lancée quand l'utilisateur a demandé de réduire les tests, est terminée ; aucun nouveau parcours lecteur général prévu.
 - Pi lecture seule : service actifPID5145/NRestarts0, architectureaarch64, NAS CIFSro. Aucun changement serveur à ce stade. Autorisation humaine explicite pour sauvegarde privée/arrêt bref/remplacement/redémarrage reçue, sans modification NAS/configuration.
 
-## Reste avant remise
+## Preuves finales supplémentaires ciblées
 
-Clippy exact après correction de2if imbriqués et d'une addition saturante ; revue du commit figé, build Mac/ARM64, nouvelle sauvegarde privée et bascule autorisée, smoke connexion/cache contre le Pi. Ne pas revendiquer ces étapes avant exécution. Fenêtres/appdata/bases de tests séparées du foyer ; clés privées et sauvegardes restent sur le Pi.
+- Client36PASS sur073 par reviewer indépendant ; sur7a0, tests navigation locale/suppression immédiate avant échec GET et purge/symlinks repassés indépendamment. Le test d'échec réseau entre au point de confirmation DELETE via helper interne, puis exécute le vrai GET vers port9 inaccessible ; ne prétend pas simuler un serveur HTTP DELETE réel.
+- Domaine : test53 supplémentaire déterministe seconde connexion/scan concurrent PASS ; miroir serveur ciblé PASS. Clippy trois crates/all-targets sur073 puis client/all-targets sur7a0 PASS.
+-8testsNode sagas/mosaïque/profil/TMDB PASS, puis1test ordre Administration PASS. Aucun parcours général lecteur relancé après la restriction explicite.
+- Builds Mac7a0 et serveurARM64/073 PASS ; signature/48dylibs/loader bundle Mac PASS. Pas de modification runtime/dépendance.
+
+## Reste avant vérification Pi
+
+Nouvelle sauvegarde privée et bascule autorisée, smoke connexion/cache contre le Pi puis vérification indépendante. L'opérateur refuse pour l'instant les connexions sortantes TMDB : tâche réelle en cours, choix utilisateur attendu avant interruption. Ancien service inchangé. Fenêtres/appdata/bases de tests séparées du foyer ; clés privées et sauvegardes restent sur le Pi.
 
 ## Limites
 
