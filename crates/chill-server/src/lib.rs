@@ -8,6 +8,7 @@ pub mod config;
 pub mod connection;
 mod media_stream;
 pub mod operations;
+pub mod legacy_export;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;

@@ -1,4 +1,6 @@
-# BUG-0021 — `iconutil` refuse l'iconset généré
+# BUG-0023 — `iconutil` refuse l'iconset généré
+
+Identifiant attribué par le coordinateur après intégration : BUG-0021 était déjà utilisé pour les permissions natives Tauri. Preuves du candidat packaging inchangées.
 
 - Date : 2026-10-14.
 - Type : observation d'outillage de packaging, pas défaut fonctionnel.

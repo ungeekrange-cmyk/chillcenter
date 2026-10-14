@@ -4,11 +4,11 @@
 //! This module never opens the live source through `Store`, so it cannot migrate or
 //! otherwise write the original database.
 use crate::{
+    Preferences, Profile, Store,
     import::{
         ArchiveDocument, ConflictPolicy, ImportMapping, PortableMedia, PortablePersonal,
         PortablePlaylist, PortableState, ProfileTarget,
     },
-    Preferences, Profile, Store,
 };
 use chill_catalog::{
     database::Database,
@@ -49,9 +49,9 @@ fn copied_poster(
         return Ok(None);
     };
     let path = Path::new(poster);
-    // Provider/NAS locations are metadata only.  Only an explicit custom image
-    // can cross the boundary, and the controlled cache callback validates/copies it.
-    if !media.poster_custom || !path.is_absolute() || path == Path::new(&media.path) {
+    // Cached provider and custom images are both portable. Never fetch a URL or
+    // read a video; the caller permits only its explicitly selected image cache.
+    if !path.is_absolute() || path == Path::new(&media.path) {
         return Ok(None);
     }
     copy(path).map(Some)
@@ -72,6 +72,16 @@ pub fn convert_cinefolio_snapshot(
         .map_err(db)?;
     if version > 1 {
         return Err("LEGACY_SCHEMA_UNSUPPORTED".into());
+    }
+    let (count, total): (i64, i64) = source
+        .query_row(
+            "SELECT count(*),COALESCE(sum(length(data)),0) FROM media",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(db)?;
+    if count > MAX_MEDIA as i64 || total > MAX_DOCUMENT as i64 {
+        return Err(invalid());
     }
     if source
         .query_row(
@@ -159,6 +169,9 @@ pub fn convert_cinefolio_snapshot(
                 .map_err(db)?;
             let mut media_ids = Vec::new();
             for value in values {
+                if media_ids.len() >= 1_000 {
+                    return Err(invalid());
+                }
                 let legacy = value.map_err(db)?;
                 media_ids.push(ids.get(&legacy).cloned().ok_or_else(invalid)?);
             }
@@ -242,11 +255,12 @@ pub fn convert_cinefolio_snapshot(
             if playlists.len() + sagas.len() >= MAX_COLLECTIONS {
                 return Err(invalid());
             }
-            let mut members = source
-                .prepare(
-                    "SELECT media_id FROM collection_members WHERE collection_id=?1 ORDER BY rowid",
-                )
-                .map_err(db)?;
+            let sql = if table(&source, "collection_positions")? {
+                "SELECT m.media_id FROM collection_members m LEFT JOIN collection_positions p ON p.collection_id=m.collection_id AND p.media_id=m.media_id WHERE m.collection_id=?1 ORDER BY p.position IS NULL,p.position,m.rowid LIMIT 1001"
+            } else {
+                "SELECT media_id FROM collection_members WHERE collection_id=?1 ORDER BY rowid LIMIT 1001"
+            };
+            let mut members = source.prepare(sql).map_err(db)?;
             let media_ids = members
                 .query_map([id], |r| r.get::<_, String>(0))
                 .map_err(db)?
@@ -349,6 +363,13 @@ mod tests {
         let connection = Connection::open(&source).unwrap();
         connection.execute_batch("CREATE TABLE IF NOT EXISTS collections (id INTEGER PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL); CREATE TABLE IF NOT EXISTS collection_members (collection_id INTEGER,media_id TEXT); CREATE TABLE IF NOT EXISTS collection_positions (collection_id INTEGER,media_id TEXT,position INTEGER); INSERT INTO collections(id,name,kind) VALUES(1,'Saga','saga'),(2,'Soirée','playlist'); INSERT INTO collection_members VALUES(1,'two.mkv'),(1,'one.mkv'),(2,'one.mkv'),(2,'two.mkv'); INSERT INTO collection_positions VALUES(1,'two.mkv',0),(1,'one.mkv',1);").unwrap();
         drop(connection);
+        let order = Connection::open(&source).unwrap();
+        order
+            .execute_batch(
+                "INSERT INTO collection_positions VALUES(2,'two.mkv',0),(2,'one.mkv',1);",
+            )
+            .unwrap();
+        drop(order);
         let before = fs::read(&source).unwrap();
         let modified = fs::metadata(&source).unwrap().modified().unwrap();
         let scratch_path = temp.path().join("scratch.sqlite");
@@ -364,6 +385,17 @@ mod tests {
         assert_eq!(modified, fs::metadata(&source).unwrap().modified().unwrap());
         assert_eq!(document.profiles[0].name, "Cinéfolio");
         assert_eq!(document.sagas[0].media_ids.len(), 2);
+        let two = document
+            .media
+            .iter()
+            .find(|m| m.relative_path == "two.mkv")
+            .unwrap()
+            .id
+            .clone();
+        assert_eq!(
+            document.personal[0].playlists[0].media_ids[0], two,
+            "Explicit legacy playlist positions take precedence over insertion order"
+        );
         let exported = scratch.export_json().unwrap();
         let portable: ArchiveDocument = serde_json::from_value(exported).unwrap();
         portable.validate().unwrap();

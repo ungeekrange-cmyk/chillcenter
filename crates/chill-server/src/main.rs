@@ -20,12 +20,32 @@ async fn main() {
 
 async fn run() -> Result<(), String> {
     let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    if let [
+        export,
+        source_flag,
+        source,
+        cache_flag,
+        cache,
+        output_flag,
+        output,
+    ] = arguments.as_slice()
+        && export == "--export-cinefolio"
+        && source_flag == "--source-db"
+        && cache_flag == "--image-cache"
+        && output_flag == "--output"
+    {
+        return chill_server::legacy_export::export(
+            std::path::Path::new(source),
+            std::path::Path::new(cache),
+            std::path::Path::new(output),
+        );
+    }
     if arguments.len() == 2 && arguments[0] == "--scan-worker" {
         let discovered = chill_catalog::scanner::discover(std::path::Path::new(&arguments[1]))?;
         return serde_json::to_writer(std::io::stdout().lock(), &discovered)
             .map_err(|_| "Scan interrompu.".into());
     }
-    let usage = "Usage : chill-server --config /chemin/config.json\n       chill-server --backup --config /chemin/config.json\n       chill-server --restore /chemin/sauvegarde --config /chemin/config.json --confirm-replace\n       chill-server --recover --config /chemin/config.json --confirm-replace";
+    let usage = "Usage : chill-server --config /chemin/config.json\n       chill-server --backup --config /chemin/config.json\n       chill-server --restore /chemin/sauvegarde --config /chemin/config.json --confirm-replace\n       chill-server --recover --config /chemin/config.json --confirm-replace\n       chill-server --export-cinefolio --source-db /chemin/cinefolio.sqlite --image-cache /chemin/images --output /chemin/nouveau.zip";
     let (command, config_path) = match arguments.as_slice() {
         [flag, path] if flag == "--config" => ("serve", PathBuf::from(path)),
         [backup, config, path] if backup == "--backup" && config == "--config" => {

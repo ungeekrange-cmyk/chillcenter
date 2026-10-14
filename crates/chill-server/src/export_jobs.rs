@@ -125,7 +125,12 @@ pub fn initialize(state: &AppState) -> Result<(), ApiError> {
     Ok(())
 }
 pub(crate) async fn start(state: AppState) -> Result<(StatusCode, Json<ExportReady>), ApiError> {
+    // Share the real heavy-worker permit with ZIP inspection/import on a 1GiB Pi.
+    // Ownership moves into spawn_blocking, so abandoning HTTP never frees it early.
+    let heavy = crate::archive_api::inspection_slot(&state.config.data_dir.join("imports"))
+        .map_err(|_| ApiError(StatusCode::TOO_MANY_REQUESTS, "EXPORT_BUSY"))?;
     let dir = crate::archive_api::export_dir(&state)?;
+    let snapshot_budget = crate::archive_api::reserve_disk(&dir, MAX_DB)?;
     let id = uuid::Uuid::new_v4().to_string();
     let permit = SLOTS
         .get_or_init(Default::default)
@@ -196,16 +201,19 @@ pub(crate) async fn start(state: AppState) -> Result<(StatusCode, Json<ExportRea
     let worker_id = id.clone();
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
+        let _heavy = heavy;
+        let snapshot_budget = snapshot_budget;
         let snapshot = dir.join(format!("{worker_id}.snapshot.sqlite"));
         let _guard = SnapshotGuard(snapshot.clone());
-        let result = chill_domain::snapshot::coherent_snapshot(
+        let snapshot_result = chill_domain::snapshot::coherent_snapshot(
             &state.config.data_dir.join("catalog.sqlite"),
             &snapshot,
             &flag,
             MAX_DB,
         )
-        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_SNAPSHOT"))
-        .and_then(|_| {
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_SNAPSHOT"));
+        drop(snapshot_budget); // Snapshot now has its real size in the shared filesystem accounting.
+        let result = snapshot_result.and_then(|_| {
             crate::archive_api::build_export(&state, worker_id.clone(), &snapshot, flag.clone())
         });
         if let Ok(mut all) = jobs().lock() {

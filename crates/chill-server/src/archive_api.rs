@@ -23,8 +23,8 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-use tokio_util::io::ReaderStream;
 use tokio::io::AsyncReadExt;
+use tokio_util::io::ReaderStream;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 const MAX_COMPRESSED: u64 = 1024 * 1024 * 1024;
@@ -121,7 +121,7 @@ impl Drop for PartialFile {
 // Reservations outlive cancelled async waits because ownership follows the
 // actual blocking write/inspection, not the HTTP task.
 static RESERVED: OnceLock<Mutex<HashMap<PathBuf, u64>>> = OnceLock::new();
-struct DiskReservation {
+pub(crate) struct DiskReservation {
     dir: PathBuf,
     bytes: u64,
 }
@@ -133,17 +133,38 @@ impl Drop for DiskReservation {
         }
     }
 }
-fn reserve_disk(dir: &FsPath, bytes: u64) -> Result<DiskReservation, ApiError> {
+pub(crate) fn reserve_disk(dir: &FsPath, bytes: u64) -> Result<DiskReservation, ApiError> {
     let mut ledger = RESERVED
         .get_or_init(Default::default)
         .lock()
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
-    let pending = ledger.entry(dir.to_path_buf()).or_default();
-    if staging_usage(dir)?
-        .saturating_add(*pending)
-        .saturating_add(bytes)
-        > MAX_STAGING_DISK
-    {
+    let shared = dir
+        .file_name()
+        .is_some_and(|n| n == "imports" || n == "exports");
+    let key = if shared {
+        dir.parent()
+            .ok_or(ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?
+    } else {
+        dir
+    };
+    let pending = ledger.entry(key.to_path_buf()).or_default();
+    let usage = if shared {
+        let mut total = 0u64;
+        for name in ["imports", "exports"] {
+            let path = key.join(name);
+            match fs::symlink_metadata(&path) {
+                Ok(m) if m.is_dir() && !m.file_type().is_symlink() => {
+                    total = total.saturating_add(staging_usage(&path)?)
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                _ => return Err(ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE")),
+            }
+        }
+        total
+    } else {
+        staging_usage(dir)?
+    };
+    if usage.saturating_add(*pending).saturating_add(bytes) > MAX_STAGING_DISK {
         return Err(ApiError(
             StatusCode::INSUFFICIENT_STORAGE,
             "IMPORT_STAGING_FULL",
@@ -151,7 +172,7 @@ fn reserve_disk(dir: &FsPath, bytes: u64) -> Result<DiskReservation, ApiError> {
     }
     *pending += bytes;
     Ok(DiskReservation {
-        dir: dir.to_path_buf(),
+        dir: key.to_path_buf(),
         bytes,
     })
 }
@@ -178,7 +199,9 @@ impl Drop for StagedUpload {
 }
 static INSPECTION_SLOTS: OnceLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Semaphore>>>> =
     OnceLock::new();
-fn inspection_slot(dir: &FsPath) -> Result<Arc<tokio::sync::OwnedSemaphorePermit>, ApiError> {
+pub(crate) fn inspection_slot(
+    dir: &FsPath,
+) -> Result<Arc<tokio::sync::OwnedSemaphorePermit>, ApiError> {
     let mut slots = INSPECTION_SLOTS
         .get_or_init(Default::default)
         .lock()
@@ -973,11 +996,22 @@ pub(crate) fn build_export(
     snapshot: &FsPath,
     cancelled: Arc<AtomicBool>,
 ) -> Result<ExportReady, ApiError> {
-    let dir = export_dir(&state)?;
+    build_export_files(&state.config.data_dir, id, snapshot, cancelled)
+}
+/// Single portable archive writer for the service and the read-only legacy CLI.
+pub(crate) fn build_export_files(
+    data_dir: &FsPath,
+    id: String,
+    snapshot: &FsPath,
+    cancelled: Arc<AtomicBool>,
+) -> Result<ExportReady, ApiError> {
+    let dir = data_dir.join("exports");
+    fs::create_dir_all(&dir)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
     let partial = dir.join(format!("{id}.partial"));
     let ready = dir.join(format!("{id}.zip"));
     let data_stage = dir.join(format!("{id}.data.partial"));
-    let poster_root = state.config.data_dir.join("posters");
+    let poster_root = data_dir.join("posters");
     let _partial_guard = PartialFile(Some(partial.clone()));
     let _data_guard = PartialFile(Some(data_stage.clone()));
     let ready_guard = PartialFile(Some(ready.clone()));
@@ -1111,6 +1145,8 @@ pub(crate) fn build_export(
             if cancelled.load(Ordering::Acquire) {
                 return Err(ApiError(StatusCode::CONFLICT, "EXPORT_CANCELLED"));
             }
+            // Never publish a coherent ZIP that the typed importer would reject.
+            read_archive_document(&partial)?;
             fs::rename(&partial, &ready)
                 .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
             fs::File::open(&dir)
@@ -1209,6 +1245,23 @@ mod tests {
         assert!(staging_usage(dir.path()).is_err());
     }
     #[test]
+    fn imports_and_exports_share_one_disk_budget_and_reservation_ledger() {
+        let root = tempfile::tempdir().unwrap();
+        let imports = root.path().join("imports");
+        let exports = root.path().join("exports");
+        fs::create_dir(&imports).unwrap();
+        fs::create_dir(&exports).unwrap();
+        fs::File::create(exports.join("unknown-preserved.bin"))
+            .unwrap()
+            .set_len(MAX_STAGING_DISK - 16)
+            .unwrap();
+        let held = reserve_disk(&imports, 8).unwrap();
+        assert!(reserve_disk(&exports, 9).is_err());
+        drop(held);
+        assert!(reserve_disk(&exports, 16).is_ok());
+        assert!(exports.join("unknown-preserved.bin").exists());
+    }
+    #[test]
     fn restart_sweep_removes_only_expired_managed_staging_and_preserves_busy_files() {
         let dir = tempfile::tempdir().unwrap();
         let old = SystemTime::now() - PREVIEW_TTL - Duration::from_secs(1);
@@ -1286,6 +1339,7 @@ mod tests {
         }
         let release = ReleaseOnDrop(gate.clone());
         let app = router(state);
+        let export_app = app.clone();
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/admin/imports")
@@ -1308,6 +1362,22 @@ mod tests {
         assert!(
             inspection_slot(&dir).is_err(),
             "A cancelled waiter must not release a still-running blocking inspection"
+        );
+        let refused_export = export_app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/admin/exports")
+                    .header("host", "localhost:8443")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            refused_export.status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "Export must not start while a cancelled HTTP inspection still owns the real heavy worker"
         );
         drop(release);
         INSPECTION_GATES
