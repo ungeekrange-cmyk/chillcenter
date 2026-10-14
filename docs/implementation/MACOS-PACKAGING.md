@@ -1,5 +1,7 @@
 # Packaging macOS Apple Silicon
 
+Paquet courant14 octobre2026, source `126da0af167ee62588d92d90297f2dfc51962676` : bundle75MiB,48dylibs/41formules, signature ad hoc et `--verify-bundle` API2.5 PASS. Destination de remise `artifacts/macos/Chill Center-126da0a.app`. Chemin/hashes/preuves dans [COMPLETION-EVIDENCE](COMPLETION-EVIDENCE.md). Les commandes/hashes plus bas décrivent le premier paquet autonome historique, jamais écrasé.
+
 Status au 2026-10-14 : le script produit un bundle de développement autonome
 Apple Silicon, signé ad hoc. Il ne produit ni signature Developer ID, ni
 notarisation, ni installateur de distribution.

@@ -3,7 +3,9 @@
   "scope": "CC-STORIES-001",
   "gate": "G-03 APPROVED; G-04 NOT_SUBMITTED",
   "source_baseline": "2a085486f4579d4cf27c98b254bd29fea9d73547",
-  "meaning": "Code reachability inventory, not 133 executed acceptance tests. Exact commit, commands, outcomes and NOT_RUN belong to completion evidence; status stays IN_PROGRESS until final independent verification.",
+  "source_candidate": "126da0af167ee62588d92d90297f2dfc51962676",
+  "evidence_report": "docs/implementation/COMPLETION-EVIDENCE.md",
+  "meaning": "Code reachability inventory, not 133 executed acceptance tests. Story-scoped code, unit/DOM/native evidence and explicit hardware/provider NOT_RUN are in the evidence report. Criteria remain IN_PROGRESS for full acceptance; local software handoff does not silently approve hardware acceptance or G-04.",
   "stories": [
     {
       "id": "US-001",

@@ -18,4 +18,4 @@ Après acceptation, changer une décision par un nouvel ADR avec `supersedes`, p
 
 Complément d'implémentation, distinct des sept décisions approuvées en G-02 : [ADR-0008](ADR-0008-bounded-media-io.md), `IMPLEMENTED_DETAIL`, I/O NAS bornées et ouverture par descripteurs, CC-PLAY-001. Ne remplace aucun ADR accepté ; pas de nouvelle validation utilisateur revendiquée.
 
-[ADR-0009](ADR-0009-archive-validation.md), PROPOSED : validation ZIP/images et application portable transactionnelle. Revue indépendante en attente ; aucun changement de l'ADR-0006 accepté.
+[ADR-0009](ADR-0009-archive-validation.md), IMPLEMENTED_DETAIL : validation ZIP/images et application portable transactionnelle, revues indépendantes locales126da0a favorables. Aucun changement de l'ADR-0006 accepté ni nouvelle validation utilisateur supposée.

@@ -1,6 +1,6 @@
 # ADR-0009 — Validation et préparation des archives et images
 
-2026-10-14 · PROPOSED · auteur /root · complément d'ADR-0006 accepté · supersedes: NONE.
+2026-10-14 · IMPLEMENTED_DETAIL · auteur /root · complément d'ADR-0006 accepté · supersedes: NONE. Détail d'implémentation revu au SHA126da0a (code/test/sécurité), pas nouvelle approval utilisateur revendiquée.
 
 Périmètre déjà approuvé : US-010, US-027 et US-028. Pas de nouvelle fonction produit ni nouvelle validation utilisateur revendiquée. Candidat d'implémentation soumis à revue indépendante avant livraison.
 
@@ -14,4 +14,4 @@ Sources primaires : [ZIP](https://docs.rs/zip/9.0.3/zip/), [image](https://docs.
 
 Conséquences : dépendances supplémentaires mais codecs bornés ; refus explicite des images géantes/corrompues. Les aperçus volatils ne survivent pas au redémarrage ; l'archive source doit être sélectionnée à nouveau. Aucun import ou restauration de données du foyer exécuté. Retour logiciel par branche antérieure, source/NAS intacts ; tables de reçus ajoutées sans supprimer de données.
 
-Travail restant distinct : snapshot/export en job de fond, rétention/quota export, exporter Cinéfolio en lecture seule, procédure de restauration remplaçante avec sauvegarde préalable et UI. Cet ADR ne présente pas ces éléments comme déjà prouvés.
+État du brouillon historique : snapshot/export enjob, quotaexport, CLI Cinéfolio etrestauration étaient encoreàlivrer. Ils sont désormaisimplémentés ettests locaux liés dans COMPLETION-EVIDENCE/EXPORT-JOBS/CINEFOLIO-EXPORT/OPERATIONS ; aucun import/restaurationfoyer ou performancePi prouvé. Cette miseàjour de statut ne réécrit niADR-0006accepté ni le format défini ci-dessus.

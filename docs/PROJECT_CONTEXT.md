@@ -1,5 +1,13 @@
 # Contexte du projet
 
+## Point de reprise actuel —14 octobre2026
+
+G-01/02/03 approuvés ; demande actuelle « lecteur Tauri, vas jusqu'au bout des US » puis corrections/revues/bundle etPi désormaisprêt. Source logicielle complète `126da0af167ee62588d92d90297f2dfc51962676`,255 tests Rust/24 Node/7 packaging PASS, trois revues finales favorables etbundle75MiB arm64/libmpvFFmpeg/signaturead-hocPASS. [Remise et traçabilité33stories/133AC](implementation/COMPLETION-EVIDENCE.md). Toutes les fonctions implémentables localement sont raccordées ; ne pas reprendre les listes historiques « lecteur/import/IA encore à faire » comme situation actuelle. [G-04](gates/G-04-CC-COMPLETE-001.md) : demande de validation logicielle avec réserves physiques explicites, **pas déjà approuvée**.
+
+Clone d'intégration privé sur branche codex/player-ui ; promotion utilisateur uniquement après contrôles/revues, sans reset ni push. Client MacSilicon/libmpv/HTTPS, serveur Linux uniquement sans transcodage. Pi/Linux et NAS désormais prêts d'après l'utilisateur, Chill Center non installé ; SSHadmin, signature de clé1Password échouée lors du contrôle read-only. LinuxARM/systemd/NAS/Wi-Fi/fournisseursréels NOT_RUN. SourceCinéfolio et vidéos foyer inchangées. Contrôles vidéo locaux sur fixtures synthétiques HTTPSloopback ; aucune commande distante n'a abouti sur192.168.1.42. README/STATUS/preuves courantes sont les points d'entrée ; les paragraphes ci-dessous sont l'historique des validations et checkpoints.
+
+## Historique conservé
+
 - Révision documentaire : `CC-DOC-001`, 2026-10-13, auteur `/root`.
 - Produit : Chill Center ; dépôt cible `https://github.com/ungeekrange-cmyk/chillcenter.git`.
 - Source : `/Users/ghillaumesoubigou/Documents/Dev/Perso/Video catalog/`, Cinéfolio 0.5.0.

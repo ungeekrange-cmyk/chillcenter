@@ -1,5 +1,7 @@
 # Vérification et exploitation prévues
 
+Mise à jour14 octobre2026 : la mention NOT_RUN ci-dessous était l'état de l'étape2 et reste historique. Exécutions réelles et portées par story dans [COMPLETION-EVIDENCE](implementation/COMPLETION-EVIDENCE.md) :255 testsRust,24Node,7packaging, fixturesTauri etbundlefinal126da0a. Pi/Linux/NAS désormaisprêts d'après l'utilisateur, produitnoninstallé. V-01/02 et partiesmatériellesV-03–12NOT_RUN (ARM/systemd/2–3fluxNASWi-Fi, sonhumain/veilleOS/fournisseurs). Ne pas convertir une règle unitaire en benchmark physique. Runbooks actuels Linux/backup/restore dans docs/implementation.
+
 Révision `CC-DOC-001`. Statut de tous les tests applicatifs ci-dessous : `NOT_RUN`. À transformer en critères d'acceptation lors des user stories, puis en preuves liées à un commit et un artefact exacts. Aucun benchmark n'est présenté comme réussi.
 
 ## Parcours critiques
