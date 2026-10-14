@@ -3,17 +3,24 @@ use crate::api::{ApiError, AppState};
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::{StatusCode, header},
     response::Response,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
+use futures_util::StreamExt;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path as FsPath, PathBuf},
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, SystemTime},
 };
 use tokio_util::io::ReaderStream;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
@@ -22,6 +29,33 @@ const MAX_COMPRESSED: u64 = 1024 * 1024 * 1024;
 const MAX_DECOMPRESSED: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_ENTRIES: u64 = 20_000;
 const MAX_MANIFEST: usize = 64 * 1024 * 1024;
+const MAX_DATA: usize = 64 * 1024 * 1024;
+const MAX_PREVIEWS: usize = 6;
+const PREVIEW_TTL: Duration = Duration::from_secs(15 * 60);
+const MAX_STAGING_DISK: u64 = MAX_COMPRESSED * 2;
+
+/// Deliberately process-local: previews are only short lived, read-only staging
+/// handles.  No import decision is persisted until the later apply endpoint.
+static PREVIEWS: OnceLock<Mutex<HashMap<PathBuf, HashMap<String, Preview>>>> = OnceLock::new();
+static UPLOAD_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+struct Preview {
+    path: PathBuf,
+    created: SystemTime,
+}
+
+struct UploadGuard;
+impl Drop for UploadGuard {
+    fn drop(&mut self) {
+        UPLOAD_ACTIVE.store(false, Ordering::Release);
+    }
+}
+struct PartialFile(PathBuf);
+impl Drop for PartialFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
 
 #[derive(Serialize)]
 struct ExportReady {
@@ -31,10 +65,381 @@ struct ExportReady {
     state: &'static str,
 }
 
+#[derive(Serialize)]
+struct ImportPreview {
+    preview_id: String,
+    export_id: String,
+    counts: PreviewCounts,
+    profiles: Vec<PreviewProfile>,
+    roots: [&'static str; 1],
+    apply_supported: bool,
+}
+
+#[derive(Serialize)]
+struct PreviewCounts {
+    media: usize,
+    sagas: usize,
+    personal: usize,
+    posters: usize,
+}
+
+#[derive(Serialize)]
+struct PreviewProfile {
+    id: String,
+    name: String,
+}
+
 pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/admin/exports", post(create))
         .route("/api/v1/admin/exports/{id}", get(download))
+        // This endpoint writes the body directly to service-owned staging; it
+        // intentionally replaces the router's normal 1 MiB JSON body limit.
+        .route(
+            "/api/v1/admin/imports",
+            post(stage_and_preview).layer(DefaultBodyLimit::max(MAX_COMPRESSED as usize)),
+        )
+        .route("/api/v1/admin/imports/{id}", delete(cancel_preview))
+}
+
+fn import_dir(state: &AppState) -> Result<PathBuf, ApiError> {
+    let path = state.config.data_dir.join("imports");
+    fs::create_dir_all(&path)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    Ok(path)
+}
+
+fn previews() -> &'static Mutex<HashMap<PathBuf, HashMap<String, Preview>>> {
+    PREVIEWS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String, Preview>>) {
+    let Some(previews) = records.get_mut(dir) else {
+        return;
+    };
+    let now = SystemTime::now();
+    let expired: Vec<_> = previews
+        .iter()
+        .filter_map(|(id, preview)| {
+            now.duration_since(preview.created)
+                .ok()
+                .filter(|age| *age >= PREVIEW_TTL)
+                .map(|_| id.clone())
+        })
+        .collect();
+    for id in expired {
+        if let Some(preview) = previews.remove(&id) {
+            let _ = fs::remove_file(preview.path);
+        }
+    }
+}
+
+async fn stage_and_preview(
+    State(state): State<AppState>,
+    body: Body,
+) -> Result<Json<ImportPreview>, ApiError> {
+    if UPLOAD_ACTIVE
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err(ApiError(
+            StatusCode::TOO_MANY_REQUESTS,
+            "IMPORT_UPLOAD_BUSY",
+        ));
+    }
+    let _upload_guard = UploadGuard;
+    let dir = import_dir(&state)?;
+    {
+        let mut records = previews()
+            .lock()
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
+        cleanup_previews(&dir, &mut records);
+        let active = records.get(&dir).map_or(0, HashMap::len);
+        if active >= MAX_PREVIEWS {
+            return Err(ApiError(
+                StatusCode::TOO_MANY_REQUESTS,
+                "IMPORT_PREVIEW_BUSY",
+            ));
+        }
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let partial = dir.join(format!("{id}.partial"));
+    let partial_guard = PartialFile(partial.clone());
+    let staged = dir.join(format!("{id}.zip"));
+    let mut output = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&partial)
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    let mut bytes = 0u64;
+    let mut stream = body.into_data_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk =
+            chunk.map_err(|_| ApiError(StatusCode::BAD_REQUEST, "IMPORT_UPLOAD_INVALID"))?;
+        bytes = bytes
+            .checked_add(chunk.len() as u64)
+            .ok_or(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"))?;
+        if bytes > MAX_COMPRESSED {
+            let _ = tokio::fs::remove_file(&partial).await;
+            return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
+        }
+        tokio::io::AsyncWriteExt::write_all(&mut output, &chunk)
+            .await
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    }
+    tokio::io::AsyncWriteExt::flush(&mut output)
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    output
+        .sync_all()
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    drop(output);
+    {
+        let records = previews()
+            .lock()
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
+        let used: u64 = records
+            .get(&dir)
+            .into_iter()
+            .flat_map(|v| v.values())
+            .filter_map(|p| fs::metadata(&p.path).ok().map(|m| m.len()))
+            .sum();
+        if used.saturating_add(bytes) > MAX_STAGING_DISK {
+            let _ = fs::remove_file(&partial);
+            return Err(ApiError(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "IMPORT_STAGING_FULL",
+            ));
+        }
+    }
+    fs::rename(&partial, &staged)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    std::mem::forget(partial_guard);
+    let inspect_id = id.clone();
+    let checked = tokio::task::spawn_blocking({
+        let path = staged.clone();
+        move || inspect_archive(&path, &inspect_id)
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_INVALID"))?;
+    let summary = match checked {
+        Ok(summary) => summary,
+        Err(error) => {
+            let _ = fs::remove_file(&staged);
+            return Err(error);
+        }
+    };
+    let mut records = previews()
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
+    cleanup_previews(&dir, &mut records);
+    records.entry(dir).or_default().insert(
+        id.clone(),
+        Preview {
+            path: staged,
+            created: SystemTime::now(),
+        },
+    );
+    Ok(Json(ImportPreview {
+        preview_id: id,
+        export_id: summary.export_id,
+        counts: summary.counts,
+        profiles: summary.profiles,
+        roots: ["library"],
+        apply_supported: false,
+    }))
+}
+
+async fn cancel_preview(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    if uuid::Uuid::parse_str(&id).is_err() {
+        return Err(ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"));
+    }
+    let dir = import_dir(&state)?;
+    let mut records = previews()
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
+    cleanup_previews(&dir, &mut records);
+    let preview = records
+        .get_mut(&dir)
+        .and_then(|items| items.remove(&id))
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "IMPORT_NOT_FOUND"))?;
+    fs::remove_file(preview.path)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+struct ArchiveSummary {
+    export_id: String,
+    counts: PreviewCounts,
+    profiles: Vec<PreviewProfile>,
+}
+
+fn inspect_archive(path: &FsPath, preview_id: &str) -> Result<ArchiveSummary, ApiError> {
+    let file = fs::File::open(path)
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    let mut zip = zip::ZipArchive::new(file)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    if zip.len() > MAX_ENTRIES as usize {
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
+    }
+    let mut names = HashSet::new();
+    let mut total = 0u64;
+    for index in 0..zip.len() {
+        let entry = zip
+            .by_index(index)
+            .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+        let name = entry
+            .name()
+            .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+        if !safe_archive_name(&name)
+            || !names.insert(name.to_string())
+            || entry.is_dir()
+            || entry.is_symlink()
+            || entry.encrypted()
+            || name.ends_with(".zip")
+        {
+            return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"));
+        }
+        total = total
+            .checked_add(entry.size())
+            .ok_or(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"))?;
+        if total > MAX_DECOMPRESSED {
+            return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
+        }
+    }
+    let manifest = read_zip_limited(&mut zip, "manifest.json", MAX_MANIFEST)?;
+    let data = read_zip_limited(&mut zip, "data.json", MAX_DATA)?;
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    let document: serde_json::Value = serde_json::from_slice(&data)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    let version = manifest.get("format_version").and_then(|v| v.as_u64());
+    let export_id = manifest
+        .get("export_id")
+        .and_then(|v| v.as_str())
+        .filter(|id| uuid::Uuid::parse_str(id).is_ok())
+        .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    if version != Some(1)
+        || document.get("format_version").and_then(|v| v.as_u64()) != Some(1)
+        || document.get("export_id").and_then(|v| v.as_str()) != Some(export_id)
+        || export_id == preview_id
+    {
+        return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"));
+    }
+    let entries = manifest
+        .get("entries")
+        .and_then(|v| v.as_array())
+        .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    let mut checksum_names = HashSet::new();
+    for item in entries {
+        let name = item
+            .get("reference")
+            .and_then(|v| v.as_str())
+            .filter(|n| safe_archive_name(n))
+            .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+        let expected = item
+            .get("sha256")
+            .and_then(|v| v.as_str())
+            .filter(|v| v.len() == 64 && v.bytes().all(|b| b.is_ascii_hexdigit()))
+            .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+        if !checksum_names.insert(name) {
+            return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"));
+        }
+        let bytes = read_zip_limited(&mut zip, name, MAX_DATA)?;
+        if format!("{:x}", Sha256::digest(&bytes)) != expected.to_ascii_lowercase() {
+            return Err(ApiError(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "IMPORT_CHECKSUM",
+            ));
+        }
+    }
+    if !checksum_names.contains("data.json")
+        || names.len() != checksum_names.len() + 1
+        || !names
+            .iter()
+            .all(|name| name == "manifest.json" || checksum_names.contains(name.as_str()))
+    {
+        return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"));
+    }
+    let profiles = document
+        .get("profiles")
+        .and_then(|v| v.as_array())
+        .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    let media = required_array(&document, "media")?;
+    let sagas = required_array(&document, "sagas")?;
+    let personal = required_array(&document, "personal")?;
+    let _leases = required_array(&document, "leases")?;
+    let mut out_profiles = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        out_profiles.push(PreviewProfile {
+            id: profile
+                .get("id")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?
+                .to_owned(),
+            name: profile
+                .get("name")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?
+                .to_owned(),
+        });
+    }
+    Ok(ArchiveSummary {
+        export_id: export_id.to_owned(),
+        counts: PreviewCounts {
+            media: media.len(),
+            sagas: sagas.len(),
+            personal: personal.len(),
+            posters: entries.len().saturating_sub(1),
+        },
+        profiles: out_profiles,
+    })
+}
+
+fn required_array<'a>(
+    document: &'a serde_json::Value,
+    name: &str,
+) -> Result<&'a Vec<serde_json::Value>, ApiError> {
+    document
+        .get(name)
+        .and_then(|v| v.as_array())
+        .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))
+}
+fn safe_archive_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.is_ascii()
+        && !name.contains('\\')
+        && name
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+fn read_zip_limited(
+    zip: &mut zip::ZipArchive<fs::File>,
+    name: &str,
+    limit: usize,
+) -> Result<Vec<u8>, ApiError> {
+    let entry = zip
+        .by_name(name)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    if entry.size() > limit as u64 {
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
+    }
+    let mut bytes = Vec::with_capacity(entry.size() as usize);
+    entry
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
+    if bytes.len() > limit {
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
+    }
+    Ok(bytes)
 }
 
 fn export_dir(state: &AppState) -> Result<PathBuf, ApiError> {
@@ -284,6 +689,7 @@ mod tests {
         let response = app.clone().oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let archive = bytes.clone();
         let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
         let mut manifest = String::new();
         zip.by_name("manifest.json")
@@ -329,6 +735,41 @@ mod tests {
                 && !rendered.contains("tmdb_token")
         );
         assert_eq!(document["leases"], serde_json::json!([]));
+        let before_profiles = database_profile_count(&data.join("catalog.sqlite"));
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/admin/imports")
+            .header("host", "localhost:8443")
+            .body(Body::from(archive))
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let preview: serde_json::Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(preview["export_id"], id);
+        assert_eq!(preview["counts"]["media"], 1);
+        assert_eq!(preview["profiles"][0]["id"], profile);
+        assert_eq!(preview["roots"], serde_json::json!(["library"]));
+        assert_eq!(preview["apply_supported"], false);
+        assert_eq!(
+            before_profiles,
+            database_profile_count(&data.join("catalog.sqlite"))
+        );
+        let preview_id = preview["preview_id"].as_str().unwrap();
+        let staged = data.join("imports").join(format!("{preview_id}.zip"));
+        assert!(staged.exists());
+        let request = Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/v1/admin/imports/{preview_id}"))
+            .header("host", "localhost:8443")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            app.clone().oneshot(request).await.unwrap().status(),
+            StatusCode::NO_CONTENT
+        );
+        assert!(!staged.exists());
         let request = Request::builder()
             .uri("/api/v1/admin/exports/not-a-uuid")
             .header("host", "localhost:8443")
@@ -338,6 +779,90 @@ mod tests {
             app.oneshot(request).await.unwrap().status(),
             StatusCode::NOT_FOUND
         );
+    }
+
+    fn database_profile_count(path: &std::path::Path) -> i64 {
+        rusqlite::Connection::open(path)
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM cc_profiles", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn archive_preview_refuses_traversal_unknown_versions_and_bad_checksums_without_database_writes()
+     {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        fs::create_dir_all(&data).unwrap();
+        let config = ServerConfig {
+            data_dir: data.clone(),
+            ..Default::default()
+        };
+        let cert = tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
+        let database = DatabaseActor::open(data.join("catalog.sqlite")).unwrap();
+        let state = crate::api::AppState {
+            playback: PlaybackService::default(),
+            database,
+            library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
+            config: Arc::new(config),
+            certificate: Arc::new(Mutex::new(cert.schedule)),
+            scan: Arc::new(Mutex::new(Default::default())),
+        };
+        let app = router(state);
+        let before = database_profile_count(&data.join("catalog.sqlite"));
+        for (name, manifest) in [
+            (
+                "../data.json",
+                serde_json::json!({"format_version":1,"export_id":uuid::Uuid::new_v4(),"entries":[]}),
+            ),
+            (
+                "data.json",
+                serde_json::json!({"format_version":2,"export_id":uuid::Uuid::new_v4(),"entries":[]}),
+            ),
+        ] {
+            let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+            let options = SimpleFileOptions::default();
+            writer.start_file("manifest.json", options).unwrap();
+            writer.write_all(manifest.to_string().as_bytes()).unwrap();
+            writer.start_file(name, options).unwrap();
+            writer.write_all(b"{}").unwrap();
+            let body = writer.finish().unwrap().into_inner();
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/v1/admin/imports")
+                .header("host", "localhost:8443")
+                .body(Body::from(body))
+                .unwrap();
+            assert!(
+                app.clone()
+                    .oneshot(request)
+                    .await
+                    .unwrap()
+                    .status()
+                    .is_client_error()
+            );
+        }
+        let export_id = uuid::Uuid::new_v4().to_string();
+        let document = serde_json::json!({"format_version":1,"export_id":export_id,"profiles":[],"media":[],"sagas":[],"personal":[],"leases":[]}).to_string();
+        let manifest = serde_json::json!({"format_version":1,"export_id":export_id,"entries":[{"reference":"data.json","sha256":"00".repeat(32)}]}).to_string();
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        let options = SimpleFileOptions::default();
+        writer.start_file("manifest.json", options).unwrap();
+        writer.write_all(manifest.as_bytes()).unwrap();
+        writer.start_file("data.json", options).unwrap();
+        writer.write_all(document.as_bytes()).unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/admin/imports")
+            .header("host", "localhost:8443")
+            .body(Body::from(writer.finish().unwrap().into_inner()))
+            .unwrap();
+        assert_eq!(
+            app.clone().oneshot(request).await.unwrap().status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(before, database_profile_count(&data.join("catalog.sqlite")));
+        assert!(fs::read_dir(data.join("imports")).unwrap().next().is_none());
     }
 }
 
