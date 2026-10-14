@@ -1,0 +1,2 @@
+const test=require("node:test"),assert=require("node:assert/strict"),{aiPreviewRows}=require("./ai.js");
+test("AI preview separates common and personal changes without evaluating text",()=>{assert.deepEqual(aiPreviewRows({changes:[{id:"a",title:"<script>bad</script>",saga:"Saga",rating:5,watched:false}]},[{id:"a",title:"Known"}]),[{id:"a",title:"Known",common:{title:"<script>bad</script>",saga:"Saga"},personal:{rating:5,watched:false}}]);});

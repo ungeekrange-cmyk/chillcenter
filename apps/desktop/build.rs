@@ -5,6 +5,7 @@ fn main() {
             "player_command",
             "artwork_command",
             "admin_command",
+            "ai_command",
             "qa_result",
         ]),
     ))

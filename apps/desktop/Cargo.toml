@@ -6,6 +6,7 @@ license.workspace = true
 build = "build.rs"
 
 [dependencies]
+chill-catalog.workspace = true
 chill-client.workspace = true
 chill-domain.workspace = true
 chill-player.workspace = true

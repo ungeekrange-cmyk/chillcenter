@@ -596,6 +596,7 @@ dependencies = [
 name = "chillcenter-desktop"
 version = "0.1.0"
 dependencies = [
+ "chill-catalog",
  "chill-client",
  "chill-domain",
  "chill-player",

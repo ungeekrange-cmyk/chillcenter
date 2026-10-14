@@ -3,10 +3,10 @@
 window.chillArchiveQa=async config=>{
   let step="connect";const assert=(ok,text)=>{if(!ok)throw Error(text);};
   const native=command=>window.__TAURI__.core.invoke("admin_command",{command});
-  const waitJob=async(id,stage)=>{const end=Date.now()+30000;while(Date.now()<end){const job=await native({action:"status",id});if(job.stage===stage)return job;if(job.stage==="failed"||job.stage==="cancelled")throw Error(job.error||job.stage);await new Promise(r=>setTimeout(r,75));}throw Error("timeout "+stage);};
+  const waitJob=async(id,stage)=>{const end=Date.now()+30000;while(Date.now()<end){const job=await native({action:"status",id});if(job.stage===stage)return job;if(job.stage==="failed"||job.stage==="cancelled")throw Error((job.error_code||job.stage)+": "+(job.error||job.stage));await new Promise(r=>setTimeout(r,75));}throw Error("timeout "+stage);};
   try{
     await window.chillReady;if(state.stage!=="connected"){await connect(config.address);if(state.stage==="trust")await run({action:"approve",token:state.token});}
-    const name="Archives QA "+Date.now();await run({action:"create_profile",name});const profile=state.profiles.find(p=>p.name===name);assert(profile,"profile created");await selectProfile(profile.id);
+    const name="Archives QA "+Date.now();const creation=await run({action:"create_profile",name});const profile=state.profiles.find(p=>p.name===name);assert(creation&&profile,"profile created / "+$("message").textContent);await selectProfile(profile.id);
     const before=(await invoke({action:"refresh"})).profiles.length;
     step="native export background/pinned file save";const started=await native({action:"export"});const ready=await waitJob(started.id,"ready");assert(ready.result.bytes>0,"empty export");await native({action:"save",id:started.id});await waitJob(started.id,"saved");
     step="native streamed import preview";const uploaded=await native({action:"import"});const preview=(await waitJob(uploaded.id,"preview")).result;assert(preview.counts.media>=2&&preview.profiles.length===before,"preview scope");assert((await invoke({action:"refresh"})).profiles.length===before,"preview wrote database");

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 mod admin_bridge;
+mod ai_bridge;
 mod artwork_bridge;
 mod native_player;
 mod player_bridge;
@@ -17,6 +18,7 @@ struct Bridge {
     closing: Arc<std::sync::atomic::AtomicBool>,
     rendering: Arc<std::sync::atomic::AtomicBool>,
     administration: Arc<admin_bridge::AdminHost>,
+    assistant: Arc<ai_bridge::AiHost>,
 }
 #[tauri::command]
 async fn ui_command(
@@ -43,6 +45,7 @@ async fn ui_command(
             | UiCommand::SaveLibrary { .. }
     ) {
         bridge.administration.cancel_all();
+        bridge.assistant.cancel_all();
         bridge.player.lock().await.stop(&window).await?;
     }
     tauri::async_runtime::spawn_blocking(move || {
@@ -63,6 +66,56 @@ async fn ui_command(
         status: None,
         code: "CLIENT_INTERRUPTED".into(),
     })?
+}
+#[tauri::command]
+async fn ai_command(
+    state: tauri::State<'_, Bridge>,
+    command: ai_bridge::AiCommand,
+) -> Result<Value, UiError> {
+    use ai_bridge::AiCommand as C;
+    let bridge = state.inner().clone();
+    match command {
+        C::Settings {} => return bridge.assistant.settings(),
+        C::Configure {
+            provider,
+            codex_path,
+            claude_path,
+        } => {
+            return bridge
+                .assistant
+                .configure(provider, codex_path, claude_path);
+        }
+        _ => {}
+    }
+    let permit = bridge
+        .slot
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ai_bridge::error("Une opération est déjà en cours.", "CLIENT_BUSY"))?;
+    let client = bridge.client.clone();
+    let current = tauri::async_runtime::spawn_blocking(move || {
+        client
+            .lock()
+            .map_err(|_| ai_bridge::error("Client indisponible.", "AI_BUSY"))?
+            .playback_connection()
+    })
+    .await
+    .map_err(|_| ai_bridge::error("Client interrompu.", "CLIENT_INTERRUPTED"))??;
+    let _permit = permit; // Register/check the job before a profile switch can invalidate it.
+    match command {
+        C::Start {
+            request,
+            mode,
+            category,
+            q,
+        } => bridge.assistant.start(current, request, mode, category, q),
+        C::Status { id } => ai_bridge::view(&bridge.assistant.get(&id, &current)?),
+        C::Cancel { id } => ai_bridge::cancel(&bridge.assistant.get(&id, &current)?),
+        C::Apply { id, confirmed } => {
+            ai_bridge::apply(bridge.assistant.get(&id, &current)?, confirmed)
+        }
+        _ => unreachable!(),
+    }
 }
 #[tauri::command]
 async fn player_command(
@@ -366,6 +419,10 @@ fn main() {
         let mut player = PlayerHost::default();
         player.cache_dir = directory.join("subtitle-cache");
         let rendering = player.rendering.clone();
+        let assistant = Arc::new(
+            ai_bridge::AiHost::open(directory.clone())
+                .map_err(|e| std::io::Error::other(e.message))?,
+        );
         app.manage(Bridge {
             client: Arc::new(Mutex::new(client)),
             slot: Arc::new(tokio::sync::Semaphore::new(1)),
@@ -373,6 +430,7 @@ fn main() {
             closing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rendering,
             administration: Arc::new(Default::default()),
+            assistant,
         });
         app.handle().plugin(tauri_plugin_dialog::init())?;
         let window = tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
@@ -423,6 +481,7 @@ fn main() {
         window.on_window_event(move |event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 bridge.administration.cancel_all();
+                bridge.assistant.cancel_all();
                 api.prevent_close();
                 if !bridge
                     .closing
@@ -447,6 +506,7 @@ fn main() {
             player_command,
             artwork_command,
             admin_command,
+            ai_command,
             qa_result
         ])
         .on_page_load(|webview, payload| {
@@ -459,15 +519,18 @@ fn main() {
             ) {
                 let mode = std::env::var("CHILL_UI_QA_MODE").unwrap_or_default();
                 let _ = webview.eval(format!(
-                    "{}\n{}\n{}\n{}\n{}({});",
+                    "{}\n{}\n{}\n{}\n{}\n{}({});",
                     include_str!("../../../ui/connected/qa.js"),
                     include_str!("../../../ui/connected/player-qa.js"),
                     include_str!("../../../ui/connected/catalog-qa.js"),
                     include_str!("../../../ui/connected/archive-qa.js"),
+                    include_str!("../../../ui/connected/ai-qa.js"),
                     if mode == "player" || mode == "next_series" || mode.starts_with("transfer_") {
                         "window.chillPlayerQa"
                     } else {
-                        if mode == "admin_archive" {
+                        if mode == "ai" {
+                            "window.chillAiQa"
+                        } else if mode == "admin_archive" {
                             "window.chillArchiveQa"
                         } else if mode == "catalog" {
                             "window.chillCatalogQa"
@@ -475,7 +538,7 @@ fn main() {
                             "window.chillQaSmoke"
                         }
                     },
-                    serde_json::json!({"address":address,"root":root,"mode":mode})
+                    serde_json::json!({"address":address,"root":root,"mode":mode,"cli":std::env::var("CHILL_UI_QA_CLI").ok()})
                 ));
             }
         });
@@ -484,7 +547,8 @@ fn main() {
         ui_command,
         player_command,
         artwork_command,
-        admin_command
+        admin_command,
+        ai_command
     ]);
     builder
         .run(tauri::generate_context!())

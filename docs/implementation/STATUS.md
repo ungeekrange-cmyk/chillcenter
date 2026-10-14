@@ -1,4 +1,14 @@
-# État d'implémentation — interface/catalogue et flux serveur livrés, produit en cours
+# État d'implémentation — complétion en cours, G-04 non remis
+
+## Situation actuelle (2026-10-14)
+
+La suite du document est le checkpoint historique du13 octobre, pas la liste actuelle des fonctions manquantes. Le candidat d'intégration courant est dans une branche isolée ; le répertoire utilisateur n'est pas encore promu. [COMPLETION-PLAN](COMPLETION-PLAN.md) gouverne les33 stories, G-03 approuvé, sans nouvelle discovery.
+
+Lecteur natif Tauri visible, pistes/contrôles, reprise/crédit réel/EOF, transfert entre deux vrais processus Tauri et nouvelle saison/vitesse ont passé les parcours de fixtures. Catalogue groupé48/page, administration/TMDB/sagas/playlists, ambiances vectorisées et archives/import explicite sont intégrés. Sauvegarde/restauration opérationnelle offline testée avec crash/récupération ; Cinéfolio ne dispose pas encore du CLI portable final. IA native + aperçu/confirmation/recherche/isolation vérifiés avec CLI synthétique : [preuves](NATIVE-ADMIN-AI-EVIDENCE.md). Les revues historiques ne valent pas approval de ces nouveaux commits.
+
+Restes logiciels suivis : identité fingerprint et UI réassociation, CLI export Cinéfolio, matrice lecteur MKV/ASS/enchaînement/perte réseau, complétion affiches saga, deux LOW de durabilité, bundle final reconstruit et preuves/revues exactSHA/traçabilité133 AC. NOT_RUN physiques : Pi/NAS/Wi-Fi et fournisseur réel. Aucune affirmation de livraison complète, de performance Pi ou d'exécution distante.
+
+## Checkpoint historique conservé
 
 2026-10-13 ; G-03 approuvé, G-04 non remis. Source du lot interface : `c2a9d72d634cc7282eb8a20ca9fa138ed92e2fec`, base `fe85cea00da8a7e1f35abf0a5f057907eb235b47`. Les exigences restent CC-STORIES-001/133 AC. La documentation de remise ne modifie pas le code source revu.
 

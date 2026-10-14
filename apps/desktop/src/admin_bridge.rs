@@ -43,6 +43,7 @@ pub struct View {
     pub stage: &'static str,
     pub result: Option<Value>,
     pub error: Option<String>,
+    pub error_code: Option<String>,
 }
 pub struct Job {
     pub connection: PlaybackConnection,
@@ -91,6 +92,7 @@ impl AdminHost {
                 stage: "working",
                 result: None,
                 error: None,
+                error_code: None,
             },
             preview: None,
             export: None,
@@ -262,10 +264,12 @@ fn finish(job: &Arc<Mutex<Job>>, result: Result<Value, UiError>, stage: &'static
                 job.view.stage = stage;
                 job.view.result = Some(value);
                 job.view.error = None;
+                job.view.error_code = None;
             }
             Err(error) => {
                 job.view.stage = "failed";
                 job.view.error = Some(error.message);
+                job.view.error_code = Some(error.code);
             }
         }
     }
