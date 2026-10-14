@@ -2,7 +2,7 @@
 
 ## 1. Overview & Brand Archetype
 
-Chill Center, auteur `/root`, 2026-10-14, statut **REVIEW_REQUESTED**. Reprendre l'interface Cinéfolio (`90c149b`) et le logo vectoriel approuvé. Demande : navigation latérale, recherche haute, administration basse, actions de gestion uniquement dans Administration, conseil IA distinct en sidebar, catalogue sans pages, grandes fiches, TMDB configurable/automatique et lecteur standard.
+Chill Center, auteur `/root`, 2026-10-14, statut **APPROVED_BY_USER** pour CC-UX-002 après les corrections séries/collections. Preuve : « Oui, validé. Passe à l’intégration de cette interface dans le client Tauri, raccorde les fonctionnalités au serveur et reconstruis le bundle Mac. » Voir [gate](../gates/G-UI-PROJECT-CC-UX-002.md). Reprendre l'interface Cinéfolio (`90c149b`) et le logo vectoriel approuvé. Demande : navigation latérale, recherche haute, administration basse, actions de gestion uniquement dans Administration, conseil IA distinct en sidebar, catalogue sans pages, grandes fiches, TMDB configurable/automatique et lecteur standard.
 
 [Maquette interactive](prototype.html) sans réseau : affiches illustratives CSS, données fictives, aucune vidéo ou requête IA/TMDB. Elle ne modifie aucun serveur ni credential.
 

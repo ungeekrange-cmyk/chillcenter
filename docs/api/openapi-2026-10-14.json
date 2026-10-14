@@ -79,11 +79,14 @@
         "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
         "responses": {
           "200": {
-            "description": "Profils existants.",
+            "description": "Tableau des profils existants.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProfileList"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Profile"
+                  }
                 }
               }
             }
@@ -183,12 +186,12 @@
         },
         "parameters": [
           {
-            "name": "X-Chill-Confirm-Delete-Profile",
+            "name": "x-chill-confirm-delete",
             "in": "header",
             "required": true,
             "schema": {
               "type": "string",
-              "const": "true"
+              "description": "Doit être exactement l’identifiant profile de l’URL."
             }
           }
         ]
@@ -253,7 +256,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Preferences"
+                "$ref": "#/components/schemas/PreferencesInput"
               }
             }
           }
@@ -429,7 +432,27 @@
           }
         }
       },
-      "parameters": []
+      "parameters": [
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          }
+        }
+      ]
     },
     "/profiles/{profile}/catalog": {
       "get": {
@@ -489,7 +512,9 @@
           "schema": {
             "enum": [
               "film",
-              "serie"
+              "serie",
+              "spectacle",
+              "documentaire"
             ]
           }
         },
@@ -756,42 +781,6 @@
           }
         },
         "parameters": [
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
           {
             "name": "expected_revision",
             "in": "query",
@@ -1357,42 +1346,6 @@
           }
         },
         "parameters": [
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
           {
             "name": "expected_revision",
             "in": "query",
@@ -2524,7 +2477,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeletedResponse"
+                  "$ref": "#/components/schemas/ReleasedResponse"
                 }
               }
             }
@@ -2716,6 +2669,14 @@
           "schema": {
             "type": "string",
             "pattern": "^bytes="
+          }
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string"
           }
         }
       ]
@@ -3181,7 +3142,9 @@
           "schema": {
             "enum": [
               "film",
-              "serie"
+              "serie",
+              "spectacle",
+              "documentaire"
             ]
           }
         },
@@ -3300,7 +3263,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RevisionedMedia"
+                  "$ref": "#/components/schemas/ReassociatedResponse"
                 }
               }
             }
@@ -3320,7 +3283,27 @@
           }
         }
       },
-      "parameters": []
+      "parameters": [
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          }
+        }
+      ]
     },
     "/admin/media/{media}/fingerprint": {
       "get": {
@@ -3736,7 +3719,8 @@
             "type": "integer",
             "minimum": 0
           }
-        }
+        },
+        "additionalProperties": true
       },
       "Preferences": {
         "type": "object",
@@ -3766,7 +3750,8 @@
               30
             ]
           }
-        }
+        },
+        "additionalProperties": true
       },
       "Media": {
         "type": "object",
@@ -3794,7 +3779,9 @@
           "category": {
             "enum": [
               "film",
-              "serie"
+              "serie",
+              "spectacle",
+              "documentaire"
             ]
           },
           "year": {
@@ -3930,7 +3917,8 @@
               }
             }
           }
-        }
+        },
+        "additionalProperties": true
       },
       "PlaybackControl": {
         "type": "object",
@@ -3953,7 +3941,9 @@
           },
           "media_revision": {
             "type": "integer",
-            "minimum": 0
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Entier non signé 64 bits. En JavaScript, le décoder sans perte avant de le réémettre."
           }
         },
         "additionalProperties": false
@@ -3972,7 +3962,7 @@
             "$ref": "#/components/schemas/PersonalState"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "Progress": {
         "type": "object",
@@ -4003,7 +3993,9 @@
           },
           "media_revision": {
             "type": "integer",
-            "minimum": 0
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Entier non signé 64 bits. En JavaScript, le décoder sans perte avant de le réémettre."
           },
           "sequence": {
             "type": "integer",
@@ -4068,16 +4060,17 @@
               "null"
             ]
           }
-        }
+        },
+        "additionalProperties": true
       },
       "TmdbConfig": {
         "type": "object",
         "required": [
           "credential_type",
           "credential",
-          "auto_enrich",
-          "profile_id"
+          "auto_enrich"
         ],
+        "additionalProperties": false,
         "properties": {
           "credential_type": {
             "enum": [
@@ -4087,8 +4080,6 @@
           },
           "credential": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 4096,
             "writeOnly": true
           },
           "auto_enrich": {
@@ -4102,7 +4093,70 @@
             "format": "uuid"
           }
         },
-        "additionalProperties": false
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "credential_type": {
+                  "const": "api_key"
+                }
+              },
+              "required": [
+                "credential_type"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "pattern": "^\\s*[A-Fa-f0-9]{32}\\s*$"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "credential_type": {
+                  "const": "bearer"
+                }
+              },
+              "required": [
+                "credential_type"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "pattern": "^\\s*(?:Bearer )?[!-~]{20,2048}\\s*$"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "auto_enrich": {
+                  "const": true
+                }
+              },
+              "required": [
+                "auto_enrich"
+              ]
+            },
+            "then": {
+              "required": [
+                "profile_id"
+              ],
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        ]
       },
       "AiApply": {
         "type": "object",
@@ -4187,7 +4241,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "RemovedResponse": {
         "type": "object",
@@ -4199,7 +4253,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "SavedResponse": {
         "type": "object",
@@ -4211,7 +4265,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "StartedResponse": {
         "type": "object",
@@ -4223,7 +4277,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ProfileList": {
         "type": "object",
@@ -4253,7 +4307,7 @@
             "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "MediaList": {
         "type": "object",
@@ -4268,27 +4322,103 @@
             }
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "SeriesResponse": {
         "type": "object",
         "required": [
+          "name",
+          "metadata",
           "episodes",
+          "counters",
           "revision"
         ],
         "properties": {
+          "name": {
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "year",
+                  "genres",
+                  "overview",
+                  "cast",
+                  "directors"
+                ],
+                "properties": {
+                  "year": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "genres": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "overview": {
+                    "type": "string"
+                  },
+                  "cast": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "directors": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "episodes": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Media"
             }
           },
+          "counters": {
+            "type": "object",
+            "required": [
+              "total",
+              "watched",
+              "unwatched"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "watched": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unwatched": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": true
+          },
           "revision": {
             "type": "integer",
             "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "Subtitle": {
         "type": "object",
@@ -4334,7 +4464,7 @@
             }
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "Saga": {
         "type": "object",
@@ -4342,7 +4472,8 @@
           "id",
           "name",
           "revision",
-          "media_ids"
+          "media_ids",
+          "poster"
         ],
         "properties": {
           "id": {
@@ -4360,6 +4491,12 @@
             "items": {
               "$ref": "#/components/schemas/Uuid"
             }
+          },
+          "poster": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
@@ -4374,7 +4511,7 @@
             "$ref": "#/components/schemas/Saga"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "SagaList": {
         "type": "object",
@@ -4389,7 +4526,7 @@
             }
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "Playlist": {
         "type": "object",
@@ -4429,7 +4566,7 @@
             "$ref": "#/components/schemas/Playlist"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "PlaylistList": {
         "type": "object",
@@ -4444,7 +4581,7 @@
             }
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "NextVideo": {
         "type": "object",
@@ -4471,7 +4608,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "PlaybackContext": {
         "type": "object",
@@ -4523,7 +4660,7 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "Lease": {
         "type": "object",
@@ -4557,7 +4694,9 @@
           },
           "media_revision": {
             "type": "integer",
-            "minimum": 0
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Entier non signé 64 bits. En JavaScript, le décoder sans perte avant de le réémettre."
           },
           "generation": {
             "type": "integer",
@@ -4574,7 +4713,7 @@
             "$ref": "#/components/schemas/PlaybackContext"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "TransferOffer": {
         "type": "object",
@@ -4595,7 +4734,7 @@
             "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "TransferStatus": {
         "type": "object",
@@ -4640,7 +4779,7 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "TmdbStatus": {
         "type": "object",
@@ -4672,7 +4811,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "TmdbJob": {
         "type": "object",
@@ -4730,7 +4869,7 @@
             "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "Candidate": {
         "type": "object",
@@ -4780,7 +4919,7 @@
             }
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "NameRequest": {
         "type": "object",
@@ -4885,7 +5024,9 @@
           "category": {
             "enum": [
               "film",
-              "serie"
+              "serie",
+              "spectacle",
+              "documentaire"
             ]
           },
           "year": {
@@ -4994,10 +5135,7 @@
                 "type": "string"
               },
               "year": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
+                "type": "integer"
               },
               "genres": {
                 "type": "array",
@@ -5006,10 +5144,7 @@
                 }
               },
               "overview": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": "string"
               },
               "cast": {
                 "type": "array",
@@ -5189,8 +5324,7 @@
       "RatingRequest": {
         "type": "object",
         "required": [
-          "rating",
-          "scope"
+          "rating"
         ],
         "properties": {
           "rating": {
@@ -5206,7 +5340,8 @@
               "video",
               "season",
               "series"
-            ]
+            ],
+            "default": "video"
           }
         },
         "additionalProperties": false
@@ -5215,8 +5350,7 @@
         "type": "object",
         "required": [
           "media_id",
-          "device_id",
-          "context"
+          "device_id"
         ],
         "properties": {
           "media_id": {
@@ -5226,7 +5360,15 @@
             "$ref": "#/components/schemas/Uuid"
           },
           "context": {
-            "$ref": "#/components/schemas/PlaybackContext"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackContext"
+              }
+            ],
+            "default": {
+              "kind": "standalone",
+              "id": null
+            }
           }
         },
         "additionalProperties": false
@@ -5420,8 +5562,15 @@
                 "id",
                 "title",
                 "category",
+                "year",
+                "series",
+                "season",
+                "episode",
+                "genres",
+                "saga",
                 "watched",
-                "available"
+                "rating",
+                "revision"
               ],
               "properties": {
                 "id": {
@@ -5431,20 +5580,70 @@
                   "type": "string"
                 },
                 "category": {
-                  "type": "string"
+                  "enum": [
+                    "film",
+                    "serie",
+                    "spectacle",
+                    "documentaire"
+                  ]
+                },
+                "year": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "series": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "season": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "episode": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "genres": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "saga": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "watched": {
                   "type": "boolean"
                 },
-                "available": {
-                  "type": "boolean"
+                "rating": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 5
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 0
                 }
               },
               "additionalProperties": false
             }
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "AiApplied": {
         "type": "object",
@@ -5467,14 +5666,14 @@
             "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ReassociationConfirmation": {
         "type": "object",
         "required": [
           "confirmed",
-          "source",
-          "target",
+          "source_id",
+          "target_id",
           "expected_source_revision",
           "expected_target_revision",
           "expected_epoch"
@@ -5483,10 +5682,10 @@
           "confirmed": {
             "const": true
           },
-          "source": {
+          "source_id": {
             "$ref": "#/components/schemas/Uuid"
           },
-          "target": {
+          "target_id": {
             "$ref": "#/components/schemas/Uuid"
           },
           "expected_source_revision": {
@@ -5508,36 +5707,25 @@
         "type": "object",
         "required": [
           "items",
-          "has_more"
+          "has_more",
+          "epoch"
         ],
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "type": "object",
-              "required": [
-                "source",
-                "candidates"
-              ],
-              "properties": {
-                "source": {
-                  "$ref": "#/components/schemas/Uuid"
-                },
-                "candidates": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Uuid"
-                  }
-                }
-              },
-              "additionalProperties": false
+              "$ref": "#/components/schemas/ReassociationProposal"
             }
           },
           "has_more": {
             "type": "boolean"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "FingerprintRequest": {
         "type": "object",
@@ -5572,7 +5760,7 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ExportStatus": {
         "type": "object",
@@ -5610,7 +5798,7 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ImportCounts": {
         "type": "object",
@@ -5689,7 +5877,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ProfileTarget": {
         "type": "object",
@@ -5764,7 +5952,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ImportApply": {
         "type": "object",
@@ -5807,7 +5995,7 @@
             "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "LibrarySettings": {
         "type": "object",
@@ -5827,7 +6015,7 @@
             "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ScanStatus": {
         "type": "object",
@@ -5853,13 +6041,14 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "UnavailablePage": {
         "type": "object",
         "required": [
           "items",
-          "has_more"
+          "has_more",
+          "epoch"
         ],
         "properties": {
           "items": {
@@ -5868,14 +6057,23 @@
               "type": "object",
               "required": [
                 "id",
-                "path"
+                "title",
+                "relative_path",
+                "revision"
               ],
               "properties": {
                 "id": {
                   "$ref": "#/components/schemas/Uuid"
                 },
-                "path": {
+                "title": {
                   "type": "string"
+                },
+                "relative_path": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 0
                 }
               },
               "additionalProperties": false
@@ -5883,9 +6081,13 @@
           },
           "has_more": {
             "type": "boolean"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "Server": {
         "type": "object",
@@ -5939,6 +6141,105 @@
               }
             },
             "additionalProperties": false
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReleasedResponse": {
+        "type": "object",
+        "required": [
+          "released"
+        ],
+        "properties": {
+          "released": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReassociationProposal": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "source_relative_path",
+          "target_id",
+          "source_revision",
+          "target_revision",
+          "expected_catalogue_epoch",
+          "target_relative_path",
+          "label",
+          "reason"
+        ],
+        "properties": {
+          "source_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "source_relative_path": {
+            "type": "string"
+          },
+          "target_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "source_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "target_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_catalogue_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "target_relative_path": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReassociatedResponse": {
+        "type": "object",
+        "required": [
+          "reassociated"
+        ],
+        "properties": {
+          "reassociated": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "PreferencesInput": {
+        "type": "object",
+        "description": "Remplacement des préférences. Un champ omis reprend sa valeur par défaut, pas sa valeur enregistrée ; envoyer les trois champs est recommandé.",
+        "properties": {
+          "audio_language": {
+            "type": "string",
+            "default": "en",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "subtitle_language": {
+            "type": "string",
+            "default": "en",
+            "maxLength": 32
+          },
+          "autoplay_seconds": {
+            "enum": [
+              null,
+              0,
+              5,
+              10,
+              20,
+              30
+            ]
           }
         },
         "additionalProperties": false

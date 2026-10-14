@@ -11,9 +11,11 @@ use chill_domain::catalog_browser::BrowserQuery;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
+    io::{Read, Write},
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::{Duration, SystemTime},
 };
 #[path = "tmdb_worker.rs"]
 mod worker;
@@ -41,6 +43,18 @@ pub fn routes() -> Router<AppState> {
 }
 
 const CREDENTIAL_FILE: &str = "tmdb-token";
+const MAX_TASKS: usize = 2;
+const MAX_HISTORY: usize = 8;
+const HISTORY_TTL: Duration = Duration::from_secs(15 * 60);
+const MAX_WORKLIST: usize = 3000;
+const MAX_STATE_BYTES: usize = 2 * 1024 * 1024;
+const MAX_IDENTIFIER_BYTES: usize = 128;
+fn now_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -132,6 +146,9 @@ pub struct TmdbJobService {
     jobs: Arc<Mutex<BTreeMap<String, TmdbJob>>>,
     state_path: Arc<Mutex<Option<PathBuf>>>,
     worker_gate: Arc<tokio::sync::Mutex<()>>,
+    task_slots: Arc<tokio::sync::Semaphore>,
+    inflight: Arc<Mutex<BTreeSet<String>>>,
+    persist_gate: Arc<Mutex<()>>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -156,7 +173,14 @@ pub struct TmdbJob {
     failed: usize,
     retryable: usize,
     profile_id: String,
+    #[serde(deserialize_with = "bounded_worklist")]
     media_ids: Vec<String>,
+    #[serde(default)]
+    created_at: u64,
+    #[serde(default)]
+    finished_at: Option<u64>,
+    #[serde(default)]
+    sequence: u64,
     #[serde(skip)]
     cancelled: bool,
 }
@@ -189,12 +213,170 @@ impl TmdbJob {
         }
     }
 }
+/// A cancellation changes the public state, not ownership of the task slot.
+/// This guard stays inside the spawned future until it returns or is dropped.
+struct JobTask {
+    service: TmdbJobService,
+    id: String,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+}
+impl Drop for JobTask {
+    fn drop(&mut self) {
+        // Every path (success, cancellation, panic/abort) settles the orphan
+        // state before releasing its permit; no cancelled waiter can be replaced
+        // by unlimited new Tokio tasks while it still owns provider work.
+        if let Ok(mut jobs) = self.service.jobs.lock() {
+            if let Some(job) = jobs.get_mut(&self.id) {
+                if !terminal(&job.status) {
+                    job.status = JobStatus::Failed;
+                    job.retryable = job.retryable.saturating_add(1);
+                }
+                job.finished_at.get_or_insert_with(now_seconds);
+            }
+            if let Ok(mut inflight) = self.service.inflight.lock() {
+                inflight.remove(&self.id);
+            }
+        }
+        let _ = self.service.persist();
+    }
+}
+fn terminal(status: &JobStatus) -> bool {
+    matches!(
+        status,
+        JobStatus::Cancelled | JobStatus::Completed | JobStatus::Failed
+    )
+}
+fn prune(jobs: &mut BTreeMap<String, TmdbJob>, inflight: &BTreeSet<String>, now: u64) {
+    let mut history = jobs
+        .iter()
+        .filter(|(id, job)| terminal(&job.status) && !inflight.contains(*id))
+        .map(|(id, job)| {
+            (
+                job.finished_at.unwrap_or(job.created_at),
+                job.sequence,
+                id.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    history.sort();
+    let overflow = history.len().saturating_sub(MAX_HISTORY);
+    for (index, (finished, _, id)) in history.into_iter().enumerate() {
+        if index < overflow || now.saturating_sub(finished) >= HISTORY_TTL.as_secs() {
+            jobs.remove(&id);
+        }
+    }
+}
+fn bounded_worklist<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error> {
+    struct List;
+    impl<'de> serde::de::Visitor<'de> for List {
+        type Value = Vec<String>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a bounded TMDB worklist")
+        }
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(
+            self,
+            mut seq: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut ids = Vec::new();
+            while let Some(id) = seq.next_element::<String>()? {
+                if ids.len() == MAX_WORKLIST || id.len() > MAX_IDENTIFIER_BYTES {
+                    return Err(serde::de::Error::custom("TMDB state exceeds limits"));
+                }
+                ids.push(id);
+            }
+            Ok(ids)
+        }
+    }
+    deserializer.deserialize_seq(List)
+}
+struct LimitedBytes(Vec<u8>);
+impl Write for LimitedBytes {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.0.len().saturating_add(bytes.len()) > MAX_STATE_BYTES {
+            return Err(std::io::Error::other("TMDB state exceeds limits"));
+        }
+        self.0.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+fn state_bytes(jobs: &BTreeMap<String, TmdbJob>) -> Result<Vec<u8>, String> {
+    let mut output = LimitedBytes(Vec::new());
+    serde_json::to_writer(&mut output, jobs).map_err(|_| "État TMDB hors limites.")?;
+    Ok(output.0)
+}
+/// Stream old history one job at a time and retain only the newest eight.
+/// The byte reader and per-job worklist are bounded before this visitor runs.
+fn load_jobs(
+    bytes: &[u8],
+    legacy_time: u64,
+    now: u64,
+) -> Result<BTreeMap<String, TmdbJob>, String> {
+    struct Jobs {
+        legacy_time: u64,
+        now: u64,
+    }
+    impl<'de> serde::de::Visitor<'de> for Jobs {
+        type Value = BTreeMap<String, TmdbJob>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("bounded TMDB history")
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut rows: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut jobs = BTreeMap::new();
+            while let Some((id, mut job)) = rows.next_entry::<String, TmdbJob>()? {
+                if id != job.job_id
+                    || id.len() > MAX_IDENTIFIER_BYTES
+                    || job.profile_id.len() > MAX_IDENTIFIER_BYTES
+                    || job.total != job.media_ids.len()
+                    || job.processed > job.total
+                    || job.retryable > job.total.saturating_add(1)
+                    || [job.matched, job.ambiguous, job.skipped, job.failed]
+                        .into_iter()
+                        .try_fold(0usize, |sum, n| sum.checked_add(n))
+                        .is_none_or(|n| n > job.processed)
+                {
+                    return Err(serde::de::Error::custom("TMDB state exceeds limits"));
+                }
+                if job.created_at == 0 {
+                    job.created_at = self.legacy_time;
+                }
+                if !terminal(&job.status) {
+                    job.status = JobStatus::Failed;
+                    job.retryable = job.retryable.saturating_add(1);
+                    job.finished_at = Some(self.now);
+                } else if job.finished_at.is_none() {
+                    job.finished_at = Some(job.created_at);
+                }
+                jobs.insert(id, job);
+                prune(&mut jobs, &BTreeSet::new(), self.now);
+            }
+            Ok(jobs)
+        }
+    }
+    let mut reader = serde_json::Deserializer::from_slice(bytes);
+    let jobs = serde::de::Deserializer::deserialize_map(&mut reader, Jobs { legacy_time, now })
+        .map_err(|_| "État TMDB invalide ou hors limites.")?;
+    reader
+        .end()
+        .map_err(|_| "État TMDB invalide ou hors limites.")?;
+    Ok(jobs)
+}
 impl Default for TmdbJobService {
     fn default() -> Self {
         Self {
             jobs: Arc::new(Mutex::new(BTreeMap::new())),
             state_path: Arc::new(Mutex::new(None)),
             worker_gate: Arc::new(tokio::sync::Mutex::new(())),
+            task_slots: Arc::new(tokio::sync::Semaphore::new(MAX_TASKS)),
+            inflight: Arc::new(Mutex::new(BTreeSet::new())),
+            persist_gate: Arc::new(Mutex::new(())),
         }
     }
 }
@@ -202,21 +384,29 @@ impl TmdbJobService {
     pub fn initialize(data_dir: &std::path::Path) -> Result<Self, String> {
         let service = Self::default();
         let path = data_dir.join("tmdb-jobs.json");
-        if let Ok(bytes) = std::fs::read(&path) {
-            let mut jobs: BTreeMap<String, TmdbJob> =
-                serde_json::from_slice(&bytes).map_err(|_| "État TMDB invalide.")?;
-            // A process cannot resume an in-flight HTTP request.  Retain its
-            // counters and expose an explicit retryable terminal state.
-            for job in jobs.values_mut() {
-                if matches!(
-                    job.status,
-                    JobStatus::Queued | JobStatus::Running | JobStatus::PausedPlayback
-                ) {
-                    job.status = JobStatus::Failed;
-                    job.retryable = job.retryable.saturating_add(1);
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) => {
+                if !meta.is_file() || meta.len() > MAX_STATE_BYTES as u64 {
+                    return Err("État TMDB invalide ou hors limites.".into());
                 }
+                let legacy = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                    .map_or(now_seconds(), |t| t.as_secs());
+                let file = std::fs::File::open(&path).map_err(|_| "État TMDB indisponible.")?;
+                let mut bytes = Vec::new();
+                file.take((MAX_STATE_BYTES + 1) as u64)
+                    .read_to_end(&mut bytes)
+                    .map_err(|_| "État TMDB indisponible.")?;
+                if bytes.len() > MAX_STATE_BYTES {
+                    return Err("État TMDB invalide ou hors limites.".into());
+                }
+                let jobs = load_jobs(&bytes, legacy, now_seconds())?;
+                *service.jobs.lock().map_err(|_| "État TMDB indisponible.")? = jobs;
             }
-            *service.jobs.lock().map_err(|_| "État TMDB indisponible.")? = jobs;
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err("État TMDB indisponible.".into()),
         }
         *service
             .state_path
@@ -226,24 +416,42 @@ impl TmdbJobService {
         Ok(service)
     }
     fn persist(&self) -> Result<(), String> {
-        let Some(path) = self
+        let _gate = self
+            .persist_gate
+            .lock()
+            .map_err(|_| "État TMDB indisponible.")?;
+        let mut jobs = self.jobs.lock().map_err(|_| "État TMDB indisponible.")?;
+        let inflight = self
+            .inflight
+            .lock()
+            .map_err(|_| "État TMDB indisponible.")?;
+        prune(&mut jobs, &inflight, now_seconds());
+        let bytes = state_bytes(&jobs)?;
+        self.write_state(&bytes)
+    }
+    fn write_state(&self, bytes: &[u8]) -> Result<(), String> {
+        let path = self
             .state_path
             .lock()
             .map_err(|_| "État TMDB indisponible.")?
-            .clone()
-        else {
-            return Ok(());
-        };
-        let jobs = self
-            .jobs
-            .lock()
-            .map_err(|_| "État TMDB indisponible.")?
             .clone();
-        let bytes = serde_json::to_vec(&jobs).map_err(|_| "État TMDB indisponible.")?;
-        crate::config::atomic_private_write(&path, &bytes)
+        if let Some(path) = path {
+            crate::config::atomic_private_write(&path, bytes)?;
+        }
+        Ok(())
     }
     pub fn status(&self, id: &str) -> Option<TmdbJob> {
-        self.jobs.lock().ok()?.get(id).cloned()
+        let (out, pruned) = {
+            let mut jobs = self.jobs.lock().ok()?;
+            let prior = jobs.len();
+            let inflight = self.inflight.lock().ok()?;
+            prune(&mut jobs, &inflight, now_seconds());
+            (jobs.get(id).cloned(), prior != jobs.len())
+        };
+        if pruned {
+            let _ = self.persist();
+        }
+        out
     }
     pub fn cancel(&self, id: &str) -> Result<TmdbJob, ApiError> {
         let out = {
@@ -257,6 +465,7 @@ impl TmdbJobService {
             if !matches!(job.status, JobStatus::Completed | JobStatus::Failed) {
                 job.cancelled = true;
                 job.status = JobStatus::Cancelled;
+                job.finished_at.get_or_insert_with(now_seconds);
             }
             job.clone()
         };
@@ -273,15 +482,44 @@ impl TmdbJobService {
                 ) {
                     job.cancelled = true;
                     job.status = JobStatus::Cancelled;
+                    job.finished_at.get_or_insert_with(now_seconds);
                 }
             }
         }
         let _ = self.persist();
     }
-    fn create(&self, profile_id: String, mut media_ids: Vec<String>) -> Result<TmdbJob, ApiError> {
+    fn reserve(&self) -> Result<tokio::sync::OwnedSemaphorePermit, ApiError> {
+        self.task_slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| ApiError(StatusCode::TOO_MANY_REQUESTS, "TMDB_JOB_BUSY"))
+    }
+    #[cfg(test)]
+    fn create(
+        &self,
+        profile_id: String,
+        media_ids: Vec<String>,
+    ) -> Result<(TmdbJob, JobTask), ApiError> {
+        self.create_reserved(profile_id, media_ids, self.reserve()?)
+    }
+    fn create_reserved(
+        &self,
+        profile_id: String,
+        mut media_ids: Vec<String>,
+        permit: tokio::sync::OwnedSemaphorePermit,
+    ) -> Result<(TmdbJob, JobTask), ApiError> {
+        if media_ids.len() > MAX_WORKLIST
+            || profile_id.len() > MAX_IDENTIFIER_BYTES
+            || media_ids.iter().any(|id| id.len() > MAX_IDENTIFIER_BYTES)
+        {
+            return Err(ApiError(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "TMDB_JOB_TOO_LARGE",
+            ));
+        }
         let mut seen = std::collections::BTreeSet::new();
         media_ids.retain(|id| seen.insert(id.clone()));
-        let job = TmdbJob {
+        let mut job = TmdbJob {
             job_id: uuid::Uuid::new_v4().to_string(),
             status: JobStatus::Queued,
             total: media_ids.len(),
@@ -293,15 +531,39 @@ impl TmdbJobService {
             retryable: 0,
             profile_id,
             media_ids,
+            created_at: now_seconds(),
+            finished_at: None,
+            sequence: 0,
             cancelled: false,
         };
-        self.jobs
-            .lock()
-            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "TMDB_JOB_UNAVAILABLE"))?
-            .insert(job.job_id.clone(), job.clone());
-        self.persist()
-            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "TMDB_JOB_UNAVAILABLE"))?;
-        Ok(job)
+        fn unavailable<T>(_: T) -> ApiError {
+            ApiError(StatusCode::SERVICE_UNAVAILABLE, "TMDB_JOB_UNAVAILABLE")
+        }
+        let _gate = self.persist_gate.lock().map_err(unavailable)?;
+        let mut jobs = self.jobs.lock().map_err(unavailable)?;
+        let mut inflight = self.inflight.lock().map_err(unavailable)?;
+        let mut staged = jobs.clone();
+        prune(&mut staged, &inflight, now_seconds());
+        job.sequence = staged
+            .values()
+            .map(|j| j.sequence)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        staged.insert(job.job_id.clone(), job.clone());
+        let bytes = state_bytes(&staged)
+            .map_err(|_| ApiError(StatusCode::TOO_MANY_REQUESTS, "TMDB_JOB_BUSY"))?;
+        self.write_state(&bytes).map_err(unavailable)?;
+        *jobs = staged;
+        inflight.insert(job.job_id.clone());
+        Ok((
+            job.clone(),
+            JobTask {
+                service: self.clone(),
+                id: job.job_id,
+                _permit: permit,
+            },
+        ))
     }
 }
 
@@ -309,7 +571,16 @@ impl TmdbJobService {
 #[serde(deny_unknown_fields)]
 struct StartJob {
     profile_id: String,
+    #[serde(default, deserialize_with = "bounded_optional_worklist")]
     media_ids: Option<Vec<String>>,
+}
+fn bounded_optional_worklist<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<String>>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(transparent)]
+    struct List(#[serde(deserialize_with = "bounded_worklist")] Vec<String>);
+    Option::<List>::deserialize(deserializer).map(|value| value.map(|value| value.0))
 }
 async fn eligible_ids(state: &AppState, profile: &str) -> Result<Vec<String>, ApiError> {
     let mut offset = 0;
@@ -337,6 +608,12 @@ async fn eligible_ids(state: &AppState, profile: &str) -> Result<Vec<String>, Ap
                 .filter(|m| m.tmdb_id.is_none() && !m.poster_custom && !m.series_manual)
                 .map(|m| m.id),
         );
+        if ids.len() > MAX_WORKLIST {
+            return Err(ApiError(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "TMDB_JOB_TOO_LARGE",
+            ));
+        }
         if !page.has_more {
             break;
         }
@@ -345,25 +622,26 @@ async fn eligible_ids(state: &AppState, profile: &str) -> Result<Vec<String>, Ap
     Ok(ids)
 }
 pub async fn enqueue_auto(state: AppState) {
-    let Ok(Some(config)) = stored_credential(&state) else {
-        return;
+    let _ = enqueue_auto_checked(state).await;
+}
+async fn enqueue_auto_checked(state: AppState) -> Result<(), ApiError> {
+    let Some(config) = stored_credential(&state)? else {
+        return Ok(());
     };
     if !config.auto_enrich {
-        return;
+        return Ok(());
     }
     let Some(profile) = config.auto_profile_id else {
-        return;
+        return Ok(());
     };
-    let Ok(ids) = eligible_ids(&state, &profile).await else {
-        return;
-    };
-    let Ok(job) = state.tmdb_jobs.create(profile, ids) else {
-        return;
-    };
+    let permit = state.tmdb_jobs.reserve()?;
+    let ids = eligible_ids(&state, &profile).await?;
+    let (job, task) = state.tmdb_jobs.create_reserved(profile, ids, permit)?;
     let service = state.tmdb_jobs.clone();
     tokio::spawn(async move {
-        run_job(state, service, job.job_id).await;
+        run_job(state, service, job.job_id, task).await;
     });
+    Ok(())
 }
 fn exact_candidate(
     media: &chill_catalog::model::Media,
@@ -391,7 +669,7 @@ fn exact_candidate(
         .collect::<Vec<_>>();
     (matches.len() == 1).then(|| matches.into_iter().next().unwrap())
 }
-async fn run_job(state: AppState, service: Arc<TmdbJobService>, id: String) {
+async fn run_job(state: AppState, service: Arc<TmdbJobService>, id: String, task: JobTask) {
     let playback = state.playback.clone();
     worker::run(
         state,
@@ -400,6 +678,7 @@ async fn run_job(state: AppState, service: Arc<TmdbJobService>, id: String) {
         None,
         Arc::new(move || playback.fingerprint_should_pause()),
         worker::Policy::default(),
+        task,
     )
     .await;
 }
@@ -409,7 +688,10 @@ fn bump(service: &TmdbJobService, id: &str, update: impl FnOnce(&mut TmdbJob)) {
         && !job.cancelled
         && !matches!(job.status, JobStatus::Cancelled)
     {
-        update(job)
+        update(job);
+        if terminal(&job.status) {
+            job.finished_at.get_or_insert_with(now_seconds);
+        }
     }
     let _ = service.persist();
 }
@@ -478,7 +760,7 @@ mod job_tests {
         let ids = (0..2496)
             .map(|_| uuid::Uuid::new_v4().to_string())
             .collect::<Vec<_>>();
-        let job = service.create("synthetic-profile".into(), ids).unwrap();
+        let (job, _task) = service.create("synthetic-profile".into(), ids).unwrap();
         let dto = serde_json::to_string(&job.view()).unwrap();
         assert!(dto.len() < 500);
         assert!(!dto.contains("media_ids"));
@@ -496,14 +778,28 @@ mod job_tests {
 }
 async fn start_job(
     State(state): State<AppState>,
-    Json(body): Json<StartJob>,
+    body: Result<Json<StartJob>, axum::extract::rejection::JsonRejection>,
 ) -> Result<(StatusCode, Json<TmdbJobView>), ApiError> {
-    if body.media_ids.as_ref().is_some_and(|ids| ids.len() > 3000) {
+    let Json(body) = body.map_err(|error| {
+        if error.status() == StatusCode::PAYLOAD_TOO_LARGE
+            || error.body_text().contains("TMDB state exceeds limits")
+        {
+            ApiError(StatusCode::PAYLOAD_TOO_LARGE, "TMDB_JOB_TOO_LARGE")
+        } else {
+            ApiError(error.status(), "INVALID_JSON")
+        }
+    })?;
+    if body
+        .media_ids
+        .as_ref()
+        .is_some_and(|ids| ids.len() > MAX_WORKLIST)
+    {
         return Err(ApiError(
             StatusCode::PAYLOAD_TOO_LARGE,
             "TMDB_JOB_TOO_LARGE",
         ));
     }
+    let permit = state.tmdb_jobs.reserve()?;
     state
         .database
         .call({
@@ -517,12 +813,12 @@ async fn start_job(
     } else {
         eligible_ids(&state, &profile).await?
     };
-    let job = state.tmdb_jobs.create(profile, ids)?;
+    let (job, task) = state.tmdb_jobs.create_reserved(profile, ids, permit)?;
     let worker_state = state.clone();
     let worker = state.tmdb_jobs.clone();
     let id = job.job_id.clone();
     tokio::spawn(async move {
-        run_job(worker_state, worker, id).await;
+        run_job(worker_state, worker, id, task).await;
     });
     Ok((StatusCode::ACCEPTED, Json(job.view())))
 }
@@ -546,6 +842,7 @@ async fn retry_job(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<TmdbJobView>), ApiError> {
+    let permit = state.tmdb_jobs.reserve()?;
     let prior = state
         .tmdb_jobs
         .status(&id)
@@ -553,12 +850,14 @@ async fn retry_job(
     if !matches!(prior.status, JobStatus::Failed | JobStatus::Cancelled) {
         return Err(ApiError(StatusCode::CONFLICT, "TMDB_JOB_NOT_RETRYABLE"));
     }
-    let job = state.tmdb_jobs.create(prior.profile_id, prior.media_ids)?;
+    let (job, task) = state
+        .tmdb_jobs
+        .create_reserved(prior.profile_id, prior.media_ids, permit)?;
     let worker_state = state.clone();
     let worker = state.tmdb_jobs.clone();
     let job_id = job.job_id.clone();
     tokio::spawn(async move {
-        run_job(worker_state, worker, job_id).await;
+        run_job(worker_state, worker, job_id, task).await;
     });
     Ok((StatusCode::ACCEPTED, Json(job.view())))
 }

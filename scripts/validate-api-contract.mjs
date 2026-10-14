@@ -11,12 +11,15 @@ if (spec.openapi !== '3.1.0') fail('OpenAPI 3.1.0 attendu');
 if (spec.info?.version !== '2026-10-14') fail('version datée attendue');
 if (!spec.servers?.some(({ url }) => url.includes('/api/2026-10-14'))) fail('serveur canonique manquant');
 if (!spec.paths || Object.keys(spec.paths).length < 35) fail('couverture de routes insuffisante');
+const operationIds = new Set();
 for (const [path, item] of Object.entries(spec.paths ?? {})) {
   if (!path.startsWith('/')) fail(`chemin invalide: ${path}`);
   for (const [method, operation] of Object.entries(item)) {
     if (method === 'parameters') continue;
     if (!['get', 'post', 'put', 'delete'].includes(method)) fail(`${path}: méthode invalide ${method}`);
     if (!operation.operationId) fail(`${path} ${method}: operationId manquant`);
+    if (operationIds.has(operation.operationId)) fail(`${path} ${method}: operationId dupliqué ${operation.operationId}`);
+    operationIds.add(operation.operationId);
     if (!operation.responses || Object.keys(operation.responses).length === 0) fail(`${path} ${method}: réponses manquantes`);
   }
 }
@@ -73,6 +76,13 @@ for (const path of Object.keys(spec.paths)) {
   fail(`route sans source Rust: ${path}`);
 }
 const refPattern = /^#\/components\/(schemas|parameters|responses|requestBodies)\/([^/]+)$/;
+const resolveSchema = (schema, seen = new Set()) => {
+  if (!schema?.$ref) return schema;
+  if (seen.has(schema.$ref)) return schema;
+  seen.add(schema.$ref);
+  const match = schema.$ref.match(/^#\/components\/schemas\/([^/]+)$/);
+  return match ? resolveSchema(schemas[match[1]], seen) : schema;
+};
 const checkRefs = (value, location = '$') => {
   if (Array.isArray(value)) return value.forEach((entry, index) => checkRefs(entry, `${location}[${index}]`));
   if (!value || typeof value !== 'object') return;
@@ -89,6 +99,16 @@ const mutationWithoutBody = new Set([
   'DELETE /admin/imports/{id}', 'DELETE /profiles/{profile}/playlists/{playlist}'
 ]);
 const emptyObject = (schema) => schema?.type === 'object' && Object.keys(schema.properties ?? {}).length === 0;
+const impreciseObject = (schema) => schema?.type === 'object'
+  && Object.keys(schema.properties ?? {}).length === 0
+  && (schema.additionalProperties === undefined || schema.additionalProperties === true);
+const findImpreciseObject = (value, seen = new Set()) => {
+  const resolved = resolveSchema(value);
+  if (!resolved || typeof resolved !== 'object' || seen.has(resolved)) return false;
+  seen.add(resolved);
+  if (impreciseObject(resolved)) return true;
+  return Object.values(resolved).some((nested) => findImpreciseObject(nested, seen));
+};
 for (const [path, item] of Object.entries(spec.paths)) {
   for (const [method, operation] of Object.entries(item)) {
     if (!['get', 'post', 'put', 'delete'].includes(method) || path === '/openapi.json') continue;
@@ -97,15 +117,44 @@ for (const [path, item] of Object.entries(spec.paths)) {
       fail(`${path} ${method}: réponse de succès absente`);
       continue;
     }
-    const responseSchema = success[1].content?.['application/json']?.schema;
+    const responseSchema = resolveSchema(success[1].content?.['application/json']?.schema);
     if (success[0] !== '204' && !success[1].content) fail(`${path} ${method}: contenu de réponse typé absent`);
     if (emptyObject(responseSchema)) fail(`${path} ${method}: réponse JSON object vide interdite`);
+    if (path !== '/openapi.json' && findImpreciseObject(responseSchema)) fail(`${path} ${method}: réponse JSON imprécise interdite`);
     const mutation = `${method.toUpperCase()} ${path}`;
     if (['post', 'put'].includes(method) && !mutationWithoutBody.has(mutation) && !operation.requestBody) fail(`${mutation}: corps requis absent`);
-    const requestSchema = operation.requestBody?.content?.['application/json']?.schema;
+    const requestSchema = resolveSchema(operation.requestBody?.content?.['application/json']?.schema);
     if (emptyObject(requestSchema)) fail(`${mutation}: corps JSON object vide interdit`);
+    if (findImpreciseObject(requestSchema)) fail(`${mutation}: corps JSON imprécis interdit`);
+    if (requestSchema?.type === 'object' && requestSchema.additionalProperties !== false) fail(`${mutation}: corps JSON doit refuser les champs inconnus`);
   }
 }
+const operation = (path, method) => spec.paths[path]?.[method];
+const params = (path, method) => [
+  ...(spec.paths[path]?.parameters ?? []), ...(operation(path, method)?.parameters ?? [])
+];
+const hasParam = (path, method, name, where = 'query') =>
+  params(path, method).some((parameter) => parameter.in === where && parameter.name === name);
+const schema = (name) => schemas[name] ?? {};
+const same = (actual, expected) => JSON.stringify(actual) === JSON.stringify(expected);
+if (operation('/profiles', 'get')?.responses?.[200]?.content?.['application/json']?.schema?.type !== 'array') fail('GET /profiles doit répondre un tableau');
+if (!hasParam('/profiles/{profile}', 'delete', 'x-chill-confirm-delete', 'header')) fail('confirmation de suppression de profil manquante');
+for (const path of ['/admin/unavailable', '/admin/reassociations']) for (const name of ['offset', 'limit']) if (!hasParam(path, 'get', name)) fail(`${path}: query ${name} manquante`);
+if (!same(schema('Media').properties?.category?.enum, ['film', 'serie', 'spectacle', 'documentaire'])) fail('catégories Media divergentes');
+if (!same(schema('RevisionPatch').properties?.category?.enum, ['film', 'serie', 'spectacle', 'documentaire'])) fail('catégories RevisionPatch divergentes');
+const aiFields = ['id', 'title', 'category', 'year', 'series', 'season', 'episode', 'genres', 'saga', 'watched', 'rating', 'revision'];
+if (!same(schema('AiContext').properties?.media?.items?.required, aiFields)) fail('AiMedia diverge du DTO serveur');
+if (schema('AiContext').properties?.media?.items?.properties?.available) fail('AiMedia ne doit pas exposer available');
+if (!same(schema('RatingRequest').required, ['rating']) || schema('RatingRequest').properties?.scope?.default !== 'video') fail('RatingRequest scope doit être optionnel, défaut video');
+if (!same(schema('AcquireRequest').required, ['media_id', 'device_id'])) fail('AcquireRequest context doit être optionnel');
+if (schema('SharedSeriesEdit').properties?.patch?.properties?.year?.type !== 'integer' || schema('SharedSeriesEdit').properties?.patch?.properties?.overview?.type !== 'string') fail('SeriesPatch year/overview doivent être non-null');
+if (schema('PreferencesInput').properties?.subtitle_language?.minLength !== undefined) fail('subtitle_language vide doit être accepté');
+for (const name of ['Lease', 'PlaybackControl', 'Progress']) if (schema(name).properties?.media_revision?.format !== 'uint64') fail(`${name}.media_revision doit être uint64`);
+const tmdb = schema('TmdbConfig');
+if (!same(tmdb.required, ['credential_type', 'credential', 'auto_enrich']) || tmdb.properties?.credential?.writeOnly !== true || tmdb.additionalProperties !== false) fail('TmdbConfig strict ou requis incorrect');
+if (!tmdb.allOf?.some((rule) => rule.if?.properties?.auto_enrich?.const === true && rule.then?.required?.includes('profile_id'))) fail('TmdbConfig profile_id conditionnel manquant');
+for (const credentialType of ['api_key', 'bearer']) if (!tmdb.allOf?.some((rule) => rule.if?.properties?.credential_type?.const === credentialType && rule.then?.properties?.credential?.pattern)) fail(`TmdbConfig validation ${credentialType} manquante`);
+if (!schema('Saga').required?.includes('poster')) fail('Saga.poster doit être documenté');
 for (const [path, item] of Object.entries(spec.paths)) {
   const pathNames = [...path.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
   const declared = (item.parameters ?? []).filter((parameter) => parameter.in === 'path');
@@ -116,6 +165,15 @@ for (const [path, item] of Object.entries(spec.paths)) {
   for (const [method, operation] of Object.entries(item)) {
     if (!['post', 'put', 'delete'].includes(method)) continue;
     if (operation.requestBody && operation.requestBody.required !== true) fail(`${path} ${method}: corps mutation doit être requis`);
+  }
+  for (const [method, operation] of Object.entries(item)) {
+    if (!['get', 'post', 'put', 'delete'].includes(method)) continue;
+    const seen = new Set();
+    for (const parameter of [...(item.parameters ?? []), ...(operation.parameters ?? [])]) {
+      const key = `${parameter.in}:${parameter.name}`;
+      if (seen.has(key)) fail(`${path} ${method}: paramètre dupliqué ${key}`);
+      seen.add(key);
+    }
   }
 }
 if (process.exitCode) process.exit(process.exitCode);

@@ -32,7 +32,8 @@ window.chillPlayerQa=async config=>{
   step="fullscreen geometry";const normal=videoRect();await call({action:"fullscreen",enabled:true});await wait(()=>playerState.native?.fullscreen);await new Promise(r=>setTimeout(r,500));await call({action:"mount",rect:videoRect()});
   const full=playerState.native.debug_surface;assert(full.webview_above_video&&full.webview_receives_pointer,"fullscreen overlay native order lost");
   assert(Math.abs(full.frame.width-full.bounds.width)<2&&Math.abs(full.frame.height-full.bounds.height)<2&&Math.abs(full.frame.x)<2&&Math.abs(full.frame.y)<2,"native fullscreen surface does not fill content bounds");
-  assert(full.screen&&Math.abs(full.frame.width-full.screen.width)<3&&Math.abs(full.frame.height-full.screen.height)<3,"native fullscreen surface does not fill screen bounds "+JSON.stringify({frame:full.frame,safe:full.screen_safe_bounds,screen:full.screen}));
+  const safe=full.screen_safe_bounds;
+  assert(safe&&Math.abs(full.frame.width-safe.width)<3&&Math.abs(full.frame.height-safe.height)<3,"native fullscreen surface does not fill screen safe area "+JSON.stringify({frame:full.frame,safe,screen:full.screen}));
   assert(videoRect().width>=window.innerWidth-2&&videoRect().height>=window.innerHeight-2,"DOM fullscreen cutout constrained");
   await window.__TAURI__.core.invoke("qa_result",{success:false,detail:"TRACE fullscreen native "+JSON.stringify(full)});
   step="Escape restores window";document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait(()=>!playerState.native?.fullscreen&&!document.body.classList.contains("player-fullscreen"));await new Promise(r=>setTimeout(r,500));await call({action:"mount",rect:videoRect()});assert(Math.abs(videoRect().width-normal.width)<3&&Math.abs(videoRect().height-normal.height)<3,"normal surface not restored");

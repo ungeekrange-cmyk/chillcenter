@@ -6,14 +6,16 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use serde_json::{Value, json};
+use serde_json::json;
 pub const VERSION: &str = "2026-10-14";
 pub const PREFIX: &str = "/api/2026-10-14";
-pub async fn openapi() -> Json<Value> {
-    let value: Value =
-        serde_json::from_str(include_str!("../../../docs/api/openapi-2026-10-14.json"))
-            .expect("validated embedded OpenAPI contract");
-    Json(value)
+pub async fn openapi() -> impl IntoResponse {
+    // Serve the immutable validated document directly; no parse/serialize work
+    // or cloned schema tree per request on the Raspberry Pi.
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        include_str!("../../../docs/api/openapi-2026-10-14.json"),
+    )
 }
 pub async fn normalize_response(request: Request<Body>, next: Next) -> Response {
     let is_head = request.method() == Method::HEAD;
@@ -59,6 +61,7 @@ mod tests {
     use super::*;
     use axum::{Router, middleware, routing::get};
     use http_body_util::BodyExt;
+    use serde_json::Value;
     use tower::ServiceExt;
     #[tokio::test]
     async fn framework_errors_are_json_and_preserve_http_metadata() {

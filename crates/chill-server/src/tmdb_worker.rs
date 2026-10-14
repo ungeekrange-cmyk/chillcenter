@@ -131,7 +131,9 @@ pub(super) async fn run(
     injected: Option<Arc<dyn Provider>>,
     playback: Arc<dyn Fn() -> bool + Send + Sync>,
     policy: Policy,
+    task: super::JobTask,
 ) {
+    let _task = task;
     // Only one provider worker can make requests/write metadata at a time.
     let _owner = service.worker_gate.lock().await;
     if !ready(&service, &id, playback.as_ref(), policy).await {
@@ -466,7 +468,7 @@ mod tests {
         provider: Arc<Fake>,
         pause: Arc<AtomicBool>,
     ) -> (String, tokio::task::JoinHandle<()>) {
-        let job = f
+        let (job, task_guard) = f
             .state
             .tmdb_jobs
             .create(f.profile.clone(), f.ids.clone())
@@ -482,6 +484,7 @@ mod tests {
                 Some(provider),
                 Arc::new(move || pause.load(Ordering::SeqCst)),
                 policy(),
+                task_guard,
             )
             .await;
         });
@@ -580,7 +583,7 @@ mod tests {
     #[tokio::test]
     async fn empty_job_completes_without_loading_a_provider() {
         let f = fixture(0);
-        let job = f
+        let (job, task_guard) = f
             .state
             .tmdb_jobs
             .create(f.profile.clone(), Vec::new())
@@ -592,6 +595,7 @@ mod tests {
             None,
             Arc::new(|| false),
             policy(),
+            task_guard,
         )
         .await;
         let job = f.state.tmdb_jobs.status(&job.job_id).unwrap();
@@ -846,7 +850,7 @@ mod tests {
         let f = fixture(1);
         // A hex-shaped bearer must not silently become a v3 key.
         let secret = "abcdef0123456789abcdef0123456789";
-        let pending = f
+        let (pending, _pending_task) = f
             .state
             .tmdb_jobs
             .create(f.profile.clone(), f.ids.clone())
@@ -1050,5 +1054,322 @@ mod tests {
                     .any(|window| window == secret.as_bytes())
             );
         }
+    }
+    #[tokio::test]
+    async fn explicit_implicit_and_auto_3001_worklists_are_rejected_without_spawn_or_truncation() {
+        use super::super::{
+            ConfigureTmdb, CredentialType, MAX_STATE_BYTES, MAX_TASKS, StartJob, configure,
+            enqueue_auto_checked, start_job,
+        };
+        use axum::{Json, extract::State, http::StatusCode};
+        let f = fixture(3001);
+        let _ = configure(
+            State(f.state.clone()),
+            Json(ConfigureTmdb {
+                credential_type: CredentialType::ApiKey,
+                credential: "0123456789abcdef0123456789abcdef".into(),
+                auto_enrich: true,
+                profile_id: Some(f.profile.clone()),
+            }),
+        )
+        .await
+        .unwrap();
+        for explicit in [false, true] {
+            let error = start_job(
+                State(f.state.clone()),
+                Ok(Json(StartJob {
+                    profile_id: f.profile.clone(),
+                    media_ids: explicit.then(|| f.ids.clone()),
+                })),
+            )
+            .await
+            .err()
+            .unwrap();
+            assert_eq!(
+                (error.0, error.1),
+                (StatusCode::PAYLOAD_TOO_LARGE, "TMDB_JOB_TOO_LARGE")
+            );
+        }
+        let error = enqueue_auto_checked(f.state.clone()).await.err().unwrap();
+        assert_eq!(
+            (error.0, error.1),
+            (StatusCode::PAYLOAD_TOO_LARGE, "TMDB_JOB_TOO_LARGE")
+        );
+        assert!(f.state.tmdb_jobs.jobs.lock().unwrap().is_empty());
+        assert_eq!(f.state.tmdb_jobs.task_slots.available_permits(), MAX_TASKS);
+        assert!(
+            std::fs::metadata(f.state.config.data_dir.join("tmdb-jobs.json"))
+                .unwrap()
+                .len()
+                <= MAX_STATE_BYTES as u64
+        );
+    }
+    #[tokio::test]
+    async fn repeated_cancellation_start_retry_and_auto_cannot_replace_owned_task_slots() {
+        use super::super::{
+            ConfigureTmdb, CredentialType, MAX_STATE_BYTES, MAX_TASKS, StartJob, configure,
+            enqueue_auto_checked, retry_job, start_job,
+        };
+        use axum::{
+            Json,
+            extract::{Path, State},
+            http::StatusCode,
+        };
+        let f = fixture(1);
+        let _ = configure(
+            State(f.state.clone()),
+            Json(ConfigureTmdb {
+                credential_type: CredentialType::ApiKey,
+                credential: "0123456789abcdef0123456789abcdef".into(),
+                auto_enrich: true,
+                profile_id: Some(f.profile.clone()),
+            }),
+        )
+        .await
+        .unwrap();
+        let gate = Arc::new(Semaphore::new(0));
+        let first = Arc::new(Fake {
+            detail_gate: Some(gate.clone()),
+            ..Default::default()
+        });
+        let (a, a_task) = launch(&f, first.clone(), Arc::new(AtomicBool::new(false)));
+        first.detail_entered.notified().await;
+        let second = Arc::new(Fake::default());
+        let (b, b_task) = launch(&f, second.clone(), Arc::new(AtomicBool::new(false)));
+        for _ in 0..20 {
+            f.state.tmdb_jobs.cancel(&a).unwrap();
+            f.state.tmdb_jobs.cancel(&b).unwrap();
+            let errors = [
+                start_job(
+                    State(f.state.clone()),
+                    Ok(Json(StartJob {
+                        profile_id: f.profile.clone(),
+                        media_ids: Some(f.ids.clone()),
+                    })),
+                )
+                .await
+                .err()
+                .unwrap(),
+                retry_job(State(f.state.clone()), Path(a.clone()))
+                    .await
+                    .err()
+                    .unwrap(),
+                enqueue_auto_checked(f.state.clone()).await.err().unwrap(),
+            ];
+            for error in errors {
+                assert_eq!(
+                    (error.0, error.1),
+                    (StatusCode::TOO_MANY_REQUESTS, "TMDB_JOB_BUSY")
+                );
+            }
+            assert!(!a_task.is_finished());
+            assert!(!b_task.is_finished());
+            assert_eq!(f.state.tmdb_jobs.task_slots.available_permits(), 0);
+            assert_eq!(f.state.tmdb_jobs.inflight.lock().unwrap().len(), MAX_TASKS);
+            assert_eq!(f.state.tmdb_jobs.jobs.lock().unwrap().len(), MAX_TASKS);
+            assert!(
+                std::fs::metadata(f.state.config.data_dir.join("tmdb-jobs.json"))
+                    .unwrap()
+                    .len()
+                    <= MAX_STATE_BYTES as u64
+            );
+        }
+        gate.add_permits(1);
+        finish(a_task).await;
+        finish(b_task).await;
+        assert_eq!(f.state.tmdb_jobs.task_slots.available_permits(), MAX_TASKS);
+        assert!(second.calls.lock().unwrap().is_empty());
+        assert!(item(&f, 0).await.tmdb_id.is_none());
+    }
+    #[tokio::test]
+    async fn retry_history_stays_at_eight_and_expired_records_are_pruned_durably_on_restart_or_read()
+     {
+        use super::super::{
+            HISTORY_TTL, MAX_HISTORY, MAX_STATE_BYTES, MAX_TASKS, now_seconds, retry_job,
+        };
+        use axum::extract::{Path, State};
+        let f = fixture(0);
+        let (job, guard) = f
+            .state
+            .tmdb_jobs
+            .create(f.profile.clone(), Vec::new())
+            .unwrap();
+        f.state.tmdb_jobs.cancel(&job.job_id).unwrap();
+        drop(guard);
+        let mut prior = job.job_id;
+        for _ in 0..24 {
+            let (_, view) = retry_job(State(f.state.clone()), Path(prior))
+                .await
+                .unwrap();
+            prior = view.0.job_id;
+            f.state.tmdb_jobs.cancel(&prior).unwrap();
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while f.state.tmdb_jobs.task_slots.available_permits() != MAX_TASKS {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            assert!(f.state.tmdb_jobs.jobs.lock().unwrap().len() <= MAX_HISTORY);
+            assert!(
+                std::fs::metadata(f.state.config.data_dir.join("tmdb-jobs.json"))
+                    .unwrap()
+                    .len()
+                    <= MAX_STATE_BYTES as u64
+            );
+        }
+        let recovered = TmdbJobService::initialize(&f.state.config.data_dir).unwrap();
+        assert_eq!(recovered.jobs.lock().unwrap().len(), MAX_HISTORY);
+        assert_eq!(recovered.task_slots.available_permits(), MAX_TASKS);
+        {
+            let mut jobs = recovered.jobs.lock().unwrap();
+            for job in jobs.values_mut() {
+                job.finished_at = Some(now_seconds() - HISTORY_TTL.as_secs());
+            }
+        }
+        assert!(recovered.status(&prior).is_none());
+        assert!(recovered.jobs.lock().unwrap().is_empty());
+        assert_eq!(
+            std::fs::read_to_string(f.state.config.data_dir.join("tmdb-jobs.json")).unwrap(),
+            "{}"
+        );
+        let recovered = TmdbJobService::initialize(&f.state.config.data_dir).unwrap();
+        assert!(recovered.jobs.lock().unwrap().is_empty());
+    }
+    #[test]
+    fn startup_streams_and_prunes_old_history_and_preserves_oversized_or_malformed_state() {
+        use super::super::{MAX_HISTORY, MAX_STATE_BYTES, MAX_WORKLIST, now_seconds};
+        let f = fixture(0);
+        let (seed, guard) = f
+            .state
+            .tmdb_jobs
+            .create(f.profile.clone(), Vec::new())
+            .unwrap();
+        drop(guard);
+        let path = f.state.config.data_dir.join("tmdb-jobs.json");
+        let now = now_seconds();
+        let mut history = std::collections::BTreeMap::new();
+        for n in 0..30 {
+            let mut job = seed.clone();
+            job.job_id = format!("legacy-{n:02}");
+            job.status = JobStatus::Completed;
+            job.retryable = 0;
+            job.created_at = now - n;
+            job.finished_at = Some(now - n);
+            history.insert(job.job_id.clone(), job);
+        }
+        std::fs::write(&path, serde_json::to_vec(&history).unwrap()).unwrap();
+        let recovered = TmdbJobService::initialize(&f.state.config.data_dir).unwrap();
+        assert_eq!(recovered.jobs.lock().unwrap().len(), MAX_HISTORY);
+        assert!(recovered.status("legacy-00").is_some());
+        assert!(recovered.status("legacy-29").is_none());
+        assert!(std::fs::metadata(&path).unwrap().len() <= MAX_STATE_BYTES as u64);
+        let mut malformed = seed.clone();
+        malformed.media_ids = vec!["m".into(); MAX_WORKLIST + 1];
+        malformed.total = malformed.media_ids.len();
+        malformed.retryable = 0;
+        let bytes = serde_json::to_vec(&std::collections::BTreeMap::from([(
+            malformed.job_id.clone(),
+            malformed,
+        )]))
+        .unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let error = TmdbJobService::initialize(&f.state.config.data_dir)
+            .err()
+            .unwrap();
+        assert!(error.contains("limites"));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len((MAX_STATE_BYTES + 1) as u64).unwrap();
+        drop(file);
+        assert!(TmdbJobService::initialize(&f.state.config.data_dir).is_err());
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().len(),
+            (MAX_STATE_BYTES + 1) as u64
+        );
+    }
+    #[test]
+    fn failed_persistence_refuses_creation_before_mutation_and_returns_its_reservation() {
+        use super::super::MAX_TASKS;
+        let f = fixture(1);
+        let original = std::fs::read(f.state.config.data_dir.join("tmdb-jobs.json")).unwrap();
+        let obstruction = f.state.config.data_dir.join("not-a-directory");
+        std::fs::write(&obstruction, b"preserved").unwrap();
+        *f.state.tmdb_jobs.state_path.lock().unwrap() = Some(obstruction.join("tmdb-jobs.json"));
+        let error = f
+            .state
+            .tmdb_jobs
+            .create(f.profile.clone(), f.ids.clone())
+            .err()
+            .unwrap();
+        assert_eq!(error.1, "TMDB_JOB_UNAVAILABLE");
+        assert!(f.state.tmdb_jobs.jobs.lock().unwrap().is_empty());
+        assert!(f.state.tmdb_jobs.inflight.lock().unwrap().is_empty());
+        assert_eq!(f.state.tmdb_jobs.task_slots.available_permits(), MAX_TASKS);
+        assert_eq!(
+            std::fs::read(f.state.config.data_dir.join("tmdb-jobs.json")).unwrap(),
+            original
+        );
+        assert_eq!(std::fs::read(obstruction).unwrap(), b"preserved");
+    }
+    #[tokio::test]
+    async fn oversized_http_worklist_is_a_redacted_413_before_large_vector_or_worker_creation() {
+        use super::super::MAX_WORKLIST;
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+        };
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+        let f = fixture(0);
+        let body = serde_json::json!({"profile_id":f.profile,"media_ids":vec!["m";MAX_WORKLIST+1]})
+            .to_string();
+        let response = crate::api::router(f.state.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/2026-10-14/admin/tmdb/jobs")
+                    .header("host", "localhost:8443")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        let body: serde_json::Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(body["code"], "TMDB_JOB_TOO_LARGE");
+        assert!(f.state.tmdb_jobs.jobs.lock().unwrap().is_empty());
+    }
+    #[test]
+    fn serialized_state_budget_refuses_before_map_or_disk_mutation() {
+        use super::super::{MAX_HISTORY, MAX_STATE_BYTES, MAX_TASKS, MAX_WORKLIST};
+        let f = fixture(0);
+        let ids = (0..MAX_WORKLIST)
+            .map(|n| format!("{n:04}{}", "x".repeat(124)))
+            .collect::<Vec<_>>();
+        let path = f.state.config.data_dir.join("tmdb-jobs.json");
+        let mut rejected = false;
+        for _ in 0..=MAX_HISTORY {
+            let prior = std::fs::read(&path).unwrap();
+            let count = f.state.tmdb_jobs.jobs.lock().unwrap().len();
+            match f.state.tmdb_jobs.create(f.profile.clone(), ids.clone()) {
+                Ok((_, guard)) => drop(guard),
+                Err(error) => {
+                    assert_eq!(error.1, "TMDB_JOB_BUSY");
+                    assert_eq!(std::fs::read(&path).unwrap(), prior);
+                    assert_eq!(f.state.tmdb_jobs.jobs.lock().unwrap().len(), count);
+                    rejected = true;
+                    break;
+                }
+            }
+            assert!(std::fs::metadata(&path).unwrap().len() <= MAX_STATE_BYTES as u64);
+        }
+        assert!(rejected);
+        assert_eq!(f.state.tmdb_jobs.task_slots.available_permits(), MAX_TASKS);
+        assert!(f.state.tmdb_jobs.inflight.lock().unwrap().is_empty());
+        assert!(std::fs::metadata(&path).unwrap().len() <= MAX_STATE_BYTES as u64);
     }
 }
