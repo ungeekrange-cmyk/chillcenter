@@ -417,6 +417,66 @@ fn bump(service: &TmdbJobService, id: &str, update: impl FnOnce(&mut TmdbJob)) {
     }
     let _ = service.persist();
 }
+
+#[cfg(test)]
+mod job_tests {
+    use super::*;
+    fn media(title: &str, year: Option<i32>) -> chill_catalog::model::Media {
+        serde_json::from_value(serde_json::json!({"id":"x","path":"/x","title":title,"category":"film","year":year,"series":null,"season":null,"episode":null,"genres":[],"overview":"","poster":null,"saga":null,"watched":false,"available":true,"added_at":0,"tmdb_id":null})).unwrap()
+    }
+    fn candidate(title: &str, year: Option<i32>) -> chill_catalog::metadata::Candidate {
+        chill_catalog::metadata::Candidate {
+            id: 1,
+            title: title.into(),
+            year,
+            overview: String::new(),
+            poster: None,
+            kind: "movie".into(),
+        }
+    }
+    #[test]
+    fn exact_match_refuses_ambiguity_and_year_mismatch() {
+        assert!(
+            exact_candidate(
+                &media("Alien!", Some(1979)),
+                vec![candidate("Alien", Some(1979))]
+            )
+            .is_some()
+        );
+        assert!(
+            exact_candidate(
+                &media("Alien", Some(1979)),
+                vec![
+                    candidate("Alien", Some(1979)),
+                    candidate("Alien", Some(1979))
+                ]
+            )
+            .is_none()
+        );
+        assert!(
+            exact_candidate(
+                &media("Alien", Some(1979)),
+                vec![candidate("Alien", Some(1986))]
+            )
+            .is_none()
+        );
+    }
+    #[test]
+    fn recovered_active_job_is_retryable_without_media_or_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tmdb-jobs.json");
+        std::fs::write(&path, br#"{"j":{"job_id":"j","status":"running","total":1,"processed":0,"matched":0,"ambiguous":0,"skipped":0,"failed":0,"retryable":0,"profile_id":"p","media_ids":["m"]}}"#).unwrap();
+        let service = TmdbJobService::initialize(dir.path()).unwrap();
+        let job = service.status("j").unwrap();
+        assert!(matches!(job.status, JobStatus::Failed));
+        assert_eq!(job.retryable, 1);
+        assert!(
+            !std::fs::read_to_string(path)
+                .unwrap()
+                .contains("credential")
+        );
+    }
+}
 async fn start_job(
     State(state): State<AppState>,
     Json(body): Json<StartJob>,
