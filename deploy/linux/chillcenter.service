@@ -1,0 +1,50 @@
+[Unit]
+Description=Chill Center household media server
+Documentation=file:/usr/share/doc/chillcenter/LINUX-PACKAGING.md
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target remote-fs.target
+RequiresMountsFor=/srv/volumes/video
+ConditionPathIsMountPoint=/srv/volumes/video
+
+[Service]
+Type=simple
+User=chillcenter
+Group=chillcenter
+UMask=0077
+ExecStart=/usr/lib/chillcenter/chill-server --config /etc/chillcenter/server.json
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# The service may write only its local state. The example NAS mount is visible
+# read-only even if its underlying mount was accidentally made writable.
+StateDirectory=chillcenter
+StateDirectoryMode=0700
+ConfigurationDirectory=chillcenter
+ConfigurationDirectoryMode=0750
+ReadWritePaths=/var/lib/chillcenter
+ReadOnlyPaths=/srv/volumes/video
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
