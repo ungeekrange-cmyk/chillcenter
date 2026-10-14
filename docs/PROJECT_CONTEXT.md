@@ -1,5 +1,11 @@
 # Contexte du projet
 
+## Point actuel — interface/API approuvées, livraison coordonnée en cours
+
+14 octobre2026 : interface Cinéfolio CC-UX-002 intégrée au vrai client Tauri, Administration regroupée, conseil filtré, catalogue continu virtualisé, fiches/séries/sagas/listes et configuration/enrichissement TMDB raccordés. API HTTPS canonique `/api/2026-10-14`, alias `/api/v1`, [guide tiers](api/INTEGRATION-FR.md) et OpenAPI public. Source exacte9277ac4 ; [triple revue indépendante APPROVED](gates/G-DEV-CC-UX-API-001.md), 289Rust/47Node/clippy et deux parcours lecteur natif visibles frais PASS. Les erreurs antérieures sont conservées, pas requalifiées.
+
+Bundle ARM64 autonome75Mio et serveur Linux ARM64 compilés ; promotion/mise à jour Pi puis vérification distincte restent en cours à ce checkpoint. Avant livraison, Pi encore sur R7/source126da0a ; ne pas prétendre déploiement du nouveau contrat. Profil foyer et NAS préservés, pas de fournisseur réel/clé réelle ni de nouveau benchmark Wi-Fi. Reprendre les [preuves](implementation/UX-API-EVIDENCE.md) et gate, pas la découverte historique. Les anciens checkpoints ci-dessous restent historiques.
+
 ## Point de reprise actuel — 14 octobre 2026
 
 Maquette r2 enrichie ensuite à la demande utilisateur : stats séries/saisons/épisodes non vus, navigation saisons→épisodes→fiche, badge Indisponible seulement, création et ajout dans sagas/listes. `docs/design/prototype-collections.js` est un module de démonstration **pas le runtime connecté** ; saga commune et liste personnelle, fixture fictive2saisons/5épisodes, créations mémoire. Playwright PASS et captures inspectées, filtres du conseil inclus ; gate r2 PENDING, aucun bundle ou service touché. Ne pas confondre ces parcours avec validation de la vraie lecture, vraie IA, ni du NAS.

@@ -1,5 +1,19 @@
 # Intégration CC-UX-002 et API 2026-10-14 — preuves en cours
 
+## Candidat final approuvé —9277ac4, avant livraison Pi
+
+Source exacte `9277ac4d51281b3e6d72475294b1e7822cb8e913`. Trois instances indépendantes [code](../reviews/ux-api-code-9277ac4.md), [tests/intégration](../reviews/ux-api-test-9277ac4.md), [sécurité](../reviews/ux-api-security-9277ac4.md) APPROVED ; [gate canonique](../gates/G-DEV-CC-UX-API-001.md). Revue indépendante :289Rust/47Node/clippy/formelOpenAPI PASS ; dernier SHA propre. Node47 corrige les comptes intermédiaires46. Test réel shippedloadPage103éléments, offsets0/48/96, dédoublonnage, DOMborné<48 et rejet de réponse périmée profil/recherche. Catalogue3000dansunevraiewebview/RSSmax encoreNOT_RUN.
+
+Échecs reproductibles conservés : 52212sansrésultat>10min, fresh22914hit-testRED ; db99088watchdog120023ms après `overlay inactivity`/document.hidden=true. [BUG0049](../debug/BUG-0049-native-qa-hidden-controls.md) explique l'oracle après auto-masquage ; [BUG0050](../debug/BUG-0050-native-qa-hidden-timers.md), diagnostic5hypothèses max/H5CONFIRMED, démontre timer suspendu lorsque propreappmasquée puis repris après unhide/activation. Pas de deadlockGPU démontré. Corrections uniquement QAdebug, pas lecteur/timer/renderer produit. Réouverture immédiate au prochain timeout.
+
+Paire native finale exec5428, sans retry, chaque watchdog120s : A nouveau serveur18550/DB/client minimal1MP4+srt, PID59168,17:30:31.890Z→17:30:58.945Z,27057ms,PASS ; B nouveau serveur18551/DB/client distinct,4vidéos synthétiques avec séries préconfigurées par shell, PID59272,17:30:59.039Z→17:31:25.103Z,26075ms,PASS. Toutes phases `visible-wait/ready→boot/connect/profile/root/load→hit-test/inactivité/focus→pistes/pause/reload→seek/navigation→vitesse/volume→fullscreen/Escape→10sfinales/EOF→reopen`, document.hidden=false. Nativeframe/bounds1710×1073, safe1710×1073.5 et hit-test/z-order vrais. Reviewer a relu SQLite : minimalvu1/1 crédit11635ms ; représentatif1vu/4 crédit11701ms. Fenêtre laissée visible par l'utilisateur ; son humain/multi-écran/veille non qualifiés.
+
+Shell final9277 exec95381,3743ms exit0 : sidebar/recherche/admin/logo/grandefiche/stats/navigationseries/saga/playlist/picker/secretTMDB/conseilfiltres PASS, fournisseurCLI+clé **fictifs** uniquement. API30réponsesHTTPS/Range32bytes et38payloadsformels du même contrat d12 restent valides : aucun handler/DTO/documentAPI modifié depuis0a ; les dates de preuves précédentes ne sont pas réécrites.
+
+Compilation exacte9277 : Linuxcargo-zigbuildexec60204exit0 (1.37s, warninglinkerancien), binaire1eb24e…c181, archivea202c94e…552a ; Macexec82750exit0 (1m35s),75Mio/48dylibsARM64, signaturead-hoc/closure/loaderAPI2.5PASS, exécutablec19a229b…42c2c. Deuxwarningsreleasepréexistantsfonctionnonblank/glReadPixelsdebug nonutilisés, pas nouveau warningAnyObject (corrigé). Les artefacts0a/db intermédiaires restent conservés, nonremiscommefinal.
+
+Au présent checkpoint, aucun remplacement du Pi ou bundle cible effectué. Livraison distincte autorisée maintenant : sauvegardeofflineprivée surPi, ancienbinaire/application préservés, serveur daté avant nouveauclient, vérificateurdistinct. Aucun NAS/config/TLS à réinitialiser, aucun push. Les étapes suivantes doivent consigner leurs résultats effectifs, pas déduire un déploiement de ce gate.
+
 2026-10-14, auteur/coordinatrice `/root`, branche isolée `codex/cinefolio-ui-rework`, base `5665f60bc59ceb3b2a9caa1622af053af0645d47`. Validation humaine de la maquette enregistrée dans G-UI-PROJECT-CC-UX-002. Ce checkpoint n'est ni une remise finale ni une approbation indépendante.
 
 ## Commandes exécutées
