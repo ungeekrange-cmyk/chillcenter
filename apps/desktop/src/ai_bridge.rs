@@ -277,34 +277,46 @@ impl AiHost {
         }));
         *active = Some(job.clone());
         let out = view(&job)?;
-        tauri::async_runtime::spawn(async move {
-            let (flag, wake) = {
-                let j = job.lock().unwrap();
-                (j.cancelled.clone(), j.wake.clone())
-            };
-            let work = propose(job.clone(), settings, request, mode, category, q);
-            let outcome = tokio::select! {biased;_=wake.notified()=>Err(error("Demande annulée.","AI_CANCELLED")), result=tokio::time::timeout(Duration::from_secs(180),work)=>result.unwrap_or_else(|_|Err(error("Délai IA dépassé. Aucune modification appliquée.","AI_TIMEOUT")))};
-            if let Ok(mut j) = job.lock() {
-                if flag.load(Ordering::Acquire) {
-                    j.stage = "cancelled";
-                    j.plan = None;
-                    j.context = None;
-                    return;
-                }
-                match outcome {
-                    Ok((context, plan)) => {
-                        j.context = Some(context);
-                        j.plan = Some(plan);
-                        j.stage = "preview";
-                    }
-                    Err(e) => {
-                        j.stage = "failed";
-                        j.message = Some(e.message);
-                    }
-                }
-            }
-        });
+        tauri::async_runtime::spawn(settle_proposal(
+            job.clone(),
+            propose(job.clone(), settings, request, mode, category, q),
+            Duration::from_secs(180),
+        ));
         Ok(out)
+    }
+}
+async fn settle_proposal<F>(job: Arc<Mutex<Job>>, work: F, deadline: Duration)
+where
+    F: std::future::Future<Output = Result<(AiContext, assistant::Plan), UiError>>,
+{
+    let (flag, wake) = match job.lock() {
+        Ok(j) => (j.cancelled.clone(), j.wake.clone()),
+        Err(_) => return,
+    };
+    let outcome = tokio::select! {biased;
+        _ = wake.notified() => Err(error("Demande annulée.", "AI_CANCELLED")),
+        result = tokio::time::timeout(deadline, work) => result.unwrap_or_else(|_| Err(error("Délai IA dépassé. Aucune modification appliquée.", "AI_TIMEOUT"))),
+    };
+    if let Ok(mut j) = job.lock() {
+        if flag.load(Ordering::Acquire) {
+            j.stage = "cancelled";
+            j.plan = None;
+            j.context = None;
+            return;
+        }
+        match outcome {
+            Ok((context, plan)) => {
+                j.context = Some(context);
+                j.plan = Some(plan);
+                j.stage = "preview";
+            }
+            Err(e) => {
+                j.stage = "failed";
+                j.message = Some(e.message);
+                j.plan = None;
+                j.context = None;
+            }
+        }
     }
 }
 pub fn view(job: &Arc<Mutex<Job>>) -> Result<Value, UiError> {
@@ -545,6 +557,50 @@ pub fn apply(job: Arc<Mutex<Job>>, confirmed: bool) -> Result<Value, UiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chill_client::{ServerEndpoint, Transport, TrustStore};
+    use std::sync::RwLock;
+
+    fn test_context() -> AiContext {
+        AiContext {
+            profile_id: "profile".into(),
+            common_revision: 1,
+            personal_revision: 1,
+            media: vec![],
+        }
+    }
+    fn test_plan() -> assistant::Plan {
+        assistant::Plan {
+            message: "fixture".into(),
+            changes: vec![],
+            matched_ids: vec![],
+        }
+    }
+    fn test_job() -> Arc<Mutex<Job>> {
+        let transport = Transport::new(
+            ServerEndpoint::parse("fixture", "https://fixture.invalid").unwrap(),
+            Arc::new(RwLock::new(TrustStore::default())),
+            Some(Duration::from_millis(1)),
+        )
+        .unwrap();
+        Arc::new(Mutex::new(Job {
+            connection: PlaybackConnection {
+                transport,
+                profile_id: "profile".into(),
+                server_id: "fixture".into(),
+                device_id: "device".into(),
+            },
+            id: "job".into(),
+            stage: "working",
+            mode: "organize".into(),
+            context: None,
+            plan: None,
+            result: None,
+            message: None,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            wake: Arc::new(tokio::sync::Notify::new()),
+            created: Instant::now(),
+        }))
+    }
     #[test]
     fn commands_and_settings_are_closed() {
         for raw in [
@@ -600,5 +656,87 @@ mod tests {
         )
         .unwrap();
         assert!(validate_plan(&plan, &[], "search").is_err());
+    }
+    #[test]
+    fn cancellation_settles_pending_work_without_a_preview() {
+        let job = test_job();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let task = tokio::spawn(settle_proposal(
+                job.clone(),
+                std::future::pending::<Result<(AiContext, assistant::Plan), UiError>>(),
+                Duration::from_secs(1),
+            ));
+            let cancelled = cancel(&job).unwrap();
+            assert_eq!(cancelled["stage"], "cancelled");
+            task.await.unwrap();
+        });
+        let j = job.lock().unwrap();
+        assert_eq!(j.stage, "cancelled");
+        assert!(j.context.is_none() && j.plan.is_none());
+    }
+    #[test]
+    fn timeout_settles_without_a_plan() {
+        let job = test_job();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(settle_proposal(
+            job.clone(),
+            std::future::pending::<Result<(AiContext, assistant::Plan), UiError>>(),
+            Duration::from_millis(1),
+        ));
+        let j = job.lock().unwrap();
+        assert_eq!(j.stage, "failed");
+        assert!(j.context.is_none() && j.plan.is_none());
+        assert_eq!(
+            j.message.as_deref(),
+            Some("Délai IA dépassé. Aucune modification appliquée.")
+        );
+    }
+    #[test]
+    fn late_success_after_cancellation_never_becomes_preview() {
+        let job = test_job();
+        let wake = Arc::new(tokio::sync::Notify::new());
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let work_wake = wake.clone();
+            let task = tokio::spawn(settle_proposal(
+                job.clone(),
+                async move {
+                    work_wake.notified().await;
+                    Ok((test_context(), test_plan()))
+                },
+                Duration::from_secs(1),
+            ));
+            cancel(&job).unwrap();
+            wake.notify_one();
+            task.await.unwrap();
+        });
+        let j = job.lock().unwrap();
+        assert_eq!(j.stage, "cancelled");
+        assert!(j.context.is_none() && j.plan.is_none());
+    }
+    #[test]
+    fn cancellation_during_apply_is_confirmed_and_preserves_state() {
+        let job = test_job();
+        {
+            let mut j = job.lock().unwrap();
+            j.stage = "applying";
+            j.context = Some(test_context());
+            j.plan = Some(test_plan());
+        }
+        let rejected = cancel(&job).unwrap_err();
+        assert_eq!(rejected.code, "AI_CONFIRMED");
+        let j = job.lock().unwrap();
+        assert_eq!(j.stage, "applying");
+        assert!(j.context.is_some() && j.plan.is_some());
     }
 }
