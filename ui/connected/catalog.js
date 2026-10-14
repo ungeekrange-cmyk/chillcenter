@@ -102,6 +102,7 @@ async function openCollection(id,kind="playlist"){
   $("series-common")?.remove();seriesView=null;
   $("collection-title").textContent=collectionView.name;$("collection-counts").textContent=collectionView.media_ids.length+" vidéos";
   $("collection-name").value=collectionView.name;$("collection-admin").hidden=false;$("collection-add").hidden=false;$("collection-members").replaceChildren();
+  let artwork=$("collection-artwork");if(kind==="saga"){if(!artwork){artwork=button("Importer une image",()=>{});artwork.id="collection-artwork";$("collection-admin").append(artwork);}artwork.hidden=false;artwork.onclick=()=>importArtwork({kind:"saga",id:collectionView.id,expected_revision:collectionView.revision},async()=>await openCollection(collectionView.id,"saga"));}else if(artwork)artwork.hidden=true;
   collectionFilter="";collectionDetails=new Map();collectionLoaded=0;ensureCollectionFilter(kind);
   // Fetch fixed pages of one item at a time, bounded by the collection limit; never
   // load media files or make the webview a direct server HTTP client.

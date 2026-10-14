@@ -63,16 +63,20 @@ pub fn upload(
     mime: &str,
 ) -> Result<Value, UiError> {
     let profile = client.playback_connection()?.profile_id;
-    let (path, revision) = match target {
+    let (path, revision) = target_path(&profile, target)?;
+    client.upload_artwork(&path, revision, bytes, mime)
+}
+fn target_path(profile: &str, target: ArtworkTarget) -> Result<(String, u64), UiError> {
+    match target {
         ArtworkTarget::Media {
             media_id,
             expected_revision,
         } => {
             uuid::Uuid::parse_str(&media_id).map_err(|_| err("Média invalide."))?;
-            (
+            Ok((
                 format!("/api/v1/profiles/{profile}/media/{media_id}/poster"),
                 expected_revision,
-            )
+            ))
         }
         ArtworkTarget::Saga {
             id,
@@ -81,11 +85,74 @@ pub fn upload(
             if id.parse::<u64>().is_err() {
                 return Err(err("Saga invalide."));
             };
-            (
+            Ok((
                 format!("/api/v1/profiles/{profile}/sagas/{id}/poster"),
                 expected_revision,
-            )
+            ))
         }
-    };
-    client.upload_artwork(&path, revision, bytes, mime)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, os::unix::fs::symlink};
+    fn temp(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("chill-artwork-{name}-{}", uuid::Uuid::new_v4()))
+    }
+    #[test]
+    fn reads_regular_image_without_mutating_source_and_rejects_links_or_oversize() {
+        let file = temp("image");
+        let source = [0xff, 0xd8, 0xff, 1, 2, 3];
+        fs::write(&file, source).unwrap();
+        let (got, mime) = read_selected(&file).unwrap();
+        assert_eq!(got, source);
+        assert_eq!(mime, "image/jpeg");
+        assert_eq!(fs::read(&file).unwrap(), source);
+        let link = temp("link");
+        symlink(&file, &link).unwrap();
+        assert!(read_selected(&link).is_err());
+        let oversized = temp("oversize");
+        let handle = fs::File::create(&oversized).unwrap();
+        handle.set_len(MAX as u64 + 1).unwrap();
+        assert!(read_selected(&oversized).is_err());
+        fs::remove_file(file).unwrap();
+        fs::remove_file(link).unwrap();
+        fs::remove_file(oversized).unwrap();
+    }
+    #[test]
+    fn closed_target_rejects_unknown_fields_and_invalid_ids() {
+        assert!(serde_json::from_value::<ArtworkTarget>(serde_json::json!({"kind":"media","media_id":"x","expected_revision":1,"path":"/tmp/x"})).is_err());
+        assert!(
+            target_path(
+                "profile",
+                ArtworkTarget::Media {
+                    media_id: "x".into(),
+                    expected_revision: 1
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            target_path(
+                "profile",
+                ArtworkTarget::Saga {
+                    id: "../1".into(),
+                    expected_revision: 1
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            target_path(
+                "profile",
+                ArtworkTarget::Saga {
+                    id: "7".into(),
+                    expected_revision: 2
+                }
+            )
+            .unwrap()
+            .0
+            .contains("/sagas/7/poster")
+        );
+    }
 }
