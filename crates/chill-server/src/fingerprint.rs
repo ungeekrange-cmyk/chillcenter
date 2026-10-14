@@ -606,6 +606,7 @@ mod tests {
         std::fs::create_dir(&config.data_dir).unwrap();
         let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
         AppState {
+            tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
             playback: Default::default(),
             scan: Arc::new(std::sync::Mutex::new(
                 crate::catalog_api::ScanStatus::default(),

@@ -63,6 +63,7 @@ async fn fixture() -> Fixture {
         .unwrap();
     let playback = crate::playback::PlaybackService::default();
     let state = AppState {
+        tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
         playback: playback.clone(),
         database: db,
         library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),

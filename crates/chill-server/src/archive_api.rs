@@ -1311,6 +1311,7 @@ mod tests {
         let certificate = tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
         let database = DatabaseActor::open(data.join("catalog.sqlite")).unwrap();
         let state = AppState {
+            tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
             playback: PlaybackService::default(),
             database,
             library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
@@ -1446,6 +1447,7 @@ mod tests {
             .await
             .unwrap();
         let state = crate::api::AppState {
+            tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
             playback: PlaybackService::default(),
             database,
             library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
@@ -1686,6 +1688,7 @@ mod tests {
         let cert = tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
         let database = DatabaseActor::open(data.join("catalog.sqlite")).unwrap();
         let state = crate::api::AppState {
+            tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
             playback: PlaybackService::default(),
             database,
             library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),

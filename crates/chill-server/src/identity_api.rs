@@ -134,6 +134,7 @@ mod tests {
         }).await.unwrap();
         let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
         let state = AppState {
+            tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
             playback: Default::default(),
             scan: Arc::new(Mutex::new(crate::catalog_api::ScanStatus::default())),
             database,
