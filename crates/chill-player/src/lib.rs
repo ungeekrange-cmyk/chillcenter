@@ -5,6 +5,7 @@
 //! [`Player::create_opengl_renderer`] and [`OpenGlRenderer::render`].
 
 use chill_client::{ClientError, Transport};
+use chill_client::playback_cache::PlaybackCache;
 use libloading::Library;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -36,6 +37,8 @@ pub enum PlayerError {
     InvalidCString,
     #[error("option libmpv non autorisée: {0}")]
     UnsafeOption(String),
+    #[error("réglage de tampon invalide: {0}")]
+    InvalidCache(String),
     #[error("schéma de flux invalide: {0}")]
     InvalidScheme(String),
     #[error("aucune lecture active configurée")]
@@ -65,6 +68,8 @@ pub struct PlayerOptions {
     pub hardware_decoding: bool,
     pub initial_volume: u8,
     pub extra: BTreeMap<String, String>,
+    #[serde(default)]
+    pub cache: PlaybackCache,
 }
 
 impl Default for PlayerOptions {
@@ -74,6 +79,7 @@ impl Default for PlayerOptions {
             hardware_decoding: true,
             initial_volume: 100,
             extra: BTreeMap::new(),
+            cache: PlaybackCache::default(),
         }
     }
 }
@@ -502,6 +508,7 @@ struct PlayerCore {
 
 impl Player {
     pub fn new(options: PlayerOptions) -> Result<Self, PlayerError> {
+        options.cache.validate().map_err(|e| PlayerError::InvalidCache(e.into()))?;
         let (library, _) = load_library()?;
         unsafe {
             let create: MpvCreate = symbol(&library, b"mpv_create\0")?;
@@ -563,8 +570,8 @@ impl Player {
             // 18 Mbit/s; higher bitrates hit the byte limits earlier. mpv has
             // no time-based back-cache limit, so backward duration varies.
             player.set_option("cache", "yes")?;
-            player.set_option("demuxer-max-bytes", "128MiB")?;
-            player.set_option("demuxer-max-back-bytes", "64MiB")?;
+            player.set_option("demuxer-max-bytes", &format!("{}MiB", options.cache.forward_mib))?;
+            player.set_option("demuxer-max-back-bytes", &format!("{}MiB", options.cache.back_mib))?;
             player.set_option("cache-secs", "60")?;
             player.set_option("demuxer-readahead-secs", "60")?;
             player.set_option("demuxer-donate-buffer", "no")?;
@@ -641,6 +648,13 @@ impl Player {
     /// Compressed packet-cache advance, measured by mpv (not the target).
     pub fn buffered_ahead_seconds(&self) -> Result<Option<f64>, PlayerError> {
         Ok(self.property("demuxer-cache-duration")?.and_then(|v| v.parse().ok()))
+    }
+
+    /// Apply device-local budgets while paused, immediately before a new load.
+    pub fn set_cache_limits(&self, cache: PlaybackCache) -> Result<(), PlayerError> {
+        cache.validate().map_err(|e| PlayerError::InvalidCache(e.into()))?;
+        self.set_property("demuxer-max-bytes", &format!("{}MiB", cache.forward_mib))?;
+        self.set_property("demuxer-max-back-bytes", &format!("{}MiB", cache.back_mib))
     }
     pub fn set_volume(&self, volume: u8) -> Result<(), PlayerError> {
         self.set_property("volume", &volume.min(100).to_string())
@@ -1229,6 +1243,24 @@ mod tests {
             assert_eq!(value.parse::<f64>().unwrap(), expected, "{name}");
         }
         assert_eq!(player.property("options/demuxer-donate-buffer").unwrap().as_deref(), Some("no"));
+    }
+
+    #[test]
+    fn installed_player_uses_and_reapplies_device_cache_limits() {
+        if !controlled_library_paths().iter().any(|path| path.exists()) {
+            return;
+        }
+        let player = Player::new(PlayerOptions {
+            cache: PlaybackCache { forward_mib: 96, back_mib: 32 },
+            ..PlayerOptions::default()
+        }).unwrap();
+        assert_eq!(player.property("options/demuxer-max-bytes").unwrap().unwrap().parse::<u64>().unwrap(), 96 * 1024 * 1024);
+        player.pause(true).unwrap();
+        player.set_cache_limits(PlaybackCache { forward_mib: 48, back_mib: 0 }).unwrap();
+        assert_eq!(player.property("options/demuxer-max-bytes").unwrap().unwrap().parse::<u64>().unwrap(), 48 * 1024 * 1024);
+        assert_eq!(player.property("options/demuxer-max-back-bytes").unwrap().unwrap().parse::<u64>().unwrap(), 0);
+        assert!(player.set_cache_limits(PlaybackCache { forward_mib: 513, back_mib: 0 }).is_err());
+        assert_eq!(player.property("options/demuxer-max-bytes").unwrap().unwrap().parse::<u64>().unwrap(), 48 * 1024 * 1024);
     }
 
     #[test]

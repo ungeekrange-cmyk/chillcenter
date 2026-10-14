@@ -173,6 +173,7 @@ pub async fn load<R: Runtime>(
     subtitle_language: Option<String>,
     speed: f64,
     lease: LeaseDeadline,
+    cache: chill_client::playback_cache::PlaybackCache,
 ) -> Result<NativeSnapshot, NativePlayerError> {
     on_main(window, move |view| {
         PLAYER.with(|slot| {
@@ -187,10 +188,11 @@ pub async fn load<R: Runtime>(
                     subtitle_language,
                     speed,
                     lease,
+                    cache,
                 )?;
                 state.snapshot()
             } else {
-                let mut state = SurfacePlayer::new(view, transport, playback, lease)?;
+                let mut state = SurfacePlayer::new(view, transport, playback, lease, cache)?;
                 state
                     .player
                     .load(&format!("chill-media://{}", state.media_id))?;
@@ -358,6 +360,7 @@ impl SurfacePlayer {
         transport: Transport,
         playback: PlaybackStream,
         lease: LeaseDeadline,
+        cache: chill_client::playback_cache::PlaybackCache,
     ) -> Result<Self, NativePlayerError> {
         let parent = unsafe { &*(parent as *mut NSView) };
         let rect = NSRect::new(NSPoint::new(0., 0.), NSSize::new(1., 1.));
@@ -369,7 +372,7 @@ impl SurfacePlayer {
             .openGLContext()
             .ok_or_else(|| NativePlayerError::Surface("contexte OpenGL absent".into()))?;
         context.makeCurrentContext();
-        let mut options = PlayerOptions::default();
+        let mut options = PlayerOptions { cache, ..PlayerOptions::default() };
         options.extra.insert("vo".into(), "libmpv".into());
         let mut player = Player::new(options)?;
         // Never decode/play before the server-confirmed heartbeat allows the bridge to unpause.
@@ -410,11 +413,13 @@ impl SurfacePlayer {
         subtitle_language: Option<String>,
         speed: f64,
         lease: LeaseDeadline,
+        cache: chill_client::playback_cache::PlaybackCache,
     ) -> Result<(), NativePlayerError> {
         // The registered callback observes this factory; replacing the active grant does not
         // destroy libmpv or its existing HTTP worker on the AppKit main thread.
         self.player.pause(true)?;
         self.paused = true;
+        self.player.set_cache_limits(cache)?;
         self.factory.clear_playback();
         self.factory.set_transport(transport);
         self.factory.set_playback(playback.clone());

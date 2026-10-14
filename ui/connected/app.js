@@ -17,6 +17,7 @@ function render(){
   if(window.aiContextChanged)window.aiContextChanged();
   if(window.catalogProfileChanged)window.catalogProfileChanged();
   if(window.refreshAppearance)window.refreshAppearance();
+  if(window.refreshPlaybackCache)window.refreshPlaybackCache(state.playback_cache);
   $("connection-notice").textContent=state.notice||"";$("connection-notice").hidden=!state.notice;
   for(const id of ["server-panel","trust-panel","profile-panel","catalog-panel"])$(id).hidden=true;
   const connected=state.stage==="connected";

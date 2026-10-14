@@ -96,6 +96,8 @@ L'apparence est locale au Mac : clair/sombre/système indépendamment de l'ambia
 
 ## 10. Ressources et exploitation
 
+Mise à jour ciblée demandée par l'utilisateur14octobre2026 : le **budget de cache client64 Mio du paragraphe historique ci-dessous est remplacé** par [ADR-0010](decisions/ADR-0010-client-playback-cache.md), cible60 s avant/retour approximatif30 s, défaut128/64 Mio, configurable par Mac16–512/0–256 Mio. La révision est PROPOSED en attente de revue exacte, implémentation en cours ; les anciennes mesures client ne l'approuvent pas. Les autres seuils serveur de CC-DOC-001 restent inchangés. Le paragraphe initial est conservé pour traçabilité, pas comme deuxième plafond normatif actuel.
+
 Objectifs proposés, à mesurer et non acquis : RSS serveur ≤100 MiB au repos avec 3 000 vidéos et ≤200 MiB pendant trois lectures hors scan ; CPU au repos ≤2 % d'un cœur sur 60 s ; cache vidéo Mac plafonné à 64 MiB par lecture ; buffers serveur ≤1 MiB par flux ; page de catalogue 100 éléments maximum. Le RSS n'inclut pas le cache disque du noyau : mesurer aussi la mémoire système disponible et les processus de scan. RSS client incluant webview/moteur à mesurer avant de fixer un seuil crédible.
 
 Files de travaux bornées, téléchargement d'affiches deux à la fois, fingerprint/maintenance suspendus pendant vidéo. Aucun préchargement complet du prochain épisode ; sa jaquette seule peut être préparée. Le buffering améliore les pointes de débit mais ne corrige pas un débit moyen insuffisant. Exemple hypothétique : trois flux à 8 Mb/s représentent environ 24 Mb/s reçus du NAS et autant envoyés par le Pi, avant frais réseau. Ne pas promettre de qualité adaptative serveur.

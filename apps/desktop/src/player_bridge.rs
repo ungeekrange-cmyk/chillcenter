@@ -83,6 +83,7 @@ fn control(l: &Lease) -> PlaybackControl {
 }
 struct Session {
     transport: Transport,
+    cache: chill_client::playback_cache::PlaybackCache,
     profile: String,
     device: String,
     info: PlaybackInfo,
@@ -217,6 +218,7 @@ impl PlayerHost {
             Some(info.preferences.subtitle_language.clone()),
             info.speed,
             LeaseDeadline { remaining },
+            c.cache,
         )
         .await;
         let snapshot = match loaded {
@@ -255,6 +257,7 @@ impl PlayerHost {
         );
         self.session = Some(Session {
             transport: c.transport,
+            cache: c.cache,
             profile: c.profile_id,
             device: c.device_id,
             info,
@@ -593,6 +596,7 @@ impl PlayerHost {
                 profile_id: s.profile.clone(),
                 device_id: s.device.clone(),
                 server_id: String::new(),
+                cache: s.cache,
             };
             let context = s.context.clone();
             let rect = s.rect;
@@ -648,6 +652,7 @@ impl PlayerHost {
                                 profile_id: s.profile.clone(),
                                 device_id: s.device.clone(),
                                 server_id: String::new(),
+                                cache: s.cache,
                             };
                             let media = s.info.media.id.clone();
                             let rect = s.rect;
@@ -668,6 +673,7 @@ impl PlayerHost {
                         LeaseDeadline {
                             remaining: conservative(g.lease.remaining_ms, sent),
                         },
+                        s.cache,
                     )
                     .await;
                     s.lease = Some(g.lease);

@@ -223,6 +223,10 @@ pub enum UiCommand {
     SaveAppearance {
         appearance: crate::appearance::Appearance,
     },
+    CacheSettings,
+    SaveCacheSettings {
+        cache: crate::playback_cache::PlaybackCache,
+    },
     ResolveAppearance {
         year: i32,
         month: u8,
@@ -327,6 +331,7 @@ struct Settings {
     trust: TrustStore,
     device_id: Option<String>,
     appearance: crate::appearance::Appearance,
+    playback_cache: crate::playback_cache::PlaybackCache,
 }
 
 /// Native-host-only snapshot. Never serialized into the webview.
@@ -335,6 +340,7 @@ pub struct PlaybackConnection {
     pub profile_id: String,
     pub server_id: String,
     pub device_id: String,
+    pub cache: crate::playback_cache::PlaybackCache,
 }
 struct Pending {
     address: String,
@@ -406,6 +412,7 @@ impl UiClient {
             profile_id,
             server_id,
             device_id,
+            cache: self.settings.playback_cache,
         })
     }
     /// Call from the host setup thread, never from an async task (blocking HTTP runtime).
@@ -424,13 +431,14 @@ impl UiClient {
         }
         fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
             .map_err(|_| invalid("Protection des réglages impossible."))?;
-        let settings = match fs::read(directory.join("client.json")) {
+        let settings: Settings = match fs::read(directory.join("client.json")) {
             Ok(bytes) if bytes.len() <= 4 * 1024 * 1024 => {
                 serde_json::from_slice(&bytes).map_err(|_| invalid("Réglages locaux invalides."))?
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Settings::default(),
             _ => return Err(invalid("Réglages locaux inaccessibles ou trop volumineux.")),
         };
+        settings.playback_cache.validate().map_err(invalid)?;
         let trust = Arc::new(RwLock::new(settings.trust.clone()));
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -512,7 +520,7 @@ impl UiClient {
     fn view(&mut self) -> Result<Value, UiError> {
         if self.connected.is_none() {
             return Ok(
-                json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"theme":self.theme(),"appearance":self.settings.appearance}),
+                json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache}),
             );
         }
         let profiles = self.request(HttpMethod::GET, "/api/v1/profiles", None, &[], &[])?;
@@ -543,7 +551,7 @@ impl UiClient {
             None => Value::Null,
         };
         Ok(
-            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"theme":self.theme(),"appearance":self.settings.appearance,"notice":self.connected.as_ref().unwrap().notice}),
+            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"notice":self.connected.as_ref().unwrap().notice}),
         )
     }
     fn theme(&self) -> &str {
@@ -1247,6 +1255,17 @@ impl UiClient {
                     &[],
                 )
             }
+            UiCommand::CacheSettings => Ok(json!({"cache":self.settings.playback_cache})),
+            UiCommand::SaveCacheSettings { cache } => {
+                cache.validate().map_err(invalid)?;
+                let previous = self.settings.playback_cache;
+                self.settings.playback_cache = cache;
+                if let Err(error) = self.save() {
+                    self.settings.playback_cache = previous;
+                    return Err(error);
+                }
+                Ok(json!({"cache":cache}))
+            }
             UiCommand::SaveAppearance { appearance } => {
                 let previous = self.settings.appearance.clone();
                 self.settings.appearance = appearance;
@@ -1633,6 +1652,28 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cache_settings_are_local_persistent_and_default_for_legacy_settings() {
+        use crate::playback_cache::PlaybackCache;
+        let legacy: Settings = serde_json::from_value(json!({"theme":"dark"})).unwrap();
+        assert_eq!(legacy.playback_cache, PlaybackCache::default());
+        let dir = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let mut client = UiClient::open(dir.path()).unwrap();
+        let cache = PlaybackCache { forward_mib: 96, back_mib: 0 };
+        client.dispatch(UiCommand::SaveCacheSettings { cache }).unwrap();
+        assert_eq!(UiClient::open(dir.path()).unwrap().settings.playback_cache, cache);
+        assert_eq!(UiClient::open(other.path()).unwrap().settings.playback_cache, PlaybackCache::default());
+        assert!(client.connected.is_none(), "no server required or contacted");
+        assert_eq!(client.dispatch(UiCommand::CacheSettings).unwrap()["cache"]["back_mib"], 0);
+        assert_eq!(client.view().unwrap()["playback_cache"]["forward_mib"], 96);
+        let invalid_cache = PlaybackCache { forward_mib: 513, back_mib: 0 };
+        assert!(client.dispatch(UiCommand::SaveCacheSettings { cache: invalid_cache }).is_err());
+        assert_eq!(UiClient::open(dir.path()).unwrap().settings.playback_cache, cache);
+        client.directory = dir.path().join("missing-directory");
+        assert!(client.dispatch(UiCommand::SaveCacheSettings { cache: PlaybackCache::default() }).is_err());
+        assert_eq!(client.settings.playback_cache, cache);
+    }
     #[test]
     fn settings_directory_sync_failure_is_explicit_and_reopen_reads_published_state(){
         let dir=tempfile::tempdir().unwrap();let mut client=UiClient::open(dir.path()).unwrap();

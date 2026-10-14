@@ -23,6 +23,7 @@ use x509_parser::prelude::*;
 pub mod appearance;
 pub mod artwork;
 pub mod playback;
+pub mod playback_cache;
 pub mod ui;
 pub mod watch_clock;
 pub use reqwest::Method as HttpMethod;

@@ -20,4 +20,4 @@ Complément d'implémentation, distinct des sept décisions approuvées en G-02 
 
 [ADR-0009](ADR-0009-archive-validation.md), IMPLEMENTED_DETAIL : validation ZIP/images et application portable transactionnelle, revues indépendantes locales126da0a favorables. Aucun changement de l'ADR-0006 accepté ni nouvelle validation utilisateur supposée.
 
-[ADR-0010](ADR-0010-client-playback-cache.md), PROPOSED : nouvelle cible utilisateur60 s avant/environ30 s arrière, cache client compressé plafonné128/64 Mio ; durée arrière variable. Revue et essai Dune simultané à rattacher au SHA du delta, sans prétendre que les anciens rapports couvrent ce changement.
+[ADR-0010](ADR-0010-client-playback-cache.md), PROPOSED, CC-CACHE-002,2026-10-14, propriétaire/auteur/root : cible60 s avant/environ30 s arrière, défaut128/64 Mio, réglages locaux bornés16–512/0–256 Mio ; durée arrière variable. Supersedes: budgetclient§10ARCHITECTURE et preuves mémoireclient64Mio, pas ADR-0004 ; superseded_by:NONE. Revue initialeADR CHANGES_REQUESTED conservée, nouveauSHA à revoir ; anciennes preuves client STALE pour ce delta.

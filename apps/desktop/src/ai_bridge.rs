@@ -587,6 +587,7 @@ mod tests {
                 profile_id: "profile".into(),
                 server_id: "fixture".into(),
                 device_id: "device".into(),
+                cache: Default::default(),
             },
             id: "job".into(),
             stage: "working",
