@@ -640,6 +640,35 @@ impl UiClient {
             conn.active.clone(),
             conn.profiles.clone(),
         );
+        if let Some(list) = profiles.as_array() {
+            let keep = list
+                .iter()
+                .filter_map(|p| p["id"].as_str())
+                .filter(|id| uuid::Uuid::parse_str(id).is_ok())
+                .map(str::to_owned)
+                .collect::<std::collections::HashSet<_>>();
+            // Never treat a malformed response as authority to erase caches.
+            if keep.len() == list.len() {
+                if self
+                    .catalog_cache
+                    .as_ref()
+                    .is_some_and(|c| c.server == id && !keep.contains(&c.profile))
+                {
+                    if let Some(task) = self.prefetch.take() {
+                        task.abort();
+                    }
+                    self.catalog_cache = None;
+                }
+                if let Err(error) = crate::catalog_cache::purge_orphans(&self.directory, &id, &keep)
+                {
+                    let conn = self.connected.as_mut().unwrap();
+                    conn.notice = Some(match &conn.notice {
+                        Some(old) => format!("{old}\n{}", error.message),
+                        None => error.message,
+                    });
+                }
+            }
+        }
         let library = self.request(HttpMethod::GET, "/api/v1/admin/library", None, &[], &[])?;
         let preferences = match &active {
             Some(profile) => self.request(
@@ -914,6 +943,9 @@ impl UiClient {
                 }
                 Err(error) if cache.document.is_some() => {
                     // A failed refresh never replaces the last complete mirror.
+                    // Stale is not retry-now: navigation must remain local.
+                    // Boot/focus/manual Refresh explicitly retries the server.
+                    cache.dirty = false;
                     cache.notice=Some("Synchronisation indisponible : dernière copie locale affichée. Les modifications nécessitent le serveur.".into());
                     let _ = error;
                 }
@@ -956,6 +988,7 @@ impl UiClient {
             command,
             Catalog { .. }
                 | MediaDetail { .. }
+                | RelatedMedia { .. }
                 | Series { .. }
                 | Sagas
                 | Saga { .. }
@@ -980,6 +1013,10 @@ impl UiClient {
         self.ensure_catalog(false)?;
         let cache = self.catalog_cache.as_mut().unwrap();
         let result = match command {
+            RelatedMedia { media_id } => {
+                valid_id(media_id)?;
+                json!({"items":cache.store.related(&cache.profile,media_id).map_err(|_|invalid("Suggestions locales indisponibles."))?})
+            }
             Catalog {
                 offset,
                 category,
@@ -2053,7 +2090,20 @@ mod tests {
         let mut mirror =
             crate::catalog_cache::LocalCatalog::open(dir.path(), &server, &profile, gate).unwrap();
         let item:chill_domain::SyncMedia=serde_json::from_value(json!({"media":{"id":media_id,"path":"Shows/E01.mkv","title":"Pilot","category":"serie","series":"Show","season":1,"episode":1,"year":2026,"genres":["Drama"],"overview":"Local","poster":null,"saga":null,"watched":true,"available":true,"added_at":1,"tmdb_id":null,"rating":4},"revision":7})).unwrap();
-        mirror.commit(&[item],json!({"revision":"fixture:1","sagas":[],"playlists":[],"series_revisions":{"Show":9}})).unwrap();
+        let a = uuid::Uuid::new_v4().to_string();
+        let b = uuid::Uuid::new_v4().to_string();
+        let mut film_a = item.clone();
+        film_a.media.id = a.clone();
+        film_a.media.title = "Film A".into();
+        film_a.media.category = "film".into();
+        film_a.media.series = None;
+        film_a.media.year = Some(1900);
+        film_a.media.genres.clear();
+        let mut film_b = film_a.clone();
+        film_b.media.id = b.clone();
+        film_b.media.title = "Film B".into();
+        film_b.media.year = Some(2000);
+        mirror.commit(&[item,film_a,film_b],json!({"revision":"fixture:1","sagas":[{"id":"1","name":"Saga","revision":5,"media_ids":[a,b],"poster":null}],"playlists":[],"series_revisions":{"Show":9}})).unwrap();
         drop(mirror);
         let mut client = UiClient::open(dir.path()).unwrap();
         // Port 9 is deliberately unreachable. Any accidental HTTP makes this
@@ -2103,8 +2153,33 @@ mod tests {
         assert_eq!(series["revision"], 9);
         assert_eq!(series["episodes"].as_array().unwrap().len(), 1);
         assert_eq!(
-            client.dispatch(UiCommand::Sagas).unwrap()["items"],
-            json!([])
+            client.dispatch(UiCommand::Sagas).unwrap()["items"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let related = client
+            .dispatch(UiCommand::RelatedMedia {
+                media_id: a.clone(),
+            })
+            .unwrap();
+        assert_eq!(
+            related["items"][0]["id"], b,
+            "same saga must work entirely from the mirror"
+        );
+        client.invalidate_catalog();
+        client.ensure_catalog(false).unwrap();
+        assert!(client.catalog_cache.as_ref().unwrap().notice.is_some());
+        assert!(
+            !client.catalog_cache.as_ref().unwrap().dirty,
+            "failed refresh must not retry on every local read"
+        );
+        assert_eq!(
+            client
+                .dispatch(UiCommand::RelatedMedia { media_id: a })
+                .unwrap()["items"][0]["id"],
+            b
         );
         assert_eq!(
             client.dispatch(UiCommand::Playlists).unwrap()["items"],

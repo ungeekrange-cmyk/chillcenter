@@ -28,12 +28,14 @@ pub enum StoreFailure {
     AiConfirmationRequired,
     AiPlanInvalid,
     SyncTooLarge,
+    SyncChanged,
     ArtworkNotFound,
     InvalidOperation,
 }
 impl From<String> for StoreFailure {
     fn from(error: String) -> Self {
         match error.as_str() {
+            "SYNC_SNAPSHOT_CHANGED" => Self::SyncChanged,
             "SYNC_CATALOG_TOO_LARGE" | "SYNC_SNAPSHOT_TOO_LARGE" => Self::SyncTooLarge,
             "Affiche introuvable." => Self::ArtworkNotFound,
             "IMPORT_PLAN_STALE" => Self::ImportPlanStale,

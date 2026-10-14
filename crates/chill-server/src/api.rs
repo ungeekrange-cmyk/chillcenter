@@ -137,6 +137,7 @@ impl From<chill_domain::StoreFailure> for ApiError {
     fn from(error: chill_domain::StoreFailure) -> Self {
         use chill_domain::StoreFailure::*;
         match error {
+            SyncChanged => Self(StatusCode::CONFLICT, "SYNC_SNAPSHOT_CHANGED"),
             SyncTooLarge => Self(StatusCode::PAYLOAD_TOO_LARGE, "SYNC_TOO_LARGE"),
             ArtworkNotFound => Self(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"),
             ProfileNotFound => Self(StatusCode::NOT_FOUND, "PROFILE_NOT_FOUND"),
@@ -499,9 +500,19 @@ mod tests {
         assert!(changed["items"].is_array());
         assert_ne!(changed["revision"], rev);
         // Three cold sessions must coexist; never evict an active transfer.
-        let third=json_call(&app,"POST",&format!("/api/v1/profiles/{b}/catalog/snapshot"),json!({"known_revision":rev})).await;
-        assert_eq!(third.0,StatusCode::OK);assert!(third.1["items"].is_array());
-        assert_eq!(json_call(&app,"POST",&endpoint,json!({})).await.0,StatusCode::TOO_MANY_REQUESTS);
+        let third = json_call(
+            &app,
+            "POST",
+            &format!("/api/v1/profiles/{b}/catalog/snapshot"),
+            json!({"known_revision":rev}),
+        )
+        .await;
+        assert_eq!(third.0, StatusCode::OK);
+        assert!(third.1["items"].is_array());
+        assert_eq!(
+            json_call(&app, "POST", &endpoint, json!({})).await.0,
+            StatusCode::TOO_MANY_REQUESTS
+        );
         let snapshot = first["snapshot_id"].as_str().unwrap();
         let page = json_call(
             &app,

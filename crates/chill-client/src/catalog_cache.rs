@@ -19,6 +19,50 @@ fn error(message: &str) -> UiError {
         code: "CATALOG_CACHE".into(),
     }
 }
+/// Only disposable catalogue caches are removed, after an authoritative profile
+/// list. Never recurse from an unvalidated root or follow a cache symlink.
+pub(crate) fn purge_orphans(
+    root: &Path,
+    server: &str,
+    keep: &std::collections::HashSet<String>,
+) -> Result<(), UiError> {
+    uuid::Uuid::parse_str(server).map_err(|_| error("Serveur invalide."))?;
+    let base = root.join("catalog-cache");
+    let server_dir = base.join(server);
+    for directory in [&base, &server_dir] {
+        match fs::symlink_metadata(directory) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Ok(m) if m.is_dir() && !m.file_type().is_symlink() => {}
+            _ => {
+                return Err(error(
+                    "Cache de profil supprimé non nettoyé : dossier non sûr.",
+                ));
+            }
+        }
+    }
+    for entry in
+        fs::read_dir(&server_dir).map_err(|_| error("Cache de profil supprimé non nettoyé."))?
+    {
+        let entry = entry.map_err(|_| error("Cache de profil supprimé non nettoyé."))?;
+        let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if uuid::Uuid::parse_str(&id).is_err() || keep.contains(&id) {
+            continue;
+        }
+        let path = server_dir.join(&id);
+        let meta = fs::symlink_metadata(&path).map_err(|_| error("Cache non lisible."))?;
+        if !meta.is_dir() || meta.file_type().is_symlink() {
+            return Err(error("Cache de profil supprimé non nettoyé : lien refusé."));
+        }
+        fs::remove_dir_all(&path).map_err(|_| {
+            error(
+                "Profil supprimé côté serveur ; cache local non effacé. Recharger pour réessayer.",
+            )
+        })?;
+    }
+    Ok(())
+}
 pub(crate) fn private_directory(path: &Path) -> Result<(), UiError> {
     use std::os::unix::fs::PermissionsExt;
     match fs::symlink_metadata(path) {
@@ -215,6 +259,20 @@ impl LocalCatalog {
         &self,
         transport: &Transport,
     ) -> Result<Option<(Vec<SyncMedia>, Value)>, UiError> {
+        for attempt in 0..3 {
+            match self.download_once(transport).await {
+                Err(error) if error.code == "SYNC_SNAPSHOT_CHANGED" && attempt < 2 => {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await
+                }
+                result => return result,
+            }
+        }
+        unreachable!()
+    }
+    async fn download_once(
+        &self,
+        transport: &Transport,
+    ) -> Result<Option<(Vec<SyncMedia>, Value)>, UiError> {
         let path = format!("/api/v1/profiles/{}/catalog/snapshot", self.profile);
         let known = self.document.as_ref().and_then(|v| v["revision"].as_str());
         let mut first: Value = transport
@@ -391,6 +449,38 @@ impl LocalCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn deleted_profile_cache_is_purged_without_touching_siblings_or_symlink_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let server = uuid::Uuid::new_v4().to_string();
+        let keep = uuid::Uuid::new_v4().to_string();
+        let deleted = uuid::Uuid::new_v4().to_string();
+        let gate = Arc::new(tokio::sync::Semaphore::new(1));
+        drop(LocalCatalog::open(root.path(), &server, &keep, gate.clone()).unwrap());
+        drop(LocalCatalog::open(root.path(), &server, &deleted, gate).unwrap());
+        let base = root.path().join("catalog-cache").join(&server);
+        purge_orphans(
+            root.path(),
+            &server,
+            &std::collections::HashSet::from([keep.clone()]),
+        )
+        .unwrap();
+        assert!(base.join(&keep).is_dir());
+        assert!(!base.join(&deleted).exists());
+        let outside = tempfile::tempdir().unwrap();
+        let link_id = uuid::Uuid::new_v4().to_string();
+        std::os::unix::fs::symlink(outside.path(), base.join(&link_id)).unwrap();
+        assert!(
+            purge_orphans(
+                root.path(),
+                &server,
+                &std::collections::HashSet::from([keep.clone()])
+            )
+            .is_err()
+        );
+        assert!(outside.path().is_dir());
+        assert!(base.join(keep).is_dir());
+    }
     #[test]
     fn image_cache_survives_restart_without_network_and_rejects_links() {
         let dir = tempfile::tempdir().unwrap();

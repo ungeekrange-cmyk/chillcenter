@@ -91,6 +91,8 @@ pub struct SyncSnapshot {
     pub series_revisions: std::collections::BTreeMap<String, u64>,
     #[serde(skip)]
     pub serialized_bytes: usize,
+    #[serde(skip)]
+    pub captured_revision: (u64, u64),
 }
 
 pub struct Store {
@@ -1309,7 +1311,15 @@ impl Store {
     /// Captures profile-facing catalogue state while the caller owns the Store
     /// actor. The caller may safely page this immutable value after the call.
     pub fn sync_snapshot(&mut self, profile: &str) -> Result<SyncSnapshot, String> {
+        self.sync_snapshot_with_probe(profile, || {})
+    }
+    fn sync_snapshot_with_probe(
+        &mut self,
+        profile: &str,
+        after_media: impl FnOnce(),
+    ) -> Result<SyncSnapshot, String> {
         self.require_profile(profile)?;
+        let before = self.sync_revision(profile)?;
         let (count, bytes): (i64, i64) = self
             .personal
             .query_row(
@@ -1363,7 +1373,9 @@ impl Store {
             })
             .collect::<Result<Vec<_>, String>>()?;
         drop(statement);
-        let series_revision = self.common_revision()?;
+        after_media();
+        let captured_revision = self.sync_revision(profile)?;
+        let series_revision = captured_revision.0;
         let mut series_revisions = std::collections::BTreeMap::new();
         for item in &items {
             if item.media.category == "serie" {
@@ -1377,7 +1389,13 @@ impl Store {
             playlists: self.playlists(profile)?,
             series_revisions,
             serialized_bytes: 0,
+            captured_revision,
         };
+        let after = self.sync_revision(profile)?;
+        if before != after {
+            return Err("SYNC_SNAPSHOT_CHANGED".into());
+        }
+        snapshot.captured_revision = after;
         struct Budget(usize);
         impl std::io::Write for Budget {
             fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
@@ -1443,6 +1461,7 @@ impl Store {
             .map_err(db_error)?;
         tx.execute("DELETE FROM cc_playlists", [])
             .map_err(db_error)?;
+        tx.execute_batch("DELETE FROM collection_positions;DELETE FROM collection_members;DELETE FROM collection_artwork;DELETE FROM collection_revisions;DELETE FROM imported_sagas;DELETE FROM collections;").map_err(db_error)?;
         tx.execute("DELETE FROM cc_profile_state", [])
             .map_err(db_error)?;
         tx.execute("DELETE FROM cc_media_revision", [])
@@ -1475,6 +1494,35 @@ impl Store {
             )
             .map_err(db_error)?;
             tx.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,watched,rating) VALUES(?1,?2,?3,?4)", params![profile,stable,item.media.watched,item.media.rating]).map_err(db_error)?;
+        }
+        let sagas: Vec<SagaView> =
+            serde_json::from_value(cache_document["sagas"].clone()).map_err(|_| "SYNC_INVALID")?;
+        for saga in sagas {
+            let id = saga.id.parse::<i64>().map_err(|_| "SYNC_INVALID")?;
+            if id <= 0 || saga.revision > i64::MAX as u64 {
+                return Err("SYNC_INVALID".into());
+            }
+            tx.execute(
+                "INSERT INTO collections(id,name,kind) VALUES(?1,?2,'saga')",
+                params![id, saga.name],
+            )
+            .map_err(db_error)?;
+            tx.execute(
+                "INSERT INTO collection_revisions(collection_id,revision) VALUES(?1,?2)",
+                params![id, saga.revision as i64],
+            )
+            .map_err(db_error)?;
+            for (position, media) in saga.media_ids.iter().enumerate() {
+                if !ids.contains(media.as_str()) {
+                    return Err("SYNC_INVALID".into());
+                }
+                tx.execute(
+                    "INSERT INTO collection_members(collection_id,media_id) VALUES(?1,?2)",
+                    params![id, media],
+                )
+                .map_err(db_error)?;
+                tx.execute("INSERT INTO collection_positions(collection_id,media_id,position) VALUES(?1,?2,?3)",params![id,media,position as i64]).map_err(db_error)?;
+            }
         }
         tx.execute("DELETE FROM cc_client_mirror", [])
             .map_err(db_error)?;
@@ -2354,6 +2402,36 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use tempfile::tempdir;
+    #[test]
+    fn snapshot_rejects_a_scanner_commit_between_rows_and_revision() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("race.sqlite");
+        let mut reader = Store::open(&path).unwrap();
+        let profile = reader.create_profile("Reader").unwrap();
+        reader
+            .snapshot(vec![media("A.mp4", "/fixture/A.mp4")])
+            .unwrap();
+        let old = reader.sync_snapshot(&profile.id).unwrap();
+        let mut scanner = Store::open(&path).unwrap();
+        let result = reader.sync_snapshot_with_probe(&profile.id, || {
+            scanner
+                .snapshot(vec![
+                    media("A.mp4", "/fixture/A.mp4"),
+                    media("B.mp4", "/fixture/B.mp4"),
+                ])
+                .unwrap();
+        });
+        assert_eq!(result.unwrap_err(), "SYNC_SNAPSHOT_CHANGED");
+        let retry = reader.sync_snapshot(&profile.id).unwrap();
+        assert_ne!(retry.captured_revision, old.captured_revision);
+        assert_eq!(old.items.len(), 1);
+        assert_eq!(retry.items.len(), 2);
+        assert!(retry.items.iter().any(|item| item.media.title == "B.mp4"));
+        assert_eq!(
+            retry.captured_revision,
+            reader.sync_revision(&profile.id).unwrap()
+        );
+    }
     #[test]
     fn scan_publishes_new_media_revision_without_legacy_catalog_warmup() {
         let dir = tempdir().unwrap();

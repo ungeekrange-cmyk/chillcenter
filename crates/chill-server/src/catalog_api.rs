@@ -192,11 +192,14 @@ async fn create_snapshot(
             let profile = profile.clone();
             move |s| {
                 let snapshot = s.sync_snapshot(&profile)?;
-                Ok((s.sync_revision(&profile)?, snapshot))
+                Ok((snapshot.captured_revision, snapshot))
             }
         })
         .await?;
     let revision = snapshot_revision(&server, &profile, captured_epoch);
+    if captured_epoch != epoch {
+        return Err(ApiError(StatusCode::CONFLICT, "SYNC_SNAPSHOT_CHANGED"));
+    }
     let id = Uuid::new_v4().to_string();
     let total = snapshot.items.len();
     let first = snapshot.items[..total.min(SYNC_PAGE)].to_vec();
@@ -290,7 +293,9 @@ async fn snapshot_page(
     {
         return Err(ApiError(StatusCode::NOT_FOUND, "SYNC_SNAPSHOT_NOT_FOUND"));
     }
-    let end = offset.saturating_add(SYNC_PAGE).min(cached.snapshot.items.len());
+    let end = offset
+        .saturating_add(SYNC_PAGE)
+        .min(cached.snapshot.items.len());
     if end == cached.snapshot.items.len()
         && let Ok(mut cache) = snapshot_cache().lock()
         && let Some(value) = cache.snapshots.get_mut(&snapshot)
