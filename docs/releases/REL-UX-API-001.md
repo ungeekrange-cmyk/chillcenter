@@ -2,6 +2,8 @@
 
 Date2026-10-14. État : `LOCAL_DELIVERED / PI_DEPLOYMENT_BLOCKED`.
 
+[Vérification indépendante](REL-UX-API-001-verification.md) : APPROVED_LOCAL / BLOCKED_PI, verdict global BLOCKED. Bundle Mac/source/manifestes/archive/TLS ancien et confinement vérifiés ; Pi toujours R7 actif, binaire nouveau seulement staged. Le nouveau parcours catalogue/RangeNAS n'est pas exécuté. Le checksum annexe contient le bon hash mais un ancien nom d'archive ; correction de cette seule métadonnée en cours, sans altérer l'archive ou son hash.
+
 Source approuvée `9277ac4d51281b3e6d72475294b1e7822cb8e913`, carrier documentaire `d25744102c9b2ff3fe69669c482bd561b2b5dff4`. Déployeur distinct `/root/ux_api_delivery`. Promotion locale fast-forward uniquement sur `codex/player-streaming`, ancien HEAD5665 préservé dans l'historique ; aucun push ni écriture main. [Triple revue](../gates/G-DEV-CC-UX-API-001.md) APPROVED, pas auto-approbation du coordinateur.
 
 ## Livraison locale réalisée
