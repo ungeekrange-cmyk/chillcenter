@@ -160,6 +160,8 @@ pub struct NativeSurfaceGeometry {
     pub frame: NativeRect,
     pub bounds: NativeRect,
     pub screen: Option<NativeRect>,
+    pub screen_safe_bounds: Option<NativeRect>,
+    pub window_frame: Option<NativeRect>,
     pub webview_above_video: bool,
     pub webview_receives_pointer: bool,
 }
@@ -746,6 +748,11 @@ impl SurfacePlayer {
                 .window()
                 .and_then(|window| window.screen())
                 .map(|screen| rect(screen.frame())),
+            screen_safe_bounds: parent.window().and_then(|window| window.screen()).map(|screen| {
+                let frame=screen.frame();let inset=screen.safeAreaInsets();
+                rect(NSRect::new(NSPoint::new(frame.origin.x+inset.left,frame.origin.y+inset.bottom),NSSize::new(frame.size.width-inset.left-inset.right,frame.size.height-inset.top-inset.bottom)))
+            }),
+            window_frame: parent.window().map(|window|rect(window.frame())),
             webview_above_video: index(&self.view)
                 .zip(index(&self.overlay))
                 .is_some_and(|(video, web)| video < web),

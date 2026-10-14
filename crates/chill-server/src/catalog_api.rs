@@ -22,102 +22,84 @@ pub struct ScanStatus {
 }
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/admin/scan", get(scan_status).post(start_scan))
-        .route("/api/v1/profiles/{profile}/catalog", get(catalog))
-        .route("/api/v1/sagas/{saga}/artwork", get(common_saga_artwork))
+        .route("/admin/scan", get(scan_status).post(start_scan))
+        .route("/profiles/{profile}/catalog", get(catalog))
+        .route("/sagas/{saga}/artwork", get(common_saga_artwork))
         .route(
-            "/api/v1/admin/unavailable",
+            "/admin/unavailable",
             get(unavailable).post(forget_unavailable),
         )
+        .route("/profiles/{profile}/media/{media}/related", get(related))
         .route(
-            "/api/v1/profiles/{profile}/media/{media}/related",
-            get(related),
-        )
-        .route(
-            "/api/v1/profiles/{profile}/media/{media}",
+            "/profiles/{profile}/media/{media}",
             get(detail).put(update_media),
         )
+        .route("/profiles/{profile}/media/{media}/artwork", get(artwork))
         .route(
-            "/api/v1/profiles/{profile}/media/{media}/artwork",
-            get(artwork),
-        )
-        .route(
-            "/api/v1/profiles/{profile}/media/{media}/poster",
+            "/profiles/{profile}/media/{media}/poster",
             put(upload_poster).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
         )
         .route(
-            "/api/v1/profiles/{profile}/media/{media}/subtitles",
+            "/profiles/{profile}/media/{media}/subtitles",
             get(crate::media_stream::subtitles),
         )
         .route(
-            "/api/v1/profiles/{profile}/media/{media}/subtitles/{id}",
+            "/profiles/{profile}/media/{media}/subtitles/{id}",
             get(crate::media_stream::subtitle),
         )
         .route(
-            "/api/v1/profiles/{profile}/series/{series}",
+            "/profiles/{profile}/series/{series}",
             get(series).put(edit_series),
         )
         .route(
-            "/api/v1/profiles/{profile}/sagas/{saga}/artwork",
+            "/profiles/{profile}/sagas/{saga}/artwork",
             get(saga_artwork),
         )
         .route(
-            "/api/v1/profiles/{profile}/sagas/{saga}/poster",
+            "/profiles/{profile}/sagas/{saga}/poster",
             put(upload_saga_poster).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
         )
         .route(
-            "/api/v1/profiles/{profile}/sagas/{saga}/poster/member",
+            "/profiles/{profile}/sagas/{saga}/poster/member",
             put(saga_member_poster),
         )
+        .route("/profiles/{profile}/sagas", get(sagas).post(create_saga))
         .route(
-            "/api/v1/profiles/{profile}/sagas",
-            get(sagas).post(create_saga),
-        )
-        .route(
-            "/api/v1/profiles/{profile}/sagas/{saga}",
+            "/profiles/{profile}/sagas/{saga}",
             get(saga).put(rename_saga).delete(delete_saga),
         )
         .route(
-            "/api/v1/profiles/{profile}/sagas/{saga}/members",
+            "/profiles/{profile}/sagas/{saga}/members",
             post(add_saga_members).delete(remove_saga_members),
         )
+        .route("/profiles/{profile}/sagas/{saga}/order", put(order_saga))
         .route(
-            "/api/v1/profiles/{profile}/sagas/{saga}/order",
-            put(order_saga),
-        )
-        .route(
-            "/api/v1/profiles/{profile}/playlists",
+            "/profiles/{profile}/playlists",
             get(playlists).post(create_playlist),
         )
         .route(
-            "/api/v1/profiles/{profile}/playlists/{playlist}",
+            "/profiles/{profile}/playlists/{playlist}",
             get(playlist).put(rename_playlist).delete(delete_playlist),
         )
         .route(
-            "/api/v1/profiles/{profile}/playlists/{playlist}/members",
+            "/profiles/{profile}/playlists/{playlist}/members",
             post(add_members),
         )
         .route(
-            "/api/v1/profiles/{profile}/playlists/{playlist}/members/{media}",
+            "/profiles/{profile}/playlists/{playlist}/members/{media}",
             delete(remove_member),
         )
         .route(
-            "/api/v1/profiles/{profile}/playlists/{playlist}/order",
+            "/profiles/{profile}/playlists/{playlist}/order",
             put(order_playlist),
         )
-        .route("/api/v1/profiles/{profile}/playback/next", post(next_video))
+        .route("/profiles/{profile}/playback/next", post(next_video))
         .route(
-            "/api/v1/profiles/{profile}/media/{media}/playback-info",
+            "/profiles/{profile}/media/{media}/playback-info",
             get(playback_info),
         )
-        .route(
-            "/api/v1/profiles/{profile}/media/{media}/watched",
-            put(watched),
-        )
-        .route(
-            "/api/v1/profiles/{profile}/media/{media}/rating",
-            put(rating),
-        )
+        .route("/profiles/{profile}/media/{media}/watched", put(watched))
+        .route("/profiles/{profile}/media/{media}/rating", put(rating))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -704,7 +686,9 @@ async fn catalog(
         .database
         .call(move |store| store.browse_catalog(&profile, &query))
         .await?;
-    Ok(Json(json!({"items":page.items,"has_more":page.has_more})))
+    Ok(Json(
+        json!({"items":page.items,"has_more":page.has_more,"series_counters":page.series_counters}),
+    ))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

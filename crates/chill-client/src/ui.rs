@@ -17,6 +17,23 @@ use std::{
 #[derive(Debug, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum UiCommand {
+    TmdbStatus,
+    TmdbConfigure {
+        credential_type: String,
+        credential: SecretCredential,
+        auto_enrich: bool,
+    },
+    TmdbClear,
+    TmdbJobStart,
+    TmdbJobStatus {
+        id: String,
+    },
+    TmdbJobCancel {
+        id: String,
+    },
+    TmdbJobRetry {
+        id: String,
+    },
     Boot,
     Connect {
         address: String,
@@ -233,6 +250,15 @@ pub enum UiCommand {
         day: u8,
     },
 }
+/// A transient provider secret must not leak through Debug or client settings.
+#[derive(Deserialize)]
+#[serde(transparent)]
+pub struct SecretCredential(String);
+impl std::fmt::Debug for SecretCredential {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("[REDACTED]")
+    }
+}
 #[derive(Debug, Serialize)]
 pub struct UiError {
     pub message: String,
@@ -280,8 +306,12 @@ impl From<ClientError> for UiError {
             "PROFILE_CONFLICT" | "CONFIG_CONFLICT" => {
                 "Modification concurrente : rechargez les données avant de réessayer."
             }
-            "CONFIG_DURABILITY_UNKNOWN" => "Réglage serveur appliqué, mais durabilité disque non confirmée. Rechargez son état avant de réessayer.",
-            "FINGERPRINT_BUSY" => "Une empreinte est déjà en cours. Attendez son résultat puis relancez explicitement si nécessaire.",
+            "CONFIG_DURABILITY_UNKNOWN" => {
+                "Réglage serveur appliqué, mais durabilité disque non confirmée. Rechargez son état avant de réessayer."
+            }
+            "FINGERPRINT_BUSY" => {
+                "Une empreinte est déjà en cours. Attendez son résultat puis relancez explicitement si nécessaire."
+            }
             "TMDB_NOT_CONFIGURED" => {
                 "TMDB n’est pas configuré sur le serveur. Ajoutez le jeton côté serveur puis réessayez."
             }
@@ -456,9 +486,12 @@ impl UiClient {
         })
     }
     fn save(&mut self) -> Result<(), UiError> {
-        self.save_with_directory_sync(|path|fs::File::open(path).and_then(|f|f.sync_all()))
+        self.save_with_directory_sync(|path| fs::File::open(path).and_then(|f| f.sync_all()))
     }
-    fn save_with_directory_sync(&mut self,sync:impl FnOnce(&std::path::Path)->std::io::Result<()>)->Result<(),UiError>{
+    fn save_with_directory_sync(
+        &mut self,
+        sync: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
+    ) -> Result<(), UiError> {
         use std::os::unix::fs::OpenOptionsExt;
         self.settings.trust = self
             .trust
@@ -635,7 +668,7 @@ impl UiClient {
         let identity: Value = self
             .runtime
             .block_on(transport.get_json("/api/v1/server"))?;
-        if identity["api_version"] != 1 {
+        if identity["api_version"] != crate::API_VERSION && identity["api_version"] != 1 {
             return Err(invalid("Version serveur incompatible."));
         }
         let id = identity["server_id"]
@@ -753,6 +786,71 @@ impl UiClient {
     }
     pub fn dispatch(&mut self, command: UiCommand) -> Result<Value, UiError> {
         match command {
+            UiCommand::TmdbStatus => {
+                self.request(HttpMethod::GET, "/api/v1/admin/tmdb", None, &[], &[])
+            }
+            UiCommand::TmdbConfigure {
+                credential_type,
+                credential,
+                auto_enrich,
+            } => {
+                if !["api_key", "bearer"].contains(&credential_type.as_str())
+                    || credential.0.is_empty()
+                    || credential.0.len() > 4096
+                    || credential.0.chars().any(char::is_control)
+                {
+                    return Err(invalid("Clé ou jeton TMDB invalide."));
+                }
+                let profile_id = if auto_enrich {
+                    Some(self.profile()?)
+                } else {
+                    None
+                };
+                self.request(HttpMethod::PUT, "/api/v1/admin/tmdb", Some(&json!({"credential_type":credential_type,"credential":credential.0,"auto_enrich":auto_enrich,"profile_id":profile_id})), &[], &[])
+            }
+            UiCommand::TmdbClear => {
+                self.request(HttpMethod::DELETE, "/api/v1/admin/tmdb", None, &[], &[])
+            }
+            UiCommand::TmdbJobStart => {
+                let profile = self.profile()?;
+                self.request(
+                    HttpMethod::POST,
+                    "/api/v1/admin/tmdb/jobs",
+                    Some(&json!({"profile_id":profile})),
+                    &[],
+                    &[],
+                )
+            }
+            UiCommand::TmdbJobStatus { id } => {
+                valid_id(&id)?;
+                self.request(
+                    HttpMethod::GET,
+                    &format!("/api/v1/admin/tmdb/jobs/{id}"),
+                    None,
+                    &[],
+                    &[],
+                )
+            }
+            UiCommand::TmdbJobCancel { id } => {
+                valid_id(&id)?;
+                self.request(
+                    HttpMethod::POST,
+                    &format!("/api/v1/admin/tmdb/jobs/{id}/cancel"),
+                    Some(&json!({})),
+                    &[],
+                    &[],
+                )
+            }
+            UiCommand::TmdbJobRetry { id } => {
+                valid_id(&id)?;
+                self.request(
+                    HttpMethod::POST,
+                    &format!("/api/v1/admin/tmdb/jobs/{id}/retry"),
+                    Some(&json!({})),
+                    &[],
+                    &[],
+                )
+            }
             UiCommand::TmdbCandidates { media_id, query } => {
                 valid_id(&media_id)?;
                 let query = query.unwrap_or_default();
@@ -1660,31 +1758,74 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let other = tempfile::tempdir().unwrap();
         let mut client = UiClient::open(dir.path()).unwrap();
-        let cache = PlaybackCache { forward_mib: 96, back_mib: 0 };
-        client.dispatch(UiCommand::SaveCacheSettings { cache }).unwrap();
-        assert_eq!(UiClient::open(dir.path()).unwrap().settings.playback_cache, cache);
-        assert_eq!(UiClient::open(other.path()).unwrap().settings.playback_cache, PlaybackCache::default());
-        assert!(client.connected.is_none(), "no server required or contacted");
-        assert_eq!(client.dispatch(UiCommand::CacheSettings).unwrap()["cache"]["back_mib"], 0);
+        let cache = PlaybackCache {
+            forward_mib: 96,
+            back_mib: 0,
+        };
+        client
+            .dispatch(UiCommand::SaveCacheSettings { cache })
+            .unwrap();
+        assert_eq!(
+            UiClient::open(dir.path()).unwrap().settings.playback_cache,
+            cache
+        );
+        assert_eq!(
+            UiClient::open(other.path())
+                .unwrap()
+                .settings
+                .playback_cache,
+            PlaybackCache::default()
+        );
+        assert!(
+            client.connected.is_none(),
+            "no server required or contacted"
+        );
+        assert_eq!(
+            client.dispatch(UiCommand::CacheSettings).unwrap()["cache"]["back_mib"],
+            0
+        );
         assert_eq!(client.view().unwrap()["playback_cache"]["forward_mib"], 96);
-        let invalid_cache = PlaybackCache { forward_mib: 513, back_mib: 0 };
-        assert!(client.dispatch(UiCommand::SaveCacheSettings { cache: invalid_cache }).is_err());
-        assert_eq!(UiClient::open(dir.path()).unwrap().settings.playback_cache, cache);
+        let invalid_cache = PlaybackCache {
+            forward_mib: 513,
+            back_mib: 0,
+        };
+        assert!(
+            client
+                .dispatch(UiCommand::SaveCacheSettings {
+                    cache: invalid_cache
+                })
+                .is_err()
+        );
+        assert_eq!(
+            UiClient::open(dir.path()).unwrap().settings.playback_cache,
+            cache
+        );
         client.directory = dir.path().join("missing-directory");
-        assert!(client.dispatch(UiCommand::SaveCacheSettings { cache: PlaybackCache::default() }).is_err());
+        assert!(
+            client
+                .dispatch(UiCommand::SaveCacheSettings {
+                    cache: PlaybackCache::default()
+                })
+                .is_err()
+        );
         assert_eq!(client.settings.playback_cache, cache);
     }
     #[test]
-    fn settings_directory_sync_failure_is_explicit_and_reopen_reads_published_state(){
-        let dir=tempfile::tempdir().unwrap();let mut client=UiClient::open(dir.path()).unwrap();
-        client.settings.theme="dark".into();
-        let error=client.save_with_directory_sync(|parent|{
-            assert_eq!(parent,dir.path());assert!(parent.join("client.json").is_file());
-            Err(std::io::Error::other("injected directory fsync failure"))
-        }).unwrap_err();
-        assert_eq!(error.code,"LOCAL_DURABILITY_UNKNOWN");
-        assert_eq!(UiClient::open(dir.path()).unwrap().settings.theme,"dark");
-        client.save().unwrap();assert_eq!(UiClient::open(dir.path()).unwrap().settings.theme,"dark");
+    fn settings_directory_sync_failure_is_explicit_and_reopen_reads_published_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut client = UiClient::open(dir.path()).unwrap();
+        client.settings.theme = "dark".into();
+        let error = client
+            .save_with_directory_sync(|parent| {
+                assert_eq!(parent, dir.path());
+                assert!(parent.join("client.json").is_file());
+                Err(std::io::Error::other("injected directory fsync failure"))
+            })
+            .unwrap_err();
+        assert_eq!(error.code, "LOCAL_DURABILITY_UNKNOWN");
+        assert_eq!(UiClient::open(dir.path()).unwrap().settings.theme, "dark");
+        client.save().unwrap();
+        assert_eq!(UiClient::open(dir.path()).unwrap().settings.theme, "dark");
     }
     #[test]
     fn provider_and_unavailable_commands_are_closed_and_bounded() {

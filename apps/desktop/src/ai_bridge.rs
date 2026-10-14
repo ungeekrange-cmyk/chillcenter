@@ -36,6 +36,9 @@ pub enum AiCommand {
         mode: String,
         category: Option<String>,
         q: Option<String>,
+        categories: Option<Vec<String>>,
+        watched: Option<bool>,
+        available: Option<bool>,
     },
     Status {
         id: String,
@@ -54,6 +57,13 @@ pub struct CliSettings {
     provider: String,
     codex_path: String,
     claude_path: String,
+}
+pub struct AiFilters {
+    pub category: Option<String>,
+    pub q: Option<String>,
+    pub categories: Option<Vec<String>>,
+    pub watched: Option<bool>,
+    pub available: Option<bool>,
 }
 impl Default for CliSettings {
     fn default() -> Self {
@@ -228,8 +238,9 @@ impl AiHost {
     }
     pub fn cancel_all(&self) {
         if let Ok(job) = self.job.lock()
-            && let Some(job) = job.as_ref() {
-                let _ = cancel(job);
+            && let Some(job) = job.as_ref()
+        {
+            let _ = cancel(job);
         }
     }
     pub fn start(
@@ -237,9 +248,15 @@ impl AiHost {
         connection: PlaybackConnection,
         request: String,
         mode: String,
-        category: Option<String>,
-        q: Option<String>,
+        filters: AiFilters,
     ) -> Result<Value, UiError> {
+        let AiFilters {
+            category,
+            q,
+            categories,
+            watched,
+            available,
+        } = filters;
         if !["organize", "search"].contains(&mode.as_str())
             || request.trim().is_empty()
             || request.len() > 8000
@@ -247,6 +264,14 @@ impl AiHost {
                 .as_ref()
                 .is_some_and(|c| !chill_catalog::model::CATEGORIES.contains(&c.as_str()))
             || q.as_ref().is_some_and(|q| q.len() > 500)
+            || categories.as_ref().is_some_and(|values| {
+                values.is_empty()
+                    || values.len() > 4
+                    || values
+                        .iter()
+                        .any(|value| !chill_catalog::model::CATEGORIES.contains(&value.as_str()))
+            })
+            || category.is_some() && categories.is_some()
         {
             return Err(error(
                 "Demande invalide ou trop longue.",
@@ -278,7 +303,19 @@ impl AiHost {
         let out = view(&job)?;
         tauri::async_runtime::spawn(settle_proposal(
             job.clone(),
-            propose(job.clone(), settings, request, mode, category, q),
+            propose(
+                job.clone(),
+                settings,
+                request,
+                mode,
+                AiFilters {
+                    category,
+                    q,
+                    categories,
+                    watched,
+                    available,
+                },
+            ),
             Duration::from_secs(180),
         ));
         Ok(out)
@@ -405,9 +442,15 @@ async fn propose(
     settings: CliSettings,
     request: String,
     mode: String,
-    category: Option<String>,
-    q: Option<String>,
+    filters: AiFilters,
 ) -> Result<(AiContext, assistant::Plan), UiError> {
+    let AiFilters {
+        category,
+        q,
+        categories,
+        watched,
+        available,
+    } = filters;
     let (transport, profile) = {
         let j = job.lock().map_err(|_| lock_error())?;
         (
@@ -421,6 +464,15 @@ async fn propose(
     }
     if let Some(q) = q {
         query.push(("q", q));
+    }
+    if let Some(values) = categories {
+        query.push(("categories", values.join(",")));
+    }
+    if let Some(value) = watched {
+        query.push(("watched", value.to_string()));
+    }
+    if let Some(value) = available {
+        query.push(("available", value.to_string()));
     }
     let context: AiContext = transport
         .json_with_options(

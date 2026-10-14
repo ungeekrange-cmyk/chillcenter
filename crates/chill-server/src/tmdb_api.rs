@@ -20,28 +20,22 @@ mod worker;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/admin/tmdb", get(status).put(configure).delete(clear))
+        .route("/admin/tmdb/jobs", post(start_job))
+        .route("/admin/tmdb/jobs/{id}", get(job_status))
+        .route("/admin/tmdb/jobs/{id}/cancel", post(cancel_job))
+        .route("/admin/tmdb/jobs/{id}/retry", post(retry_job))
         .route(
-            "/api/v1/admin/tmdb",
-            get(status).put(configure).delete(clear),
-        )
-        .route("/api/v1/admin/tmdb/jobs", post(start_job))
-        .route("/api/v1/admin/tmdb/jobs/{id}", get(job_status))
-        .route("/api/v1/admin/tmdb/jobs/{id}/cancel", post(cancel_job))
-        .route("/api/v1/admin/tmdb/jobs/{id}/retry", post(retry_job))
-        .route(
-            "/api/v1/admin/profiles/{profile}/media/{media}/tmdb/candidates",
+            "/admin/profiles/{profile}/media/{media}/tmdb/candidates",
             get(candidates),
         )
+        .route("/admin/profiles/{profile}/media/{media}/tmdb", post(select))
         .route(
-            "/api/v1/admin/profiles/{profile}/media/{media}/tmdb",
-            post(select),
-        )
-        .route(
-            "/api/v1/admin/profiles/{profile}/media/{media}/tmdb/refresh",
+            "/admin/profiles/{profile}/media/{media}/tmdb/refresh",
             post(refresh),
         )
         .route(
-            "/api/v1/admin/profiles/{profile}/media/{media}/tmdb/poster/restore",
+            "/admin/profiles/{profile}/media/{media}/tmdb/poster/restore",
             post(restore_poster),
         )
 }

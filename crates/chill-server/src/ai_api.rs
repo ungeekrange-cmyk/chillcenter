@@ -9,8 +9,8 @@ use serde_json::json;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/profiles/{profile}/ai/context", get(context))
-        .route("/api/v1/profiles/{profile}/ai/apply", post(apply))
+        .route("/profiles/{profile}/ai/context", get(context))
+        .route("/profiles/{profile}/ai/apply", post(apply))
 }
 
 async fn context(

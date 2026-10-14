@@ -26,24 +26,60 @@ pub struct UnavailablePage {
     pub epoch: u64,
 }
 impl Store {
-    pub(crate) fn saga_order(&self,saga:&str)->Result<Vec<String>,String>{
-        let id=saga.parse::<i64>().map_err(|_|"Saga invalide.")?;
+    pub(crate) fn saga_order(&self, saga: &str) -> Result<Vec<String>, String> {
+        let id = saga.parse::<i64>().map_err(|_| "Saga invalide.")?;
         let mut stmt=self.personal.prepare("SELECT m.media_id FROM collection_members m JOIN collections c ON c.id=m.collection_id JOIN media d ON d.id=m.media_id LEFT JOIN collection_positions p ON p.collection_id=m.collection_id AND p.media_id=m.media_id WHERE c.kind='saga' AND c.id=?1 ORDER BY p.position IS NULL,p.position,json_extract(d.data,'$.year') IS NULL,json_extract(d.data,'$.year'),json_extract(d.data,'$.title') COLLATE NOCASE,m.media_id").map_err(db)?;
-        stmt.query_map([id],|r|r.get(0)).map_err(db)?.collect::<Result<Vec<_>,_>>().map_err(db)
+        stmt.query_map([id], |r| r.get(0))
+            .map_err(db)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db)
     }
-    pub(crate) fn reorder_common_saga(&self,saga:&str,revision:u64,expected:&[String],desired:&[String])->Result<(),String>{
-        let id=saga.parse::<i64>().map_err(|_|"Saga invalide.")?;
-        if expected.len()>1000||desired.len()>1000{return Err("Liste trop volumineuse.".into());}
-        let tx=rusqlite::Transaction::new_unchecked(&self.personal,TransactionBehavior::Immediate).map_err(db)?;
+    pub(crate) fn reorder_common_saga(
+        &self,
+        saga: &str,
+        revision: u64,
+        expected: &[String],
+        desired: &[String],
+    ) -> Result<(), String> {
+        let id = saga.parse::<i64>().map_err(|_| "Saga invalide.")?;
+        if expected.len() > 1000 || desired.len() > 1000 {
+            return Err("Liste trop volumineuse.".into());
+        }
+        let tx =
+            rusqlite::Transaction::new_unchecked(&self.personal, TransactionBehavior::Immediate)
+                .map_err(db)?;
         let current:i64=tx.query_row("SELECT r.revision FROM collection_revisions r JOIN collections c ON c.id=r.collection_id WHERE c.id=?1 AND c.kind='saga'",[id],|r|r.get(0)).map_err(db)?;
-        if current as u64!=revision{return Err("La saga a changé entre-temps.".into());}
-        let ids=self.saga_order(saga)?.iter().map(|legacy|self.stable_id(legacy)).collect::<Result<Vec<_>,_>>()?;
-        let unique=desired.iter().collect::<std::collections::BTreeSet<_>>();
-        if ids!=expected{return Err("La saga a changé entre-temps.".into());}
-        if unique.len()!=ids.len()||desired.len()!=ids.len()||ids.iter().any(|id|!unique.contains(id)){return Err("Ordre invalide.".into());}
-        tx.execute("DELETE FROM collection_positions WHERE collection_id=?1",[id]).map_err(db)?;
-        for (position,stable) in desired.iter().enumerate(){tx.execute("INSERT INTO collection_positions(collection_id,media_id,position) VALUES(?1,?2,?3)",params![id,self.legacy_id(stable)?,position as i64]).map_err(db)?;}
-        tx.execute("UPDATE collection_revisions SET revision=revision+1 WHERE collection_id=?1",[id]).map_err(db)?;
+        if current as u64 != revision {
+            return Err("La saga a changé entre-temps.".into());
+        }
+        let ids = self
+            .saga_order(saga)?
+            .iter()
+            .map(|legacy| self.stable_id(legacy))
+            .collect::<Result<Vec<_>, _>>()?;
+        let unique = desired.iter().collect::<std::collections::BTreeSet<_>>();
+        if ids != expected {
+            return Err("La saga a changé entre-temps.".into());
+        }
+        if unique.len() != ids.len()
+            || desired.len() != ids.len()
+            || ids.iter().any(|id| !unique.contains(id))
+        {
+            return Err("Ordre invalide.".into());
+        }
+        tx.execute(
+            "DELETE FROM collection_positions WHERE collection_id=?1",
+            [id],
+        )
+        .map_err(db)?;
+        for (position, stable) in desired.iter().enumerate() {
+            tx.execute("INSERT INTO collection_positions(collection_id,media_id,position) VALUES(?1,?2,?3)",params![id,self.legacy_id(stable)?,position as i64]).map_err(db)?;
+        }
+        tx.execute(
+            "UPDATE collection_revisions SET revision=revision+1 WHERE collection_id=?1",
+            [id],
+        )
+        .map_err(db)?;
         tx.commit().map_err(db)
     }
     pub fn common_revision(&self) -> Result<u64, String> {
@@ -227,7 +263,7 @@ impl Store {
         self.require_profile(profile)?;
         self.common_saga_artwork_path(saga)
     }
-    pub fn common_saga_artwork_path(&self,saga:&str)->Result<std::path::PathBuf,String>{
+    pub fn common_saga_artwork_path(&self, saga: &str) -> Result<std::path::PathBuf, String> {
         let id = saga.parse::<i64>().map_err(|_| "Saga invalide.")?;
         self.personal.query_row("SELECT a.poster FROM collection_artwork a JOIN collections c ON c.id=a.collection_id WHERE c.kind='saga' AND c.id=?1",[id],|r|r.get::<_,String>(0)).map(std::path::PathBuf::from).map_err(db)
     }
@@ -326,7 +362,9 @@ mod tests {
         let epoch = store.catalog_revision().unwrap();
         assert!(store.forget_unavailable(&[a.clone(), b], epoch).is_err());
         assert_eq!(store.media(&p, &a).unwrap().rating, Some(4));
-        store.forget_unavailable(std::slice::from_ref(&a), epoch).unwrap();
+        store
+            .forget_unavailable(std::slice::from_ref(&a), epoch)
+            .unwrap();
         assert!(store.media(&p, &a).is_err());
         assert!(store.unavailable_page(0, 48).unwrap().items.is_empty());
     }

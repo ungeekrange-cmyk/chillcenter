@@ -114,8 +114,11 @@ fn read_chunk(
     paused: &dyn Fn() -> bool,
     cancelled: &dyn Fn() -> bool,
 ) -> io::Result<Vec<u8>> {
-    let remaining=version.size.checked_sub(offset).ok_or(io::ErrorKind::InvalidInput)?;
-    let wanted = bounded_read_length(remaining,length);
+    let remaining = version
+        .size
+        .checked_sub(offset)
+        .ok_or(io::ErrorKind::InvalidInput)?;
+    let wanted = bounded_read_length(remaining, length);
     wait_to_read(wanted, paused, cancelled)?;
     if FileVersion::from_metadata(&file.metadata()?)? != *version {
         return Err(io::ErrorKind::InvalidData.into());
@@ -131,7 +134,7 @@ fn read_chunk(
     Ok(bytes)
 }
 
-fn bounded_read_length(remaining:u64,limit:usize)->usize{
+fn bounded_read_length(remaining: u64, limit: usize) -> usize {
     remaining.min(limit as u64) as usize
 }
 
@@ -588,13 +591,13 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Instant;
     #[test]
-    fn lengths_are_bounded_before_conversion_for_armv7_large_files(){
-        assert_eq!((1_u64<<32) as u32,0,"reproduces legacy ARM32 narrowing");
-        for size in [1_u64<<32,(1_u64<<32)+17,u64::MAX]{
-            assert_eq!(bounded_read_length(size,CHUNK_BYTES),CHUNK_BYTES);
-            assert_eq!(size.min(CHUNK_BYTES as u64),CHUNK_BYTES as u64);
+    fn lengths_are_bounded_before_conversion_for_armv7_large_files() {
+        assert_eq!((1_u64 << 32) as u32, 0, "reproduces legacy ARM32 narrowing");
+        for size in [1_u64 << 32, (1_u64 << 32) + 17, u64::MAX] {
+            assert_eq!(bounded_read_length(size, CHUNK_BYTES), CHUNK_BYTES);
+            assert_eq!(size.min(CHUNK_BYTES as u64), CHUNK_BYTES as u64);
         }
-        assert_eq!(bounded_read_length(17,CHUNK_BYTES),17);
+        assert_eq!(bounded_read_length(17, CHUNK_BYTES), 17);
     }
 
     fn state(temp: &tempfile::TempDir, root: &Path) -> AppState {

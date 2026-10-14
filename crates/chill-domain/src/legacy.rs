@@ -241,15 +241,13 @@ pub fn convert_cinefolio_snapshot(
     let profile_id = Uuid::new_v4().to_string();
     let states = source_by_id
         .iter()
-        .filter(|(_,m)|m.watched || m.rating.is_some())
-        .map(|(legacy, m)| {
-            PortableState {
-                media_id: ids[legacy].clone(),
-                position_ms: 0,
-                final_watched_ms: if m.watched { 10_000 } else { 0 },
-                watched: m.watched,
-                rating: m.rating,
-            }
+        .filter(|(_, m)| m.watched || m.rating.is_some())
+        .map(|(legacy, m)| PortableState {
+            media_id: ids[legacy].clone(),
+            position_ms: 0,
+            final_watched_ms: if m.watched { 10_000 } else { 0 },
+            watched: m.watched,
+            rating: m.rating,
         })
         .collect();
     let mut playlists = Vec::new();

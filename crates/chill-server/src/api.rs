@@ -6,7 +6,7 @@ use crate::{
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Path, State},
+    extract::{OriginalUri, Path, State},
     http::{HeaderMap, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -128,6 +128,7 @@ pub struct AppState {
     pub database: DatabaseActor,
     pub certificate: Arc<Mutex<CertificateSchedule>>,
     pub scan: Arc<Mutex<crate::catalog_api::ScanStatus>>,
+    pub tmdb_jobs: Arc<crate::tmdb_api::TmdbJobService>,
 }
 
 #[derive(Debug)]
@@ -143,8 +144,10 @@ impl From<chill_domain::StoreFailure> for ApiError {
             ImportPlanStale => Self(StatusCode::CONFLICT, "IMPORT_PLAN_STALE"),
             DatabaseOffline => Self(StatusCode::SERVICE_UNAVAILABLE, "DATABASE_OFFLINE"),
             RequestTimeout => Self(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"),
-            FingerprintBusy => Self(StatusCode::SERVICE_UNAVAILABLE,"FINGERPRINT_BUSY"),
-            AiConfirmationRequired => Self(StatusCode::UNPROCESSABLE_ENTITY, "AI_CONFIRMATION_REQUIRED"),
+            FingerprintBusy => Self(StatusCode::SERVICE_UNAVAILABLE, "FINGERPRINT_BUSY"),
+            AiConfirmationRequired => {
+                Self(StatusCode::UNPROCESSABLE_ENTITY, "AI_CONFIRMATION_REQUIRED")
+            }
             AiPlanInvalid => Self(StatusCode::UNPROCESSABLE_ENTITY, "AI_PLAN_INVALID"),
             InvalidOperation => Self(StatusCode::UNPROCESSABLE_ENTITY, "INVALID_OPERATION"),
         }
@@ -156,7 +159,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-pub fn router(state: AppState) -> Router {
+fn api_routes() -> Router<AppState> {
     Router::new()
         .merge(crate::ai_api::routes())
         .merge(crate::archive_api::routes())
@@ -165,19 +168,28 @@ pub fn router(state: AppState) -> Router {
         .merge(crate::identity_api::routes())
         .merge(crate::tmdb_api::routes())
         .merge(crate::playback::routes())
-        .route("/api/v1/server", get(server))
-        .route("/api/v1/admin/library", get(library).put(update_library))
-        .route("/api/v1/profiles", get(profiles).post(create_profile))
+        .route("/server", get(server))
+        .route("/admin/library", get(library).put(update_library))
+        .route("/profiles", get(profiles).post(create_profile))
         .route(
-            "/api/v1/profiles/{profile}",
+            "/profiles/{profile}",
             put(rename_profile).delete(delete_profile),
         )
         .route(
-            "/api/v1/profiles/{profile}/preferences",
+            "/profiles/{profile}/preferences",
             get(preferences).put(save_preferences),
         )
+        .route("/openapi.json", get(crate::api_version::openapi))
+}
+
+pub fn router(state: AppState) -> Router {
+    let api = api_routes();
+    Router::new()
+        .nest(crate::api_version::PREFIX, api.clone())
+        .nest("/api/v1", api)
         .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), same_origin))
+        .layer(middleware::from_fn(crate::api_version::normalize_response))
         .with_state(state)
 }
 
@@ -221,14 +233,17 @@ async fn same_origin(
         .map_err(|_| ApiError(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"))
 }
 
-async fn server(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+async fn server(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+) -> Result<Json<Value>, ApiError> {
     let certificate = state
         .certificate
         .lock()
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?
         .clone();
     Ok(Json(
-        json!({"server_id":certificate.server_id,"api_version":1,"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","catalog_pages","manual_personal_state","scan","playback_leases","media_range","progress"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
+        json!({"server_id":certificate.server_id,"api_version":if uri.path().starts_with("/api/v1/"){json!(1)}else{json!(crate::api_version::VERSION)},"supported_api_versions":[crate::api_version::VERSION,"v1"],"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","catalog_pages","manual_personal_state","scan","playback_leases","media_range","progress","tmdb_configuration","tmdb_jobs","ai_filters","openapi"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
     ))
 }
 
@@ -264,21 +279,22 @@ async fn update_library(
         {
             return Err(ApiError(StatusCode::CONFLICT, "SCAN_ACTIVE"));
         }
-        let before=settings.revision;
-        let result=settings.update(&state.config, body.video_root, body.expected_revision);
+        let before = settings.revision;
+        let result = settings.update(&state.config, body.video_root, body.expected_revision);
         // A rename followed by failed directory fsync still published a new root.
         // Invalidate old grants even when durable persistence cannot be promised.
-        if settings.revision!=before{state.playback.clear();}
-        result
-            .map_err(|error| {
-                if error == "CONFIG_CONFLICT" {
-                    ApiError(StatusCode::CONFLICT, "CONFIG_CONFLICT")
-                } else if error == "CONFIG_DURABILITY_UNKNOWN" {
-                    ApiError(StatusCode::SERVICE_UNAVAILABLE,"CONFIG_DURABILITY_UNKNOWN")
-                } else {
-                    ApiError(StatusCode::BAD_REQUEST, "CONFIG_INVALID_OR_UNWRITABLE")
-                }
-            })?;
+        if settings.revision != before {
+            state.playback.clear();
+        }
+        result.map_err(|error| {
+            if error == "CONFIG_CONFLICT" {
+                ApiError(StatusCode::CONFLICT, "CONFIG_CONFLICT")
+            } else if error == "CONFIG_DURABILITY_UNKNOWN" {
+                ApiError(StatusCode::SERVICE_UNAVAILABLE, "CONFIG_DURABILITY_UNKNOWN")
+            } else {
+                ApiError(StatusCode::BAD_REQUEST, "CONFIG_INVALID_OR_UNWRITABLE")
+            }
+        })?;
         state.playback.clear();
         Ok(Json(settings.clone()))
     })
@@ -394,6 +410,7 @@ mod tests {
         let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
         let state = AppState {
             playback: Default::default(),
+            tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
             scan: Arc::new(Mutex::new(crate::catalog_api::ScanStatus::default())),
             database: DatabaseActor::open(dir.path().join("catalog.sqlite")).unwrap(),
             library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
@@ -410,6 +427,96 @@ mod tests {
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
             .unwrap()
+    }
+    #[tokio::test]
+    async fn dated_contract_and_legacy_alias_share_data_and_errors() {
+        let (_dir, app) = setup();
+        for (prefix, version) in [
+            (
+                crate::api_version::PREFIX,
+                json!(crate::api_version::VERSION),
+            ),
+            ("/api/v1", json!(1)),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(request("GET", &format!("{prefix}/server"), Value::Null))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()["x-chill-api-version"],
+                crate::api_version::VERSION
+            );
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(body["api_version"], version);
+            let spec = app
+                .clone()
+                .oneshot(request(
+                    "GET",
+                    &format!("{prefix}/openapi.json"),
+                    Value::Null,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(spec.status(), StatusCode::OK);
+            let document: Value =
+                serde_json::from_slice(&spec.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(document["info"]["version"], crate::api_version::VERSION);
+        }
+        let created = app
+            .clone()
+            .oneshot(request(
+                "POST",
+                &format!("{}/profiles", crate::api_version::PREFIX),
+                json!({"name":"Date version"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let profiles = app
+            .clone()
+            .oneshot(request("GET", "/api/v1/profiles", Value::Null))
+            .await
+            .unwrap();
+        let profiles: Value =
+            serde_json::from_slice(&profiles.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(profiles[0]["name"], "Date version");
+        for (path, method, body, status) in [
+            (
+                "/profiles",
+                "POST",
+                json!({"unknown":true}),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
+            (
+                "/profiles",
+                "PUT",
+                Value::Null,
+                StatusCode::METHOD_NOT_ALLOWED,
+            ),
+            ("/unknown", "GET", Value::Null, StatusCode::NOT_FOUND),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(request(
+                    method,
+                    &format!("{}{path}", crate::api_version::PREFIX),
+                    body,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), status);
+            let error: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert!(error["code"].is_string());
+            assert!(uuid::Uuid::parse_str(error["request_id"].as_str().unwrap()).is_ok());
+        }
     }
     #[tokio::test]
     async fn cancelled_queued_and_started_mutations_never_commit_late() {
@@ -527,23 +634,36 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("catalog.sqlite");
         let mut store = Store::open(&path).unwrap();
-        let item = chill_catalog::scanner::parse_file(std::path::Path::new("/nas"), std::path::Path::new("/nas/recovery.mp4"));
+        let item = chill_catalog::scanner::parse_file(
+            std::path::Path::new("/nas"),
+            std::path::Path::new("/nas/recovery.mp4"),
+        );
         store.snapshot(vec![item]).unwrap();
         let profile = store.create_profile("Recovery").unwrap();
         let id = store.catalog(&profile.id).unwrap()[0].id.clone();
-        store.mark_fingerprint_queued(&id, chill_domain::fingerprint::FingerprintKind::Full).unwrap();
-        store.mark_fingerprint_running(&id, store.media_revision(&id).unwrap()).unwrap();
+        store
+            .mark_fingerprint_queued(&id, chill_domain::fingerprint::FingerprintKind::Full)
+            .unwrap();
+        store
+            .mark_fingerprint_running(&id, store.media_revision(&id).unwrap())
+            .unwrap();
         drop(store);
         let reopened = Store::open(&path).unwrap();
         assert_eq!(reopened.fingerprint_status(&id).unwrap().state, "running");
         drop(reopened);
         let actor = DatabaseActor::open(path).unwrap();
-        let status = actor.call(move |store| {
-            let status = store.fingerprint_status(&id)?;
-            assert_eq!(store.fingerprint_scan_targets_after("", 16)?.len(), 1);
-            store.mark_fingerprint_queued(&id, chill_domain::fingerprint::FingerprintKind::Full)?;
-            Ok(status)
-        }).await.unwrap();
+        let status = actor
+            .call(move |store| {
+                let status = store.fingerprint_status(&id)?;
+                assert_eq!(store.fingerprint_scan_targets_after("", 16)?.len(), 1);
+                store.mark_fingerprint_queued(
+                    &id,
+                    chill_domain::fingerprint::FingerprintKind::Full,
+                )?;
+                Ok(status)
+            })
+            .await
+            .unwrap();
         assert_eq!(status.state, "failed");
     }
     #[tokio::test]
@@ -711,6 +831,7 @@ mod tests {
             .unwrap();
         let state = AppState {
             playback: Default::default(),
+            tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
             database,
             config: Arc::new(config),
             library: Arc::new(Mutex::new(LibrarySettings::default())),

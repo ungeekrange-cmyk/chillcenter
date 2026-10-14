@@ -47,6 +47,13 @@ pub struct CatalogQuery {
 pub struct CatalogPage {
     pub items: Vec<Media>,
     pub has_more: bool,
+    pub series_counters: std::collections::BTreeMap<String, SeriesCounters>,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SeriesCounters {
+    pub seasons: u64,
+    pub episodes: u64,
+    pub unwatched: u64,
 }
 
 /// Personal playlist view.  The revision is deliberately separate from the
@@ -502,7 +509,11 @@ impl Store {
             .take(limit)
             .map(|m| self.profile_view(profile_id, m))
             .collect::<Result<_, _>>()?;
-        Ok(CatalogPage { items, has_more })
+        Ok(CatalogPage {
+            items,
+            has_more,
+            series_counters: Default::default(),
+        })
     }
 
     pub fn media(&mut self, profile_id: &str, stable_id: &str) -> Result<Media, String> {
@@ -1946,15 +1957,21 @@ mod tests {
     use std::collections::HashMap;
     use tempfile::tempdir;
     #[test]
-    fn scan_publishes_new_media_revision_without_legacy_catalog_warmup(){
-        let dir=tempdir().unwrap();let mut s=Store::open(&dir.path().join("catalog.sqlite")).unwrap();
-        s.snapshot(vec![media("New.mp4","/nas/New.mp4")]).unwrap();
-        let id=s.stable_id("New.mp4").unwrap();assert_eq!(s.media_revision(&id).unwrap(),1);
-        assert_eq!(s.fingerprint_target(&id).unwrap().media_revision,1);
-        assert_eq!(s.fingerprint_status(&id).unwrap().state,"not_requested");
-        s.mark_fingerprint_queued(&id,crate::fingerprint::FingerprintKind::Partial).unwrap();
-        let queued=s.fingerprint_status(&id).unwrap();assert_eq!(queued.state,"queued");assert_eq!(queued.strength,None);
-        s.mark_fingerprint_running(&id,1).unwrap();assert_eq!(s.fingerprint_status(&id).unwrap().state,"running");
+    fn scan_publishes_new_media_revision_without_legacy_catalog_warmup() {
+        let dir = tempdir().unwrap();
+        let mut s = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        s.snapshot(vec![media("New.mp4", "/nas/New.mp4")]).unwrap();
+        let id = s.stable_id("New.mp4").unwrap();
+        assert_eq!(s.media_revision(&id).unwrap(), 1);
+        assert_eq!(s.fingerprint_target(&id).unwrap().media_revision, 1);
+        assert_eq!(s.fingerprint_status(&id).unwrap().state, "not_requested");
+        s.mark_fingerprint_queued(&id, crate::fingerprint::FingerprintKind::Partial)
+            .unwrap();
+        let queued = s.fingerprint_status(&id).unwrap();
+        assert_eq!(queued.state, "queued");
+        assert_eq!(queued.strength, None);
+        s.mark_fingerprint_running(&id, 1).unwrap();
+        assert_eq!(s.fingerprint_status(&id).unwrap().state, "running");
     }
     #[test]
     fn failed_identity_extension_rolls_back_catalogue_scan_marker_and_mapping() {
@@ -2263,17 +2280,40 @@ mod tests {
         let dir = tempdir().unwrap();
         let mut s = Store::open(&dir.path().join("ratings.sqlite")).unwrap();
         let mut items = Vec::new();
-        for (path, title, season) in [("a1.mkv", "Anonymous A", 1), ("a2.mkv", "Anonymous A", 2), ("b1.mkv", "Anonymous B", 1)] {
+        for (path, title, season) in [
+            ("a1.mkv", "Anonymous A", 1),
+            ("a2.mkv", "Anonymous A", 2),
+            ("b1.mkv", "Anonymous B", 1),
+        ] {
             let mut m = media(path, &format!("/nas/{path}"));
-            m.category = "serie".into(); m.series = None; m.title = title.into(); m.season = Some(season);
+            m.category = "serie".into();
+            m.series = None;
+            m.title = title.into();
+            m.season = Some(season);
             items.push(m);
         }
         s.snapshot(items).unwrap();
-        let a = s.create_profile("A").unwrap(); let other = s.create_profile("Other").unwrap();
+        let a = s.create_profile("A").unwrap();
+        let other = s.create_profile("Other").unwrap();
         let items = s.catalog(&a.id).unwrap();
-        let a1 = items.iter().find(|m|m.title=="Anonymous A"&&m.season==Some(1)).unwrap().id.clone();
-        let a2 = items.iter().find(|m|m.title=="Anonymous A"&&m.season==Some(2)).unwrap().id.clone();
-        let b1 = items.iter().find(|m|m.title=="Anonymous B").unwrap().id.clone();
+        let a1 = items
+            .iter()
+            .find(|m| m.title == "Anonymous A" && m.season == Some(1))
+            .unwrap()
+            .id
+            .clone();
+        let a2 = items
+            .iter()
+            .find(|m| m.title == "Anonymous A" && m.season == Some(2))
+            .unwrap()
+            .id
+            .clone();
+        let b1 = items
+            .iter()
+            .find(|m| m.title == "Anonymous B")
+            .unwrap()
+            .id
+            .clone();
         s.set_rating(&a.id, &a1, Some(4), "series").unwrap();
         assert_eq!(s.media(&a.id, &a1).unwrap().rating, Some(4));
         assert_eq!(s.media(&a.id, &a2).unwrap().rating, Some(4));
@@ -2284,42 +2324,116 @@ mod tests {
         s.set_rating(&a.id, &b1, Some(2), "season").unwrap();
         assert_eq!(s.media(&a.id, &a1).unwrap().rating, None);
         assert_eq!(s.media(&a.id, &b1).unwrap().rating, Some(2));
-        for id in [&a1, &a2, &b1] { assert_eq!(s.media(&other.id, id).unwrap().rating, None); }
+        for id in [&a1, &a2, &b1] {
+            assert_eq!(s.media(&other.id, id).unwrap().rating, None);
+        }
     }
     #[test]
     fn next_saga_rechecks_reordered_members_and_never_skips_an_unavailable_next() {
         let dir = tempdir().unwrap();
         let mut s = Store::open(&dir.path().join("next.sqlite")).unwrap();
-        let a=media("a.mp4", "/nas/a.mp4"); let b=media("b.mp4", "/nas/b.mp4"); let c=media("c.mp4", "/nas/c.mp4");
+        let a = media("a.mp4", "/nas/a.mp4");
+        let b = media("b.mp4", "/nas/b.mp4");
+        let c = media("c.mp4", "/nas/c.mp4");
         s.snapshot(vec![a.clone(), b.clone(), c]).unwrap();
-        let p=s.create_profile("Next").unwrap();
-        let items=s.catalog(&p.id).unwrap();
-        let id=|path:&str|items.iter().find(|m|m.path==path).unwrap().id.clone();
-        let ids=vec![id("a.mp4"), id("b.mp4"), id("c.mp4")];
-        assert!(s.next_video(&p.id,&ids[0],&PlaybackContext{kind:"standalone".into(),id:None}).unwrap().media.is_none());
-        let saga=s.create_saga("Next saga").unwrap();
-        let saga=s.saga_members_at_revision(&saga.id,&ids,saga.revision,true).unwrap();
-        let context=PlaybackContext{kind:"saga".into(),id:Some(saga.id.clone())};
-        assert_eq!(s.next_video(&p.id,&ids[0],&context).unwrap().media.unwrap().id,ids[1]);
-        s.reorder_saga_at_revision(&saga.id,saga.revision,&ids,&[ids[0].clone(),ids[2].clone(),ids[1].clone()]).unwrap();
-        assert_eq!(s.next_video(&p.id,&ids[0],&context).unwrap().media.unwrap().id,ids[2]);
-        s.snapshot(vec![a,b]).unwrap();
-        let missing=s.next_video(&p.id,&ids[0],&context).unwrap();
-        assert_eq!(missing.media.unwrap().id,ids[2]); assert!(!missing.available); assert!(!missing.new_season);
-        assert!(s.next_video(&p.id,&ids[1],&context).unwrap().media.is_none());
+        let p = s.create_profile("Next").unwrap();
+        let items = s.catalog(&p.id).unwrap();
+        let id = |path: &str| items.iter().find(|m| m.path == path).unwrap().id.clone();
+        let ids = vec![id("a.mp4"), id("b.mp4"), id("c.mp4")];
+        assert!(
+            s.next_video(
+                &p.id,
+                &ids[0],
+                &PlaybackContext {
+                    kind: "standalone".into(),
+                    id: None
+                }
+            )
+            .unwrap()
+            .media
+            .is_none()
+        );
+        let saga = s.create_saga("Next saga").unwrap();
+        let saga = s
+            .saga_members_at_revision(&saga.id, &ids, saga.revision, true)
+            .unwrap();
+        let context = PlaybackContext {
+            kind: "saga".into(),
+            id: Some(saga.id.clone()),
+        };
+        assert_eq!(
+            s.next_video(&p.id, &ids[0], &context)
+                .unwrap()
+                .media
+                .unwrap()
+                .id,
+            ids[1]
+        );
+        s.reorder_saga_at_revision(
+            &saga.id,
+            saga.revision,
+            &ids,
+            &[ids[0].clone(), ids[2].clone(), ids[1].clone()],
+        )
+        .unwrap();
+        assert_eq!(
+            s.next_video(&p.id, &ids[0], &context)
+                .unwrap()
+                .media
+                .unwrap()
+                .id,
+            ids[2]
+        );
+        s.snapshot(vec![a, b]).unwrap();
+        let missing = s.next_video(&p.id, &ids[0], &context).unwrap();
+        assert_eq!(missing.media.unwrap().id, ids[2]);
+        assert!(!missing.available);
+        assert!(!missing.new_season);
+        assert!(
+            s.next_video(&p.id, &ids[1], &context)
+                .unwrap()
+                .media
+                .is_none()
+        );
     }
     #[test]
     fn next_series_stops_for_unknown_numbers_and_marks_a_known_season_transition() {
-        let dir=tempdir().unwrap(); let mut s=Store::open(&dir.path().join("series-next.sqlite")).unwrap();
-        let mut items=Vec::new();
-        for (path,season,episode) in [("known.mp4",Some(1),Some(1)),("new.mp4",Some(2),Some(1)),("unknown-episode.mp4",Some(1),None),("unknown-season.mp4",None,Some(1))]{
-            let mut m=media(path,&format!("/nas/{path}"));m.category="serie".into();m.series=Some("Next".into());m.season=season;m.episode=episode;items.push(m);
+        let dir = tempdir().unwrap();
+        let mut s = Store::open(&dir.path().join("series-next.sqlite")).unwrap();
+        let mut items = Vec::new();
+        for (path, season, episode) in [
+            ("known.mp4", Some(1), Some(1)),
+            ("new.mp4", Some(2), Some(1)),
+            ("unknown-episode.mp4", Some(1), None),
+            ("unknown-season.mp4", None, Some(1)),
+        ] {
+            let mut m = media(path, &format!("/nas/{path}"));
+            m.category = "serie".into();
+            m.series = Some("Next".into());
+            m.season = season;
+            m.episode = episode;
+            items.push(m);
         }
-        s.snapshot(items).unwrap(); let p=s.create_profile("Next").unwrap();let items=s.catalog(&p.id).unwrap();
-        let id=|path:&str|items.iter().find(|m|m.path==path).unwrap().id.clone();
-        let context=PlaybackContext{kind:"series".into(),id:Some("Next".into())};
-        for path in ["unknown-episode.mp4","unknown-season.mp4"]{assert!(s.next_video(&p.id,&id(path),&context).unwrap().media.is_none());}
-        let next=s.next_video(&p.id,&id("known.mp4"),&context).unwrap();assert_eq!(next.media.unwrap().id,id("new.mp4"));assert!(next.new_season);assert!(next.available);
+        s.snapshot(items).unwrap();
+        let p = s.create_profile("Next").unwrap();
+        let items = s.catalog(&p.id).unwrap();
+        let id = |path: &str| items.iter().find(|m| m.path == path).unwrap().id.clone();
+        let context = PlaybackContext {
+            kind: "series".into(),
+            id: Some("Next".into()),
+        };
+        for path in ["unknown-episode.mp4", "unknown-season.mp4"] {
+            assert!(
+                s.next_video(&p.id, &id(path), &context)
+                    .unwrap()
+                    .media
+                    .is_none()
+            );
+        }
+        let next = s.next_video(&p.id, &id("known.mp4"), &context).unwrap();
+        assert_eq!(next.media.unwrap().id, id("new.mp4"));
+        assert!(next.new_season);
+        assert!(next.available);
     }
     #[test]
     fn watch_threshold_and_manual_reset_preserve_resume() {

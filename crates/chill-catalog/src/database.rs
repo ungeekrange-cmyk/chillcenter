@@ -1,4 +1,7 @@
-use crate::model::{Collection, Media, MediaPatch, SeriesPatch, SeriesProvider, Settings, now, merge_association, merge_enrichment};
+use crate::model::{
+    Collection, Media, MediaPatch, SeriesPatch, SeriesProvider, Settings, merge_association,
+    merge_enrichment, now,
+};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::{
     collections::{HashMap, HashSet},

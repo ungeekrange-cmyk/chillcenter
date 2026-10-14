@@ -15,8 +15,10 @@ function render(){
   if(window.adminContextChanged)window.adminContextChanged();
   if(window.identityContextChanged)window.identityContextChanged();
   if(window.aiContextChanged)window.aiContextChanged();
+  if(window.tmdbContextChanged)window.tmdbContextChanged();
   if(window.catalogProfileChanged)window.catalogProfileChanged();
   if(window.refreshAppearance)window.refreshAppearance();
+  if(window.renderShell)window.renderShell();
   if(window.refreshPlaybackCache)window.refreshPlaybackCache(state.playback_cache);
   $("connection-notice").textContent=state.notice||"";$("connection-notice").hidden=!state.notice;
   for(const id of ["server-panel","trust-panel","profile-panel","catalog-panel"])$(id).hidden=true;
@@ -48,35 +50,79 @@ function render(){
   $("video-root").value=state.library.video_root||"";$("personal-settings").hidden=!state.profile_id;
   if(state.preferences){$("audio-language").value=state.preferences.audio_language;$("subtitle-language").value=state.preferences.subtitle_language;$("autoplay").value=state.preferences.autoplay_seconds===null?"off":String(state.preferences.autoplay_seconds);}
   else{$("audio-language").value="";$("subtitle-language").value="";}
+  if(window.renderShell)window.renderShell();
 }
 async function connect(address){draftAddress=address;state={stage:"server",address,theme:state.theme,servers:state.servers||[]};render();const r=await run({action:"connect",address});if(r?.profile_id)await loadPage();}
 async function selectProfile(id){if(!id)return;$("media").replaceChildren();offset=0;const r=await run({action:"select_profile",id});if(r)await loadPage();}
-function pager(){ $("previous").disabled=busy||offset===0;$("next").disabled=busy||!more;$("page-label").textContent="Page "+(Math.floor(offset/CATALOG_PAGE_SIZE)+1); }
+function pager(){} // API batches remain internal; no page-navigation UI.
 function catalogCommand(filters,at,grouped){return {action:"catalog",offset:at,category:filters.category||null,q:filters.q||null,genre:filters.genre||null,year:filters.year===""?null:Number(filters.year),watched:filters.watched===""?null:filters.watched==="true",sort:filters.sort||null,grouped,available:filters.available===""?null:filters.available==="true"};}
 function catalogFilters(){return {category:$("category").value,q:$("search").value,genre:$("genre").value,year:$("year").value,watched:$("watched").value,sort:$("sort").value,available:$("available").value};}
 if(typeof module!=="undefined")module.exports={catalogCommand};
-async function loadPage(){
-  if(window.resetArtwork)window.resetArtwork();
-  if(!state.profile_id)return;$("media").replaceChildren();
-  const page=await run(catalogCommand(catalogFilters(),offset,true),false);if(!page)return;
-  more=page.has_more;pager();
-  if(!page.items.length){$("media").append(node("p","Aucun élément sur cette page. Configurez puis scannez la bibliothèque dans Administration.","muted"));return;}
-  for(const m of page.items){
-    const card=node("article",undefined,"media-card"),poster=node("div",m.title.slice(0,1).toUpperCase(),"poster"),info=node("div",undefined,"info");
-    info.append(node("h2",m.title),node("p",[m.category,m.year,m.season!==null?"Saison "+m.season:null,m.episode!==null?"Épisode "+m.episode:null].filter(Boolean).join(" · ")));
-    const details=node("details"),summary=node("summary","Détails");details.append(summary,node("p",m.overview||"Informations à compléter"));info.append(details);
-    const actions=node("div",undefined,"actions"),watched=node("button",m.watched?"Vu ✓":"Non vu","secondary"),rating=node("select");rating.setAttribute("aria-label","Note de "+m.title);
-    for(const [value,text] of [["","Sans note"],["1","★"],["2","★★"],["3","★★★"],["4","★★★★"],["5","★★★★★"]]){const o=node("option",text);o.value=value;rating.append(o);}rating.value=m.rating?String(m.rating):"";
-    if(m.category!=="serie"){
-      watched.onclick=async()=>{if(await run({action:"set_watched",media_id:m.id,watched:!m.watched},false))await loadPage();};
-      rating.onchange=async()=>{if(await run({action:"set_rating",media_id:m.id,rating:rating.value?Number(rating.value):null},false))await loadPage();};
-      const play=node("button","Lecture","play-video");play.disabled=!m.available;play.onclick=()=>window.chillPlay(m.id);
-      actions.append(play,watched,rating);watched.classList.add("watched-toggle");info.append(actions);
-    }else{info.append(node("p",m.watched?"Tous les épisodes sont vus":"Des épisodes restent à voir","muted"),actions);}
-    if(!m.available)info.append(node("p","Indisponible au dernier scan","muted"));card.append(poster,info);
-    card.tabIndex=0;card.classList.add("catalog-open");const open=()=>m.category==="serie"?window.catalogOpenSeries?.(m.series||m.title):window.catalogOpenMedia?.(m.id);card.onclick=e=>{if(!e.target.closest("button,select,summary,details"))open();};card.onkeydown=e=>{if((e.key==="Enter"||e.key===" ")&&!e.target.closest("button,select,summary,details")){e.preventDefault();open();}};
-    if(window.catalogEnhanceCard)window.catalogEnhanceCard(card,m);$("media").append(card);
+let catalogItems=[],catalogCounters={},catalogGeneration=0,catalogWindowKey="",catalogFrame=null;
+function renderCatalogWindow(){
+ const target=$("media");if(!target||!catalogItems.length)return;
+ const rect=target.getBoundingClientRect(),list=$("view-mode").value==="list",size=Number($("poster-size").value)||200;
+ const windowInfo=catalogWindow(catalogItems.length,Math.max(1,rect.width),size,-rect.top,innerHeight,list);
+ target.style.height=windowInfo.height+"px";
+ const key=[catalogGeneration,windowInfo.start,windowInfo.end,windowInfo.columns,list,Math.round(rect.width)].join(":");
+ if(key===catalogWindowKey)return;catalogWindowKey=key;
+ const focused=document.activeElement.closest?.(".media-card")?.dataset.mediaId;
+ if(window.resetArtwork)window.resetArtwork();
+ const grid=node("div",undefined,"virtual-window"+(list?" list":""));grid.style.top=windowInfo.top+"px";grid.style.gridTemplateColumns="repeat("+windowInfo.columns+",minmax(0,1fr))";
+ for(let index=windowInfo.start;index<windowInfo.end;index++){
+  const m=catalogItems[index],card=node("article",undefined,"media-card catalog-open"),poster=node("div",m.title.slice(0,1).toUpperCase(),"poster"),info=node("div",undefined,"info");
+  card.dataset.mediaId=m.id;card.tabIndex=0;
+  info.append(node("h2",m.title),node("p",[m.year,(m.genres||[]).slice(0,2).join(", "),m.rating?"★".repeat(m.rating):null].filter(Boolean).join(" · ")));
+  const actions=node("div",undefined,"actions"),watched=node("button",m.watched?"Vu ✓":"Non vu","secondary watched-toggle"),rating=node("select");
+  rating.setAttribute("aria-label","Note de "+m.title);
+  for(const [value,text]of[["","Sans note"],["1","★"],["2","★★"],["3","★★★"],["4","★★★★"],["5","★★★★★"]]){const o=node("option",text);o.value=value;rating.append(o);}rating.value=m.rating?String(m.rating):"";
+  if(m.category!=="serie"){
+   watched.onclick=async()=>{if(await run({action:"set_watched",media_id:m.id,watched:!m.watched},false))await loadPage();};
+   rating.onchange=async()=>{if(await run({action:"set_rating",media_id:m.id,rating:rating.value?Number(rating.value):null},false))await loadPage();};
+   const play=node("button","▶","play-video");play.setAttribute("aria-label","Lire "+m.title);play.disabled=!m.available;play.onclick=()=>window.chillPlay(m.id);
+   actions.append(play,watched,rating);
+  }else{
+   const counters=catalogCounters[m.id];
+   info.append(node("p",counters?counters.seasons+" saisons · "+counters.episodes+" épisodes · "+counters.unwatched+" non vus":m.watched?"Tous les épisodes sont vus":"Des épisodes restent à voir","series-counts"));
   }
+  info.append(actions);if(!m.available)info.append(node("p","Indisponible","unavailable-badge"));
+  card.append(poster,info);const open=()=>m.category==="serie"?window.catalogOpenSeries?.(m.series||m.title):window.catalogOpenMedia?.(m.id);
+  card.onclick=event=>{if(!event.target.closest("button,select,summary,details"))open();};
+  card.onkeydown=event=>{if((event.key==="Enter"||event.key===" ")&&!event.target.closest("button,select,summary,details")){event.preventDefault();open();}};
+  window.catalogEnhanceCard?.(card,m);grid.append(card);
+ }
+ target.replaceChildren(grid);if(focused){const restore=[...grid.children].find(card=>card.dataset.mediaId===focused);restore?.focus({preventScroll:true});}
+}
+function scheduleCatalogWindow(){if(catalogFrame)return;catalogFrame=requestAnimationFrame(()=>{catalogFrame=null;renderCatalogWindow();});}
+window.addEventListener("scroll",scheduleCatalogWindow,{passive:true});window.addEventListener("resize",()=>{catalogWindowKey="";scheduleCatalogWindow();});
+async function catalogRequest(command,generation,context){
+ for(let attempt=0;attempt<50;attempt++){
+  if(generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return null;
+  try{return await invoke(command);}catch(error){
+   if(error.code!=="CLIENT_BUSY"){message(error.message||"Catalogue indisponible.");return null;}
+   await new Promise(resolve=>setTimeout(resolve,150));
+  }
+ }
+ message("Le serveur est occupé. Rechargez le catalogue depuis Administration.");return null;
+}
+async function loadPage(){
+ const generation=++catalogGeneration,context=state.server_id+":"+state.profile_id;
+ catalogItems=[];catalogCounters={};catalogWindowKey="";$("media").replaceChildren();$("media").style.height="";window.resetArtwork?.();
+ if(!state.profile_id)return;
+ const filters=catalogFilters(),ids=new Set();let at=0;
+ $("catalog-count").textContent="Chargement du catalogue…";
+ for(;;){
+  const page=await catalogRequest(catalogCommand(filters,at,true),generation,context);
+  if(!page||generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return;
+  if(!Array.isArray(page.items)||page.items.length>CATALOG_PAGE_SIZE||page.has_more&&page.items.length===0){message("Réponse catalogue incohérente.");return;}
+  let added=0;for(const item of page.items){if(!ids.has(item.id)){ids.add(item.id);catalogItems.push(item);added++;}}
+  Object.assign(catalogCounters,page.series_counters||{});
+  $("catalog-count").textContent=catalogItems.length+" titres"+(page.has_more?" · chargement…":"");catalogWindowKey="";renderCatalogWindow();
+  if(!page.has_more)break;
+  if(!added||catalogItems.length>=30000){message("Catalogue trop volumineux ou modifié pendant le chargement. Rechargez depuis Administration.");return;}
+  at+=page.items.length;
+ }
+ if(!catalogItems.length){$("media").append(node("p","Aucun titre ne correspond. Configurez puis scannez la bibliothèque dans Administration.","muted"));}
 }
 $("connect-form").onsubmit=e=>{e.preventDefault();connect($("address").value);};
 $("approve-trust").onclick=async()=>{const r=await run({action:"approve",token:state.token});if(r?.profile_id)await loadPage();};
@@ -90,9 +136,8 @@ $("library-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"sa
 $("preferences-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_preferences",audio_language:$("audio-language").value,subtitle_language:$("subtitle-language").value,autoplay_seconds:$("autoplay").value==="off"?null:Number($("autoplay").value)}))message("Préférences du profil enregistrées.");};
 $("theme").onchange=()=>run({action:"theme",theme:$("theme").value});
 $("filter-form").onsubmit=e=>{e.preventDefault();offset=0;loadPage();};$("refresh-catalog").onclick=()=>loadPage();
-$("view-mode").onchange=()=>$("media").classList.toggle("list",$("view-mode").value==="list");
-$("poster-size").oninput=()=>document.documentElement.style.setProperty("--poster-size",$("poster-size").value+"px");
-$("previous").onclick=()=>{offset=Math.max(0,offset-CATALOG_PAGE_SIZE);loadPage();};$("next").onclick=()=>{offset+=CATALOG_PAGE_SIZE;loadPage();};
+$("view-mode").onchange=()=>{catalogWindowKey="";renderCatalogWindow();};
+$("poster-size").oninput=()=>{document.documentElement.style.setProperty("--poster-size",$("poster-size").value+"px");catalogWindowKey="";renderCatalogWindow();};
 $("scan").onclick=async()=>{if(await run({action:"start_scan"},false))await pollScan();};
 async function unavailableAdmin(at=0){
   let panel=$("unavailable-admin");if(!panel){panel=document.createElement("section");panel.id="unavailable-admin";panel.append(node("h2","Vidéos indisponibles"),node("p","Retirer une entrée efface son historique de reprise, vu et notes. Aucun fichier NAS ne sera supprimé.","muted"));$("admin-panel").querySelector(".admin-grid").append(panel);}

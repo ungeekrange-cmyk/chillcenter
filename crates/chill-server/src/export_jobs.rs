@@ -55,11 +55,8 @@ fn jobs() -> &'static Mutex<HashMap<PathBuf, HashMap<String, Job>>> {
 }
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/admin/exports/{id}/status", get(status))
-        .route(
-            "/api/v1/admin/exports/{id}/cancel",
-            axum::routing::delete(cancel),
-        )
+        .route("/admin/exports/{id}/status", get(status))
+        .route("/admin/exports/{id}/cancel", axum::routing::delete(cancel))
 }
 fn valid(id: &str) -> Result<(), ApiError> {
     if uuid::Uuid::parse_str(id).is_ok() {
@@ -217,30 +214,31 @@ pub(crate) async fn start(state: AppState) -> Result<(StatusCode, Json<ExportRea
             crate::archive_api::build_export(&state, worker_id.clone(), &snapshot, flag.clone())
         });
         if let Ok(mut all) = jobs().lock()
-            && let Some(job) = all.get_mut(&dir).and_then(|j| j.get_mut(&worker_id)) {
-                match result {
-                    Ok(ready) if !flag.load(Ordering::Acquire) => {
-                        job.status = Status {
-                            export_id: ready.export_id,
-                            state: "ready",
-                            bytes: ready.bytes,
-                            entries: ready.entries,
-                            code: None,
-                        }
-                    }
-                    Ok(_) => {
-                        let _ = std::fs::remove_file(dir.join(format!("{worker_id}.zip")));
-                        job.status.state = "cancelled";
-                    }
-                    Err(error) => {
-                        job.status.state = if flag.load(Ordering::Acquire) {
-                            "cancelled"
-                        } else {
-                            "failed"
-                        };
-                        job.status.code = Some(error.1);
+            && let Some(job) = all.get_mut(&dir).and_then(|j| j.get_mut(&worker_id))
+        {
+            match result {
+                Ok(ready) if !flag.load(Ordering::Acquire) => {
+                    job.status = Status {
+                        export_id: ready.export_id,
+                        state: "ready",
+                        bytes: ready.bytes,
+                        entries: ready.entries,
+                        code: None,
                     }
                 }
+                Ok(_) => {
+                    let _ = std::fs::remove_file(dir.join(format!("{worker_id}.zip")));
+                    job.status.state = "cancelled";
+                }
+                Err(error) => {
+                    job.status.state = if flag.load(Ordering::Acquire) {
+                        "cancelled"
+                    } else {
+                        "failed"
+                    };
+                    job.status.code = Some(error.1);
+                }
+            }
         }
     });
     Ok((

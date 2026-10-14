@@ -1,0 +1,5960 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Chill Center LAN API",
+    "version": "2026-10-14",
+    "description": "API HTTPS native sur LAN. Sans authentification ni CORS: ne pas exposer sur Internet. Les réponses sont extensibles; ignorer les champs inconnus. /api/v1 reste un alias historique."
+  },
+  "servers": [
+    {
+      "url": "https://{host}:8443/api/2026-10-14",
+      "variables": {
+        "host": {
+          "default": "chillcenter.local"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "Server"
+    },
+    {
+      "name": "Profiles"
+    },
+    {
+      "name": "Catalog"
+    },
+    {
+      "name": "Collections"
+    },
+    {
+      "name": "Playback"
+    },
+    {
+      "name": "Administration"
+    },
+    {
+      "name": "TMDB"
+    },
+    {
+      "name": "Archives"
+    },
+    {
+      "name": "AI"
+    }
+  ],
+  "paths": {
+    "/server": {
+      "get": {
+        "tags": [
+          "Server"
+        ],
+        "operationId": "server_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Identité et capacités du serveur.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Server"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/profiles": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "operationId": "profiles_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Profils existants.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileList"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Profiles"
+        ],
+        "operationId": "profiles_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "201": {
+            "description": "Profil créé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/profiles/{profile}": {
+      "put": {
+        "tags": [
+          "Profiles"
+        ],
+        "operationId": "profile_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Profil renommé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Profiles"
+        ],
+        "operationId": "profile_delete",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Profil supprimé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Chill-Confirm-Delete-Profile",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "const": "true"
+            }
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/preferences": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "operationId": "preferences_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Préférences du profil.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Profiles"
+        ],
+        "operationId": "preferences_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Préférences enregistrées.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Preferences"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/admin/library": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "library_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Configuration de bibliothèque.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "library_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Configuration révisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryUpdate"
+              }
+            }
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/admin/scan": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "scan_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État du scan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "scan_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Scan demandé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/admin/unavailable": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "unavailable_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Médias indisponibles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnavailablePage"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "unavailable_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Références indisponibles oubliées.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgetUnavailable"
+              }
+            }
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/profiles/{profile}/catalog": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "catalog_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Page filtrée de catalogue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "name": "category",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "enum": [
+              "film",
+              "serie"
+            ]
+          }
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        {
+          "name": "genre",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        {
+          "name": "year",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2200
+          }
+        },
+        {
+          "name": "watched",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "available",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "grouped",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "enum": [
+              "title_asc",
+              "title_desc",
+              "year_asc",
+              "year_desc",
+              "added_desc",
+              "rating_desc"
+            ]
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "media_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Fiche et révision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionedMedia"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "media_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Fiche modifiée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionedMedia"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionPatch"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/related": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "related_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Médias liés.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaList"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/artwork": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "artwork_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Affiche locale validée.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/poster": {
+      "put": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "poster_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Affiche enregistrée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionedMedia"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/subtitles": {
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "subtitles_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Sous-titres externes indexés.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleList"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "session",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "generation",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/subtitles/{id}": {
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "subtitle_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Sous-titre UTF-8.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "412": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "session",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "generation",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/series/{series}": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "series_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Épisodes de la série.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "series_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Série partagée modifiée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedSeriesEdit"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "series",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Nom URL-encodé."
+          }
+        }
+      ]
+    },
+    "/sagas/{saga}/artwork": {
+      "get": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "commonSagaArtwork_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Affiche locale de saga validée.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "saga",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque; pas nécessairement UUID."
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/sagas": {
+      "get": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "sagas_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Collections visibles pour le profil.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaList"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "sagas_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Collection créée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/sagas/{saga}": {
+      "get": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "saga_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Saga commune.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "saga_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Saga renommée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "saga_delete",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Saga supprimée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedRevisionRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "saga",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque; pas nécessairement UUID."
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/sagas/{saga}/artwork": {
+      "get": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "sagaArtwork_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Affiche locale de saga validée.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "saga",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque; pas nécessairement UUID."
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/sagas/{saga}/poster": {
+      "put": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "sagaPoster_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Affiche enregistrée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "saga",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque; pas nécessairement UUID."
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/sagas/{saga}/poster/member": {
+      "put": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "sagaMemberPoster_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Affiche de saga choisie depuis un membre.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPosterRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "saga",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque; pas nécessairement UUID."
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/sagas/{saga}/members": {
+      "post": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "sagaMembers_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Membres de saga modifiés.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SagaMembersRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "sagaMembers_delete",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Membres de saga modifiés.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SagaMembersRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "saga",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque; pas nécessairement UUID."
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/sagas/{saga}/order": {
+      "put": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "sagaOrder_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Ordre de saga modifié.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SagaOrderRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "saga",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque; pas nécessairement UUID."
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playlists": {
+      "get": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlists_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Collections visibles pour le profil.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistList"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlists_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Collection créée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistCreate"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playlists/{playlist}": {
+      "get": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlist_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Playlist personnelle.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlist_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Playlist renommée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlist_delete",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Playlist supprimée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "playlist",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playlists/{playlist}/members": {
+      "post": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlistMembers_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Membres ajoutés.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistMembersRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "playlist",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playlists/{playlist}/members/{media}": {
+      "delete": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlistMember_delete",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Membre supprimé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedRevisionRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "playlist",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playlists/{playlist}/order": {
+      "put": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlistOrder_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Ordre de playlist modifié.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistOrderRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "playlist",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/next": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "nextVideo_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Vidéo suivante résolue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextVideo"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NextRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/playback-info": {
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "playbackInfo_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Paramètres de lecture et vitesse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackInfo"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/watched": {
+      "put": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "watched_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État vu enregistré.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchedRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/rating": {
+      "put": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "rating_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Note enregistrée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RatingRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/acquire": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "acquire_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Bail attribué par le serveur.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackGrant"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcquireRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/transfer/propose": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "transferPropose_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Transfert à confirmer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferOffer"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferProposal"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/transfer/confirm": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "transferConfirm_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Transfert en attente d’ACK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/transfer/status": {
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "transferStatus_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État de transfert.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "token",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/transfer/ack": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "transferAck_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "ACK de transfert accepté.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferAck"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/events": {
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "events_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "SSE de contrôle de lecture.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "session",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "generation",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/heartbeat": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "heartbeat_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Bail renouvelé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lease"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackControl"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/progress": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "progress_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Reprise enregistrée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalState"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Progress"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/release": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "release_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Bail libéré.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleasePlayback"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/playback/speed": {
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "speed_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Vitesse enregistrée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeedChange"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/state": {
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "personalState_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État personnel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalState"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/media/{media}/stream": {
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "stream_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "206": {
+            "description": "Plage d’octets vidéo autorisée.",
+            "headers": {
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "video/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "412": {
+            "$ref": "#/components/responses/Error"
+          },
+          "416": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "X-Chill-Session",
+          "in": "header",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "X-Chill-Generation",
+          "in": "header",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "Range",
+          "in": "header",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^bytes="
+          }
+        }
+      ]
+    },
+    "/admin/tmdb": {
+      "get": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdb_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État TMDB sans secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmdbStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdb_put",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Configuration TMDB sans secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmdbStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TmdbConfig"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdb_delete",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Configuration TMDB supprimée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmdbStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/admin/tmdb/jobs": {
+      "post": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdbJobs_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "202": {
+            "description": "Travail TMDB créé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmdbJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TmdbJobRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/admin/tmdb/jobs/{id}": {
+      "get": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdbJob_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État compact de travail TMDB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmdbJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/tmdb/jobs/{id}/cancel": {
+      "post": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdbJobCancel_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État compact de travail TMDB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmdbJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/tmdb/jobs/{id}/retry": {
+      "post": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdbJobRetry_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "202": {
+            "description": "État compact de travail TMDB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmdbJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/profiles/{profile}/media/{media}/tmdb/candidates": {
+      "get": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdbCandidates_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Candidats TMDB sans URL d’image distante.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateList"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "query",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/profiles/{profile}/media/{media}/tmdb": {
+      "post": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdbSelect_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Fiche TMDB sélectionnée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionedMedia"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TmdbSelect"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/admin/profiles/{profile}/media/{media}/tmdb/refresh": {
+      "post": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdbRefresh_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Fiche TMDB actualisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionedMedia"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TmdbRefresh"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/admin/profiles/{profile}/media/{media}/tmdb/poster/restore": {
+      "post": {
+        "tags": [
+          "TMDB"
+        ],
+        "operationId": "tmdbPosterRestore_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Affiche TMDB restaurée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionedMedia"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedRevisionRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/ai/context": {
+      "get": {
+        "tags": [
+          "AI"
+        ],
+        "operationId": "aiContext_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Contexte IA borné au profil.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiContext"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "category",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "enum": [
+              "film",
+              "serie"
+            ]
+          }
+        },
+        {
+          "name": "categories",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "CSV de 1 à 4 valeurs; exclusif avec category."
+          }
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        {
+          "name": "watched",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "available",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ]
+    },
+    "/profiles/{profile}/ai/apply": {
+      "post": {
+        "tags": [
+          "AI"
+        ],
+        "operationId": "aiApply_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Plan IA appliqué après confirmation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiApplied"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiApply"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/admin/reassociations": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "reassociations_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Propositions de réassociation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReassociationPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "reassociations_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Réassociation appliquée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionedMedia"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReassociationConfirmation"
+              }
+            }
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/admin/media/{media}/fingerprint": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "fingerprint_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État de l’empreinte.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FingerprintStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "fingerprint_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Empreinte demandée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FingerprintStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FingerprintRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/admin/exports": {
+      "post": {
+        "tags": [
+          "Archives"
+        ],
+        "operationId": "exports_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "202": {
+            "description": "Export créé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/admin/exports/{id}": {
+      "get": {
+        "tags": [
+          "Archives"
+        ],
+        "operationId": "exportDownload_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Archive ZIP prête.",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/exports/{id}/status": {
+      "get": {
+        "tags": [
+          "Archives"
+        ],
+        "operationId": "exportStatus_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "État d’export.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/exports/{id}/cancel": {
+      "delete": {
+        "tags": [
+          "Archives"
+        ],
+        "operationId": "exportCancel_delete",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "204": {
+            "description": "Export annulé."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/imports": {
+      "post": {
+        "tags": [
+          "Archives"
+        ],
+        "operationId": "imports_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Aperçu sans modification de destination.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      },
+      "parameters": []
+    },
+    "/admin/imports/{id}/plan": {
+      "post": {
+        "tags": [
+          "Archives"
+        ],
+        "operationId": "importPlan_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Plan d’import préparé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPlan"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportMapping"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/imports/{id}/apply": {
+      "post": {
+        "tags": [
+          "Archives"
+        ],
+        "operationId": "importApply_post",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Import transactionnel appliqué.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportApply"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/admin/imports/{id}": {
+      "delete": {
+        "tags": [
+          "Archives"
+        ],
+        "operationId": "importCancel_delete",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "204": {
+            "description": "Aperçu annulé."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "Server"
+        ],
+        "operationId": "openapi_get",
+        "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+        "responses": {
+          "200": {
+            "description": "Voir docs/api/INTEGRATION-FR.md et les schémas de ce contrat.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Erreur stable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": []
+    }
+  },
+  "components": {
+    "schemas": {
+      "Uuid": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      },
+      "Profile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "revision"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Preferences": {
+        "type": "object",
+        "required": [
+          "audio_language",
+          "subtitle_language",
+          "autoplay_seconds"
+        ],
+        "properties": {
+          "audio_language": {
+            "type": "string"
+          },
+          "subtitle_language": {
+            "type": "string"
+          },
+          "autoplay_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              null,
+              0,
+              5,
+              10,
+              20,
+              30
+            ]
+          }
+        }
+      },
+      "Media": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "title",
+          "category",
+          "genres",
+          "watched",
+          "available",
+          "added_at"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "path": {
+            "type": "string",
+            "description": "Chemin relatif, jamais URL NAS."
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "film",
+              "serie"
+            ]
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "series": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "season": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "episode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "poster": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "poster_custom": {
+            "type": "boolean"
+          },
+          "runtime_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cast": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "directors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 5
+          },
+          "saga": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "watched": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "added_at": {
+            "type": "integer"
+          },
+          "tmdb_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "CatalogPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "has_more",
+          "series_counters"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Media"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "series_counters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "seasons",
+                "episodes",
+                "unwatched"
+              ],
+              "properties": {
+                "seasons": {
+                  "type": "integer"
+                },
+                "episodes": {
+                  "type": "integer"
+                },
+                "unwatched": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "PlaybackControl": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "generation",
+          "media_id",
+          "media_revision"
+        ],
+        "properties": {
+          "session_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "media_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackGrant": {
+        "type": "object",
+        "required": [
+          "lease",
+          "personal"
+        ],
+        "properties": {
+          "lease": {
+            "$ref": "#/components/schemas/Lease"
+          },
+          "personal": {
+            "$ref": "#/components/schemas/PersonalState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Progress": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "generation",
+          "media_id",
+          "media_revision",
+          "sequence",
+          "position_ms",
+          "duration_ms",
+          "speed",
+          "final_elapsed_ms",
+          "playing",
+          "buffering",
+          "seek"
+        ],
+        "properties": {
+          "session_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "media_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "position_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "speed": {
+            "enum": [
+              0.5,
+              0.75,
+              1,
+              1.25,
+              1.5,
+              1.75,
+              2
+            ]
+          },
+          "final_elapsed_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "playing": {
+            "type": "boolean"
+          },
+          "buffering": {
+            "type": "boolean"
+          },
+          "seek": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PersonalState": {
+        "type": "object",
+        "required": [
+          "position_ms",
+          "final_watched_ms",
+          "watched",
+          "rating"
+        ],
+        "properties": {
+          "position_ms": {
+            "type": "integer"
+          },
+          "final_watched_ms": {
+            "type": "integer"
+          },
+          "watched": {
+            "type": "boolean"
+          },
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "TmdbConfig": {
+        "type": "object",
+        "required": [
+          "credential_type",
+          "credential",
+          "auto_enrich",
+          "profile_id"
+        ],
+        "properties": {
+          "credential_type": {
+            "enum": [
+              "api_key",
+              "bearer"
+            ]
+          },
+          "credential": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "writeOnly": true
+          },
+          "auto_enrich": {
+            "type": "boolean"
+          },
+          "profile_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AiApply": {
+        "type": "object",
+        "required": [
+          "expected_common_revision",
+          "expected_personal_revision",
+          "confirmed",
+          "changes"
+        ],
+        "properties": {
+          "expected_common_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_personal_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "confirmed": {
+            "const": true
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "expected_revision",
+                "patch"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/Uuid"
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "patch": {
+                  "$ref": "#/components/schemas/RevisionPatch"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportMapping": {
+        "type": "object",
+        "required": [
+          "profile_map",
+          "root_prefix",
+          "conflict_policy"
+        ],
+        "properties": {
+          "profile_map": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProfileTarget"
+            }
+          },
+          "root_prefix": {
+            "type": "string"
+          },
+          "conflict_policy": {
+            "enum": [
+              "keep_destination",
+              "replace_conflicting"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeletedResponse": {
+        "type": "object",
+        "required": [
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RemovedResponse": {
+        "type": "object",
+        "required": [
+          "removed"
+        ],
+        "properties": {
+          "removed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SavedResponse": {
+        "type": "object",
+        "required": [
+          "saved"
+        ],
+        "properties": {
+          "saved": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StartedResponse": {
+        "type": "object",
+        "required": [
+          "started"
+        ],
+        "properties": {
+          "started": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProfileList": {
+        "type": "object",
+        "required": [],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Profile"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "RevisionedMedia": {
+        "type": "object",
+        "required": [
+          "media",
+          "revision"
+        ],
+        "properties": {
+          "media": {
+            "$ref": "#/components/schemas/Media"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "MediaList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Media"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SeriesResponse": {
+        "type": "object",
+        "required": [
+          "episodes",
+          "revision"
+        ],
+        "properties": {
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Media"
+            }
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "Subtitle": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "language",
+          "ambiguous",
+          "unavailable"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ambiguous": {
+            "type": "boolean"
+          },
+          "unavailable": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SubtitleList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subtitle"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Saga": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "revision",
+          "media_ids"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SagaEnvelope": {
+        "type": "object",
+        "required": [
+          "saga"
+        ],
+        "properties": {
+          "saga": {
+            "$ref": "#/components/schemas/Saga"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SagaList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Saga"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Playlist": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "revision",
+          "media_ids"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaylistEnvelope": {
+        "type": "object",
+        "required": [
+          "playlist"
+        ],
+        "properties": {
+          "playlist": {
+            "$ref": "#/components/schemas/Playlist"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaylistList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Playlist"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "NextVideo": {
+        "type": "object",
+        "required": [
+          "media",
+          "new_season",
+          "available"
+        ],
+        "properties": {
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Media"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "new_season": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackContext": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "standalone",
+              "series",
+              "saga",
+              "playlist"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackInfo": {
+        "type": "object",
+        "required": [
+          "media",
+          "preferences",
+          "speed"
+        ],
+        "properties": {
+          "media": {
+            "$ref": "#/components/schemas/Media"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/Preferences"
+          },
+          "speed": {
+            "enum": [
+              0.5,
+              0.75,
+              1,
+              1.25,
+              1.5,
+              1.75,
+              2
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Lease": {
+        "type": "object",
+        "required": [
+          "server_epoch",
+          "session_id",
+          "profile_id",
+          "device_id",
+          "media_id",
+          "media_revision",
+          "generation",
+          "remaining_ms",
+          "transferring",
+          "context"
+        ],
+        "properties": {
+          "server_epoch": {
+            "type": "string"
+          },
+          "session_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "profile_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "device_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "media_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "media_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "remaining_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "transferring": {
+            "type": "boolean"
+          },
+          "context": {
+            "$ref": "#/components/schemas/PlaybackContext"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferOffer": {
+        "type": "object",
+        "required": [
+          "token",
+          "active",
+          "expires_in_ms"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "active": {
+            "$ref": "#/components/schemas/Lease"
+          },
+          "expires_in_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferStatus": {
+        "type": "object",
+        "required": [
+          "token",
+          "phase",
+          "remaining_ms"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "awaiting_ack",
+              "activated",
+              "expired"
+            ]
+          },
+          "remaining_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lease"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "personal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonalState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "TmdbStatus": {
+        "type": "object",
+        "required": [
+          "configured",
+          "credential_type",
+          "source",
+          "auto_enrich"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "credential_type": {
+            "enum": [
+              "api_key",
+              "bearer",
+              null
+            ]
+          },
+          "source": {
+            "enum": [
+              "stored",
+              "environment",
+              null
+            ]
+          },
+          "auto_enrich": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TmdbJob": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "total",
+          "processed",
+          "matched",
+          "ambiguous",
+          "skipped",
+          "failed",
+          "retryable"
+        ],
+        "properties": {
+          "job_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "paused_playback",
+              "cancelled",
+              "completed",
+              "failed"
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "processed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "matched": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ambiguous": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "retryable": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "Candidate": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "year",
+          "overview",
+          "kind",
+          "poster_available"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "overview": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "poster_available": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CandidateList": {
+        "type": "object",
+        "required": [
+          "candidates"
+        ],
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "NameRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RenameRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "expected_revision"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExpectedRevisionRequest": {
+        "type": "object",
+        "required": [
+          "expected_revision"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "LibraryUpdate": {
+        "type": "object",
+        "required": [
+          "video_root",
+          "expected_revision"
+        ],
+        "properties": {
+          "video_root": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ForgetUnavailable": {
+        "type": "object",
+        "required": [
+          "expected_epoch",
+          "media_ids",
+          "confirmed"
+        ],
+        "properties": {
+          "expected_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media_ids": {
+            "type": "array",
+            "maxItems": 48,
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          },
+          "confirmed": {
+            "const": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RevisionPatch": {
+        "type": "object",
+        "required": [
+          "expected_revision"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "film",
+              "serie"
+            ]
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "season": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "episode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "saga": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtime_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cast": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "directors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series_overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 5
+          },
+          "watched": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SharedSeriesEdit": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "patch"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "patch": {
+            "type": "object",
+            "required": [
+              "name",
+              "year",
+              "genres",
+              "overview",
+              "cast",
+              "directors"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "year": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "genres": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "overview": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cast": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "directors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "SagaMembersRequest": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "media_ids"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SagaOrderRequest": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "expected_order",
+          "media_ids"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_order": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          },
+          "media_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemberPosterRequest": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "media_id"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media_id": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaylistCreate": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "media_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaylistMembersRequest": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "media_ids"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaylistOrderRequest": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "expected_order",
+          "media_ids"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_order": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          },
+          "media_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "NextRequest": {
+        "type": "object",
+        "required": [
+          "media_id",
+          "context"
+        ],
+        "properties": {
+          "media_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "context": {
+            "$ref": "#/components/schemas/PlaybackContext"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchedRequest": {
+        "type": "object",
+        "required": [
+          "watched"
+        ],
+        "properties": {
+          "watched": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RatingRequest": {
+        "type": "object",
+        "required": [
+          "rating",
+          "scope"
+        ],
+        "properties": {
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 5
+          },
+          "scope": {
+            "enum": [
+              "video",
+              "season",
+              "series"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "AcquireRequest": {
+        "type": "object",
+        "required": [
+          "media_id",
+          "device_id",
+          "context"
+        ],
+        "properties": {
+          "media_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "device_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "context": {
+            "$ref": "#/components/schemas/PlaybackContext"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferProposal": {
+        "type": "object",
+        "required": [
+          "target"
+        ],
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/AcquireRequest"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TokenRequest": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferAck": {
+        "type": "object",
+        "required": [
+          "token",
+          "lease",
+          "progress"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "lease": {
+            "$ref": "#/components/schemas/PlaybackControl"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/Progress"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReleasePlayback": {
+        "type": "object",
+        "required": [
+          "lease"
+        ],
+        "properties": {
+          "lease": {
+            "$ref": "#/components/schemas/PlaybackControl"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Progress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpeedChange": {
+        "type": "object",
+        "required": [
+          "lease",
+          "speed"
+        ],
+        "properties": {
+          "lease": {
+            "$ref": "#/components/schemas/PlaybackControl"
+          },
+          "speed": {
+            "enum": [
+              0.5,
+              0.75,
+              1,
+              1.25,
+              1.5,
+              1.75,
+              2
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "TmdbJobRequest": {
+        "type": "object",
+        "required": [
+          "profile_id"
+        ],
+        "properties": {
+          "profile_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "media_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 3000,
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "TmdbSelect": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "tmdb_id",
+          "kind",
+          "scope"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tmdb_id": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "media",
+              "series"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "TmdbRefresh": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "scope"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scope": {
+            "enum": [
+              "media",
+              "series"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "AiContext": {
+        "type": "object",
+        "required": [
+          "profile_id",
+          "common_revision",
+          "personal_revision",
+          "media"
+        ],
+        "properties": {
+          "profile_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "common_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "personal_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "media": {
+            "type": "array",
+            "maxItems": 3000,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "title",
+                "category",
+                "watched",
+                "available"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/Uuid"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "watched": {
+                  "type": "boolean"
+                },
+                "available": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "AiApplied": {
+        "type": "object",
+        "required": [
+          "applied_count",
+          "common_revision",
+          "personal_revision"
+        ],
+        "properties": {
+          "applied_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "common_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "personal_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReassociationConfirmation": {
+        "type": "object",
+        "required": [
+          "confirmed",
+          "source",
+          "target",
+          "expected_source_revision",
+          "expected_target_revision",
+          "expected_epoch"
+        ],
+        "properties": {
+          "confirmed": {
+            "const": true
+          },
+          "source": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "target": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "expected_source_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_target_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_epoch": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReassociationPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "candidates"
+              ],
+              "properties": {
+                "source": {
+                  "$ref": "#/components/schemas/Uuid"
+                },
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Uuid"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FingerprintRequest": {
+        "type": "object",
+        "required": [
+          "complete"
+        ],
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FingerprintStatus": {
+        "type": "object",
+        "required": [
+          "media_id",
+          "state",
+          "strength"
+        ],
+        "properties": {
+          "media_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "state": {
+            "type": "string"
+          },
+          "strength": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExportStatus": {
+        "type": "object",
+        "required": [
+          "export_id",
+          "state",
+          "bytes",
+          "entries",
+          "code"
+        ],
+        "properties": {
+          "export_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "state": {
+            "enum": [
+              "building",
+              "ready",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "entries": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportCounts": {
+        "type": "object",
+        "required": [
+          "media",
+          "sagas",
+          "personal",
+          "posters"
+        ],
+        "properties": {
+          "media": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sagas": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "personal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "posters": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportPreview": {
+        "type": "object",
+        "required": [
+          "preview_id",
+          "export_id",
+          "counts",
+          "profiles",
+          "roots",
+          "apply_supported"
+        ],
+        "properties": {
+          "preview_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "export_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ImportCounts"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/Uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "apply_supported": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProfileTarget": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "new",
+              "existing"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportPlan": {
+        "type": "object",
+        "required": [
+          "plan_id",
+          "epoch",
+          "root_revision",
+          "conflicts",
+          "conflict_count",
+          "profiles",
+          "already_imported",
+          "apply_supported"
+        ],
+        "properties": {
+          "plan_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "root_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "conflicts": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string"
+            }
+          },
+          "conflict_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "profiles": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "already_imported": {
+            "type": "boolean"
+          },
+          "apply_supported": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportApply": {
+        "type": "object",
+        "required": [
+          "plan_id",
+          "confirmed"
+        ],
+        "properties": {
+          "plan_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "confirmed": {
+            "const": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportResult": {
+        "type": "object",
+        "required": [
+          "already_imported",
+          "media",
+          "profiles",
+          "epoch"
+        ],
+        "properties": {
+          "already_imported": {
+            "type": "boolean"
+          },
+          "media": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "profiles": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "LibrarySettings": {
+        "type": "object",
+        "required": [
+          "video_root",
+          "revision"
+        ],
+        "properties": {
+          "video_root": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScanStatus": {
+        "type": "object",
+        "required": [
+          "running",
+          "last_error",
+          "count"
+        ],
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "UnavailablePage": {
+        "type": "object",
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "path"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/Uuid"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Server": {
+        "type": "object",
+        "required": [
+          "server_id",
+          "api_version",
+          "supported_api_versions",
+          "version",
+          "capabilities",
+          "tls"
+        ],
+        "properties": {
+          "server_id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "api_version": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          },
+          "supported_api_versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tls": {
+            "type": "object",
+            "required": [
+              "renew_at",
+              "expires_at"
+            ],
+            "properties": {
+              "renew_at": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expires_at": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Erreur stable sans information sensible.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

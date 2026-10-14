@@ -4,8 +4,8 @@
 //! and make current an OpenGL context for its `NSView`, then call
 //! [`Player::create_opengl_renderer`] and [`OpenGlRenderer::render`].
 
-use chill_client::{ClientError, Transport};
 use chill_client::playback_cache::PlaybackCache;
+use chill_client::{ClientError, Transport};
 use libloading::Library;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -508,7 +508,10 @@ struct PlayerCore {
 
 impl Player {
     pub fn new(options: PlayerOptions) -> Result<Self, PlayerError> {
-        options.cache.validate().map_err(|e| PlayerError::InvalidCache(e.into()))?;
+        options
+            .cache
+            .validate()
+            .map_err(|e| PlayerError::InvalidCache(e.into()))?;
         let (library, _) = load_library()?;
         unsafe {
             let create: MpvCreate = symbol(&library, b"mpv_create\0")?;
@@ -546,11 +549,16 @@ impl Player {
             player.set_option("terminal", "no")?;
             // Only the Rust grant-bound callback may fetch media. Container/
             // playlist references and ambient mpv configuration are not inputs.
-            for (name,value) in [
-                ("config","no"),("load-scripts","no"),("ytdl","no"),
-                ("access-references","no"),("autoload-files","no"),
-                ("osc","no"),
-            ]{player.set_option(name,value)?;}
+            for (name, value) in [
+                ("config", "no"),
+                ("load-scripts", "no"),
+                ("ytdl", "no"),
+                ("access-references", "no"),
+                ("autoload-files", "no"),
+                ("osc", "no"),
+            ] {
+                player.set_option(name, value)?;
+            }
             player.set_option("input-default-bindings", "no")?;
             player.set_option("input-vo-keyboard", "no")?;
             player.set_option(
@@ -570,8 +578,14 @@ impl Player {
             // 18 Mbit/s; higher bitrates hit the byte limits earlier. mpv has
             // no time-based back-cache limit, so backward duration varies.
             player.set_option("cache", "yes")?;
-            player.set_option("demuxer-max-bytes", &format!("{}MiB", options.cache.forward_mib))?;
-            player.set_option("demuxer-max-back-bytes", &format!("{}MiB", options.cache.back_mib))?;
+            player.set_option(
+                "demuxer-max-bytes",
+                &format!("{}MiB", options.cache.forward_mib),
+            )?;
+            player.set_option(
+                "demuxer-max-back-bytes",
+                &format!("{}MiB", options.cache.back_mib),
+            )?;
             player.set_option("cache-secs", "60")?;
             player.set_option("demuxer-readahead-secs", "60")?;
             player.set_option("demuxer-donate-buffer", "no")?;
@@ -647,12 +661,16 @@ impl Player {
 
     /// Compressed packet-cache advance, measured by mpv (not the target).
     pub fn buffered_ahead_seconds(&self) -> Result<Option<f64>, PlayerError> {
-        Ok(self.property("demuxer-cache-duration")?.and_then(|v| v.parse().ok()))
+        Ok(self
+            .property("demuxer-cache-duration")?
+            .and_then(|v| v.parse().ok()))
     }
 
     /// Apply device-local budgets while paused, immediately before a new load.
     pub fn set_cache_limits(&self, cache: PlaybackCache) -> Result<(), PlayerError> {
-        cache.validate().map_err(|e| PlayerError::InvalidCache(e.into()))?;
+        cache
+            .validate()
+            .map_err(|e| PlayerError::InvalidCache(e.into()))?;
         self.set_property("demuxer-max-bytes", &format!("{}MiB", cache.forward_mib))?;
         self.set_property("demuxer-max-back-bytes", &format!("{}MiB", cache.back_mib))
     }
@@ -1123,13 +1141,23 @@ fn load_library() -> Result<(Library, PathBuf), PlayerError> {
 }
 
 /// Read-only package check: no media, UI, client configuration or network.
-pub fn verify_standalone_library()->Result<(PathBuf,u64,u64),PlayerError>{
-    let paths=controlled_library_paths();
-    if paths.len()!=1{return Err(PlayerError::LibraryNotFound);}
-    let (library,path)=load_library()?;
-    let version=unsafe{let get: MpvClientApiVersion=symbol(&library,b"mpv_client_api_version\0")?;get()};
-    if !supported_client_api(version){return Err(PlayerError::UnsupportedApi{major:version>>16,minor:version&0xffff});}
-    Ok((path,version>>16,version&0xffff))
+pub fn verify_standalone_library() -> Result<(PathBuf, u64, u64), PlayerError> {
+    let paths = controlled_library_paths();
+    if paths.len() != 1 {
+        return Err(PlayerError::LibraryNotFound);
+    }
+    let (library, path) = load_library()?;
+    let version = unsafe {
+        let get: MpvClientApiVersion = symbol(&library, b"mpv_client_api_version\0")?;
+        get()
+    };
+    if !supported_client_api(version) {
+        return Err(PlayerError::UnsupportedApi {
+            major: version >> 16,
+            minor: version & 0xffff,
+        });
+    }
+    Ok((path, version >> 16, version & 0xffff))
 }
 
 fn controlled_library_paths() -> Vec<PathBuf> {
@@ -1212,8 +1240,19 @@ mod tests {
 
     #[test]
     fn standalone_bundle_never_falls_back_to_homebrew() {
-        assert_eq!(library_paths_for_executable(Some(Path::new("/Apps/Chill Center.app/Contents/MacOS/chillcenter-desktop"))), vec![PathBuf::from("/Apps/Chill Center.app/Contents/Frameworks/libmpv.dylib")]);
-        assert!(library_paths_for_executable(Some(Path::new("/tmp/debug/chillcenter-desktop"))).iter().any(|p|p.starts_with("/opt/homebrew")));
+        assert_eq!(
+            library_paths_for_executable(Some(Path::new(
+                "/Apps/Chill Center.app/Contents/MacOS/chillcenter-desktop"
+            ))),
+            vec![PathBuf::from(
+                "/Apps/Chill Center.app/Contents/Frameworks/libmpv.dylib"
+            )]
+        );
+        assert!(
+            library_paths_for_executable(Some(Path::new("/tmp/debug/chillcenter-desktop")))
+                .iter()
+                .any(|p| p.starts_with("/opt/homebrew"))
+        );
     }
 
     #[test]
@@ -1232,17 +1271,29 @@ mod tests {
             return;
         }
         let player = Player::new(PlayerOptions::default()).expect("libmpv initializes");
-        assert_eq!(player.property("options/cache").unwrap().as_deref(), Some("yes"));
+        assert_eq!(
+            player.property("options/cache").unwrap().as_deref(),
+            Some("yes")
+        );
         for (name, expected) in [
             ("cache-secs", 60.),
             ("demuxer-readahead-secs", 60.),
             ("demuxer-max-bytes", 128. * 1024. * 1024.),
             ("demuxer-max-back-bytes", 64. * 1024. * 1024.),
         ] {
-            let value = player.property(&format!("options/{name}")).unwrap().unwrap();
+            let value = player
+                .property(&format!("options/{name}"))
+                .unwrap()
+                .unwrap();
             assert_eq!(value.parse::<f64>().unwrap(), expected, "{name}");
         }
-        assert_eq!(player.property("options/demuxer-donate-buffer").unwrap().as_deref(), Some("no"));
+        assert_eq!(
+            player
+                .property("options/demuxer-donate-buffer")
+                .unwrap()
+                .as_deref(),
+            Some("no")
+        );
     }
 
     #[test]
@@ -1251,16 +1302,64 @@ mod tests {
             return;
         }
         let player = Player::new(PlayerOptions {
-            cache: PlaybackCache { forward_mib: 96, back_mib: 32 },
+            cache: PlaybackCache {
+                forward_mib: 96,
+                back_mib: 32,
+            },
             ..PlayerOptions::default()
-        }).unwrap();
-        assert_eq!(player.property("options/demuxer-max-bytes").unwrap().unwrap().parse::<u64>().unwrap(), 96 * 1024 * 1024);
+        })
+        .unwrap();
+        assert_eq!(
+            player
+                .property("options/demuxer-max-bytes")
+                .unwrap()
+                .unwrap()
+                .parse::<u64>()
+                .unwrap(),
+            96 * 1024 * 1024
+        );
         player.pause(true).unwrap();
-        player.set_cache_limits(PlaybackCache { forward_mib: 48, back_mib: 0 }).unwrap();
-        assert_eq!(player.property("options/demuxer-max-bytes").unwrap().unwrap().parse::<u64>().unwrap(), 48 * 1024 * 1024);
-        assert_eq!(player.property("options/demuxer-max-back-bytes").unwrap().unwrap().parse::<u64>().unwrap(), 0);
-        assert!(player.set_cache_limits(PlaybackCache { forward_mib: 513, back_mib: 0 }).is_err());
-        assert_eq!(player.property("options/demuxer-max-bytes").unwrap().unwrap().parse::<u64>().unwrap(), 48 * 1024 * 1024);
+        player
+            .set_cache_limits(PlaybackCache {
+                forward_mib: 48,
+                back_mib: 0,
+            })
+            .unwrap();
+        assert_eq!(
+            player
+                .property("options/demuxer-max-bytes")
+                .unwrap()
+                .unwrap()
+                .parse::<u64>()
+                .unwrap(),
+            48 * 1024 * 1024
+        );
+        assert_eq!(
+            player
+                .property("options/demuxer-max-back-bytes")
+                .unwrap()
+                .unwrap()
+                .parse::<u64>()
+                .unwrap(),
+            0
+        );
+        assert!(
+            player
+                .set_cache_limits(PlaybackCache {
+                    forward_mib: 513,
+                    back_mib: 0
+                })
+                .is_err()
+        );
+        assert_eq!(
+            player
+                .property("options/demuxer-max-bytes")
+                .unwrap()
+                .unwrap()
+                .parse::<u64>()
+                .unwrap(),
+            48 * 1024 * 1024
+        );
     }
 
     #[test]
@@ -1585,30 +1684,81 @@ mod tests {
     }
 
     #[test]
-    fn media_references_cannot_open_unpinned_http(){
+    fn media_references_cannot_open_unpinned_http() {
         assert_media_references_isolated(false);
     }
     #[test]
-    fn hls_segments_cannot_open_unpinned_http(){
+    fn hls_segments_cannot_open_unpinned_http() {
         assert_media_references_isolated(true);
     }
-    fn assert_media_references_isolated(hls:bool){
+    fn assert_media_references_isolated(hls: bool) {
+        use std::io::{Read, Write};
         use std::net::TcpListener;
-        use std::io::{Read,Write};
-        if !controlled_library_paths().iter().any(|path|path.exists()){return;}
-        let listener=TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();
-        let address=listener.local_addr().unwrap();let contacted=Arc::new(AtomicBool::new(false));let observed=contacted.clone();
-        let worker=thread::spawn(move||{let end=Instant::now()+Duration::from_secs(2);while Instant::now()<end{match listener.accept(){Ok((mut socket,_))=>{observed.store(true,Ordering::Release);let _=socket.set_read_timeout(Some(Duration::from_millis(100)));let _=socket.read(&mut [0;1024]);let _=socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");},Err(e)if e.kind()==std::io::ErrorKind::WouldBlock=>thread::sleep(Duration::from_millis(10)),Err(e)=>panic!("fixture listener: {e}")}}});
-        let mut options=PlayerOptions::default();options.extra.insert("vo".into(),"null".into());options.extra.insert("ao".into(),"null".into());
-        let source=if hls{format!("#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXT-X-VERSION:3\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:1,\nhttp://{address}/must-not-open.ts\n#EXT-X-ENDLIST\n")}else{format!("#EXTM3U\nhttp://{address}/must-not-open.mp4\n")};
-        let mut player=Player::new(options).unwrap();player.register_stream("chill-memory",Arc::new(MemoryFactory(source.into_bytes()))).unwrap();
+        if !controlled_library_paths().iter().any(|path| path.exists()) {
+            return;
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let contacted = Arc::new(AtomicBool::new(false));
+        let observed = contacted.clone();
+        let worker = thread::spawn(move || {
+            let end = Instant::now() + Duration::from_secs(2);
+            while Instant::now() < end {
+                match listener.accept() {
+                    Ok((mut socket, _)) => {
+                        observed.store(true, Ordering::Release);
+                        let _ = socket.set_read_timeout(Some(Duration::from_millis(100)));
+                        let _ = socket.read(&mut [0; 1024]);
+                        let _ = socket.write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        );
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(10))
+                    }
+                    Err(e) => panic!("fixture listener: {e}"),
+                }
+            }
+        });
+        let mut options = PlayerOptions::default();
+        options.extra.insert("vo".into(), "null".into());
+        options.extra.insert("ao".into(), "null".into());
+        let source = if hls {
+            format!(
+                "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXT-X-VERSION:3\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:1,\nhttp://{address}/must-not-open.ts\n#EXT-X-ENDLIST\n"
+            )
+        } else {
+            format!("#EXTM3U\nhttp://{address}/must-not-open.mp4\n")
+        };
+        let mut player = Player::new(options).unwrap();
+        player
+            .register_stream("chill-memory", Arc::new(MemoryFactory(source.into_bytes())))
+            .unwrap();
         player.load("chill-memory://reference-fixture.mp4").unwrap();
-        let end=Instant::now()+Duration::from_secs(2);while Instant::now()<end{let _=player.poll_event(Duration::from_millis(20));}
-        worker.join().unwrap();assert!(!contacted.load(Ordering::Acquire),"embedded media reference bypassed the pinned transport");
+        let end = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < end {
+            let _ = player.poll_event(Duration::from_millis(20));
+        }
+        worker.join().unwrap();
+        assert!(
+            !contacted.load(Ordering::Acquire),
+            "embedded media reference bypassed the pinned transport"
+        );
     }
     #[test]
-    fn transport_safety_options_cannot_be_overridden(){
-        for name in ["config","load-scripts","ytdl","access-references","autoload-files","demuxer-lavf-o","scripts"]{assert!(!allowed_extra_option(name));}
+    fn transport_safety_options_cannot_be_overridden() {
+        for name in [
+            "config",
+            "load-scripts",
+            "ytdl",
+            "access-references",
+            "autoload-files",
+            "demuxer-lavf-o",
+            "scripts",
+        ] {
+            assert!(!allowed_extra_option(name));
+        }
     }
 
     #[test]

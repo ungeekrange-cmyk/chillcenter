@@ -63,9 +63,9 @@ impl PlaybackService {
     /// lease exists. Expired leases do not keep maintenance suspended.
     pub(crate) fn fingerprint_should_pause(&self) -> bool {
         let now = Instant::now();
-        self.book
-            .lock()
-            .map_or(true, |book| book.entries.values().any(|entry| now < entry.deadline))
+        self.book.lock().map_or(true, |book| {
+            book.entries.values().any(|entry| now < entry.deadline)
+        })
     }
 }
 #[derive(Clone)]
@@ -707,45 +707,30 @@ impl PlaybackService {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/profiles/{profile}/playback/acquire", post(acquire))
+        .route("/profiles/{profile}/playback/acquire", post(acquire))
         .route(
-            "/api/v1/profiles/{profile}/playback/transfer/propose",
+            "/profiles/{profile}/playback/transfer/propose",
             post(propose_transfer),
         )
         .route(
-            "/api/v1/profiles/{profile}/playback/transfer/confirm",
+            "/profiles/{profile}/playback/transfer/confirm",
             post(confirm_transfer),
         )
         .route(
-            "/api/v1/profiles/{profile}/playback/transfer/status",
+            "/profiles/{profile}/playback/transfer/status",
             get(transfer_status),
         )
         .route(
-            "/api/v1/profiles/{profile}/playback/transfer/ack",
+            "/profiles/{profile}/playback/transfer/ack",
             post(transfer_ack),
         )
-        .route("/api/v1/profiles/{profile}/playback/events", get(events))
-        .route(
-            "/api/v1/profiles/{profile}/playback/heartbeat",
-            post(heartbeat),
-        )
-        .route(
-            "/api/v1/profiles/{profile}/playback/progress",
-            post(progress),
-        )
-        .route("/api/v1/profiles/{profile}/playback/release", post(release))
-        .route(
-            "/api/v1/profiles/{profile}/playback/speed",
-            post(save_speed),
-        )
-        .route(
-            "/api/v1/profiles/{profile}/media/{media}/state",
-            get(personal),
-        )
-        .route(
-            "/api/v1/media/{media}/stream",
-            get(crate::media_stream::stream),
-        )
+        .route("/profiles/{profile}/playback/events", get(events))
+        .route("/profiles/{profile}/playback/heartbeat", post(heartbeat))
+        .route("/profiles/{profile}/playback/progress", post(progress))
+        .route("/profiles/{profile}/playback/release", post(release))
+        .route("/profiles/{profile}/playback/speed", post(save_speed))
+        .route("/profiles/{profile}/media/{media}/state", get(personal))
+        .route("/media/{media}/stream", get(crate::media_stream::stream))
 }
 
 #[derive(serde::Deserialize)]
@@ -1235,7 +1220,8 @@ mod tests {
     #[test]
     fn live_lease_suspends_fingerprint_until_revoked() {
         let (mut book, now, request, stream) = prepared();
-        book.acquire("profile".into(), request, stream, now).unwrap();
+        book.acquire("profile".into(), request, stream, now)
+            .unwrap();
         let service = PlaybackService::default();
         *service.book.lock().unwrap() = book;
         assert!(service.fingerprint_should_pause());

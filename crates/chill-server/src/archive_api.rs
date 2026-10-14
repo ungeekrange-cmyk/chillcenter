@@ -187,8 +187,9 @@ impl Drop for StagedUpload {
         if !self.kept {
             self.cancelled.store(true, Ordering::Release);
             if let Ok(mut records) = previews().lock()
-                && let Some(items) = records.get_mut(&self.dir) {
-                    items.remove(&self.id);
+                && let Some(items) = records.get_mut(&self.dir)
+            {
+                items.remove(&self.id);
             }
             for ext in ["partial", "zip"] {
                 let _ = fs::remove_file(self.dir.join(format!("{}.{}", self.id, ext)));
@@ -248,17 +249,17 @@ struct PreviewProfile {
 
 pub(crate) fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/admin/exports", post(create))
-        .route("/api/v1/admin/exports/{id}", get(download))
+        .route("/admin/exports", post(create))
+        .route("/admin/exports/{id}", get(download))
         // This endpoint writes the body directly to service-owned staging; it
         // intentionally replaces the router's normal 1 MiB JSON body limit.
         .route(
-            "/api/v1/admin/imports",
+            "/admin/imports",
             post(stage_and_preview).layer(DefaultBodyLimit::max(MAX_COMPRESSED as usize)),
         )
-        .route("/api/v1/admin/imports/{id}/plan", post(prepare_plan))
-        .route("/api/v1/admin/imports/{id}/apply", post(apply_plan))
-        .route("/api/v1/admin/imports/{id}", delete(cancel_preview))
+        .route("/admin/imports/{id}/plan", post(prepare_plan))
+        .route("/admin/imports/{id}/apply", post(apply_plan))
+        .route("/admin/imports/{id}", delete(cancel_preview))
 }
 
 async fn prepare_plan(
@@ -534,14 +535,14 @@ fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String,
             }
             if let Ok(meta) = fs::symlink_metadata(entry.path())
                 && meta.is_file()
-                    && !meta.file_type().is_symlink()
-                    && meta
-                        .modified()
-                        .ok()
-                        .and_then(|time| now.duration_since(time).ok())
-                        .is_some_and(|age| age >= PREVIEW_TTL)
-                {
-                    let _ = fs::remove_file(entry.path());
+                && !meta.file_type().is_symlink()
+                && meta
+                    .modified()
+                    .ok()
+                    .and_then(|time| now.duration_since(time).ok())
+                    .is_some_and(|age| age >= PREVIEW_TTL)
+            {
+                let _ = fs::remove_file(entry.path());
             }
         }
     }
@@ -1441,7 +1442,11 @@ mod tests {
                 )?;
                 store.set_series_speed(&p.id, "series", 1.25)?;
                 store.set_rating(&p.id, &media.id, Some(4), "video")?;
-                store.create_playlist_with_members(&p.id, "Liste", std::slice::from_ref(&media.id))?;
+                store.create_playlist_with_members(
+                    &p.id,
+                    "Liste",
+                    std::slice::from_ref(&media.id),
+                )?;
                 Ok((p.id, media.id))
             })
             .await

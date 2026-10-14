@@ -29,6 +29,8 @@ pub mod watch_clock;
 pub use reqwest::Method as HttpMethod;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
+pub const API_VERSION: &str = "2026-10-14";
+pub const API_PREFIX: &str = "/api/2026-10-14";
 
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -306,7 +308,11 @@ impl ServerEndpoint {
             return Err(ClientError::InvalidRequestPath(path.into()));
         }
         let mut url = self.base_url.clone();
-        url.set_path(path);
+        if let Some(suffix) = path.strip_prefix("/api/v1/") {
+            url.set_path(&format!("{API_PREFIX}/{suffix}"));
+        } else {
+            url.set_path(path);
+        }
         url.set_query(None);
         Ok(url)
     }
@@ -943,7 +949,7 @@ mod tests {
     fn endpoint_rejects_http_and_path_escape() {
         assert!(ServerEndpoint::parse("id", "http://pi.lan").is_err());
         let endpoint = ServerEndpoint::parse("id", "https://pi.lan:8443").unwrap();
-        assert!(endpoint.request_url("/api/v1/server").is_ok());
+        assert_eq!(endpoint.request_url("/api/v1/server").unwrap().path(), "/api/2026-10-14/server");
         assert!(endpoint.request_url("//attacker.invalid/x").is_err());
         assert!(endpoint.request_url("/api/../admin").is_err());
     }

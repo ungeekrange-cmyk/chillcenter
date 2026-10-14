@@ -68,9 +68,7 @@ mod tests {
         let profile = store.create_profile("Avant").unwrap();
         let snapshot = temp.path().join("snapshot.sqlite");
         coherent_snapshot(&source, &snapshot, &AtomicBool::new(false), 1024 * 1024).unwrap();
-        store
-            .rename_profile(&profile.id, "Après")
-            .unwrap();
+        store.rename_profile(&profile.id, "Après").unwrap();
         assert_eq!(
             crate::Store::open_export_snapshot(&snapshot)
                 .unwrap()

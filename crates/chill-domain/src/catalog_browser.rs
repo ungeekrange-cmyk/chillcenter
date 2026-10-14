@@ -1,4 +1,5 @@
 //! SQL-paged grouped catalogue. Result materialisation is bounded to101 rows.
+use crate::store::SeriesCounters;
 use crate::{
     Store,
     store::{CatalogPage, MAX_CATALOG_PAGE},
@@ -6,6 +7,7 @@ use crate::{
 use chill_catalog::model::Media;
 use rusqlite::params;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct BrowserQuery {
@@ -66,7 +68,7 @@ impl Store {
     COALESCE(json_extract(m.data,'$.series_metadata.genres'),json_extract(m.data,'$.genres'),'[]') genres,
     COALESCE(s.watched,0) seen,s.rating rating,json_extract(m.data,'$.added_at') added
    FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id LEFT JOIN cc_profile_state s ON s.stable_media_id=i.stable_id AND s.profile_id=?1
-  ), full_series AS (SELECT series_key,MIN(seen) all_seen FROM base WHERE category='serie' GROUP BY series_key),
+  ), full_series AS (SELECT series_key,MIN(seen) all_seen,COUNT(DISTINCT COALESCE(json_extract(data,'$.season'),-1)) seasons,COUNT(*) episodes,SUM(1-seen) unwatched FROM base WHERE category='serie' GROUP BY series_key),
   eligible AS (
    SELECT b.*,CASE WHEN ?2 AND category='serie' THEN series_key ELSE json_extract(data,'$.title') END label,
     CASE WHEN ?2 AND category='serie' THEN (SELECT all_seen FROM full_series f WHERE f.series_key=b.series_key) ELSE seen END visible_seen
@@ -76,7 +78,7 @@ impl Store {
     AND (?6 IS NULL OR sort_year=?6 OR (?6=0 AND sort_year IS NULL))
     AND (?7 IS NULL OR json_extract(data,'$.available')=?7)
   ), ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY CASE WHEN ?2 AND category='serie' THEN 'series:'||series_key ELSE stable_id END ORDER BY legacy) n FROM eligible WHERE (?8 IS NULL OR visible_seen=?8))
-  SELECT data,visible_seen FROM ranked WHERE n=1 ORDER BY {order} LIMIT ?9 OFFSET ?10"#
+  SELECT data,visible_seen,COALESCE((SELECT seasons FROM full_series f WHERE f.series_key=ranked.series_key),0),COALESCE((SELECT episodes FROM full_series f WHERE f.series_key=ranked.series_key),0),COALESCE((SELECT unwatched FROM full_series f WHERE f.series_key=ranked.series_key),0) FROM ranked WHERE n=1 ORDER BY {order} LIMIT ?9 OFFSET ?10"#
         );
         let mut stmt = self.personal.prepare(&sql).map_err(db)?;
         let rows = stmt
@@ -93,18 +95,38 @@ impl Store {
                     limit as i64 + 1,
                     q.offset as i64
                 ],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, bool>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, i64>(3)?,
+                        r.get::<_, i64>(4)?,
+                    ))
+                },
             )
             .map_err(db)?;
+        let mut series_counters = BTreeMap::new();
         let mut items = rows
             .map(|r| {
-                let (text, seen) = r.map_err(db)?;
+                let (text, seen, seasons, episodes, unwatched) = r.map_err(db)?;
                 let media: Media =
                     serde_json::from_str(&text).map_err(|_| "Catalogue local endommagé.")?;
                 let mut item = self.profile_view(profile, media)?;
                 if q.grouped && item.category == "serie" {
                     item.title = item.series.clone().unwrap_or_else(|| item.title.clone());
                     item.watched = seen;
+                    let checked = |value: i64| {
+                        u64::try_from(value).map_err(|_| "Compteur de série invalide.".to_string())
+                    };
+                    series_counters.insert(
+                        item.id.clone(),
+                        SeriesCounters {
+                            seasons: checked(seasons)?,
+                            episodes: checked(episodes)?,
+                            unwatched: checked(unwatched)?,
+                        },
+                    );
                     if let Some(metadata) = &item.series_metadata {
                         item.overview = metadata.overview.clone();
                         item.genres = metadata.genres.clone();
@@ -118,7 +140,12 @@ impl Store {
             .collect::<Result<Vec<_>, String>>()?;
         let has_more = items.len() > limit;
         items.truncate(limit);
-        Ok(CatalogPage { items, has_more })
+        series_counters.retain(|id, _| items.iter().any(|item| &item.id == id));
+        Ok(CatalogPage {
+            items,
+            has_more,
+            series_counters,
+        })
     }
 }
 
@@ -157,9 +184,19 @@ mod tests {
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].title, "One");
         assert!(!page.items[0].watched);
+        let counters = &page.series_counters[&page.items[0].id];
+        assert_eq!(
+            (counters.seasons, counters.episodes, counters.unwatched),
+            (1, 2, 1)
+        );
         store.set_watched(&p, &ids[1].id, true).unwrap();
         assert!(store.browse_catalog(&p, &q).unwrap().items.is_empty());
-        assert_eq!(store.browse_catalog(&other, &q).unwrap().items.len(), 1);
+        let other_page = store.browse_catalog(&other, &q).unwrap();
+        assert_eq!(other_page.items.len(), 1);
+        assert_eq!(
+            other_page.series_counters[&other_page.items[0].id].unwatched,
+            2
+        );
         let flat = store
             .browse_catalog(
                 &p,
@@ -171,6 +208,7 @@ mod tests {
             .unwrap();
         assert_eq!(flat.items.len(), 1);
         assert!(flat.has_more);
+        assert!(flat.series_counters.is_empty());
         let literal = store
             .browse_catalog(
                 &p,

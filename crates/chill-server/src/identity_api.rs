@@ -10,9 +10,9 @@ use serde::Deserialize;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/admin/reassociations", get(proposals).post(confirm))
+        .route("/admin/reassociations", get(proposals).post(confirm))
         .route(
-            "/api/v1/admin/media/{media}/fingerprint",
+            "/admin/media/{media}/fingerprint",
             get(fingerprint_status).post(request_fingerprint),
         )
 }
@@ -81,10 +81,15 @@ async fn request_fingerprint(
     Json(body): Json<FingerprintRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if !body.complete || uuid::Uuid::parse_str(&media).is_err() {
-        return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "FINGERPRINT_INVALID"));
+        return Err(ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "FINGERPRINT_INVALID",
+        ));
     }
     crate::fingerprint::enqueue_full(state, media.clone()).await?;
-    Ok(Json(serde_json::json!({"media_id":media,"state":"queued","strength":"full"})))
+    Ok(Json(
+        serde_json::json!({"media_id":media,"state":"queued","strength":"full"}),
+    ))
 }
 
 async fn fingerprint_status(
@@ -92,9 +97,17 @@ async fn fingerprint_status(
     Path(media): Path<String>,
 ) -> Result<Json<chill_domain::fingerprint::FingerprintStatus>, ApiError> {
     if uuid::Uuid::parse_str(&media).is_err() {
-        return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "FINGERPRINT_INVALID"));
+        return Err(ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "FINGERPRINT_INVALID",
+        ));
     }
-    Ok(Json(state.database.call(move |store| store.fingerprint_status(&media)).await?))
+    Ok(Json(
+        state
+            .database
+            .call(move |store| store.fingerprint_status(&media))
+            .await?,
+    ))
 }
 
 #[cfg(test)]
@@ -127,11 +140,16 @@ mod tests {
         let database = DatabaseActor::open(config.data_dir.join("catalog.sqlite")).unwrap();
         let scan_root = root.clone();
         let scan_path = path.clone();
-        let media = database.call(move |store| {
-            let profile = store.create_profile("A")?;
-            store.snapshot(vec![chill_catalog::scanner::parse_file(&scan_root, &scan_path)])?;
-            Ok(store.catalog(&profile.id)?[0].id.clone())
-        }).await.unwrap();
+        let media = database
+            .call(move |store| {
+                let profile = store.create_profile("A")?;
+                store.snapshot(vec![chill_catalog::scanner::parse_file(
+                    &scan_root, &scan_path,
+                )])?;
+                Ok(store.catalog(&profile.id)?[0].id.clone())
+            })
+            .await
+            .unwrap();
         let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
         let state = AppState {
             tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
@@ -150,7 +168,10 @@ mod tests {
             .header("content-type", "application/json")
             .body(Body::from(json!({"complete":true}).to_string()))
             .unwrap();
-        assert_eq!(app.clone().oneshot(invalid).await.unwrap().status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            app.clone().oneshot(invalid).await.unwrap().status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
 
         let request = Request::builder()
             .method("POST")
@@ -161,7 +182,9 @@ mod tests {
             .unwrap();
         let response = app.clone().oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        let body: Value = serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        let body: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
         assert_eq!(body.as_object().unwrap().len(), 3);
         assert!(body.get("media_id").is_some());
         assert!(body.to_string().find("secret-name").is_none());
@@ -176,8 +199,13 @@ mod tests {
                 .unwrap();
             let response = app.clone().oneshot(request).await.unwrap();
             if response.status() == StatusCode::OK {
-                status = serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
-                if status["state"] == "complete" { break; }
+                status = serde_json::from_slice(
+                    &response.into_body().collect().await.unwrap().to_bytes(),
+                )
+                .unwrap();
+                if status["state"] == "complete" {
+                    break;
+                }
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }

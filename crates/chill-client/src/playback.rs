@@ -36,8 +36,11 @@ fn take_pause_instruction(pending: &mut Vec<u8>) -> Result<Option<PauseInstructi
             if let Some(value) = line.strip_prefix("event:") {
                 event = Some(value.trim_ascii());
             } else if let Some(value) = line.strip_prefix("data:")
-                && data.replace(value.trim()).is_some() {
-                    return Err(ClientError::InvalidRangeResponse("Contrôle SSE ambigu".into()));
+                && data.replace(value.trim()).is_some()
+            {
+                return Err(ClientError::InvalidRangeResponse(
+                    "Contrôle SSE ambigu".into(),
+                ));
             }
         }
         if event == Some("pause") {
@@ -46,7 +49,9 @@ fn take_pause_instruction(pending: &mut Vec<u8>) -> Result<Option<PauseInstructi
             })?;
             let instruction: PauseInstruction = serde_json::from_str(data)?;
             if uuid::Uuid::parse_str(&instruction.token).is_err() || instruction.remaining_ms == 0 {
-                return Err(ClientError::InvalidRangeResponse("Contrôle pause invalide".into()));
+                return Err(ClientError::InvalidRangeResponse(
+                    "Contrôle pause invalide".into(),
+                ));
             }
             return Ok(Some(instruction));
         }
@@ -59,7 +64,12 @@ fn sse_frame_end(bytes: &[u8]) -> Option<(usize, usize)> {
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
         .map(|end| (end, 4))
-        .or_else(|| bytes.windows(2).position(|window| window == b"\n\n").map(|end| (end, 2)))
+        .or_else(|| {
+            bytes
+                .windows(2)
+                .position(|window| window == b"\n\n")
+                .map(|end| (end, 2))
+        })
 }
 pub struct ControlSubscription {
     pub receiver: tokio::sync::mpsc::Receiver<PauseInstruction>,
@@ -387,7 +397,8 @@ mod tests {
         invalid_utf8.extend_from_slice(b"\",\"remaining_ms\":1}\n\n");
         assert!(take_pause_instruction(&mut invalid_utf8).is_err());
 
-        let mut bad_token = b"event: pause\ndata: {\"token\":\"not-a-token\",\"remaining_ms\":1}\n\n".to_vec();
+        let mut bad_token =
+            b"event: pause\ndata: {\"token\":\"not-a-token\",\"remaining_ms\":1}\n\n".to_vec();
         assert!(take_pause_instruction(&mut bad_token).is_err());
 
         let mut incomplete = b"event: pause\ndata: {}\n".to_vec();

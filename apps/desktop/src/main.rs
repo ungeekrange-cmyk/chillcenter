@@ -108,7 +108,21 @@ async fn ai_command(
             mode,
             category,
             q,
-        } => bridge.assistant.start(current, request, mode, category, q),
+            categories,
+            watched,
+            available,
+        } => bridge.assistant.start(
+            current,
+            request,
+            mode,
+            ai_bridge::AiFilters {
+                category,
+                q,
+                categories,
+                watched,
+                available,
+            },
+        ),
         C::Status { id } => ai_bridge::view(&bridge.assistant.get(&id, &current)?),
         C::Cancel { id } => ai_bridge::cancel(&bridge.assistant.get(&id, &current)?),
         C::Apply { id, confirmed } => {
@@ -405,11 +419,17 @@ async fn archive_choice(
         .map_err(|_| admin_bridge::error("Sélecteur interrompu.", "ADMIN_PICKER"))
 }
 fn main() {
-    let arguments:Vec<_>=std::env::args_os().collect();
-    if arguments.len()==2&&arguments[1]=="--verify-bundle"{
-        match chill_player::verify_standalone_library(){
-            Ok((path,major,minor))=>{println!("BUNDLE_LIBRARY_OK {} API {major}.{minor}",path.display());std::process::exit(0);}
-            Err(error)=>{eprintln!("BUNDLE_LIBRARY_FAILED {error}");std::process::exit(1);}
+    let arguments: Vec<_> = std::env::args_os().collect();
+    if arguments.len() == 2 && arguments[1] == "--verify-bundle" {
+        match chill_player::verify_standalone_library() {
+            Ok((path, major, minor)) => {
+                println!("BUNDLE_LIBRARY_OK {} API {major}.{minor}", path.display());
+                std::process::exit(0);
+            }
+            Err(error) => {
+                eprintln!("BUNDLE_LIBRARY_FAILED {error}");
+                std::process::exit(1);
+            }
         }
     }
     let builder = tauri::Builder::default().setup(|app| {
@@ -554,7 +574,8 @@ fn main() {
                     include_str!("../../../ui/connected/ai-qa.js"),
                     include_str!("../../../ui/connected/deadline-qa.js"),
                     include_str!("../../../ui/connected/formats-qa.js"),
-                    include_str!("../../../ui/connected/identity-qa.js")].join("\n"),
+                    include_str!("../../../ui/connected/identity-qa.js"),
+                    include_str!("../../../ui/connected/shell-qa.js")].join("\n"),
                     if mode == "player" || mode == "next_series" || mode.starts_with("transfer_") {
                         "window.chillPlayerQa"
                     } else {
@@ -568,6 +589,8 @@ fn main() {
                             "window.chillAiQa"
                         } else if mode == "admin_archive" {
                             "window.chillArchiveQa"
+                        } else if mode == "shell" {
+                            "window.chillShellQa"
                         } else if mode == "catalog" {
                             "window.chillCatalogQa"
                         } else {
@@ -629,7 +652,10 @@ async fn qa_deadline_probe(
 fn qa_result(app: tauri::AppHandle, success: bool, detail: String) {
     if std::env::var_os("CHILL_UI_QA_URL").is_some() {
         if detail.starts_with("TRACE ") {
-            println!("UI_QA_TRACE {}", detail.chars().take(300).collect::<String>());
+            println!(
+                "UI_QA_TRACE {}",
+                detail.chars().take(300).collect::<String>()
+            );
             return;
         }
         println!(
