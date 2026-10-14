@@ -1,5 +1,11 @@
 # Intégration CC-UX-002 et API 2026-10-14 — preuves en cours
 
+## Bascule Pi effective —14octobre19:12:40UTC
+
+Après confirmation humaine renouvelée : sauvegarde privée offline, binaire source9277 remplacé atomiquement par déployeur distinct, V4exacte55c6be…/revueindépendanteAPPROVED. PiPID5145/NRestarts0/hash1eb24…, ancienR7 conservé, NAS/config/unité/TLS inchangés. [Rapport opératoire](../releases/REL-UX-API-001-pi-deployment.md). Première tentative opérateur échouée avant remplacement puis redémarrageR7 : [BUG0051](../debug/BUG-0051-pi-update-output-quoting.md), jamais requalifiée en succès.
+
+Sonde depuisMac sur mêmeUiClientRust queTauri, source9277inchangée et réglagesprivéstemporaires : REDancienserveur `HTTP_ERROR status=Some(404)` ; GREENnouveau `CLIENT_CONNECTED api=2026-10-14 profiles=1 tls_pin=verified`, `CLIENT_CATALOGUE_READ items=48 has_more=true`, `CLIENT_REOPEN_CONNECTED`, exit0. [Vérification indépendante post-bascule APPROVED](../releases/REL-UX-API-001-pi-verification.md), propre sonde fraîche0,99s et checksTLSstrict/date/v1/OpenAPI/runtime/backup/confinement PASS. Aucun clicOSGUI/lecturevidéo/NAS/fournisseur réel ni écriture de profil/service/réglages revendiqué. Les checkpoints pré-bascule ci-dessous restent historiques.
+
 ## Candidat final approuvé —9277ac4, avant livraison Pi
 
 Source exacte `9277ac4d51281b3e6d72475294b1e7822cb8e913`. Trois instances indépendantes [code](../reviews/ux-api-code-9277ac4.md), [tests/intégration](../reviews/ux-api-test-9277ac4.md), [sécurité](../reviews/ux-api-security-9277ac4.md) APPROVED ; [gate canonique](../gates/G-DEV-CC-UX-API-001.md). Revue indépendante :289Rust/47Node/clippy/formelOpenAPI PASS ; dernier SHA propre. Node47 corrige les comptes intermédiaires46. Test réel shippedloadPage103éléments, offsets0/48/96, dédoublonnage, DOMborné<48 et rejet de réponse périmée profil/recherche. Catalogue3000dansunevraiewebview/RSSmax encoreNOT_RUN.
