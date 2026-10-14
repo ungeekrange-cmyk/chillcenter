@@ -16,7 +16,8 @@
     const match = wanted && list.find(t => (t.language || "").toLowerCase().startsWith(wanted.slice(0, 2)));
     if (match) return { id: match.id, fallback: false };
     if (kind === "Subtitle") return { id: null, fallback: false };
-    return { id: (list.find(t => t.original) || list[0]).id, fallback: Boolean(wanted) };
+    const known = list.some(t => t.language && t.language !== "und");
+    return { id: (list.find(t => t.original) || list[0]).id, fallback: Boolean(wanted) && known };
   }
 
   class WebPlayer {

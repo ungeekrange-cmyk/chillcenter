@@ -90,6 +90,7 @@ test("language policy: preferred, else original audio with a notice; subtitles o
   assert.deepEqual(pickTrack(tracks, "de", "Audio"), { id: 1, fallback: true });
   assert.deepEqual(pickTrack(tracks, "en", "Subtitle"), { id: null, fallback: false });
   assert.deepEqual(pickTrack([], "en", "Audio"), { id: null, fallback: false });
+  assert.deepEqual(pickTrack([{ id: 7, kind: "Audio", language: "und" }], "en", "Audio"), { id: 7, fallback: false }, "unknown language: no false alarm");
 });
 
 test("without a real engine the player fails plainly and releases the lease", async () => {
