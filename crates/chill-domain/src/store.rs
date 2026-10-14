@@ -74,6 +74,17 @@ pub struct Store {
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self, String> {
+        if path.exists() {
+            let probe =
+                Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                    .map_err(db_error)?;
+            let version: u32 = probe
+                .pragma_query_value(None, "user_version", |r| r.get(0))
+                .map_err(db_error)?;
+            if version > 3 {
+                return Err("Schéma plus récent : restauration pré-migration requise pour revenir à cette version.".into());
+            }
+        }
         let catalogue = Database::open(path)?;
         let personal = Connection::open(path).map_err(db_error)?;
         personal
@@ -182,6 +193,22 @@ impl Store {
         )?;
         Ok(Self {
             catalogue,
+            personal,
+        })
+    }
+
+    pub fn open_export_snapshot(path: &Path) -> Result<Self, String> {
+        let personal =
+            Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .map_err(db_error)?;
+        let version: u32 = personal
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .map_err(db_error)?;
+        if version != 3 {
+            return Err("Snapshot incompatible.".into());
+        }
+        Ok(Self {
+            catalogue: Database::open_readonly(path)?,
             personal,
         })
     }
@@ -897,7 +924,13 @@ impl Store {
         let mut collections = self.catalogue.collections()?;
         self.ensure_identities(&self.catalogue.list()?)?;
         for collection in &mut collections {
-            if collection.kind=="saga"{collection.media_ids=self.saga_order(&collection.id)?;collection.poster=collection.poster.as_ref().map(|_|format!("/api/v1/sagas/{}/artwork",collection.id));}
+            if collection.kind == "saga" {
+                collection.media_ids = self.saga_order(&collection.id)?;
+                collection.poster = collection
+                    .poster
+                    .as_ref()
+                    .map(|_| format!("/api/v1/sagas/{}/artwork", collection.id));
+            }
             collection.media_ids = collection
                 .media_ids
                 .iter()
@@ -960,12 +993,15 @@ impl Store {
             .into_iter()
             .filter(|c| c.kind == "saga")
             .map(|c| {
-                let order=self.saga_order(&c.id)?;
+                let order = self.saga_order(&c.id)?;
                 let media_ids = order
                     .iter()
                     .map(|legacy| self.stable_id(legacy))
                     .collect::<Result<Vec<_>, _>>()?;
-                let poster = c.poster.as_ref().map(|_|format!("/api/v1/sagas/{}/artwork",c.id));
+                let poster = c
+                    .poster
+                    .as_ref()
+                    .map(|_| format!("/api/v1/sagas/{}/artwork", c.id));
                 Ok(SagaView {
                     revision: self.catalogue.saga_revision(&c.id)?,
                     id: c.id,
@@ -1023,7 +1059,7 @@ impl Store {
         expected: &[String],
         desired: &[String],
     ) -> Result<SagaView, String> {
-        self.reorder_common_saga(id,revision,expected,desired)?;
+        self.reorder_common_saga(id, revision, expected, desired)?;
         self.saga(id)
     }
     pub fn delete_saga_at_revision(&mut self, id: &str, revision: u64) -> Result<(), String> {
@@ -1341,11 +1377,9 @@ impl Store {
         export_id: &str,
         poster_root: &Path,
     ) -> Result<Vec<ArchivePoster>, String> {
-        self.ensure_identities(&self.catalogue.list()?)?;
         let tx =
-            rusqlite::Transaction::new_unchecked(&self.personal, TransactionBehavior::Immediate)
+            rusqlite::Transaction::new_unchecked(&self.personal, TransactionBehavior::Deferred)
                 .map_err(db_error)?;
-        let media = self.catalogue.list()?;
         let profiles = self.profiles()?;
         let mut posters = Vec::new();
         out.write_all(br#"{"format_version":1,"export_id":"#)
@@ -1358,13 +1392,22 @@ impl Store {
         })?;
         out.write_all(b",\"media\":[")
             .map_err(|_| "Export de staging inaccessible.")?;
-        for (index, item) in media.iter().enumerate() {
+        let mut statement = self
+            .personal
+            .prepare("SELECT data FROM media ORDER BY id")
+            .map_err(db_error)?;
+        let rows = statement
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(db_error)?;
+        for (index, row) in rows.enumerate() {
+            let item: Media = serde_json::from_str(&row.map_err(db_error)?)
+                .map_err(|_| "Catalogue local endommagé.")?;
             if index != 0 {
                 out.write_all(b",")
                     .map_err(|_| "Export de staging inaccessible.")?;
             }
             let stable = self.stable_id(&item.id)?;
-            let mut data = scrub_media(item);
+            let mut data = scrub_media(&item);
             if let Some(path) = item
                 .poster
                 .as_ref()
@@ -1394,16 +1437,35 @@ impl Store {
         }
         out.write_all(b"],\"sagas\":")
             .map_err(|_| "Export de staging inaccessible.")?;
-        let mut sagas=saga_export(&self.personal,self)?;
-        for saga in &mut sagas{
-            let id=saga.id.parse::<i64>().map_err(|_|"Saga invalide.")?;
-            let path:Option<String>=self.personal.query_row("SELECT poster FROM collection_artwork WHERE collection_id=?1",[id],|r|r.get(0)).optional().map_err(db_error)?;
-            if let Some(relative)=path.as_ref().and_then(|p|Path::new(p).strip_prefix(poster_root).ok()).filter(|p|p.components().all(|c|matches!(c,std::path::Component::Normal(_)))){
-                let reference=format!("posters/saga-{id}.bin");saga.poster=Some(reference.clone());posters.push(ArchivePoster{reference,relative:relative.to_path_buf()});
+        let mut sagas = saga_export(&self.personal, self)?;
+        for saga in &mut sagas {
+            let id = saga.id.parse::<i64>().map_err(|_| "Saga invalide.")?;
+            let path: Option<String> = self
+                .personal
+                .query_row(
+                    "SELECT poster FROM collection_artwork WHERE collection_id=?1",
+                    [id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(db_error)?;
+            if let Some(relative) = path
+                .as_ref()
+                .and_then(|p| Path::new(p).strip_prefix(poster_root).ok())
+                .filter(|p| {
+                    p.components()
+                        .all(|c| matches!(c, std::path::Component::Normal(_)))
+                })
+            {
+                let reference = format!("posters/saga-{id}.bin");
+                saga.poster = Some(reference.clone());
+                posters.push(ArchivePoster {
+                    reference,
+                    relative: relative.to_path_buf(),
+                });
             }
         }
-        serde_json::to_writer(&mut *out, &sagas)
-            .map_err(|_| "Export invalide.")?;
+        serde_json::to_writer(&mut *out, &sagas).map_err(|_| "Export invalide.")?;
         out.write_all(b",\"personal\":[")
             .map_err(|_| "Export de staging inaccessible.")?;
         for (index, profile) in profiles.iter().enumerate() {
@@ -1416,6 +1478,7 @@ impl Store {
         }
         out.write_all(b"],\"leases\":[]}")
             .map_err(|_| "Export de staging inaccessible.")?;
+        drop(statement);
         tx.commit().map_err(db_error)?;
         Ok(posters)
     }

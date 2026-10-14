@@ -158,12 +158,12 @@ struct StagedUpload {
     dir: PathBuf,
     id: String,
     kept: bool,
-    cancelled:Arc<AtomicBool>,
+    cancelled: Arc<AtomicBool>,
 }
 impl Drop for StagedUpload {
     fn drop(&mut self) {
         if !self.kept {
-            self.cancelled.store(true,Ordering::Release);
+            self.cancelled.store(true, Ordering::Release);
             if let Ok(mut records) = previews().lock() {
                 if let Some(items) = records.get_mut(&self.dir) {
                     items.remove(&self.id);
@@ -191,12 +191,12 @@ fn inspection_slot(dir: &FsPath) -> Result<Arc<tokio::sync::OwnedSemaphorePermit
         .map_err(|_| ApiError(StatusCode::TOO_MANY_REQUESTS, "IMPORT_INSPECTION_BUSY"))
 }
 
-#[derive(Serialize)]
-struct ExportReady {
-    export_id: String,
-    bytes: u64,
-    entries: u64,
-    state: &'static str,
+#[derive(Clone, Serialize)]
+pub(crate) struct ExportReady {
+    pub(crate) export_id: String,
+    pub(crate) bytes: u64,
+    pub(crate) entries: u64,
+    pub(crate) state: &'static str,
 }
 
 #[derive(Serialize)]
@@ -453,7 +453,14 @@ fn import_dir(state: &AppState) -> Result<PathBuf, ApiError> {
 }
 /// Recover expired service staging even before the first administration visit.
 /// The source ZIP selected by a user is never part of this directory.
-pub fn initialize_staging(state:&AppState)->Result<(),ApiError>{let dir=import_dir(state)?;let mut records=previews().lock().map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"IMPORT_STORAGE"))?;cleanup_previews(&dir,&mut records);Ok(())}
+pub fn initialize_staging(state: &AppState) -> Result<(), ApiError> {
+    let dir = import_dir(state)?;
+    let mut records = previews()
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
+    cleanup_previews(&dir, &mut records);
+    Ok(())
+}
 
 fn previews() -> &'static Mutex<HashMap<PathBuf, HashMap<String, Preview>>> {
     PREVIEWS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -558,7 +565,7 @@ async fn stage_and_preview(
         dir: dir.clone(),
         id: id.clone(),
         kept: false,
-        cancelled:Arc::new(AtomicBool::new(false)),
+        cancelled: Arc::new(AtomicBool::new(false)),
     };
     {
         let mut records = previews()
@@ -630,12 +637,12 @@ async fn stage_and_preview(
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
     let inspect_id = id.clone();
     let inspect_permit = work.clone();
-    let cancelled=stage_guard.cancelled.clone();
+    let cancelled = stage_guard.cancelled.clone();
     let checked = tokio::task::spawn_blocking({
         let path = staged.clone();
         move || {
             let _permit = inspect_permit;
-            inspect_archive_cancellable(&path, &inspect_id,&cancelled)
+            inspect_archive_cancellable(&path, &inspect_id, &cancelled)
         }
     })
     .await
@@ -703,10 +710,20 @@ struct ArchiveSummary {
 }
 
 fn inspect_archive(path: &FsPath, preview_id: &str) -> Result<ArchiveSummary, ApiError> {
-    inspect_archive_cancellable(path,preview_id,&AtomicBool::new(false))
+    inspect_archive_cancellable(path, preview_id, &AtomicBool::new(false))
 }
-fn inspect_archive_cancellable(path:&FsPath,preview_id:&str,cancelled:&AtomicBool)->Result<ArchiveSummary,ApiError>{
-    let check_cancel=||if cancelled.load(Ordering::Acquire){Err(ApiError(StatusCode::REQUEST_TIMEOUT,"IMPORT_CANCELLED"))}else{Ok(())};
+fn inspect_archive_cancellable(
+    path: &FsPath,
+    preview_id: &str,
+    cancelled: &AtomicBool,
+) -> Result<ArchiveSummary, ApiError> {
+    let check_cancel = || {
+        if cancelled.load(Ordering::Acquire) {
+            Err(ApiError(StatusCode::REQUEST_TIMEOUT, "IMPORT_CANCELLED"))
+        } else {
+            Ok(())
+        }
+    };
     check_cancel()?;
     #[cfg(test)]
     if let Some(gate) = INSPECTION_GATES
@@ -886,39 +903,99 @@ fn read_zip_limited(
     Ok(bytes)
 }
 
-fn export_dir(state: &AppState) -> Result<PathBuf, ApiError> {
+pub(crate) fn export_dir(state: &AppState) -> Result<PathBuf, ApiError> {
     let path = state.config.data_dir.join("exports");
     fs::create_dir_all(&path)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
     Ok(path)
 }
 
-async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiError> {
-    let id = uuid::Uuid::new_v4().to_string();
+async fn create(
+    State(state): State<AppState>,
+) -> Result<(StatusCode, Json<ExportReady>), ApiError> {
+    crate::export_jobs::start(state).await
+}
+
+struct ExportFile {
+    file: fs::File,
+    dir: PathBuf,
+    maximum: u64,
+    cancelled: Arc<AtomicBool>,
+}
+impl Write for ExportFile {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
+        }
+        use std::io::Seek;
+        let position = self.file.stream_position()?;
+        if position.saturating_add(bytes.len() as u64) > self.maximum {
+            return Err(std::io::Error::from(std::io::ErrorKind::FileTooLarge));
+        }
+        let _reservation = reserve_disk(&self.dir, bytes.len() as u64)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::StorageFull))?;
+        self.file.write(bytes)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
+impl std::io::Seek for ExportFile {
+    fn seek(&mut self, position: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.file.seek(position)
+    }
+}
+fn export_file(
+    path: &FsPath,
+    maximum: u64,
+    cancelled: &Arc<AtomicBool>,
+) -> Result<ExportFile, ApiError> {
+    let mut options = fs::OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    Ok(ExportFile {
+        file: options
+            .open(path)
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?,
+        dir: path.parent().unwrap().to_path_buf(),
+        maximum,
+        cancelled: cancelled.clone(),
+    })
+}
+pub(crate) fn build_export(
+    state: &AppState,
+    id: String,
+    snapshot: &FsPath,
+    cancelled: Arc<AtomicBool>,
+) -> Result<ExportReady, ApiError> {
     let dir = export_dir(&state)?;
     let partial = dir.join(format!("{id}.partial"));
     let ready = dir.join(format!("{id}.zip"));
     let data_stage = dir.join(format!("{id}.data.partial"));
     let poster_root = state.config.data_dir.join("posters");
-    let writer_path = data_stage.clone();
-    let export_id = id.clone();
-    let writer_poster_root = poster_root.clone();
-    let posters = state
-        .database
-        .call(move |store| {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&writer_path)
-                .map_err(|_| "Export de staging inaccessible.".to_string())?;
-            let posters = store.write_archive_json(&mut file, &export_id, &writer_poster_root)?;
-            file.flush()
-                .map_err(|_| "Export de staging inaccessible.")?;
-            file.sync_all()
-                .map_err(|_| "Export de staging inaccessible.")?;
-            Ok(posters)
-        })
-        .await?;
+    let _partial_guard = PartialFile(Some(partial.clone()));
+    let _data_guard = PartialFile(Some(data_stage.clone()));
+    let ready_guard = PartialFile(Some(ready.clone()));
+    let mut store = chill_domain::Store::open_export_snapshot(snapshot)
+        .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "EXPORT_SNAPSHOT"))?;
+    let mut file = export_file(&data_stage, MAX_DATA as u64, &cancelled)?;
+    let posters = store
+        .write_archive_json(&mut file, &id, &poster_root)
+        .map_err(|_| {
+            ApiError(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "EXPORT_TOO_LARGE_OR_STORAGE",
+            )
+        })?;
+    file.flush()
+        .and_then(|_| file.file.sync_all())
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
+    drop(file);
+    drop(store);
     let data_size = fs::metadata(&data_stage)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?
         .len();
@@ -927,17 +1004,16 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
         return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "EXPORT_TOO_LARGE"));
     }
     let result = (|| -> Result<(u64, u64), ApiError> {
-        let file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&partial)
-            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
+        let file = export_file(&partial, MAX_COMPRESSED, &cancelled)?;
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
         let mut checksums =
             vec![serde_json::json!({"reference":"data.json","sha256":hash_file(&data_stage)?})];
         let mut poster_hashes = BTreeMap::new();
         for poster in &posters {
+            if cancelled.load(Ordering::Acquire) {
+                return Err(ApiError(StatusCode::CONFLICT, "EXPORT_CANCELLED"));
+            }
             let source = poster_root.join(&poster.relative);
             let (mut source_file, expected) =
                 crate::media_stream::open_indexed(&poster_root, &source)
@@ -1016,9 +1092,11 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
         file.flush()
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
-        file.sync_all()
+        file.file
+            .sync_all()
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
         let size = file
+            .file
             .metadata()
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?
             .len();
@@ -1029,18 +1107,22 @@ async fn create(State(state): State<AppState>) -> Result<Json<ExportReady>, ApiE
     })();
     match result {
         Ok((bytes, entries)) => {
+            if cancelled.load(Ordering::Acquire) {
+                return Err(ApiError(StatusCode::CONFLICT, "EXPORT_CANCELLED"));
+            }
             fs::rename(&partial, &ready)
                 .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
             fs::File::open(&dir)
                 .and_then(|directory| directory.sync_all())
                 .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "EXPORT_STORAGE"))?;
             let _ = fs::remove_file(&data_stage);
-            Ok(Json(ExportReady {
+            ready_guard.keep();
+            Ok(ExportReady {
                 export_id: id,
                 bytes,
                 entries,
                 state: "ready",
-            }))
+            })
         }
         Err(error) => {
             let _ = fs::remove_file(&partial);
@@ -1091,6 +1173,22 @@ mod tests {
         sync::{Arc, Mutex},
     };
     use tower::ServiceExt;
+    #[test]
+    fn export_file_bounds_live_disk_and_cancellation_before_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partial");
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let mut file = export_file(&path, 4, &cancelled).unwrap();
+        file.write_all(b"1234").unwrap();
+        assert!(file.write_all(b"5").is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"1234");
+        cancelled.store(true, Ordering::Release);
+        assert!(file.write(b"x").is_err());
+        let guard = PartialFile(Some(path.clone()));
+        drop(file);
+        drop(guard);
+        assert!(!path.exists());
+    }
     #[test]
     fn staging_disk_accounts_orphans_plans_and_inflight_reservations_fail_closed() {
         let dir = tempfile::tempdir().unwrap();
@@ -1293,10 +1391,37 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let ready: serde_json::Value =
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let started: serde_json::Value =
             serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
                 .unwrap();
+        let export_id = started["export_id"].as_str().unwrap();
+        let export_deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let ready = loop {
+            assert!(
+                std::time::Instant::now() < export_deadline,
+                "background export timeout"
+            );
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/api/v1/admin/exports/{export_id}/status"))
+                        .header("host", "localhost:8443")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let status: serde_json::Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            if status["state"] != "building" {
+                break status;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        };
         assert_eq!(ready["state"], "ready");
         let id = ready["export_id"].as_str().unwrap();
         let request = Request::builder()

@@ -1,6 +1,7 @@
 pub mod administration;
 pub mod catalog_browser;
 pub mod import;
+pub mod snapshot;
 pub mod store;
 pub mod types;
 pub use store::Store;

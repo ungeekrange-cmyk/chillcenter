@@ -45,7 +45,12 @@ async fn run() -> Result<(), String> {
         config: Arc::new(config),
     };
     let renewal_state = state.clone();
-    if chill_server::archive_api::initialize_staging(&state).is_err(){eprintln!("IMPORT_STAGING_UNAVAILABLE");}
+    if chill_server::archive_api::initialize_staging(&state).is_err() {
+        eprintln!("IMPORT_STAGING_UNAVAILABLE");
+    }
+    if chill_server::export_jobs::initialize(&state).is_err() {
+        eprintln!("EXPORT_STAGING_UNAVAILABLE");
+    }
     let renewal_tls = rustls.clone();
     tokio::spawn(async move {
         let mut daily = tokio::time::interval(std::time::Duration::from_secs(60));
