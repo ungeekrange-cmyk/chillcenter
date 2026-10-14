@@ -2,6 +2,18 @@
 // Catalogue and personal collections share the allowlisted Rust bridge. No URLs or
 // filesystem paths from media metadata are evaluated by this interface.
 let catalogProfile=null,collectionView=null,collectionKind="playlist",detailView=null;
+let collectionFilter="",collectionDetails=new Map(),collectionLoaded=0;
+// Reordering a filtered playlist must still be a permutation of the canonical
+// membership. Swap the two visible positions in that complete list so hidden
+// members remain present and keep their relative order.
+function playlistOrderForVisibleMove(mediaIds,visibleIds,mediaId,delta){
+  const fromVisible=visibleIds.indexOf(mediaId),toVisible=fromVisible+delta;
+  if(!Array.isArray(mediaIds)||!Array.isArray(visibleIds)||!Number.isInteger(delta)||toVisible<0||toVisible>=visibleIds.length)return null;
+  const targetId=visibleIds[toVisible],from=mediaIds.indexOf(mediaId),to=mediaIds.indexOf(targetId);
+  if(from<0||to<0||new Set(mediaIds).size!==mediaIds.length||new Set(visibleIds).size!==visibleIds.length||visibleIds.some(id=>!mediaIds.includes(id)))return null;
+  const order=[...mediaIds];[order[from],order[to]]=[order[to],order[from]];return order;
+}
+if(typeof module!=="undefined")module.exports={playlistOrderForVisibleMove};
 function closeCatalogDialogs(){for(const id of ["media-dialog","collections-dialog","collection-dialog","picker-dialog"])if($(id).open)$(id).close();collectionView=null;detailView=null;}
 window.catalogProfileChanged=()=>{if(catalogProfile!==state.profile_id){closeCatalogDialogs();if(typeof hidePlayer==="function")hidePlayer();catalogProfile=state.profile_id;}};
 function button(text,fn,cls="secondary"){const b=node("button",text,cls);b.type="button";b.onclick=fn;return b;}
@@ -41,6 +53,7 @@ $("metadata-form").onsubmit=async e=>{
 async function openSeries(name){
   const result=await run({action:"series",name},false);if(!result)return;
   collectionKind="series";collectionView={id:name,name,media_ids:result.episodes.map(m=>m.id),episodes:result.episodes};
+  collectionFilter="";collectionDetails=new Map();collectionLoaded=0;ensureCollectionFilter("series");
   $("collection-title").textContent=name;$("collection-counts").textContent=result.counters.watched+" vus · "+result.counters.unwatched+" non vus";
   $("collection-admin").hidden=true;$("collection-add").hidden=true;$("collection-members").replaceChildren();
   let season=undefined;for(const m of result.episodes){if(m.season!==season){season=m.season;$("collection-members").append(node("h3",season===null?"Saison inconnue":"Saison "+season));}appendCollectionMember(m);}
@@ -62,25 +75,41 @@ async function openCollection(id,kind="playlist"){
   const r=await run({action:kind==="playlist"?"playlist":"saga",id},false);if(!r)return;collectionKind=kind;collectionView=r.playlist||r.saga;
   $("collection-title").textContent=collectionView.name;$("collection-counts").textContent=collectionView.media_ids.length+" vidéos";
   $("collection-name").value=collectionView.name;$("collection-admin").hidden=false;$("collection-add").hidden=false;$("collection-members").replaceChildren();
+  collectionFilter="";collectionDetails=new Map();collectionLoaded=0;ensureCollectionFilter(kind);
   // Fetch fixed pages of one item at a time, bounded by the collection limit; never
   // load media files or make the webview a direct server HTTP client.
   await collectionPage(id,0);
   $("collection-dialog").showModal();
 }
+function ensureCollectionFilter(kind){
+  let form=$("collection-filter");
+  if(kind!=="playlist"){if(form)form.remove();return;}
+  if(!form){form=document.createElement("form");form.id="collection-filter";form.className="inline";
+    const input=document.createElement("input");input.type="search";input.name="q";input.placeholder="Filtrer les titres";input.setAttribute("aria-label","Filtrer les titres de la playlist");input.maxLength=500;
+    form.append(input);$("collection-members").before(form);
+    form.onsubmit=e=>e.preventDefault();input.oninput=()=>{collectionFilter=input.value.trim().toLocaleLowerCase();renderCollectionMembers();};
+  }else form.elements.q.value="";
+}
 async function collectionPage(id,start){
   const view=collectionView,kind=collectionKind;
   if(!view||view.id!==id)return;
   const ids=view.media_ids.slice(start,start+50);
-  for(const media_id of ids){const d=await run({action:"media_detail",media_id},false);if(collectionView!==view||kind!==collectionKind)return;if(d)appendCollectionMember(d.media);}
-  if(start+50<view.media_ids.length){const more=button("Afficher les 50 vidéos suivantes",async()=>{more.remove();await collectionPage(id,start+50);});$("collection-members").append(more);}
+  for(const media_id of ids){const d=await run({action:"media_detail",media_id},false);if(collectionView!==view||kind!==collectionKind)return;if(d)collectionDetails.set(media_id,d.media);}
+  collectionLoaded=Math.max(collectionLoaded,start+ids.length);renderCollectionMembers();
 }
-function appendCollectionMember(m){
+function visibleCollectionIds(){return collectionView.media_ids.filter(id=>{const m=collectionDetails.get(id);return m&&(!collectionFilter||m.title.toLocaleLowerCase().includes(collectionFilter));});}
+function renderCollectionMembers(){
+  if(!collectionView)return;$("collection-members").replaceChildren();const visibleIds=visibleCollectionIds();
+  for(const id of visibleIds)appendCollectionMember(collectionDetails.get(id),visibleIds);
+  if(collectionLoaded<collectionView.media_ids.length){const more=button("Afficher les 50 vidéos suivantes",async()=>await collectionPage(collectionView.id,collectionLoaded));$("collection-members").append(more);}
+}
+function appendCollectionMember(m,visibleIds){
   const row=node("article",undefined,"collection-row");row.append(node("span",[m.season!==null?"S"+m.season:null,m.episode!==null?"E"+m.episode:null,m.title,m.watched?"Vu ✓":null,!m.available?"Indisponible":null].filter(Boolean).join(" · ")));
   const context={kind:collectionKind,id:collectionView.id};const play=button("Lecture",()=>{$("collection-dialog").close();window.chillPlay(m.id,context);});play.disabled=!m.available;row.append(play);
   if(collectionKind!=="series"){
     const ids=collectionView.media_ids,index=ids.indexOf(m.id);
-    for(const [text,delta] of [["↑",-1],["↓",1]]){const b=button(text,async()=>{const order=[...ids],to=index+delta;[order[index],order[to]]=[order[to],order[index]];
-      if(await run({action:collectionKind==="playlist"?"reorder_playlist":"reorder_saga",id:collectionView.id,expected_revision:collectionView.revision,expected_order:ids,media_ids:order},false))await openCollection(collectionView.id,collectionKind);});b.disabled=index+delta<0||index+delta>=ids.length;row.append(b);}
+    for(const [text,delta] of [["↑",-1],["↓",1]]){const order=collectionKind==="playlist"?playlistOrderForVisibleMove(ids,visibleIds,m.id,delta):index+delta<0||index+delta>=ids.length?null:(()=>{const next=[...ids];[next[index],next[index+delta]]=[next[index+delta],next[index]];return next;})();const b=button(text,async()=>{
+      if(order&&await run({action:collectionKind==="playlist"?"reorder_playlist":"reorder_saga",id:collectionView.id,expected_revision:collectionView.revision,expected_order:ids,media_ids:order},false))await openCollection(collectionView.id,collectionKind);});b.disabled=!order;row.append(b);}
     row.append(button("Retirer",async()=>{if(await run({action:collectionKind==="playlist"?"remove_playlist_member":"remove_saga_member",id:collectionView.id,media_id:m.id,expected_revision:collectionView.revision},false))await openCollection(collectionView.id,collectionKind);}));
   }
   $("collection-members").append(row);
