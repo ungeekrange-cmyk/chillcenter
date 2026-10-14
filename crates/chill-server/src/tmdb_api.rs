@@ -15,6 +15,8 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
+#[path = "tmdb_worker.rs"]
+mod worker;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -46,7 +48,7 @@ pub fn routes() -> Router<AppState> {
 
 const CREDENTIAL_FILE: &str = "tmdb-token";
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum CredentialType {
     ApiKey,
@@ -62,7 +64,7 @@ struct StoredCredential {
     auto_profile_id: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct TmdbStatus {
     configured: bool,
     credential_type: Option<CredentialType>,
@@ -88,17 +90,37 @@ fn stored_credential(state: &AppState) -> Result<Option<StoredCredential>, ApiEr
     }
 }
 fn configured_token(state: &AppState) -> Result<(String, &'static str), ApiError> {
-    if let Some(stored) = stored_credential(state)? {
-        return Ok((stored.credential, "stored"));
+    resolve_credential(
+        stored_credential(state)?,
+        std::env::var("CHILL_TMDB_TOKEN").ok(),
+    )
+}
+fn resolve_credential(
+    stored: Option<StoredCredential>,
+    environment: Option<String>,
+) -> Result<(String, &'static str), ApiError> {
+    if let Some(stored) = stored {
+        let credential = match stored.credential_type {
+            CredentialType::ApiKey => stored.credential,
+            CredentialType::Bearer => format!("Bearer {}", stored.credential),
+        };
+        return Ok((credential, "stored"));
     }
-    std::env::var("CHILL_TMDB_TOKEN")
-        .ok()
+    environment
         .filter(|v| !v.trim().is_empty())
         .map(|token| (token, "environment"))
         .ok_or(ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
             "TMDB_NOT_CONFIGURED",
         ))
+}
+fn environment_kind(value: &str) -> CredentialType {
+    let value = value.trim();
+    if value.len() == 32 && value.bytes().all(|b| b.is_ascii_hexdigit()) {
+        CredentialType::ApiKey
+    } else {
+        CredentialType::Bearer
+    }
 }
 fn provider(state: &AppState) -> Result<chill_catalog::metadata::Tmdb, ApiError> {
     chill_catalog::metadata::Tmdb::new(configured_token(state)?.0)
@@ -115,6 +137,7 @@ fn unavailable(_: String) -> ApiError {
 pub struct TmdbJobService {
     jobs: Arc<Mutex<BTreeMap<String, TmdbJob>>>,
     state_path: Arc<Mutex<Option<PathBuf>>>,
+    worker_gate: Arc<tokio::sync::Mutex<()>>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -143,11 +166,41 @@ pub struct TmdbJob {
     #[serde(skip)]
     cancelled: bool,
 }
+/// Compact polling DTO. Internal profile/media identifiers remain on the
+/// server for recovery, rather than being resent with every status refresh.
+#[derive(Serialize)]
+pub struct TmdbJobView {
+    job_id: String,
+    status: JobStatus,
+    total: usize,
+    processed: usize,
+    matched: usize,
+    ambiguous: usize,
+    skipped: usize,
+    failed: usize,
+    retryable: usize,
+}
+impl TmdbJob {
+    fn view(&self) -> TmdbJobView {
+        TmdbJobView {
+            job_id: self.job_id.clone(),
+            status: self.status.clone(),
+            total: self.total,
+            processed: self.processed,
+            matched: self.matched,
+            ambiguous: self.ambiguous,
+            skipped: self.skipped,
+            failed: self.failed,
+            retryable: self.retryable,
+        }
+    }
+}
 impl Default for TmdbJobService {
     fn default() -> Self {
         Self {
             jobs: Arc::new(Mutex::new(BTreeMap::new())),
             state_path: Arc::new(Mutex::new(None)),
+            worker_gate: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 }
@@ -207,19 +260,37 @@ impl TmdbJobService {
             let job = jobs
                 .get_mut(id)
                 .ok_or(ApiError(StatusCode::NOT_FOUND, "TMDB_JOB_NOT_FOUND"))?;
-            job.cancelled = true;
-            job.status = JobStatus::Cancelled;
+            if !matches!(job.status, JobStatus::Completed | JobStatus::Failed) {
+                job.cancelled = true;
+                job.status = JobStatus::Cancelled;
+            }
             job.clone()
         };
         self.persist()
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "TMDB_JOB_UNAVAILABLE"))?;
         Ok(out)
     }
-    fn create(&self, profile_id: String, media_ids: Vec<String>) -> Result<TmdbJob, ApiError> {
+    fn cancel_all(&self) {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            for job in jobs.values_mut() {
+                if matches!(
+                    job.status,
+                    JobStatus::Queued | JobStatus::Running | JobStatus::PausedPlayback
+                ) {
+                    job.cancelled = true;
+                    job.status = JobStatus::Cancelled;
+                }
+            }
+        }
+        let _ = self.persist();
+    }
+    fn create(&self, profile_id: String, mut media_ids: Vec<String>) -> Result<TmdbJob, ApiError> {
+        let mut seen = std::collections::BTreeSet::new();
+        media_ids.retain(|id| seen.insert(id.clone()));
         let job = TmdbJob {
             job_id: uuid::Uuid::new_v4().to_string(),
             status: JobStatus::Queued,
-            total: 0,
+            total: media_ids.len(),
             processed: 0,
             matched: 0,
             ambiguous: 0,
@@ -327,93 +398,24 @@ fn exact_candidate(
     (matches.len() == 1).then(|| matches.into_iter().next().unwrap())
 }
 async fn run_job(state: AppState, service: Arc<TmdbJobService>, id: String) {
-    let job = match service.status(&id) {
-        Some(j) => j,
-        None => return,
-    };
-    for media_id in job.media_ids.clone() {
-        while state.playback.fingerprint_should_pause() {
-            if let Ok(mut jobs) = service.jobs.lock() {
-                if let Some(j) = jobs.get_mut(&id) {
-                    j.status = JobStatus::PausedPlayback;
-                }
-            }
-            let _ = service.persist();
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        }
-        let cancelled = service.status(&id).is_none_or(|j| j.cancelled);
-        if cancelled {
-            return;
-        }
-        if let Ok(mut jobs) = service.jobs.lock() {
-            if let Some(j) = jobs.get_mut(&id) {
-                j.status = JobStatus::Running;
-            }
-        }
-        let profile = job.profile_id.clone();
-        let snapshot_id = media_id.clone();
-        let item = state
-            .database
-            .call(move |s| {
-                let revision = s.media_revision(&snapshot_id)?;
-                s.provider_snapshot(&profile, &snapshot_id, revision)
-            })
-            .await;
-        let Ok(snapshot) = item else {
-            bump(&service, &id, |j| j.skipped += 1);
-            continue;
-        };
-        if snapshot.media.tmdb_id.is_some()
-            || snapshot.media.poster_custom
-            || snapshot.media.series_manual
-        {
-            bump(&service, &id, |j| j.skipped += 1);
-            continue;
-        }
-        let candidates = match provider(&state).and_then(|p| Ok(p)).and_then(|p| Ok(p)) {
-            Ok(p) => p.candidates(&snapshot.media, "").await,
-            Err(_) => Err("x".into()),
-        };
-        match candidates
-            .ok()
-            .and_then(|v| exact_candidate(&snapshot.media, v))
-        {
-            Some(candidate) => {
-                let result = apply(
-                    state.clone(),
-                    job.profile_id.clone(),
-                    media_id,
-                    snapshot.revision,
-                    candidate.id,
-                    candidate.kind,
-                    Scope::Media,
-                    false,
-                )
-                .await;
-                bump(&service, &id, |j| {
-                    j.processed += 1;
-                    if result.is_ok() {
-                        j.matched += 1
-                    } else {
-                        j.failed += 1;
-                        j.retryable += 1
-                    }
-                });
-            }
-            None => bump(&service, &id, |j| {
-                j.processed += 1;
-                j.ambiguous += 1
-            }),
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    }
-    bump(&service, &id, |j| j.status = JobStatus::Completed);
+    let playback = state.playback.clone();
+    worker::run(
+        state,
+        service,
+        id,
+        None,
+        Arc::new(move || playback.fingerprint_should_pause()),
+        worker::Policy::default(),
+    )
+    .await;
 }
 fn bump(service: &TmdbJobService, id: &str, update: impl FnOnce(&mut TmdbJob)) {
-    if let Ok(mut jobs) = service.jobs.lock() {
-        if let Some(job) = jobs.get_mut(id) {
-            update(job)
-        }
+    if let Ok(mut jobs) = service.jobs.lock()
+        && let Some(job) = jobs.get_mut(id)
+        && !job.cancelled
+        && !matches!(job.status, JobStatus::Cancelled)
+    {
+        update(job)
     }
     let _ = service.persist();
 }
@@ -476,11 +478,32 @@ mod job_tests {
                 .contains("credential")
         );
     }
+    #[test]
+    fn polling_dto_stays_compact_while_recovery_retains_full_worklist() {
+        let service = TmdbJobService::default();
+        let ids = (0..2496)
+            .map(|_| uuid::Uuid::new_v4().to_string())
+            .collect::<Vec<_>>();
+        let job = service.create("synthetic-profile".into(), ids).unwrap();
+        let dto = serde_json::to_string(&job.view()).unwrap();
+        assert!(dto.len() < 500);
+        assert!(!dto.contains("media_ids"));
+        assert!(!dto.contains("profile_id"));
+        assert!(!dto.contains("synthetic-profile"));
+        assert_eq!(
+            serde_json::to_value(&job).unwrap()["media_ids"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2496
+        );
+        assert_eq!(serde_json::to_value(job.view()).unwrap()["retryable"], 0);
+    }
 }
 async fn start_job(
     State(state): State<AppState>,
     Json(body): Json<StartJob>,
-) -> Result<(StatusCode, Json<TmdbJob>), ApiError> {
+) -> Result<(StatusCode, Json<TmdbJobView>), ApiError> {
     if body.media_ids.as_ref().is_some_and(|ids| ids.len() > 3000) {
         return Err(ApiError(
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -507,28 +530,28 @@ async fn start_job(
     tokio::spawn(async move {
         run_job(worker_state, worker, id).await;
     });
-    Ok((StatusCode::ACCEPTED, Json(job)))
+    Ok((StatusCode::ACCEPTED, Json(job.view())))
 }
 async fn job_status(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<TmdbJob>, ApiError> {
+) -> Result<Json<TmdbJobView>, ApiError> {
     state
         .tmdb_jobs
         .status(&id)
-        .map(Json)
+        .map(|job| Json(job.view()))
         .ok_or(ApiError(StatusCode::NOT_FOUND, "TMDB_JOB_NOT_FOUND"))
 }
 async fn cancel_job(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<TmdbJob>, ApiError> {
-    state.tmdb_jobs.cancel(&id).map(Json)
+) -> Result<Json<TmdbJobView>, ApiError> {
+    state.tmdb_jobs.cancel(&id).map(|job| Json(job.view()))
 }
 async fn retry_job(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<(StatusCode, Json<TmdbJob>), ApiError> {
+) -> Result<(StatusCode, Json<TmdbJobView>), ApiError> {
     let prior = state
         .tmdb_jobs
         .status(&id)
@@ -543,7 +566,7 @@ async fn retry_job(
     tokio::spawn(async move {
         run_job(worker_state, worker, job_id).await;
     });
-    Ok((StatusCode::ACCEPTED, Json(job)))
+    Ok((StatusCode::ACCEPTED, Json(job.view())))
 }
 
 async fn status(State(state): State<AppState>) -> Result<Json<TmdbStatus>, ApiError> {
@@ -560,7 +583,9 @@ async fn status(State(state): State<AppState>) -> Result<Json<TmdbStatus>, ApiEr
         {
             TmdbStatus {
                 configured: true,
-                credential_type: Some(CredentialType::Bearer),
+                credential_type: std::env::var("CHILL_TMDB_TOKEN")
+                    .ok()
+                    .map(|value| environment_kind(&value)),
                 source: Some("environment"),
                 auto_enrich: false,
             }
@@ -587,22 +612,21 @@ async fn configure(
     State(state): State<AppState>,
     Json(body): Json<ConfigureTmdb>,
 ) -> Result<Json<TmdbStatus>, ApiError> {
+    let input = body.credential.trim();
+    let bearer = input.strip_prefix("Bearer ").unwrap_or(input);
     let credential = match body.credential_type {
         CredentialType::ApiKey
-            if body.credential.len() == 32
-                && body.credential.bytes().all(|b| b.is_ascii_hexdigit()) =>
+            if input.len() == 32 && input.bytes().all(|b| b.is_ascii_hexdigit()) =>
         {
-            body.credential.trim().to_owned()
+            input.to_owned()
         }
         CredentialType::Bearer
-            if (20..=2048).contains(&body.credential.trim().len())
-                && body
-                    .credential
-                    .trim()
+            if (20..=2048).contains(&bearer.len())
+                && bearer
                     .bytes()
                     .all(|b| b.is_ascii_graphic() && !b.is_ascii_whitespace()) =>
         {
-            body.credential.trim_start_matches("Bearer ").to_owned()
+            bearer.to_owned()
         }
         _ => return Err(ApiError(StatusCode::BAD_REQUEST, "TMDB_CREDENTIAL_INVALID")),
     };
@@ -645,6 +669,7 @@ async fn configure(
                 "TMDB_CREDENTIAL_UNAVAILABLE",
             )
         })?;
+    state.tmdb_jobs.cancel_all();
     Ok(Json(TmdbStatus {
         configured: true,
         credential_type: Some(stored.credential_type),
@@ -653,6 +678,7 @@ async fn configure(
     }))
 }
 async fn clear(State(state): State<AppState>) -> Result<Json<TmdbStatus>, ApiError> {
+    state.tmdb_jobs.cancel_all();
     let path = state.config.data_dir.join(CREDENTIAL_FILE);
     match std::fs::remove_file(path) {
         Ok(()) => {}
@@ -664,12 +690,23 @@ async fn clear(State(state): State<AppState>) -> Result<Json<TmdbStatus>, ApiErr
             ));
         }
     }
+    // Durably remove the directory entry just as atomic_private_write durably
+    // installs it; a successful response must not precede this fsync.
+    std::fs::File::open(&state.config.data_dir)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| {
+            ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "TMDB_CREDENTIAL_UNAVAILABLE",
+            )
+        })?;
     let environment = std::env::var("CHILL_TMDB_TOKEN")
         .ok()
         .is_some_and(|v| !v.trim().is_empty());
     Ok(Json(TmdbStatus {
         configured: environment,
-        credential_type: environment.then_some(CredentialType::Bearer),
+        credential_type: environment
+            .then(|| environment_kind(&std::env::var("CHILL_TMDB_TOKEN").unwrap_or_default())),
         source: environment.then_some("environment"),
         auto_enrich: false,
     }))

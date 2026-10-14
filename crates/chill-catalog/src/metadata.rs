@@ -81,7 +81,46 @@ enum Credential {
     Bearer(String),
     ApiKey(String),
 }
-async fn body_limited(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>, String> {
+/// Safe failure class for bounded background retries. No request URL, response
+/// body or credential is retained in an error.
+#[derive(Debug, Clone)]
+pub struct ProviderFailure {
+    pub retryable: bool,
+    message: String,
+}
+impl ProviderFailure {
+    fn transient(message: &str) -> Self {
+        Self {
+            retryable: true,
+            message: message.into(),
+        }
+    }
+}
+impl From<&str> for ProviderFailure {
+    fn from(message: &str) -> Self {
+        Self {
+            retryable: false,
+            message: message.into(),
+        }
+    }
+}
+impl From<String> for ProviderFailure {
+    fn from(message: String) -> Self {
+        Self {
+            retryable: false,
+            message,
+        }
+    }
+}
+impl From<ProviderFailure> for String {
+    fn from(error: ProviderFailure) -> Self {
+        error.message
+    }
+}
+async fn body_limited(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> Result<Vec<u8>, ProviderFailure> {
     if response.content_length().is_some_and(|n| n > limit as u64) {
         return Err("Fiche TMDB trop volumineuse.".into());
     }
@@ -89,7 +128,7 @@ async fn body_limited(mut response: reqwest::Response, limit: usize) -> Result<V
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|_| "Réponse TMDB interrompue.")?
+        .map_err(|_| ProviderFailure::transient("Réponse TMDB interrompue."))?
     {
         if bytes.len().saturating_add(chunk.len()) > limit {
             return Err("Réponse TMDB trop volumineuse.".into());
@@ -192,6 +231,15 @@ impl Tmdb {
     }
 
     async fn get(&self, endpoint: &str, query: &[(&str, &str)]) -> Result<Value, String> {
+        self.get_checked(endpoint, query)
+            .await
+            .map_err(String::from)
+    }
+    async fn get_checked(
+        &self,
+        endpoint: &str,
+        query: &[(&str, &str)],
+    ) -> Result<Value, ProviderFailure> {
         let request = self
             .client
             .get(format!("https://api.themoviedb.org/3/{endpoint}"));
@@ -204,20 +252,36 @@ impl Tmdb {
             .query(query)
             .send()
             .await
-            .map_err(|_| "TMDB inaccessible. Les métadonnées précédentes sont conservées.")?;
+            .map_err(|_| {
+                ProviderFailure::transient(
+                    "TMDB inaccessible. Les métadonnées précédentes sont conservées.",
+                )
+            })?;
         if response.status().as_u16() == 401 {
             return Err(
                 "Jeton TMDB refusé. Vérifiez le jeton de lecture API dans les réglages.".into(),
             );
         }
         if !response.status().is_success() {
-            return Err("TMDB n’a pas pu répondre. Réessayez plus tard.".into());
+            return Err(http_failure(
+                response.status().as_u16(),
+                "TMDB n’a pas pu répondre. Réessayez plus tard.",
+            ));
         }
         serde_json::from_slice(&body_limited(response, 2 * 1024 * 1024).await?)
-            .map_err(|_| "Réponse TMDB invalide.".into())
+            .map_err(|_| ProviderFailure::from("Réponse TMDB invalide."))
     }
 
     pub async fn candidates(&self, media: &Media, query: &str) -> Result<Vec<Candidate>, String> {
+        self.candidates_for_job(media, query)
+            .await
+            .map_err(String::from)
+    }
+    pub async fn candidates_for_job(
+        &self,
+        media: &Media,
+        query: &str,
+    ) -> Result<Vec<Candidate>, ProviderFailure> {
         let kind = if media.category == "serie" {
             "tv"
         } else {
@@ -228,7 +292,7 @@ impl Tmdb {
             return Err("Recherche TMDB trop longue.".into());
         }
         let results = self
-            .get(
+            .get_checked(
                 &format!("search/{kind}"),
                 &[("query", query), ("include_adult", "false")],
             )
@@ -303,6 +367,15 @@ impl Tmdb {
         poster_path: &str,
         cache: &Path,
     ) -> Result<String, String> {
+        self.download_artwork_checked(poster_path, cache)
+            .await
+            .map_err(String::from)
+    }
+    async fn download_artwork_checked(
+        &self,
+        poster_path: &str,
+        cache: &Path,
+    ) -> Result<String, ProviderFailure> {
         if !image_path_valid(poster_path) {
             return Err("Image TMDB invalide.".into());
         }
@@ -311,12 +384,19 @@ impl Tmdb {
             .get(format!("https://image.tmdb.org/t/p/w342{poster_path}"))
             .send()
             .await
-            .map_err(|_| "Image TMDB inaccessible. L’image précédente est conservée.")?;
+            .map_err(|_| {
+                ProviderFailure::transient(
+                    "Image TMDB inaccessible. L’image précédente est conservée.",
+                )
+            })?;
         if !response.status().is_success() {
-            return Err("Image TMDB indisponible.".into());
+            return Err(http_failure(
+                response.status().as_u16(),
+                "Image TMDB indisponible.",
+            ));
         }
         let bytes = body_limited(response, 8 * 1024 * 1024).await?;
-        crate::poster::store(&bytes, cache)
+        crate::poster::store(&bytes, cache).map_err(ProviderFailure::from)
     }
 
     /// Fetch a provider poster without refreshing any metadata.  The fixed
@@ -340,11 +420,32 @@ impl Tmdb {
 
     pub async fn enrich(
         &self,
-        mut media: Media,
+        media: Media,
         id: i64,
         kind: &str,
         cache: &Path,
     ) -> Result<Media, String> {
+        self.enrich_checked(media, id, kind, cache, false)
+            .await
+            .map_err(String::from)
+    }
+    pub async fn enrich_for_job(
+        &self,
+        media: Media,
+        id: i64,
+        kind: &str,
+        cache: &Path,
+    ) -> Result<Media, ProviderFailure> {
+        self.enrich_checked(media, id, kind, cache, true).await
+    }
+    async fn enrich_checked(
+        &self,
+        mut media: Media,
+        id: i64,
+        kind: &str,
+        cache: &Path,
+        strict_artwork: bool,
+    ) -> Result<Media, ProviderFailure> {
         if id <= 0 || !["movie", "tv"].contains(&kind) {
             return Err("Identifiant TMDB invalide.".into());
         }
@@ -352,7 +453,7 @@ impl Tmdb {
             return Err("Cette correspondance ne convient pas à la catégorie de la vidéo.".into());
         }
         let details = self
-            .get(
+            .get_checked(
                 &format!("{kind}/{id}"),
                 &[("append_to_response", "credits")],
             )
@@ -393,7 +494,7 @@ impl Tmdb {
         {
             // An unavailable episode does not discard valid series metadata.
             if let Ok(ep) = self
-                .get(
+                .get_checked(
                     &format!("tv/{id}/season/{season}/episode/{episode}"),
                     &[("append_to_response", "credits")],
                 )
@@ -417,8 +518,10 @@ impl Tmdb {
         {
             // A changed association must not keep an unrelated old TMDB poster.
             // Only TMDB's fixed image host; no URL or filesystem path supplied by AI.
-            if let Ok(poster) = self.download_artwork(poster_path, cache).await {
-                media.poster = Some(poster);
+            match self.download_artwork_checked(poster_path, cache).await {
+                Ok(poster) => media.poster = Some(poster),
+                Err(error) if strict_artwork => return Err(error),
+                Err(_) => {}
             }
         }
         Ok(media)
@@ -452,6 +555,14 @@ impl Tmdb {
     }
 }
 
+fn http_failure(status: u16, message: &str) -> ProviderFailure {
+    if status == 408 || status == 429 || (500..=599).contains(&status) {
+        ProviderFailure::transient(message)
+    } else {
+        ProviderFailure::from(message)
+    }
+}
+
 fn valid_v3_key(value: &str) -> bool {
     value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
@@ -466,6 +577,16 @@ fn valid_bearer(value: &str) -> bool {
 #[cfg(test)]
 mod credential_tests {
     use super::*;
+    #[test]
+    fn job_retry_classes_follow_http_status_without_retaining_response_details() {
+        for status in [408, 429, 500, 503] {
+            assert!(http_failure(status, "safe").retryable);
+        }
+        for status in [400, 401, 403, 404, 413] {
+            assert!(!http_failure(status, "safe").retryable);
+        }
+        assert!(!ProviderFailure::from("Invalid provider payload").retryable);
+    }
 
     #[test]
     fn accepts_explicit_tmdb_credential_shapes_without_retaining_the_input() {
