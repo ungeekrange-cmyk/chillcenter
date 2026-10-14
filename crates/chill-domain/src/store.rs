@@ -97,6 +97,7 @@ impl Store {
              CREATE TRIGGER IF NOT EXISTS cc_common_media_i AFTER INSERT ON media BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_common_media_u AFTER UPDATE ON media BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_common_media_d AFTER DELETE ON media BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TABLE IF NOT EXISTS cc_personal_epoch (profile_id TEXT PRIMARY KEY REFERENCES cc_profiles(id) ON DELETE CASCADE, revision INTEGER NOT NULL DEFAULT 0);
              CREATE TABLE IF NOT EXISTS cc_profiles (
                 id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 revision INTEGER NOT NULL DEFAULT 1
@@ -164,6 +165,43 @@ impl Store {
              CREATE TRIGGER IF NOT EXISTS cc_epoch_collections_u AFTER UPDATE ON collections BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_epoch_collections_d AFTER DELETE ON collections BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              PRAGMA user_version=3;"
+        ).map_err(db_error)?;
+        // AI plans have two independent stale tokens.  Keep their maintenance in
+        // SQLite so mutations from every Store connection are visible atomically.
+        personal.execute_batch(
+            "INSERT OR IGNORE INTO cc_personal_epoch(profile_id,revision) SELECT id,0 FROM cc_profiles;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_profile_i AFTER INSERT ON cc_profiles BEGIN INSERT OR IGNORE INTO cc_personal_epoch(profile_id,revision) VALUES(NEW.id,0); END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_profile_u AFTER UPDATE OF name ON cc_profiles BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_state_i AFTER INSERT ON cc_profile_state BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_state_u AFTER UPDATE ON cc_profile_state BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_state_d AFTER DELETE ON cc_profile_state BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=OLD.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_preferences_i AFTER INSERT ON cc_preferences BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_preferences_u AFTER UPDATE ON cc_preferences BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_preferences_d AFTER DELETE ON cc_preferences BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=OLD.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_speed_i AFTER INSERT ON cc_series_speed BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_speed_u AFTER UPDATE ON cc_series_speed BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_speed_d AFTER DELETE ON cc_series_speed BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=OLD.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_playlist_i AFTER INSERT ON cc_playlists BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_playlist_u AFTER UPDATE ON cc_playlists BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_playlist_d AFTER DELETE ON cc_playlists BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=OLD.profile_id; END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_member_i AFTER INSERT ON cc_playlist_members BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_member_u AFTER UPDATE ON cc_playlist_members BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_member_d AFTER DELETE ON cc_playlist_members BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=OLD.playlist_id); END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_collections_i AFTER INSERT ON collections BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_collections_u AFTER UPDATE ON collections BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_collections_d AFTER DELETE ON collections BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_members_i AFTER INSERT ON collection_members BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_members_u AFTER UPDATE ON collection_members BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_members_d AFTER DELETE ON collection_members BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_positions_i AFTER INSERT ON collection_positions BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_positions_u AFTER UPDATE ON collection_positions BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_positions_d AFTER DELETE ON collection_positions BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_artwork_i AFTER INSERT ON collection_artwork BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_artwork_u AFTER UPDATE ON collection_artwork BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_artwork_d AFTER DELETE ON collection_artwork BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_revisions_i AFTER INSERT ON collection_revisions BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_revisions_u AFTER UPDATE ON collection_revisions BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_common_revisions_d AFTER DELETE ON collection_revisions BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;"
         ).map_err(db_error)?;
         // Existing development databases may predate ordered progress guards.
         add_column_if_missing(&personal, "cc_profile_state", "last_session_id TEXT")?;
@@ -1717,7 +1755,7 @@ fn insert_identities(tx: &rusqlite::Transaction<'_>, media: &[Media]) -> Result<
     }
     Ok(())
 }
-fn db_error(_: rusqlite::Error) -> String {
+pub(crate) fn db_error(_: rusqlite::Error) -> String {
     "Erreur de base locale. Vos données n’ont pas été remplacées.".into()
 }
 fn media_lookup_error(error: rusqlite::Error) -> String {

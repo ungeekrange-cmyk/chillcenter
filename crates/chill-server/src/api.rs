@@ -138,6 +138,8 @@ impl From<chill_domain::StoreFailure> for ApiError {
             ImportPlanStale => Self(StatusCode::CONFLICT, "IMPORT_PLAN_STALE"),
             DatabaseOffline => Self(StatusCode::SERVICE_UNAVAILABLE, "DATABASE_OFFLINE"),
             RequestTimeout => Self(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"),
+            AiConfirmationRequired => Self(StatusCode::UNPROCESSABLE_ENTITY, "AI_CONFIRMATION_REQUIRED"),
+            AiPlanInvalid => Self(StatusCode::UNPROCESSABLE_ENTITY, "AI_PLAN_INVALID"),
             InvalidOperation => Self(StatusCode::UNPROCESSABLE_ENTITY, "INVALID_OPERATION"),
         }
     }
@@ -150,6 +152,7 @@ impl IntoResponse for ApiError {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .merge(crate::ai_api::routes())
         .merge(crate::archive_api::routes())
         .merge(crate::export_jobs::routes())
         .merge(crate::catalog_api::routes())

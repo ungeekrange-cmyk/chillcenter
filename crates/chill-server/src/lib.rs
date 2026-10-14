@@ -1,4 +1,5 @@
 pub mod api;
+pub mod ai_api;
 pub mod archive_api;
 pub mod export_jobs;
 pub mod identity_api;
