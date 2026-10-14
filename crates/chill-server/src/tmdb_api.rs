@@ -7,6 +7,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use chill_domain::catalog_browser::BrowserQuery;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -24,6 +25,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/admin/tmdb/jobs", post(start_job))
         .route("/api/v1/admin/tmdb/jobs/{id}", get(job_status))
         .route("/api/v1/admin/tmdb/jobs/{id}/cancel", post(cancel_job))
+        .route("/api/v1/admin/tmdb/jobs/{id}/retry", post(retry_job))
         .route(
             "/api/v1/admin/profiles/{profile}/media/{media}/tmdb/candidates",
             get(candidates),
@@ -136,6 +138,8 @@ pub struct TmdbJob {
     skipped: usize,
     failed: usize,
     retryable: usize,
+    profile_id: String,
+    media_ids: Vec<String>,
     #[serde(skip)]
     cancelled: bool,
 }
@@ -211,7 +215,7 @@ impl TmdbJobService {
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "TMDB_JOB_UNAVAILABLE"))?;
         Ok(out)
     }
-    fn create(&self) -> Result<TmdbJob, ApiError> {
+    fn create(&self, profile_id: String, media_ids: Vec<String>) -> Result<TmdbJob, ApiError> {
         let job = TmdbJob {
             job_id: uuid::Uuid::new_v4().to_string(),
             status: JobStatus::Queued,
@@ -222,6 +226,8 @@ impl TmdbJobService {
             skipped: 0,
             failed: 0,
             retryable: 0,
+            profile_id,
+            media_ids,
             cancelled: false,
         };
         self.jobs
@@ -240,6 +246,157 @@ struct StartJob {
     profile_id: String,
     media_ids: Option<Vec<String>>,
 }
+async fn eligible_ids(state: &AppState, profile: &str) -> Result<Vec<String>, ApiError> {
+    let mut offset = 0;
+    let mut ids = Vec::new();
+    loop {
+        let profile = profile.to_owned();
+        let page = state
+            .database
+            .call(move |s| {
+                s.browse_catalog(
+                    &profile,
+                    &BrowserQuery {
+                        offset,
+                        limit: 100,
+                        grouped: false,
+                        available: Some(true),
+                        ..Default::default()
+                    },
+                )
+            })
+            .await?;
+        ids.extend(
+            page.items
+                .into_iter()
+                .filter(|m| m.tmdb_id.is_none() && !m.poster_custom && !m.series_manual)
+                .map(|m| m.id),
+        );
+        if !page.has_more {
+            break;
+        }
+        offset = offset.saturating_add(100);
+    }
+    Ok(ids)
+}
+fn exact_candidate(
+    media: &chill_catalog::model::Media,
+    candidates: Vec<chill_catalog::metadata::Candidate>,
+) -> Option<chill_catalog::metadata::Candidate> {
+    let label = media.series.as_deref().unwrap_or(&media.title);
+    let norm = |v: &str| {
+        v.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
+    };
+    let kind = if media.category == "serie" {
+        "tv"
+    } else {
+        "movie"
+    };
+    let matches = candidates
+        .into_iter()
+        .filter(|c| {
+            c.kind == kind
+                && norm(&c.title) == norm(label)
+                && media.year.is_none_or(|y| c.year == Some(y))
+        })
+        .collect::<Vec<_>>();
+    (matches.len() == 1).then(|| matches.into_iter().next().unwrap())
+}
+async fn run_job(state: AppState, service: Arc<TmdbJobService>, id: String) {
+    let job = match service.status(&id) {
+        Some(j) => j,
+        None => return,
+    };
+    for media_id in job.media_ids.clone() {
+        if state.playback.fingerprint_should_pause() {
+            if let Ok(mut jobs) = service.jobs.lock() {
+                if let Some(j) = jobs.get_mut(&id) {
+                    j.status = JobStatus::PausedPlayback;
+                }
+            }
+            let _ = service.persist();
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            continue;
+        }
+        let cancelled = service.status(&id).is_none_or(|j| j.cancelled);
+        if cancelled {
+            return;
+        }
+        if let Ok(mut jobs) = service.jobs.lock() {
+            if let Some(j) = jobs.get_mut(&id) {
+                j.status = JobStatus::Running;
+            }
+        }
+        let profile = job.profile_id.clone();
+        let snapshot_id = media_id.clone();
+        let item = state
+            .database
+            .call(move |s| {
+                let revision = s.media_revision(&snapshot_id)?;
+                s.provider_snapshot(&profile, &snapshot_id, revision)
+            })
+            .await;
+        let Ok(snapshot) = item else {
+            bump(&service, &id, |j| j.skipped += 1);
+            continue;
+        };
+        if snapshot.media.tmdb_id.is_some()
+            || snapshot.media.poster_custom
+            || snapshot.media.series_manual
+        {
+            bump(&service, &id, |j| j.skipped += 1);
+            continue;
+        }
+        let candidates = match provider(&state).and_then(|p| Ok(p)).and_then(|p| Ok(p)) {
+            Ok(p) => p.candidates(&snapshot.media, "").await,
+            Err(_) => Err("x".into()),
+        };
+        match candidates
+            .ok()
+            .and_then(|v| exact_candidate(&snapshot.media, v))
+        {
+            Some(candidate) => {
+                let result = apply(
+                    state.clone(),
+                    job.profile_id.clone(),
+                    media_id,
+                    snapshot.revision,
+                    candidate.id,
+                    candidate.kind,
+                    Scope::Media,
+                    false,
+                )
+                .await;
+                bump(&service, &id, |j| {
+                    j.processed += 1;
+                    if result.is_ok() {
+                        j.matched += 1
+                    } else {
+                        j.failed += 1;
+                        j.retryable += 1
+                    }
+                });
+            }
+            None => bump(&service, &id, |j| {
+                j.processed += 1;
+                j.ambiguous += 1
+            }),
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+    bump(&service, &id, |j| j.status = JobStatus::Completed);
+}
+fn bump(service: &TmdbJobService, id: &str, update: impl FnOnce(&mut TmdbJob)) {
+    if let Ok(mut jobs) = service.jobs.lock() {
+        if let Some(job) = jobs.get_mut(id) {
+            update(job)
+        }
+    }
+    let _ = service.persist();
+}
 async fn start_job(
     State(state): State<AppState>,
     Json(body): Json<StartJob>,
@@ -253,13 +410,23 @@ async fn start_job(
     state
         .database
         .call({
-            let profile = body.profile_id;
+            let profile = body.profile_id.clone();
             move |s| s.preferences(&profile).map(|_| ())
         })
         .await?;
-    let job = state.tmdb_jobs.create()?;
-    // Worker wiring is intentionally deferred until the job receives a bounded
-    // database-page snapshot; the ID payload is never interpreted as a path.
+    let profile = body.profile_id;
+    let ids = if let Some(ids) = body.media_ids {
+        ids
+    } else {
+        eligible_ids(&state, &profile).await?
+    };
+    let job = state.tmdb_jobs.create(profile, ids)?;
+    let worker_state = state.clone();
+    let worker = state.tmdb_jobs.clone();
+    let id = job.job_id.clone();
+    tokio::spawn(async move {
+        run_job(worker_state, worker, id).await;
+    });
     Ok((StatusCode::ACCEPTED, Json(job)))
 }
 async fn job_status(
@@ -277,6 +444,26 @@ async fn cancel_job(
     Path(id): Path<String>,
 ) -> Result<Json<TmdbJob>, ApiError> {
     state.tmdb_jobs.cancel(&id).map(Json)
+}
+async fn retry_job(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<(StatusCode, Json<TmdbJob>), ApiError> {
+    let prior = state
+        .tmdb_jobs
+        .status(&id)
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "TMDB_JOB_NOT_FOUND"))?;
+    if !matches!(prior.status, JobStatus::Failed | JobStatus::Cancelled) {
+        return Err(ApiError(StatusCode::CONFLICT, "TMDB_JOB_NOT_RETRYABLE"));
+    }
+    let job = state.tmdb_jobs.create(prior.profile_id, prior.media_ids)?;
+    let worker_state = state.clone();
+    let worker = state.tmdb_jobs.clone();
+    let job_id = job.job_id.clone();
+    tokio::spawn(async move {
+        run_job(worker_state, worker, job_id).await;
+    });
+    Ok((StatusCode::ACCEPTED, Json(job)))
 }
 
 async fn status(State(state): State<AppState>) -> Result<Json<TmdbStatus>, ApiError> {
