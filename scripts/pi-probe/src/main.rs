@@ -356,7 +356,7 @@ fn run_player(
             if sequence % 6 == 0 {
                 println!(
                     "PROGRESS {}",
-                    json!({"profile":profile,"elapsed":start.elapsed().as_secs(),"position":position,"buffer_samples":buffer_samples,"samples":samples})
+                    json!({"profile":profile,"elapsed":start.elapsed().as_secs(),"position":position,"buffer_samples":buffer_samples,"samples":samples,"buffered_ahead_seconds":player.buffered_ahead_seconds()?})
                 );
             }
         }

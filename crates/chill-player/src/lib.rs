@@ -557,9 +557,17 @@ impl Player {
             player.set_option("volume", &options.initial_volume.min(100).to_string())?;
             // Packet cache is bounded across forward/backward playback. Decoded
             // frames and the webview are separate and measured in the client RSS.
-            player.set_option("demuxer-max-bytes", "48MiB")?;
-            player.set_option("demuxer-max-back-bytes", "16MiB")?;
-            player.set_option("cache-secs", "20")?;
+            // The grant-bound custom scheme is not necessarily identified as
+            // a network stream by mpv's cache=auto heuristic. Enable it
+            // explicitly. 128/64 MiB cover approximately 60/30 seconds at
+            // 18 Mbit/s; higher bitrates hit the byte limits earlier. mpv has
+            // no time-based back-cache limit, so backward duration varies.
+            player.set_option("cache", "yes")?;
+            player.set_option("demuxer-max-bytes", "128MiB")?;
+            player.set_option("demuxer-max-back-bytes", "64MiB")?;
+            player.set_option("cache-secs", "60")?;
+            player.set_option("demuxer-readahead-secs", "60")?;
+            player.set_option("demuxer-donate-buffer", "no")?;
             #[cfg(not(target_os = "macos"))]
             if let Some(handle) = options.native_window {
                 let value = match handle {
@@ -628,6 +636,11 @@ impl Player {
     }
     pub fn is_buffering(&self) -> Result<bool, PlayerError> {
         Ok(property_bool(self.property("paused-for-cache")?))
+    }
+
+    /// Compressed packet-cache advance, measured by mpv (not the target).
+    pub fn buffered_ahead_seconds(&self) -> Result<Option<f64>, PlayerError> {
+        Ok(self.property("demuxer-cache-duration")?.and_then(|v| v.parse().ok()))
     }
     pub fn set_volume(&self, volume: u8) -> Result<(), PlayerError> {
         self.set_property("volume", &volume.min(100).to_string())
@@ -1197,6 +1210,25 @@ mod tests {
         let player =
             Player::new(PlayerOptions::default()).expect("installed libmpv should initialize");
         assert!(player.decoder().is_ok());
+    }
+
+    #[test]
+    fn installed_player_enables_bounded_one_minute_network_cache() {
+        if !controlled_library_paths().iter().any(|path| path.exists()) {
+            return;
+        }
+        let player = Player::new(PlayerOptions::default()).expect("libmpv initializes");
+        assert_eq!(player.property("options/cache").unwrap().as_deref(), Some("yes"));
+        for (name, expected) in [
+            ("cache-secs", 60.),
+            ("demuxer-readahead-secs", 60.),
+            ("demuxer-max-bytes", 128. * 1024. * 1024.),
+            ("demuxer-max-back-bytes", 64. * 1024. * 1024.),
+        ] {
+            let value = player.property(&format!("options/{name}")).unwrap().unwrap();
+            assert_eq!(value.parse::<f64>().unwrap(), expected, "{name}");
+        }
+        assert_eq!(player.property("options/demuxer-donate-buffer").unwrap().as_deref(), Some("no"));
     }
 
     #[test]

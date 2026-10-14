@@ -19,3 +19,5 @@ Après acceptation, changer une décision par un nouvel ADR avec `supersedes`, p
 Complément d'implémentation, distinct des sept décisions approuvées en G-02 : [ADR-0008](ADR-0008-bounded-media-io.md), `IMPLEMENTED_DETAIL`, I/O NAS bornées et ouverture par descripteurs, CC-PLAY-001. Ne remplace aucun ADR accepté ; pas de nouvelle validation utilisateur revendiquée.
 
 [ADR-0009](ADR-0009-archive-validation.md), IMPLEMENTED_DETAIL : validation ZIP/images et application portable transactionnelle, revues indépendantes locales126da0a favorables. Aucun changement de l'ADR-0006 accepté ni nouvelle validation utilisateur supposée.
+
+[ADR-0010](ADR-0010-client-playback-cache.md), PROPOSED : nouvelle cible utilisateur60 s avant/environ30 s arrière, cache client compressé plafonné128/64 Mio ; durée arrière variable. Revue et essai Dune simultané à rattacher au SHA du delta, sans prétendre que les anciens rapports couvrent ce changement.
