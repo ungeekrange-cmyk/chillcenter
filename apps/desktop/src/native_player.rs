@@ -162,6 +162,8 @@ pub enum NativePlayerError {
 thread_local! { static PLAYER: RefCell<Option<Rc<RefCell<SurfacePlayer>>>> = const { RefCell::new(None) }; }
 
 /// Loads only the already-authorised stream; callers cannot provide a URL or filesystem path.
+// Grant, transport and preferences are explicit at the AppKit ownership boundary.
+#[allow(clippy::too_many_arguments)]
 pub async fn load<R: Runtime>(
     window: &WebviewWindow<R>,
     transport: Transport,
@@ -398,6 +400,7 @@ impl SurfacePlayer {
             deadline_wall: now + lease.remaining,
         })
     }
+    #[allow(clippy::too_many_arguments)]
     fn reload(
         &mut self,
         transport: Transport,
@@ -928,7 +931,7 @@ impl Framebuffer {
             }
         }
         samples
-            .chunks_exact(4)
+            .as_chunks::<4>().0.iter()
             .any(|pixel| pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0)
     }
 }

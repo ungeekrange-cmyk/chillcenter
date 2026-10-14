@@ -121,6 +121,8 @@ struct Restore {
     expected_revision: u64,
 }
 
+// Explicit provider/CAS inputs shared by selection and refresh handlers.
+#[allow(clippy::too_many_arguments)]
 async fn apply(
     state: AppState,
     profile: String,

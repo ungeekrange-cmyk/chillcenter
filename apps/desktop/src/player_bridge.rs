@@ -195,6 +195,8 @@ impl PlayerHost {
         };
         self.install(w, c, info, rect, context, grant, sent).await
     }
+    // Captured transfer/grant inputs stay explicit; no implicit UI/global state.
+    #[allow(clippy::too_many_arguments)]
     async fn install(
         &mut self,
         w: &WebviewWindow,
@@ -372,15 +374,14 @@ impl PlayerHost {
         }
         if s.snapshot.error.is_some() {
             self.rendering.store(false, Ordering::Release);
-            if let Some(l) = &s.lease {
-                if matches!(s.transport.heartbeat_playback(&s.profile,&control(l)).await,Err(chill_client::ClientError::Api{code,..}) if code=="TRANSFER_PENDING")
+            if let Some(l) = &s.lease
+                && matches!(s.transport.heartbeat_playback(&s.profile,&control(l)).await,Err(chill_client::ClientError::Api{code,..}) if code=="TRANSFER_PENDING")
                 {
                     let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
                     s.snapshot.paused = true;
                     s.snapshot.position = s.snapshot.position.or(previous.position);
                     s.note = Some("Interruption pour transfert en cours…".into());
                     return Ok(());
-                }
             }
             let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
             s.snapshot.paused = true;
@@ -471,8 +472,8 @@ impl PlayerHost {
                 }
                 Err(_) => s.note = Some("Impossible de vérifier les sous-titres externes.".into()),
             }
-            if let Some(track_id) = s.audio_override {
-                if s.snapshot
+            if let Some(track_id) = s.audio_override
+                && s.snapshot
                     .tracks
                     .iter()
                     .any(|t| t.id == track_id && t.kind == TrackKind::Audio)
@@ -480,19 +481,17 @@ impl PlayerHost {
                     s.snapshot = native_player::action(w, NativeAction::Audio { track_id })
                         .await
                         .map_err(native_error)?;
-                }
             }
-            if let Some(track_id) = s.subtitle_override {
-                if track_id.is_none()
+            if let Some(track_id) = s.subtitle_override
+                && (track_id.is_none()
                     || s.snapshot
                         .tracks
                         .iter()
-                        .any(|t| Some(t.id) == track_id && t.kind == TrackKind::Subtitle)
+                        .any(|t| Some(t.id) == track_id && t.kind == TrackKind::Subtitle))
                 {
                     s.snapshot = native_player::action(w, NativeAction::Subtitle { track_id })
                         .await
                         .map_err(native_error)?;
-                }
             }
             s.snapshot = native_player::action(w, NativeAction::Pause { paused: false })
                 .await
@@ -501,8 +500,8 @@ impl PlayerHost {
             report(s, true, true).await?; // Anchor only, initial resume is a seek, never credit.
             report(s, true, false).await?;
         }
-        if let Some(target) = s.desired_position {
-            if s.lease.is_some()
+        if let Some(target) = s.desired_position
+            && s.lease.is_some()
                 && s.snapshot
                     .position
                     .is_some_and(|p| (p - target).abs() < 0.5)
@@ -512,21 +511,19 @@ impl PlayerHost {
                 s.clock.forget_credit();
                 report(s, !s.snapshot.paused, true).await?;
                 report(s, !s.snapshot.paused, false).await?;
-            }
         }
         self.rendering.store(
             s.started && !s.snapshot.paused && !s.snapshot.buffering && !s.snapshot.ended,
             Ordering::Release,
         );
-        if s.lease.is_some() && s.last_beat.elapsed() >= Duration::from_secs(5) {
-            if let Err(e) = renew(s, w).await {
+        if s.lease.is_some() && s.last_beat.elapsed() >= Duration::from_secs(5)
+            && let Err(e) = renew(s, w).await {
                 let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
                 s.snapshot.paused = true;
                 s.note = Some(e.message.clone());
                 abandon(s);
                 self.rendering.store(false, Ordering::Release);
                 return Err(e);
-            }
         }
         if s.lease.is_some() && s.started && s.last_save.elapsed() >= Duration::from_secs(5) {
             s.last_save = Instant::now();
@@ -836,15 +833,14 @@ impl PlayerHost {
     pub async fn stop(&mut self, w: &WebviewWindow) -> Result<(), UiError> {
         self.rendering.store(false, Ordering::Release);
         self.last_error = None;
-        if let Some(p) = self.pending.take() {
-            if p.confirmed {
-                if let Ok(status) = p
+        if let Some(p) = self.pending.take()
+            && p.confirmed
+            && let Ok(status) = p
                     .connection
                     .transport
                     .transfer_status(&p.connection.profile_id, &p.offer.token)
                     .await
-                {
-                    if let Some(lease) = status.lease {
+            && let Some(lease) = status.lease {
                         let _ = p
                             .connection
                             .transport
@@ -856,9 +852,6 @@ impl PlayerHost {
                                 },
                             )
                             .await;
-                    }
-                }
-            }
         }
         if let Some(mut s) = self.session.take() {
             if let Ok(snapshot) = native_player::action(w, NativeAction::Poll).await {

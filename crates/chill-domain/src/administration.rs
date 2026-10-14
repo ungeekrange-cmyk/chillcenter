@@ -326,7 +326,7 @@ mod tests {
         let epoch = store.catalog_revision().unwrap();
         assert!(store.forget_unavailable(&[a.clone(), b], epoch).is_err());
         assert_eq!(store.media(&p, &a).unwrap().rating, Some(4));
-        store.forget_unavailable(&[a.clone()], epoch).unwrap();
+        store.forget_unavailable(std::slice::from_ref(&a), epoch).unwrap();
         assert!(store.media(&p, &a).is_err());
         assert!(store.unavailable_page(0, 48).unwrap().items.is_empty());
     }

@@ -1095,6 +1095,16 @@ fn load_library() -> Result<(Library, PathBuf), PlayerError> {
     Err(PlayerError::LibraryNotFound)
 }
 
+/// Read-only package check: no media, UI, client configuration or network.
+pub fn verify_standalone_library()->Result<(PathBuf,u64,u64),PlayerError>{
+    let paths=controlled_library_paths();
+    if paths.len()!=1{return Err(PlayerError::LibraryNotFound);}
+    let (library,path)=load_library()?;
+    let version=unsafe{let get: MpvClientApiVersion=symbol(&library,b"mpv_client_api_version\0")?;get()};
+    if !supported_client_api(version){return Err(PlayerError::UnsupportedApi{major:version>>16,minor:version&0xffff});}
+    Ok((path,version>>16,version&0xffff))
+}
+
 fn controlled_library_paths() -> Vec<PathBuf> {
     library_paths_for_executable(std::env::current_exe().ok().as_deref())
 }
@@ -1512,6 +1522,13 @@ mod tests {
 
     #[test]
     fn media_references_cannot_open_unpinned_http(){
+        assert_media_references_isolated(false);
+    }
+    #[test]
+    fn hls_segments_cannot_open_unpinned_http(){
+        assert_media_references_isolated(true);
+    }
+    fn assert_media_references_isolated(hls:bool){
         use std::net::TcpListener;
         use std::io::{Read,Write};
         if !controlled_library_paths().iter().any(|path|path.exists()){return;}
@@ -1519,7 +1536,8 @@ mod tests {
         let address=listener.local_addr().unwrap();let contacted=Arc::new(AtomicBool::new(false));let observed=contacted.clone();
         let worker=thread::spawn(move||{let end=Instant::now()+Duration::from_secs(2);while Instant::now()<end{match listener.accept(){Ok((mut socket,_))=>{observed.store(true,Ordering::Release);let _=socket.set_read_timeout(Some(Duration::from_millis(100)));let _=socket.read(&mut [0;1024]);let _=socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");},Err(e)if e.kind()==std::io::ErrorKind::WouldBlock=>thread::sleep(Duration::from_millis(10)),Err(e)=>panic!("fixture listener: {e}")}}});
         let mut options=PlayerOptions::default();options.extra.insert("vo".into(),"null".into());options.extra.insert("ao".into(),"null".into());
-        let mut player=Player::new(options).unwrap();player.register_stream("chill-memory",Arc::new(MemoryFactory(format!("#EXTM3U\nhttp://{address}/must-not-open.mp4\n").into_bytes()))).unwrap();
+        let source=if hls{format!("#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXT-X-VERSION:3\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:1,\nhttp://{address}/must-not-open.ts\n#EXT-X-ENDLIST\n")}else{format!("#EXTM3U\nhttp://{address}/must-not-open.mp4\n")};
+        let mut player=Player::new(options).unwrap();player.register_stream("chill-memory",Arc::new(MemoryFactory(source.into_bytes()))).unwrap();
         player.load("chill-memory://reference-fixture.mp4").unwrap();
         let end=Instant::now()+Duration::from_secs(2);while Instant::now()<end{let _=player.poll_event(Duration::from_millis(20));}
         worker.join().unwrap();assert!(!contacted.load(Ordering::Acquire),"embedded media reference bypassed the pinned transport");

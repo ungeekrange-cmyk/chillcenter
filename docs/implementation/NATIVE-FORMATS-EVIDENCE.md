@@ -1,5 +1,7 @@
 # Matrice native Mac — formats et garde de bail
 
+Répétition après BUG-0032 (`access-references=no` et scripts/autoload désactivés) : PASS le14 octobre, client isolé `/private/tmp/chillcenter-formats-secure.7QXVCJ`, même résultat complet MKV/MP4/AVI/pistes/ASS/sept vitesses/navigation. Les références HTTP internes M3U et HLS sont refusées par deux tests libmpv réels distincts ; aucun contournement du transport épinglé constaté sur ces fixtures.
+
 2026-10-14, source `2f3e968` + sonde debug de vivacité `main.rs` (figée dans le commit suivant). Aucun NAS ni fichier foyer. Serveur HTTPS loopback18546 / données `/private/tmp/chillcenter-native-qa.E67rkP`; client isolé `/private/tmp/chillcenter-formats-probe.6y0YQ2`. Fixtures générées par FFmpeg : MP4 H264/AAC/mov_text, AVI MPEG4/PCM, MKV H264/deux AAC anglais-français/ASS intégré et fichier ASS français externe.
 
 Résultat réel : `UI_QA_RESULT true native-Tauri-MKV-MP4-AVI-integrated-audio-ASS-external-ASS-seven-rates-seek-film-reset`. Chaque format a produit une image FBO non vide dans Tauri ; sélection audio français et ASS externe, navigation, vitesses0,5/0,75/1/1,25/1,5/1,75/2 et retour à1x pour les films à réouverture PASS. Le MP4 de la fixture est une série ; sa persistance de vitesse est prouvée séparément par le parcours nouvelle saison, pas par le reset film.

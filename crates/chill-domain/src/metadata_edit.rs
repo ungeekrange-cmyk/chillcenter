@@ -134,7 +134,7 @@ mod tests {
             .unwrap();
         let saga = store.create_saga("Legacy").unwrap();
         store
-            .saga_members_at_revision(&saga.id, &[film_id.clone()], saga.revision, true)
+            .saga_members_at_revision(&saga.id, std::slice::from_ref(&film_id), saga.revision, true)
             .unwrap();
         let legacy: String = store
             .personal

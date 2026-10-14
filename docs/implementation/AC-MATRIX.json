@@ -1,0 +1,1025 @@
+{
+  "format": 1,
+  "scope": "CC-STORIES-001",
+  "gate": "G-03 APPROVED; G-04 NOT_SUBMITTED",
+  "source_baseline": "2a085486f4579d4cf27c98b254bd29fea9d73547",
+  "meaning": "Code reachability inventory, not 133 executed acceptance tests. Exact commit, commands, outcomes and NOT_RUN belong to completion evidence; status stays IN_PROGRESS until final independent verification.",
+  "stories": [
+    {
+      "id": "US-001",
+      "source": "docs/stories/US-001/story.md",
+      "implementation": [
+        "crates/chill-client/src/ui.rs",
+        "ui/connected/app.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-001-AC-01",
+          "label": "Connexion initiale",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-001-AC-02",
+          "label": "Refus de confiance",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-001-AC-03",
+          "label": "Adresse erronée ou serveur absent",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-001-AC-04",
+          "label": "Serveur différent",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "source": "docs/stories/US-002/story.md",
+      "implementation": [
+        "crates/chill-client/src/ui.rs",
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/app.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-002-AC-01",
+          "label": "Créer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-002-AC-02",
+          "label": "Renommer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-002-AC-03",
+          "label": "Nom invalide",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-002-AC-04",
+          "label": "Premier profil sans profil actif",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "source": "docs/stories/US-003/story.md",
+      "implementation": [
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/app.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-003-AC-01",
+          "label": "Première ouverture",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-003-AC-02",
+          "label": "Ouverture suivante",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-003-AC-03",
+          "label": "Changer pendant lecture",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-003-AC-04",
+          "label": "Choix indépendant ou profil supprimé",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "source": "docs/stories/US-004/story.md",
+      "implementation": [
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/app.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-004-AC-01",
+          "label": "Confirmer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-004-AC-02",
+          "label": "Annuler",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-004-AC-03",
+          "label": "Lecture et appareils ouverts",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-004-AC-04",
+          "label": "Échec",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-005",
+      "source": "docs/stories/US-005/story.md",
+      "implementation": [
+        "crates/chill-client/src/lib.rs",
+        "crates/chill-server/src/tls.rs"
+      ],
+      "criteria": [
+        {
+          "id": "US-005-AC-01",
+          "label": "Renouvellement normal",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-005-AC-02",
+          "label": "Clé changée avant expiration",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-005-AC-03",
+          "label": "Ancien certificat expiré",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-005-AC-04",
+          "label": "Certificat invalide",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-006",
+      "source": "docs/stories/US-006/story.md",
+      "implementation": [
+        "crates/chill-server/src/catalog_api.rs",
+        "crates/chill-server/src/config.rs",
+        "ui/connected/app.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-006-AC-01",
+          "label": "Scan complet",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-006-AC-02",
+          "label": "Préserver",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-006-AC-03",
+          "label": "NAS absent ou scan partiel",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-006-AC-04",
+          "label": "Suivre le scan",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-007",
+      "source": "docs/stories/US-007/story.md",
+      "implementation": [
+        "crates/chill-domain/src/catalog_browser.rs",
+        "ui/connected/app.js",
+        "ui/connected/catalog.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-007-AC-01",
+          "label": "Catégories et présentation",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-007-AC-02",
+          "label": "Recherche et filtres",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-007-AC-03",
+          "label": "Affichage",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-007-AC-04",
+          "label": "Fiche et informations absentes",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-007-AC-05",
+          "label": "Vidéos en relation",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-008",
+      "source": "docs/stories/US-008/story.md",
+      "implementation": [
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/catalog.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-008-AC-01",
+          "label": "Navigation",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-008-AC-02",
+          "label": "Informations communes",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-008-AC-03",
+          "label": "Compteurs",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-008-AC-04",
+          "label": "Numéro inconnu",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-009",
+      "source": "docs/stories/US-009/story.md",
+      "implementation": [
+        "crates/chill-domain/src/metadata_edit.rs",
+        "crates/chill-domain/src/administration.rs",
+        "ui/connected/catalog.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-009-AC-01",
+          "label": "Vidéo",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-009-AC-02",
+          "label": "Série distincte",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-009-AC-03",
+          "label": "Association épisode",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-009-AC-04",
+          "label": "Conflit et fusion",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-010",
+      "source": "docs/stories/US-010/story.md",
+      "implementation": [
+        "crates/chill-server/src/tmdb_api.rs",
+        "apps/desktop/src/artwork_bridge.rs",
+        "ui/connected/catalog.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-010-AC-01",
+          "label": "Choisir une correspondance",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-010-AC-02",
+          "label": "Affiche personnelle",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-010-AC-03",
+          "label": "Actualiser ou restaurer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-010-AC-04",
+          "label": "Fournisseur ou image indisponible",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-011",
+      "source": "docs/stories/US-011/story.md",
+      "implementation": [
+        "crates/chill-domain/src/administration.rs",
+        "crates/chill-client/src/ui.rs",
+        "ui/connected/catalog.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-011-AC-01",
+          "label": "Créer et ajouter",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-011-AC-02",
+          "label": "Ordre",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-011-AC-03",
+          "label": "Renommer et illustrer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-011-AC-04",
+          "label": "Retirer ou supprimer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-012",
+      "source": "docs/stories/US-012/story.md",
+      "implementation": [
+        "crates/chill-domain/src/administration.rs",
+        "ui/connected/app.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-012-AC-01",
+          "label": "Repérer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-012-AC-02",
+          "label": "Confirmer un retrait",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-012-AC-03",
+          "label": "Protection",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-012-AC-04",
+          "label": "Réapparition",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-013",
+      "source": "docs/stories/US-013/story.md",
+      "implementation": [
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/catalog.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-013-AC-01",
+          "label": "Noter ou retirer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-013-AC-02",
+          "label": "Série ou saison",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-013-AC-03",
+          "label": "Divergence",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-013-AC-04",
+          "label": "Épisode nouveau",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-014",
+      "source": "docs/stories/US-014/story.md",
+      "implementation": [
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/catalog.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-014-AC-01",
+          "label": "Créer depuis fiche ou listes",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-014-AC-02",
+          "label": "Sélection",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-014-AC-03",
+          "label": "Annuler ou échec",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-014-AC-04",
+          "label": "Personnel et suppression",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-014-AC-05",
+          "label": "Sélection bornée héritée",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-015",
+      "source": "docs/stories/US-015/story.md",
+      "implementation": [
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/catalog.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-015-AC-01",
+          "label": "Déplacer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-015-AC-02",
+          "label": "Filtrer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-015-AC-03",
+          "label": "Ajouter et rouvrir",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-015-AC-04",
+          "label": "Modification concurrente",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-016",
+      "source": "docs/stories/US-016/story.md",
+      "implementation": [
+        "apps/desktop/src/native_player.rs",
+        "apps/desktop/src/player_bridge.rs",
+        "crates/chill-player/src/lib.rs",
+        "crates/chill-server/src/media_stream.rs"
+      ],
+      "criteria": [
+        {
+          "id": "US-016-AC-01",
+          "label": "Lancer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-016-AC-02",
+          "label": "Formats prioritaires",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-016-AC-03",
+          "label": "Affichage et pause",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-016-AC-04",
+          "label": "NAS ou réseau perdu",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-017",
+      "source": "docs/stories/US-017/story.md",
+      "implementation": [
+        "apps/desktop/src/player_bridge.rs",
+        "ui/connected/player.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-017-AC-01",
+          "label": "Sauts",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-017-AC-02",
+          "label": "Bornes",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-017-AC-03",
+          "label": "Barre",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-017-AC-04",
+          "label": "Chargement",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-018",
+      "source": "docs/stories/US-018/story.md",
+      "implementation": [
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/app.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-018-AC-01",
+          "label": "Défaut",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-018-AC-02",
+          "label": "Configurer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-018-AC-03",
+          "label": "Isolation",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-018-AC-04",
+          "label": "Échec",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-019",
+      "source": "docs/stories/US-019/story.md",
+      "implementation": [
+        "apps/desktop/src/player_bridge.rs",
+        "crates/chill-server/src/media_stream.rs",
+        "ui/connected/player.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-019-AC-01",
+          "label": "Préférences disponibles",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-019-AC-02",
+          "label": "Choisir",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-019-AC-03",
+          "label": "Anglais ou préférence absente",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-019-AC-04",
+          "label": "Fichier externe ambigu ou invalide",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-020",
+      "source": "docs/stories/US-020/story.md",
+      "implementation": [
+        "apps/desktop/src/player_bridge.rs",
+        "crates/chill-domain/src/store.rs",
+        "ui/connected/player.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-020-AC-01",
+          "label": "Valeurs",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-020-AC-02",
+          "label": "Série",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-020-AC-03",
+          "label": "Autre série ou profil",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-020-AC-04",
+          "label": "Hors série",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-021",
+      "source": "docs/stories/US-021/story.md",
+      "implementation": [
+        "apps/desktop/src/player_bridge.rs",
+        "crates/chill-domain/src/types.rs",
+        "crates/chill-server/src/playback.rs"
+      ],
+      "criteria": [
+        {
+          "id": "US-021-AC-01",
+          "label": "Pause et autre Mac",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-021-AC-02",
+          "label": "Naviguer et fermer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-021-AC-03",
+          "label": "Coupure",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-021-AC-04",
+          "label": "Ancien appareil",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-022",
+      "source": "docs/stories/US-022/story.md",
+      "implementation": [
+        "apps/desktop/src/player_bridge.rs",
+        "crates/chill-domain/src/types.rs",
+        "crates/chill-server/src/playback.rs"
+      ],
+      "criteria": [
+        {
+          "id": "US-022-AC-01",
+          "label": "Seuil",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-022-AC-02",
+          "label": "Saut et interruptions",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-022-AC-03",
+          "label": "Vitesse et cumul",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-022-AC-04",
+          "label": "Manuel ou durée inconnue",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-023",
+      "source": "docs/stories/US-023/story.md",
+      "implementation": [
+        "apps/desktop/src/player_bridge.rs",
+        "apps/desktop/src/native_player.rs",
+        "crates/chill-server/src/playback.rs"
+      ],
+      "criteria": [
+        {
+          "id": "US-023-AC-01",
+          "label": "Confirmation",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-023-AC-02",
+          "label": "Refuser",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-023-AC-03",
+          "label": "A inaccessible",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-023-AC-04",
+          "label": "Concurrence et profils distincts",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-024",
+      "source": "docs/stories/US-024/story.md",
+      "implementation": [
+        "apps/desktop/src/player_bridge.rs",
+        "crates/chill-domain/src/store.rs"
+      ],
+      "criteria": [
+        {
+          "id": "US-024-AC-01",
+          "label": "Playlist prioritaire",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-024-AC-02",
+          "label": "Série et saison",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-024-AC-03",
+          "label": "Saga ou film isolé",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-024-AC-04",
+          "label": "Suite inconnue ou changée",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-025",
+      "source": "docs/stories/US-025/story.md",
+      "implementation": [
+        "apps/desktop/src/player_bridge.rs",
+        "ui/connected/player.js",
+        "ui/connected/player.dom.test.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-025-AC-01",
+          "label": "Défaut et commandes",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-025-AC-02",
+          "label": "Tous les réglages",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-025-AC-03",
+          "label": "Action utilisateur",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-025-AC-04",
+          "label": "Indisponible ou nouveau lecteur",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-026",
+      "source": "docs/stories/US-026/story.md",
+      "implementation": [
+        "crates/chill-domain/src/fingerprint.rs",
+        "crates/chill-domain/src/reassociation.rs",
+        "crates/chill-server/src/fingerprint.rs",
+        "ui/connected/identity.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-026-AC-01",
+          "label": "Racine changée",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-026-AC-02",
+          "label": "Déplacement identifié",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-026-AC-03",
+          "label": "Correspondance probable",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-026-AC-04",
+          "label": "Ambiguïté ou refus",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-027",
+      "source": "docs/stories/US-027/story.md",
+      "implementation": [
+        "crates/chill-server/src/export_jobs.rs",
+        "apps/desktop/src/admin_bridge.rs",
+        "ui/connected/admin.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-027-AC-01",
+          "label": "Contenu",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-027-AC-02",
+          "label": "Exclusions",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-027-AC-03",
+          "label": "Cohérence",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-027-AC-04",
+          "label": "Échec ou taille",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-028",
+      "source": "docs/stories/US-028/story.md",
+      "implementation": [
+        "crates/chill-domain/src/import.rs",
+        "crates/chill-domain/src/legacy.rs",
+        "crates/chill-server/src/archive_api.rs",
+        "apps/desktop/src/admin_bridge.rs",
+        "ui/connected/admin.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-028-AC-01",
+          "label": "Cinéfolio",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-028-AC-02",
+          "label": "Chill Center",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-028-AC-03",
+          "label": "Répétition et conflits",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-028-AC-04",
+          "label": "Annuler ou invalide",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-029",
+      "source": "docs/stories/US-029/story.md",
+      "implementation": [
+        "crates/chill-server/src/operations.rs"
+      ],
+      "criteria": [
+        {
+          "id": "US-029-AC-01",
+          "label": "Restaurer",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-029-AC-02",
+          "label": "Avertir",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-029-AC-03",
+          "label": "Échec",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-029-AC-04",
+          "label": "Reconnexion",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-030",
+      "source": "docs/stories/US-030/story.md",
+      "implementation": [
+        "crates/chill-domain/src/ai.rs",
+        "apps/desktop/src/ai_bridge.rs",
+        "ui/connected/ai.js",
+        "ui/connected/ai.dom.test.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-030-AC-01",
+          "label": "Bouton et recherche",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-030-AC-02",
+          "label": "Proposition",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-030-AC-03",
+          "label": "Données et annulation",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-030-AC-04",
+          "label": "Plan périmé ou fournisseur absent",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-031",
+      "source": "docs/stories/US-031/story.md",
+      "implementation": [
+        "crates/chill-client/src/appearance.rs",
+        "ui/connected/appearance.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-031-AC-01",
+          "label": "Choix",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-031-AC-02",
+          "label": "Automatique",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-031-AC-03",
+          "label": "Appareils indépendants",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-032",
+      "source": "docs/stories/US-032/story.md",
+      "implementation": [
+        "crates/chill-client/src/appearance.rs",
+        "ui/connected/appearance.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-032-AC-01",
+          "label": "Saisons",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-032-AC-02",
+          "label": "Halloween",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-032-AC-03",
+          "label": "Noël",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-032-AC-04",
+          "label": "Réveil",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    },
+    {
+      "id": "US-033",
+      "source": "docs/stories/US-033/story.md",
+      "implementation": [
+        "crates/chill-client/src/appearance.rs",
+        "ui/connected/appearance.js"
+      ],
+      "criteria": [
+        {
+          "id": "US-033-AC-01",
+          "label": "Manuel",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-033-AC-02",
+          "label": "Désactiver",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-033-AC-03",
+          "label": "Retour automatique",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        },
+        {
+          "id": "US-033-AC-04",
+          "label": "Indépendance",
+          "status": "IMPLEMENTED_VERIFICATION_IN_PROGRESS"
+        }
+      ]
+    }
+  ]
+}

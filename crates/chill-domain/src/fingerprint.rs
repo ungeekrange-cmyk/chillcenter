@@ -52,6 +52,15 @@ pub struct FingerprintStatus {
 }
 
 impl Store {
+    /// Only the exclusive server startup owner may call this. Opening an export
+    /// snapshot or another Store must never invalidate a live worker's state.
+    pub fn recover_interrupted_fingerprints(&self) -> Result<usize, String> {
+        self.personal.execute(
+            "UPDATE cc_media_fingerprint SET state='failed' WHERE state IN ('queued','running')",
+            [],
+        ).map_err(db)
+    }
+
     pub fn fingerprint_target(&self, media_id: &str) -> Result<FingerprintTarget, String> {
         let legacy = self.legacy_id(media_id)?;
         let media = self.catalogue.get(&legacy)?;

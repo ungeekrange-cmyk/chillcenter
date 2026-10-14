@@ -405,6 +405,13 @@ async fn archive_choice(
         .map_err(|_| admin_bridge::error("Sélecteur interrompu.", "ADMIN_PICKER"))
 }
 fn main() {
+    let arguments:Vec<_>=std::env::args_os().collect();
+    if arguments.len()==2&&arguments[1]=="--verify-bundle"{
+        match chill_player::verify_standalone_library(){
+            Ok((path,major,minor))=>{println!("BUNDLE_LIBRARY_OK {} API {major}.{minor}",path.display());std::process::exit(0);}
+            Err(error)=>{eprintln!("BUNDLE_LIBRARY_FAILED {error}");std::process::exit(1);}
+        }
+    }
     let builder = tauri::Builder::default().setup(|app| {
         let directory = app.path().app_config_dir()?;
         #[cfg(debug_assertions)]
@@ -441,7 +448,7 @@ fn main() {
             .build()?;
         let bridge = app.state::<Bridge>().inner().clone();
         #[cfg(debug_assertions)]
-        if std::env::var("CHILL_UI_QA_MODE").as_deref() == Ok("formats") {
+        if matches!(std::env::var("CHILL_UI_QA_MODE").as_deref(),Ok("formats"|"identity_prepare"|"identity_finish")) {
             let probe_window=window.clone();
             tauri::async_runtime::spawn(async move {
                 let mut pulse=tokio::time::interval(std::time::Duration::from_secs(5));
@@ -546,11 +553,14 @@ fn main() {
                     include_str!("../../../ui/connected/archive-qa.js"),
                     include_str!("../../../ui/connected/ai-qa.js"),
                     include_str!("../../../ui/connected/deadline-qa.js"),
-                    include_str!("../../../ui/connected/formats-qa.js")].join("\n"),
+                    include_str!("../../../ui/connected/formats-qa.js"),
+                    include_str!("../../../ui/connected/identity-qa.js")].join("\n"),
                     if mode == "player" || mode == "next_series" || mode.starts_with("transfer_") {
                         "window.chillPlayerQa"
                     } else {
-                        if mode == "formats" {
+                        if mode.starts_with("identity_") {
+                            "window.chillIdentityRoundtripQa"
+                        } else if mode == "formats" {
                             "window.chillFormatsQa"
                         } else if mode == "deadline" {
                             "window.chillDeadlineQa"

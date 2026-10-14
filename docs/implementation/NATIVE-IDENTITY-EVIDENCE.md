@@ -1,0 +1,9 @@
+# Réassociation native — parcours réel
+
+2026-10-14 ; sourcef9838f0 + harnais debug identity-qa/main (figé au commit suivant). Serveur HTTPS synthétique18546 et client privé `/private/tmp/chillcenter-identity-roundtrip.QHXlTU`. Deux MP4 générées de12/13s, noms Identity Probable/Certain ; aucun fichier Cinéfolio/NAS.
+
+Préparation PASS : `identity-prepare-personal-state-ordered-playlist-full-source-proof`. Profil choisi/mémorisé, notes3/4, états vu et playlist ordonnée ; preuve complète de la seconde vidéo. Les deux fixtures ont été renommées uniquement sous `/private/tmp/chillcenter-native-qa.E67rkP/videos` vers Relocated Probable/Certain (octets conservés, récupérables sous ces noms).
+
+Parcours après réouverture/scan PASS : `native-Tauri-probable-confirmed-full-unique-reassociation-UUID-ratings-watched-ordered-playlist`. L'ancienne référence probable reste indisponible jusqu'à confirmation du bouton réel Administration (confirm navigateur stubbed seulement dans ce harnais). Sa confirmation conserve UUID/note3/vu. Calcul complet explicite du second candidat : rapprochement unique, UUID/note4/vu conservés. Ordre de playlist contient toujours les deux UUID d'origine. Aucun hash ou chemin physique n'est retourné par IPC.
+
+Les premiers essais FAIL ont révélé BUG-0033 (révisions initiales manquantes, puis état pending masqué). Après correction et reconstruction/restart de la seule fixture, préparation et finition passent. La sonde debug de vivacité JS utilisée pour fenêtres masquées est documentée dans NATIVE-FORMATS-EVIDENCE ; elle n'exécute aucune action native et n'approuve jamais un certificat du foyer. Déplacements/racines NAS réels, autres Macs, confirmation humaine du dialogue : NOT_RUN. Régressions domaine couvrent profils/reprises/conflits/ambiguïté/atomicité indépendamment du parcours GUI.

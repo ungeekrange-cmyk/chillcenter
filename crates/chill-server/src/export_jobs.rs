@@ -216,8 +216,8 @@ pub(crate) async fn start(state: AppState) -> Result<(StatusCode, Json<ExportRea
         let result = snapshot_result.and_then(|_| {
             crate::archive_api::build_export(&state, worker_id.clone(), &snapshot, flag.clone())
         });
-        if let Ok(mut all) = jobs().lock() {
-            if let Some(job) = all.get_mut(&dir).and_then(|j| j.get_mut(&worker_id)) {
+        if let Ok(mut all) = jobs().lock()
+            && let Some(job) = all.get_mut(&dir).and_then(|j| j.get_mut(&worker_id)) {
                 match result {
                     Ok(ready) if !flag.load(Ordering::Acquire) => {
                         job.status = Status {
@@ -241,7 +241,6 @@ pub(crate) async fn start(state: AppState) -> Result<(StatusCode, Json<ExportRea
                         job.status.code = Some(error.1);
                     }
                 }
-            }
         }
     });
     Ok((

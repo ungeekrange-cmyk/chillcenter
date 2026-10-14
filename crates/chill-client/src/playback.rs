@@ -35,10 +35,9 @@ fn take_pause_instruction(pending: &mut Vec<u8>) -> Result<Option<PauseInstructi
             }
             if let Some(value) = line.strip_prefix("event:") {
                 event = Some(value.trim_ascii());
-            } else if let Some(value) = line.strip_prefix("data:") {
-                if data.replace(value.trim()).is_some() {
+            } else if let Some(value) = line.strip_prefix("data:")
+                && data.replace(value.trim()).is_some() {
                     return Err(ClientError::InvalidRangeResponse("Contrôle SSE ambigu".into()));
-                }
             }
         }
         if event == Some("pause") {
@@ -388,7 +387,7 @@ mod tests {
         invalid_utf8.extend_from_slice(b"\",\"remaining_ms\":1}\n\n");
         assert!(take_pause_instruction(&mut invalid_utf8).is_err());
 
-        let mut bad_token = format!("event: pause\ndata: {{\"token\":\"not-a-token\",\"remaining_ms\":1}}\n\n").into_bytes();
+        let mut bad_token = b"event: pause\ndata: {\"token\":\"not-a-token\",\"remaining_ms\":1}\n\n".to_vec();
         assert!(take_pause_instruction(&mut bad_token).is_err());
 
         let mut incomplete = b"event: pause\ndata: {}\n".to_vec();

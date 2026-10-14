@@ -1482,6 +1482,8 @@ fn fingerprint(bytes: &[u8; 32]) -> String {
         .collect::<Vec<_>>()
         .join(":")
 }
+// Mirrors the closed catalogue IPC fields; no hidden mutable context.
+#[allow(clippy::too_many_arguments)]
 fn catalog_query(
     offset: usize,
     category: Option<String>,

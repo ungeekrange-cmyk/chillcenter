@@ -186,10 +186,9 @@ impl Drop for StagedUpload {
     fn drop(&mut self) {
         if !self.kept {
             self.cancelled.store(true, Ordering::Release);
-            if let Ok(mut records) = previews().lock() {
-                if let Some(items) = records.get_mut(&self.dir) {
+            if let Ok(mut records) = previews().lock()
+                && let Some(items) = records.get_mut(&self.dir) {
                     items.remove(&self.id);
-                }
             }
             for ext in ["partial", "zip"] {
                 let _ = fs::remove_file(self.dir.join(format!("{}.{}", self.id, ext)));
@@ -533,8 +532,8 @@ fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String,
             if !managed_staging(name) || active.contains(name) {
                 continue;
             }
-            if let Ok(meta) = fs::symlink_metadata(entry.path()) {
-                if meta.is_file()
+            if let Ok(meta) = fs::symlink_metadata(entry.path())
+                && meta.is_file()
                     && !meta.file_type().is_symlink()
                     && meta
                         .modified()
@@ -543,7 +542,6 @@ fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String,
                         .is_some_and(|age| age >= PREVIEW_TTL)
                 {
                     let _ = fs::remove_file(entry.path());
-                }
             }
         }
     }
@@ -1195,6 +1193,7 @@ struct InspectionGate {
 static INSPECTION_GATES: OnceLock<Mutex<HashMap<PathBuf, Arc<InspectionGate>>>> = OnceLock::new();
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use crate::{
@@ -1441,7 +1440,7 @@ mod tests {
                 )?;
                 store.set_series_speed(&p.id, "series", 1.25)?;
                 store.set_rating(&p.id, &media.id, Some(4), "video")?;
-                store.create_playlist_with_members(&p.id, "Liste", &[media.id.clone()])?;
+                store.create_playlist_with_members(&p.id, "Liste", std::slice::from_ref(&media.id))?;
                 Ok((p.id, media.id))
             })
             .await

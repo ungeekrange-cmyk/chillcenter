@@ -227,10 +227,9 @@ impl AiHost {
         Ok(job)
     }
     pub fn cancel_all(&self) {
-        if let Ok(job) = self.job.lock() {
-            if let Some(job) = job.as_ref() {
+        if let Ok(job) = self.job.lock()
+            && let Some(job) = job.as_ref() {
                 let _ = cancel(job);
-            }
         }
     }
     pub fn start(

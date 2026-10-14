@@ -177,7 +177,7 @@ impl LibrarySettings {
         };
         let data = serde_json::to_vec_pretty(&updated).map_err(|_| "Sérialisation impossible.")?;
         let published=writer(&config.data_dir.join("library.json"), &data);
-        if let Err(error)=&published {if error!="CONFIG_DURABILITY_UNKNOWN"{return published;}}
+        if let Err(error)=&published && error!="CONFIG_DURABILITY_UNKNOWN"{return published;}
         *self = updated;
         published
     }

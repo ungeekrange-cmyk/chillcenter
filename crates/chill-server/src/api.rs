@@ -43,7 +43,12 @@ impl DatabaseActor {
         std::thread::Builder::new()
             .name("chill-sqlite".into())
             .spawn(move || {
-                let mut store = match Store::open(&path) {
+                let mut store = match Store::open(&path).and_then(|store| {
+                    // The service holds its exclusive data lock before opening
+                    // this actor. No worker from the prior process survives.
+                    store.recover_interrupted_fingerprints()?;
+                    Ok(store)
+                }) {
                     Ok(store) => {
                         let _ = ready_tx.send(Ok(()));
                         store
@@ -516,6 +521,30 @@ mod tests {
         release_tx.send(()).unwrap();
         assert_eq!(response.unwrap().unwrap().len(), 1);
         writer.await.unwrap();
+    }
+    #[tokio::test]
+    async fn startup_recovers_interrupted_fingerprints_without_generic_open_mutating_jobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.sqlite");
+        let mut store = Store::open(&path).unwrap();
+        let item = chill_catalog::scanner::parse_file(std::path::Path::new("/nas"), std::path::Path::new("/nas/recovery.mp4"));
+        store.snapshot(vec![item]).unwrap();
+        let profile = store.create_profile("Recovery").unwrap();
+        let id = store.catalog(&profile.id).unwrap()[0].id.clone();
+        store.mark_fingerprint_queued(&id, chill_domain::fingerprint::FingerprintKind::Full).unwrap();
+        store.mark_fingerprint_running(&id, store.media_revision(&id).unwrap()).unwrap();
+        drop(store);
+        let reopened = Store::open(&path).unwrap();
+        assert_eq!(reopened.fingerprint_status(&id).unwrap().state, "running");
+        drop(reopened);
+        let actor = DatabaseActor::open(path).unwrap();
+        let status = actor.call(move |store| {
+            let status = store.fingerprint_status(&id)?;
+            assert_eq!(store.fingerprint_scan_targets_after("", 16)?.len(), 1);
+            store.mark_fingerprint_queued(&id, chill_domain::fingerprint::FingerprintKind::Full)?;
+            Ok(status)
+        }).await.unwrap();
+        assert_eq!(status.state, "failed");
     }
     #[tokio::test]
     async fn configurable_root_is_persisted_through_admin_api() {
