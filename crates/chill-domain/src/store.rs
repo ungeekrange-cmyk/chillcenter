@@ -1220,7 +1220,11 @@ impl Store {
     ) -> Result<(), String> {
         self.require_playlist(profile, id)?;
         let name = valid_collection_name(name)?;
-        if self.personal.execute("UPDATE cc_playlists SET name=?1,revision=revision+1 WHERE id=?2 AND profile_id=?3 AND revision=?4",params![name,id,profile,expected as i64]).map_err(db_error)? != 1 { return Err("La playlist a changé entre-temps.".into()); }
+        let tx=self.personal.unchecked_transaction().map_err(db_error)?;
+        let duplicate:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM cc_playlists WHERE profile_id=?1 AND name=?2 AND id<>?3)",params![profile,name,id],|r|r.get(0)).map_err(db_error)?;
+        if duplicate { return Err("PLAYLIST_NAME_CONFLICT".into()); }
+        if tx.execute("UPDATE cc_playlists SET name=?1,revision=revision+1 WHERE id=?2 AND profile_id=?3 AND revision=?4",params![name,id,profile,expected as i64]).map_err(db_error)? != 1 { return Err("La playlist a changé entre-temps.".into()); }
+        tx.commit().map_err(db_error)?;
         Ok(())
     }
     pub fn delete_collection(&self, profile_id: &str, collection_id: &str) -> Result<(), String> {
@@ -1882,6 +1886,14 @@ mod tests {
             .find(|c| c.id == list.id)
             .unwrap();
         assert_eq!(got.media_ids, vec![ids[1].clone(), ids[0].clone()]);
+    }
+    #[test]
+    fn playlist_duplicate_rename_is_conflict_and_does_not_change_revision_or_order() {
+        let mut s=store(); let a=s.create_profile("A").unwrap(); let b=s.create_profile("B").unwrap(); let ids:Vec<_>=s.catalog(&a.id).unwrap().into_iter().map(|m|m.id).collect();
+        let first=s.create_playlist_with_members(&a.id,"Première",&ids).unwrap(); let second=s.create_playlist_with_members(&a.id,"Deuxième",&[]).unwrap();
+        assert_eq!(s.rename_playlist_at_revision(&a.id,&second.id,"Première",second.revision).unwrap_err(),"PLAYLIST_NAME_CONFLICT");
+        let after=s.playlist(&a.id,&second.id).unwrap(); assert_eq!(after.name,"Deuxième");assert_eq!(after.revision,second.revision);assert_eq!(s.playlist(&a.id,&first.id).unwrap().media_ids,ids);
+        let other=s.create_playlist_with_members(&b.id,"Première",&[]).unwrap(); assert_eq!(other.name,"Première");
     }
     #[test]
     fn saga_boundary_roundtrips_scanned_stable_ids_without_touching_personal_state() {
