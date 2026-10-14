@@ -603,31 +603,13 @@ impl SurfacePlayer {
         self.player.set_speed(pending.speed)?;
         self.speed = pending.speed;
         let tracks = self.player.tracks()?;
-        let wanted_audio = pending.audio_language.as_deref().and_then(language_key);
         let wanted_subtitle = pending.subtitle_language.as_deref().and_then(language_key);
-        let audio = tracks
-            .iter()
-            .find(|track| {
-                matches!(track.kind, chill_player::TrackKind::Audio)
-                    && track.language.as_deref().and_then(language_key) == wanted_audio
-            })
-            .or_else(|| {
-                tracks.iter().find(|track| {
-                    matches!(track.kind, chill_player::TrackKind::Audio) && track.original
-                })
-            })
-            .or_else(|| {
-                tracks
-                    .iter()
-                    .find(|track| matches!(track.kind, chill_player::TrackKind::Audio))
-            });
+        let (audio,audio_unavailable)=preferred_audio(&tracks,pending.audio_language.as_deref());
         if let Some(track) = audio {
             self.player.select_audio(track.id)?;
-            if wanted_audio.is_some()
-                && track.language.as_deref().and_then(language_key) != wanted_audio
-            {
-                self.notice = Some("Langue audio préférée indisponible : audio original ou première piste utilisé.".into());
-            }
+        }
+        if audio_unavailable {
+            self.notice = Some("Langue audio préférée indisponible : audio original ou première piste utilisé.".into());
         }
         if let Some(wanted) = wanted_subtitle {
             if let Some(track) = tracks.iter().find(|track| {
@@ -642,6 +624,9 @@ impl SurfacePlayer {
             }
         } else {
             self.player.select_subtitle(None)?;
+            if pending.subtitle_language.as_deref().is_some_and(|s|!s.trim().is_empty()){
+                self.notice=Some("Langue de sous-titres non reconnue : sous-titres désactivés.".into());
+            }
         }
         self.loaded = true;
         self.load_phase = LoadPhase::Steady;
@@ -820,6 +805,15 @@ struct PendingLoad {
 fn language_key(language: &str) -> Option<String> {
     crate::player_bridge::language_key(language)
 }
+fn preferred_audio<'a>(tracks:&'a [Track], requested:Option<&str>)->(Option<&'a Track>,bool){
+    let wanted=requested.and_then(language_key);
+    let chosen=wanted.as_ref().and_then(|wanted|tracks.iter().find(|t|t.kind==chill_player::TrackKind::Audio&&t.language.as_deref().and_then(language_key).as_ref()==Some(wanted)))
+        .or_else(||tracks.iter().find(|t|t.kind==chill_player::TrackKind::Audio&&t.original))
+        .or_else(||tracks.iter().find(|t|t.kind==chill_player::TrackKind::Audio));
+    let unavailable=requested.is_some_and(|s|!s.trim().is_empty())
+        && (wanted.is_none() || chosen.is_none_or(|t|t.language.as_deref().and_then(language_key)!=wanted));
+    (chosen,unavailable)
+}
 fn open_gl_view(rect: NSRect) -> Result<Retained<NSOpenGLView>, NativePlayerError> {
     let mtm = MainThreadMarker::new()
         .ok_or_else(|| NativePlayerError::Surface("AppKit hors thread principal".into()))?;
@@ -937,5 +931,23 @@ impl Drop for Framebuffer {
             glDeleteTextures(1, &self.tex);
             glDeleteFramebuffers(1, &self.id)
         }
+    }
+}
+
+#[cfg(test)]
+mod preferred_audio_tests {
+    use super::*;
+    use chill_player::TrackKind;
+    #[test]
+    fn non_normalizable_preference_never_matches_an_untagged_track_before_original() {
+        let audio=|id,language:Option<&str>,original|Track{id,kind:TrackKind::Audio,language:language.map(str::to_owned),title:None,selected:false,external:false,original};
+        let tracks=vec![audio(1,None,false),audio(2,Some("eng"),true),audio(3,Some("fra"),false)];
+        let (chosen,notice)=preferred_audio(&tracks,Some("Japanese"));
+        assert_eq!(chosen.unwrap().id,2);assert!(notice);
+        let (chosen,notice)=preferred_audio(&tracks,Some("ja"));assert_eq!(chosen.unwrap().id,2);assert!(notice);
+        let (chosen,notice)=preferred_audio(&tracks,Some("fr-CA"));assert_eq!(chosen.unwrap().id,3);assert!(!notice);
+        let (chosen,notice)=preferred_audio(&tracks,Some(""));assert_eq!(chosen.unwrap().id,2);assert!(!notice);
+        let (chosen,notice)=preferred_audio(&tracks[0..1],Some("Japanese"));assert_eq!(chosen.unwrap().id,1);assert!(notice);
+        let (chosen,notice)=preferred_audio(&[],Some("en"));assert!(chosen.is_none());assert!(notice);
     }
 }

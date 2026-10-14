@@ -19,15 +19,15 @@ window.chillFormatsQa=async config=>{
    if(m.category!=="serie"){await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);assert(playerState.native.speed===1,"film must reopen at 1x");await player({action:"stop"});hidePlayer();}
   }
   const tracksMedia=p.items.find(x=>x.path.endsWith("Tracks (2026).mkv"));
-  for(const language of ["ja","fr"]){
+  for(const language of ["ja","Japanese","fr"]){
    step="language fallback "+language;await trace(step);
    state=await ui({action:"save_preferences",audio_language:language,subtitle_language:language,autoplay_seconds:null});render();
    await window.chillPlay(tracksMedia.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);await wait(()=>playerState.native?.debug_nonblank);
    const n=playerState.native,audio=n.tracks.filter(t=>t.kind==="Audio"),subtitles=n.tracks.filter(t=>t.kind==="Subtitle");
    assert(!subtitles.some(t=>t.selected),"absent or ambiguous subtitle must not auto-select");
-   if(language==="ja"){
+   if(language!=="fr"){
     const fallback=audio.find(t=>t.original)||audio[0];assert(audio.find(t=>t.selected)?.id===fallback.id,"missing audio preference must use original or first track");
-    assert((n.notice||playerState.note||"").includes("indisponible"),"missing preferred language notice absent");
+    assert(/indisponible|non reconnue/.test(n.notice||playerState.note||""),"missing preferred language notice absent");
    }else{
     assert(audio.some(t=>t.selected&&/^(fra|fr)$/.test(t.language)),"French audio preference not selected");
     assert(playerState.external_subtitles.filter(t=>!t.unavailable&&/^(fra|fr)$/.test(t.language)).length>=2,"ambiguity fixture missing");
