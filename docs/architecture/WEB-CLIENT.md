@@ -65,3 +65,7 @@ Base `/api/2026-10-14`. `GET /server` est lu au démarrage et le client refuse u
 | Vrai serveur Pi, TLS réel, vraie vidéo, Service Worker sur certificat autogénéré | **NOT_RUN** |
 
 Ces résultats ne valident ni l'AVI, ni un fichier réel du NAS, ni le débit sur Wi-Fi, ni le déploiement.
+
+## Essai sur le Pi (lecture seule)
+
+Voir [WEB-PI-READONLY-EVIDENCE](../implementation/WEB-PI-READONLY-EVIDENCE.md) : 21 fichiers réels ouverts par les démuxeurs, inventaire du catalogue (MKV 78 %, AVI 15 % tous Xvid dans l'échantillon, MP4 7 %), AC-3 fréquent. LAVI

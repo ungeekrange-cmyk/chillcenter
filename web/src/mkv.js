@@ -134,7 +134,7 @@
         }
       }
       if (t.number === undefined) continue;
-      if (t.encoded) { out.push({ id: t.number, kind: t.type === 1 ? "video" : "audio", codec: null, mime: null, type: t.codecId, unsupportedReason: "compression de pistes MKV" }); continue; }
+      if (t.encoded && (t.type === 1 || t.type === 2)) { out.push({ id: t.number, kind: t.type === 1 ? "video" : "audio", codec: null, mime: null, type: t.codecId, unsupportedReason: "compression de pistes MKV" }); continue; }
       const track = buildTrack(t);
       if (track) out.push(track);
     }
