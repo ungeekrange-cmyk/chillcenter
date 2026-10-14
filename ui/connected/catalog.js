@@ -84,6 +84,7 @@ function appendGroupRating(target,items,scope){
 }
 function renderSeriesCommon(result){
   let section=$("series-common");if(!section){section=document.createElement("section");section.id="series-common";$("collection-members").before(section);}section.replaceChildren();const m=result.metadata||{};
+  const illustrated=result.episodes.find(e=>e.poster&&!e.poster_custom);if(illustrated){const poster=node("div",undefined,"poster series-poster");poster.setAttribute("aria-label","Affiche fournisseur de la série");section.append(poster);observeArtwork(poster,illustrated.id);}
   section.append(node("p",[m.year===0?"Année inconnue":m.year,m.genres?.join(", "),m.overview||"Informations communes à compléter"].filter(Boolean).join(" · ")||"Informations communes à compléter"));appendGroupRating(section,result.episodes,"series");
   const form=document.createElement("form"),edit=button("Modifier les informations communes",()=>form.hidden=!form.hidden);form.className="series-form";form.hidden=true;
   const fields=[["name","Nom de la série",m.name??result.name],["year","Année",m.year??""],["genres","Genres séparés par des virgules",(m.genres||[]).join(", ")],["overview","Résumé commun",m.overview??""],["cast","Distribution",(m.cast||[]).join(", ")],["directors","Réalisation",(m.directors||[]).join(", ")]];

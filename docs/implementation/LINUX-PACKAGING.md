@@ -66,7 +66,7 @@ Toutes les commandes opérationnelles s'exécutent service arrêté et sous l'UI
 service. Exemple après `systemctl stop chillcenter` :
 
 ```text
-sudo -u chillcenter env HOME=/var/lib/chillcenter \
+sudo -u chillcenter \
   /usr/lib/chillcenter/chill-server --backup \
   --config /etc/chillcenter/server.json
 ```

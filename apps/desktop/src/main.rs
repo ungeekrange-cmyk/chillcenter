@@ -440,6 +440,14 @@ fn main() {
             })
             .build()?;
         let bridge = app.state::<Bridge>().inner().clone();
+        #[cfg(debug_assertions)]
+        if std::env::var("CHILL_UI_QA_MODE").as_deref() == Ok("formats") {
+            let probe_window=window.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut pulse=tokio::time::interval(std::time::Duration::from_secs(5));
+                loop {pulse.tick().await;let _=probe_window.eval("window.__TAURI__.core.invoke('qa_result',{success:false,detail:'TRACE probe '+JSON.stringify({busy:playerBusy,stage:playerState.stage,note:document.getElementById('player-note').textContent,hidden:document.hidden})});");}
+            });
+        }
         let tick_window = window.clone();
         let tick_bridge = bridge.clone();
         tauri::async_runtime::spawn(async move {
