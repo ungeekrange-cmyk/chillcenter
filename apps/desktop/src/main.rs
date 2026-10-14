@@ -2,6 +2,8 @@ use chill_client::ui::{UiClient, UiCommand, UiError};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
+mod artwork_bridge;
 mod native_player;
 mod player_bridge;
 use player_bridge::{PlayerCommand, PlayerHost};
@@ -100,6 +102,57 @@ async fn player_command(
         bridge.player.lock().await.command(&window, command).await
     }
 }
+#[tauri::command]
+async fn artwork_command(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Bridge>,
+    target: artwork_bridge::ArtworkTarget,
+) -> Result<Value, UiError> {
+    let bridge = state.inner().clone();
+    let permit = bridge
+        .slot
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| UiError {
+            message: "Une opération est déjà en cours.".into(),
+            status: None,
+            code: "CLIENT_BUSY".into(),
+        })?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
+        .pick_file(move |file| {
+            let _ = tx.send(file.and_then(|f| f.as_path().map(|p| p.to_owned())));
+        });
+    let Some(path) = rx.await.map_err(|_| UiError {
+        message: "Sélecteur d'image interrompu.".into(),
+        status: None,
+        code: "CLIENT_INTERRUPTED".into(),
+    })?
+    else {
+        return Ok(serde_json::json!({"cancelled":true}));
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        let (bytes, mime) = artwork_bridge::read_selected(&path)?;
+        bridge
+            .client
+            .lock()
+            .map_err(|_| UiError {
+                message: "Client indisponible.".into(),
+                status: None,
+                code: "CLIENT_UNAVAILABLE".into(),
+            })
+            .and_then(|mut client| artwork_bridge::upload(&mut client, target, bytes, mime))
+    })
+    .await
+    .map_err(|_| UiError {
+        message: "Opération interrompue.".into(),
+        status: None,
+        code: "CLIENT_INTERRUPTED".into(),
+    })?
+}
 fn main() {
     let builder = tauri::Builder::default().setup(|app| {
         let directory = app.path().app_config_dir()?;
@@ -122,6 +175,7 @@ fn main() {
             closing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rendering,
         });
+        app.handle().plugin(tauri_plugin_dialog::init())?;
         let window = tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
             .on_navigation(|url| {
                 (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
@@ -191,6 +245,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             ui_command,
             player_command,
+            artwork_command,
             qa_result
         ])
         .on_page_load(|webview, payload| {
@@ -221,7 +276,11 @@ fn main() {
             }
         });
     #[cfg(not(debug_assertions))]
-    let builder = builder.invoke_handler(tauri::generate_handler![ui_command, player_command]);
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        ui_command,
+        player_command,
+        artwork_command
+    ]);
     builder
         .run(tauri::generate_context!())
         .expect("Chill Center startup");

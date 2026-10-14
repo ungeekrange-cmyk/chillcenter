@@ -27,12 +27,13 @@ window.catalogEnhanceCard=(card,m)=>{
   actions.append(button("Fiche",()=>openMedia(m.id)),button("Ajouter à une playlist",()=>pickPlaylist(m.id)));
 };
 window.catalogOpenMedia=openMedia;window.catalogOpenSeries=openSeries;
+async function importArtwork(target,reload){try{const result=await window.__TAURI__.core.invoke("artwork_command",{target});if(!result?.cancelled)await reload();}catch(error){message(error?.message||"Import de l'image non effectué.");}}
 async function openMedia(id){
   const result=await run({action:"media_detail",media_id:id},false);if(!result)return;detailView=result;
   const m=result.media;$("detail-title").textContent=m.title;$("detail-overview").textContent=m.overview||"Informations à compléter";
   $("detail-metadata").textContent=[m.year,m.runtime_minutes?m.runtime_minutes+" min":null,...m.genres,...m.directors.map(n=>"Réalisation : "+n),...m.cast].filter(Boolean).join(" · ");
   $("detail-availability").textContent=m.available?"Disponible":"Vidéo indisponible";
-  $("detail-play").disabled=!m.available;$("detail-play").onclick=()=>{$("media-dialog").close();window.chillPlay(m.id);};
+  $("detail-play").disabled=!m.available;$("detail-play").onclick=()=>{$("media-dialog").close();window.chillPlay(m.id);};let artwork=$("detail-artwork");if(!artwork){artwork=button("Importer une image",()=>{});artwork.id="detail-artwork";$("detail-play").parentElement.append(artwork);}artwork.onclick=()=>importArtwork({kind:"media",media_id:m.id,expected_revision:result.revision},async()=>{await openMedia(m.id);await loadPage();});
   $("detail-edit").hidden=false;$("metadata-form").hidden=true;
   options($("detail-rating-scope"),m.category==="serie"?[["video","Cet épisode"],["season","Cette saison"],["series","Toute la série"]]:[["video","Cette vidéo"]]);
   $("detail-rating").value=m.rating?String(m.rating):"";$("detail-rating-scope").value="video";$("media-dialog").showModal();

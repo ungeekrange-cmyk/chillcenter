@@ -624,6 +624,39 @@ impl Transport {
         Ok(bytes)
     }
 
+    /// Native bridge only: fixed allowlisted callers supply the path; the pinned
+    /// transport owns URL construction, timeout and response cap.
+    pub async fn put_binary_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        bytes: Vec<u8>,
+        mime: &str,
+    ) -> Result<T, ClientError> {
+        let mut response = self
+            .asynchronous
+            .put(self.endpoint.request_url(path)?)
+            .query(query)
+            .header("content-type", mime)
+            .body(bytes)
+            .send()
+            .await?;
+        let status = response.status();
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if body.len().saturating_add(chunk.len()) > 4096 {
+                return Err(ClientError::InvalidRangeResponse(
+                    "Réponse JSON trop volumineuse".into(),
+                ));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        if !status.is_success() {
+            return Err(api_response_error(status, &body));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
     pub fn read_range_blocking(
         &self,
         path: &str,

@@ -1,10 +1,10 @@
 //! Allowlisted UI operations. No JS-supplied HTTP paths, headers or local/NAS paths.
 use crate::{
-    inspect_certificate, ClientError, HttpMethod, PresentedCertificate, ServerEndpoint, Transport,
-    TrustEventKind, TrustStore,
+    ClientError, HttpMethod, PresentedCertificate, ServerEndpoint, Transport, TrustEventKind,
+    TrustStore, inspect_certificate,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     fs,
@@ -294,6 +294,23 @@ pub struct UiClient {
     persist_requests: bool,
 }
 impl UiClient {
+    pub fn upload_artwork(
+        &mut self,
+        path: &str,
+        expected_revision: u64,
+        bytes: Vec<u8>,
+        mime: &str,
+    ) -> Result<Value, UiError> {
+        let connection = self.playback_connection()?;
+        self.runtime
+            .block_on(connection.transport.put_binary_json(
+                path,
+                &[("expected_revision", expected_revision.to_string())],
+                bytes,
+                mime,
+            ))
+            .map_err(Into::into)
+    }
     pub fn playback_connection(&mut self) -> Result<PlaybackConnection, UiError> {
         let profile_id = self.profile()?;
         let conn = self
@@ -1393,11 +1410,13 @@ mod tests {
                 subject: "isolated fixture".into(),
             },
         });
-        assert!(client
-            .dispatch(UiCommand::Approve {
-                token: "approval-token".into()
-            })
-            .is_err());
+        assert!(
+            client
+                .dispatch(UiCommand::Approve {
+                    token: "approval-token".into()
+                })
+                .is_err()
+        );
         assert!(client.connected.is_none());
         assert_eq!(*client.trust.read().unwrap(), before);
         assert_eq!(UiClient::open(dir.path()).unwrap().settings.trust, before);
@@ -1417,9 +1436,11 @@ mod tests {
             at_unix: 2,
             kind: TrustEventKind::KeyReplacedAfterKnownExpiry,
         });
-        assert!(renewal_notice(&trust, 1)
-            .unwrap()
-            .contains("acceptée automatiquement"));
+        assert!(
+            renewal_notice(&trust, 1)
+                .unwrap()
+                .contains("acceptée automatiquement")
+        );
         assert!(renewal_notice(&trust, 2).is_none());
     }
     #[test]
@@ -1474,13 +1495,15 @@ mod tests {
         // persistence boundary, without a mock HTTP stack or production test hook.
         client.connected.as_mut().unwrap().active = Some(uuid::Uuid::new_v4().to_string());
         client.directory = dir.path().join("unavailable-settings-directory");
-        assert!(client
-            .commit_selected_view(
-                "server".into(),
-                Some(a.clone()),
-                Ok(json!({"stage":"connected"}))
-            )
-            .is_err());
+        assert!(
+            client
+                .commit_selected_view(
+                    "server".into(),
+                    Some(a.clone()),
+                    Ok(json!({"stage":"connected"}))
+                )
+                .is_err()
+        );
         assert_eq!(client.profile().unwrap(), a);
         assert_eq!(client.settings.last_profiles["server"], a);
         assert_eq!(
@@ -1513,29 +1536,35 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut client = UiClient::open(dir.path()).unwrap();
         assert_eq!(client.dispatch(UiCommand::Boot).unwrap()["stage"], "server");
-        assert!(client
-            .dispatch(UiCommand::Approve {
-                token: "forged".into()
-            })
-            .is_err());
-        assert!(client
-            .dispatch(UiCommand::Catalog {
-                offset: 0,
-                category: None,
-                q: None,
-                genre: None,
-                year: None,
-                watched: None,
-                sort: None,
-                grouped: None,
-                available: None,
-            })
-            .is_err());
-        assert!(client
-            .dispatch(UiCommand::SelectProfile {
-                id: uuid::Uuid::new_v4().to_string()
-            })
-            .is_err());
+        assert!(
+            client
+                .dispatch(UiCommand::Approve {
+                    token: "forged".into()
+                })
+                .is_err()
+        );
+        assert!(
+            client
+                .dispatch(UiCommand::Catalog {
+                    offset: 0,
+                    category: None,
+                    q: None,
+                    genre: None,
+                    year: None,
+                    watched: None,
+                    sort: None,
+                    grouped: None,
+                    available: None,
+                })
+                .is_err()
+        );
+        assert!(
+            client
+                .dispatch(UiCommand::SelectProfile {
+                    id: uuid::Uuid::new_v4().to_string()
+                })
+                .is_err()
+        );
     }
     #[test]
     fn catalog_query_only_emits_allowlisted_filters() {
@@ -1566,31 +1595,35 @@ mod tests {
                 ("available", "true".into())
             ]
         );
-        assert!(catalog_query(
-            0,
-            None,
-            None,
-            Some("x".repeat(201)),
-            None,
-            None,
-            None,
-            None,
-            None
-        )
-        .is_err());
+        assert!(
+            catalog_query(
+                0,
+                None,
+                None,
+                Some("x".repeat(201)),
+                None,
+                None,
+                None,
+                None,
+                None
+            )
+            .is_err()
+        );
         assert!(catalog_query(0, None, None, None, Some(1849), None, None, None, None).is_err());
-        assert!(catalog_query(
-            0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some("random".into()),
-            None,
-            None
-        )
-        .is_err());
+        assert!(
+            catalog_query(
+                0,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("random".into()),
+                None,
+                None
+            )
+            .is_err()
+        );
     }
     #[test]
     fn series_edit_payload_is_closed_and_keeps_the_revision_outside_the_patch() {
