@@ -10,10 +10,9 @@ use chill_player::{
 };
 use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly};
-use objc2::{
-    msg_send,
-    runtime::{AnyClass, AnyObject},
-};
+use objc2::{msg_send, runtime::AnyClass};
+#[cfg(debug_assertions)]
+use objc2::runtime::AnyObject;
 use objc2_app_kit::{
     NSOpenGLContext, NSOpenGLPFAAccelerated, NSOpenGLPFAAlphaSize, NSOpenGLPFAColorSize,
     NSOpenGLPFADoubleBuffer, NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat,
