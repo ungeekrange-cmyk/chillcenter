@@ -597,6 +597,7 @@ name = "chillcenter-desktop"
 version = "0.1.0"
 dependencies = [
  "chill-client",
+ "chill-domain",
  "chill-player",
  "libc",
  "objc2",

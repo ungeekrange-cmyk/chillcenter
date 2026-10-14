@@ -7,6 +7,7 @@ build = "build.rs"
 
 [dependencies]
 chill-client.workspace = true
+chill-domain.workspace = true
 chill-player.workspace = true
 libc = "0.2.190"
 objc2 = "0.6.5"

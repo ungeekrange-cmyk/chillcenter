@@ -1,6 +1,7 @@
 "use strict";
 const $ = id => document.getElementById(id);
 let state = {stage:"server"}, busy=false, offset=0, more=false, deleting=null, timer=null, draftAddress="";
+const CATALOG_PAGE_SIZE=48;
 function message(value="") { $("message").textContent=value;document.querySelectorAll(".dialog-message").forEach(n=>n.textContent=value); }
 function node(tag,text,cls) { const n=document.createElement(tag); if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n; }
 async function invoke(command) { return window.__TAURI__.core.invoke("ui_command",{command}); }
@@ -11,6 +12,7 @@ async function run(command, update=true) {
   finally{busy=false;document.body.removeAttribute("aria-busy");for(const [n,disabled] of disabledBefore)if(n.isConnected)n.disabled=disabled;pager();}
 }
 function render(){
+  if(window.adminContextChanged)window.adminContextChanged();
   if(window.catalogProfileChanged)window.catalogProfileChanged();
   if(window.refreshAppearance)window.refreshAppearance();
   $("connection-notice").textContent=state.notice||"";$("connection-notice").hidden=!state.notice;
@@ -46,7 +48,7 @@ function render(){
 }
 async function connect(address){draftAddress=address;state={stage:"server",address,theme:state.theme,servers:state.servers||[]};render();const r=await run({action:"connect",address});if(r?.profile_id)await loadPage();}
 async function selectProfile(id){if(!id)return;$("media").replaceChildren();offset=0;const r=await run({action:"select_profile",id});if(r)await loadPage();}
-function pager(){ $("previous").disabled=busy||offset===0;$("next").disabled=busy||!more;$("page-label").textContent="Page "+(Math.floor(offset/50)+1); }
+function pager(){ $("previous").disabled=busy||offset===0;$("next").disabled=busy||!more;$("page-label").textContent="Page "+(Math.floor(offset/CATALOG_PAGE_SIZE)+1); }
 function catalogCommand(filters,at,grouped){return {action:"catalog",offset:at,category:filters.category||null,q:filters.q||null,genre:filters.genre||null,year:filters.year===""?null:Number(filters.year),watched:filters.watched===""?null:filters.watched==="true",sort:filters.sort||null,grouped,available:filters.available===""?null:filters.available==="true"};}
 function catalogFilters(){return {category:$("category").value,q:$("search").value,genre:$("genre").value,year:$("year").value,watched:$("watched").value,sort:$("sort").value,available:$("available").value};}
 if(typeof module!=="undefined")module.exports={catalogCommand};
@@ -87,11 +89,17 @@ $("theme").onchange=()=>run({action:"theme",theme:$("theme").value});
 $("filter-form").onsubmit=e=>{e.preventDefault();offset=0;loadPage();};$("refresh-catalog").onclick=()=>loadPage();
 $("view-mode").onchange=()=>$("media").classList.toggle("list",$("view-mode").value==="list");
 $("poster-size").oninput=()=>document.documentElement.style.setProperty("--poster-size",$("poster-size").value+"px");
-$("previous").onclick=()=>{offset=Math.max(0,offset-50);loadPage();};$("next").onclick=()=>{offset+=50;loadPage();};
+$("previous").onclick=()=>{offset=Math.max(0,offset-CATALOG_PAGE_SIZE);loadPage();};$("next").onclick=()=>{offset+=CATALOG_PAGE_SIZE;loadPage();};
 $("scan").onclick=async()=>{if(await run({action:"start_scan"},false))await pollScan();};
-async function unavailableAdmin(){
+async function unavailableAdmin(at=0){
   let panel=$("unavailable-admin");if(!panel){panel=document.createElement("section");panel.id="unavailable-admin";panel.append(node("h2","Vidéos indisponibles"),node("p","Retirer une entrée efface son historique de reprise, vu et notes. Aucun fichier NAS ne sera supprimé.","muted"));$("admin-panel").querySelector(".admin-grid").append(panel);}
-  const page=await run({action:"unavailable",offset:0,limit:48},false);if(!page)return;const selected=new Set(), list=document.createElement("div"), remove=button("Retirer la sélection",async()=>{if(!selected.size||!confirm("Retirer ces entrées du catalogue ? Leur historique sera perdu ; aucun fichier NAS ne sera supprimé."))return;const r=await run({action:"forget_unavailable",media_ids:[...selected],expected_epoch:page.epoch,confirmed:true},false);if(r)unavailableAdmin();});for(const item of page.items||[]){const label=document.createElement("label"),check=document.createElement("input");check.type="checkbox";check.onchange=()=>{check.checked?selected.add(item.id):selected.delete(item.id);remove.disabled=!selected.size;};label.append(check,document.createTextNode(" "+item.title));list.append(label);}remove.disabled=true;panel.replaceChildren(node("h2","Vidéos indisponibles"),node("p","Retirer une entrée efface son historique de reprise, vu et notes. Aucun fichier NAS ne sera supprimé.","muted"),list,remove);
+  const context=state.server_id+":"+state.profile_id;
+  const page=await run({action:"unavailable",offset:at,limit:48},false);if(!page||context!==state.server_id+":"+state.profile_id)return;
+  const selected=new Set(),list=node("div"),remove=node("button","Retirer la sélection","danger");
+  remove.onclick=async()=>{if(!selected.size||!confirm("Retirer ces références du catalogue ? Reprises, notes, vus et associations seront perdus pour tous les profils. Aucun fichier NAS ne sera supprimé."))return;const r=await run({action:"forget_unavailable",media_ids:[...selected],expected_epoch:page.epoch,confirmed:true},false);if(r)await unavailableAdmin(at);};
+  for(const item of page.items||[]){const label=node("label"),check=node("input");check.type="checkbox";check.onchange=()=>{check.checked?selected.add(item.id):selected.delete(item.id);remove.disabled=!selected.size;};label.append(check,document.createTextNode(" "+item.title+" — "+item.relative_path));list.append(label);}remove.disabled=true;
+  const previous=node("button","Précédent","secondary"),next=node("button","Suivant","secondary");previous.disabled=at===0;next.disabled=!page.has_more;previous.onclick=()=>unavailableAdmin(Math.max(0,at-48));next.onclick=()=>unavailableAdmin(at+48);
+  panel.replaceChildren(node("h2","Vidéos indisponibles"),node("p","Retirer une référence efface les historiques associés dans tous les profils. Les fichiers NAS ne sont jamais supprimés. Une vidéo redevenue disponible est protégée.","muted"),list,remove,previous,next);
 }
 $("admin-toggle").addEventListener("click",()=>unavailableAdmin());
 async function pollScan(){clearTimeout(timer);if(state.stage!=="connected"||$("admin-panel").hidden)return;const s=await run({action:"scan_status"},false);if(!s){timer=setTimeout(pollScan,2000);return;}$("scan-status").textContent=s.running?"Scan en cours…":s.last_error||(s.count!==null?s.count+" vidéos découvertes.":"Aucun scan lancé dans cette session serveur.");if(s.running)timer=setTimeout(pollScan,2000);else if(s.count!==null&&state.profile_id)await loadPage();}
