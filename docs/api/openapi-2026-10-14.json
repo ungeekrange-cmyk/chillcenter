@@ -3656,7 +3656,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "additionalProperties": true
                 }
               }
             }
@@ -3697,9 +3698,10 @@
             "type": "string"
           },
           "request_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           }
-        }
+        },
+        "additionalProperties": true
       },
       "Profile": {
         "type": "object",
@@ -3710,7 +3712,7 @@
         ],
         "properties": {
           "id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "name": {
             "type": "string"
@@ -3767,7 +3769,7 @@
         ],
         "properties": {
           "id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "path": {
             "type": "string",
@@ -3876,7 +3878,8 @@
               "null"
             ]
           }
-        }
+        },
+        "additionalProperties": true
       },
       "CatalogPage": {
         "type": "object",
@@ -3914,7 +3917,8 @@
                 "unwatched": {
                   "type": "integer"
                 }
-              }
+              },
+              "additionalProperties": true
             }
           }
         },
@@ -4449,7 +4453,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "SubtitleList": {
         "type": "object",
@@ -4489,7 +4493,7 @@
           "media_ids": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Uuid"
+              "$ref": "#/components/schemas/UuidResponse"
             }
           },
           "poster": {
@@ -4499,7 +4503,7 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "SagaEnvelope": {
         "type": "object",
@@ -4538,7 +4542,7 @@
         ],
         "properties": {
           "id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "name": {
             "type": "string"
@@ -4550,11 +4554,11 @@
           "media_ids": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Uuid"
+              "$ref": "#/components/schemas/UuidResponse"
             }
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "PlaylistEnvelope": {
         "type": "object",
@@ -4681,16 +4685,16 @@
             "type": "string"
           },
           "session_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "profile_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "device_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "media_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "media_revision": {
             "type": "integer",
@@ -4710,7 +4714,7 @@
             "type": "boolean"
           },
           "context": {
-            "$ref": "#/components/schemas/PlaybackContext"
+            "$ref": "#/components/schemas/PlaybackContextResponse"
           }
         },
         "additionalProperties": true
@@ -4828,7 +4832,7 @@
         ],
         "properties": {
           "job_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "status": {
             "enum": [
@@ -4904,7 +4908,7 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "CandidateList": {
         "type": "object",
@@ -5543,7 +5547,7 @@
         ],
         "properties": {
           "profile_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "common_revision": {
             "type": "integer",
@@ -5574,7 +5578,7 @@
               ],
               "properties": {
                 "id": {
-                  "$ref": "#/components/schemas/Uuid"
+                  "$ref": "#/components/schemas/UuidResponse"
                 },
                 "title": {
                   "type": "string"
@@ -5639,7 +5643,7 @@
                   "minimum": 0
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           }
         },
@@ -5748,7 +5752,7 @@
         ],
         "properties": {
           "media_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "state": {
             "type": "string"
@@ -5773,7 +5777,7 @@
         ],
         "properties": {
           "export_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "state": {
             "enum": [
@@ -5826,7 +5830,7 @@
             "minimum": 0
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ImportPreview": {
         "type": "object",
@@ -5840,10 +5844,10 @@
         ],
         "properties": {
           "preview_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "export_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "counts": {
             "$ref": "#/components/schemas/ImportCounts"
@@ -5858,13 +5862,13 @@
               ],
               "properties": {
                 "id": {
-                  "$ref": "#/components/schemas/Uuid"
+                  "$ref": "#/components/schemas/UuidResponse"
                 },
                 "name": {
                   "type": "string"
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "roots": {
@@ -5918,7 +5922,7 @@
         ],
         "properties": {
           "plan_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "epoch": {
             "type": "integer",
@@ -6063,7 +6067,7 @@
               ],
               "properties": {
                 "id": {
-                  "$ref": "#/components/schemas/Uuid"
+                  "$ref": "#/components/schemas/UuidResponse"
                 },
                 "title": {
                   "type": "string"
@@ -6076,7 +6080,7 @@
                   "minimum": 0
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "has_more": {
@@ -6101,7 +6105,7 @@
         ],
         "properties": {
           "server_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "api_version": {
             "type": [
@@ -6140,7 +6144,7 @@
                 "minimum": 0
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "additionalProperties": true
@@ -6172,13 +6176,13 @@
         ],
         "properties": {
           "source_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "source_relative_path": {
             "type": "string"
           },
           "target_id": {
-            "$ref": "#/components/schemas/Uuid"
+            "$ref": "#/components/schemas/UuidResponse"
           },
           "source_revision": {
             "type": "integer",
@@ -6202,7 +6206,7 @@
             "type": "string"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "ReassociatedResponse": {
         "type": "object",
@@ -6239,10 +6243,39 @@
               10,
               20,
               30
-            ]
+            ],
+            "default": 10
           }
         },
         "additionalProperties": false
+      },
+      "UuidResponse": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "PlaybackContextResponse": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "standalone",
+              "series",
+              "saga",
+              "playlist"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
       }
     },
     "responses": {

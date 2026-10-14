@@ -93,6 +93,17 @@ const checkRefs = (value, location = '$') => {
   for (const [key, nested] of Object.entries(value)) if (key !== '$ref') checkRefs(nested, `${location}.${key}`);
 };
 checkRefs(spec);
+const responseChecked=new Set();
+function checkResponseGraph(schema,location){
+ if(!schema||typeof schema!=='object')return;
+ if(schema.$ref?.startsWith('#/components/schemas/')){const name=schema.$ref.split('/').at(-1);if(!responseChecked.has(name)){responseChecked.add(name);checkResponseGraph(schemas[name],location+'/'+name);}}
+ if((schema.type==='object'||schema.properties)&&schema.additionalProperties===false)fail(`réponse imbriquée non extensible: ${location}`);
+ for(const [key,value]of Object.entries(schema))if(key!=='$ref')checkResponseGraph(value,location+'.'+key);
+}
+for(const [path,item]of Object.entries(spec.paths))for(const [method,operation]of Object.entries(item))for(const response of Object.values(operation.responses||{})){
+ const resolved=response.$ref?.startsWith('#/components/responses/')?spec.components.responses[response.$ref.split('/').at(-1)]:response;
+ checkResponseGraph(resolved.content,path+' '+method);
+}
 const mutationWithoutBody = new Set([
   'POST /admin/scan', 'POST /admin/exports', 'POST /admin/tmdb/jobs/{id}/cancel',
   'POST /admin/tmdb/jobs/{id}/retry', 'DELETE /admin/tmdb', 'DELETE /admin/exports/{id}/cancel',
