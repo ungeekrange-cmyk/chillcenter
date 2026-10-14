@@ -6,9 +6,14 @@ use std::{
 };
 
 const MAX_BYTES: usize = 8 * 1024 * 1024;
-/// Validate the actual decoded image, not merely its signature. The pixel
-/// budget bounds work on the Pi; allocation limits additionally cap decoders.
-pub fn validate(bytes: &[u8]) -> Result<(), String> {
+const MAX_WIDTH: u32 = 4096;
+const MAX_HEIGHT: u32 = 4096;
+const MAX_ALLOC: u64 = 64 * 1024 * 1024;
+const PREVIEW_WIDTH: u32 = 360;
+const PREVIEW_HEIGHT: u32 = 540;
+pub const MAX_PREVIEW_BYTES: usize = 512 * 1024;
+
+fn decode(bytes: &[u8]) -> Result<image::DynamicImage, String> {
     if bytes.len() > MAX_BYTES {
         return Err("Image trop volumineuse (8 MiB maximum).".into());
     }
@@ -17,9 +22,9 @@ pub fn validate(bytes: &[u8]) -> Result<(), String> {
         .with_guessed_format()
         .map_err(|_| "Image invalide.")?;
     let mut limits = image::Limits::default();
-    limits.max_image_width = Some(4096);
-    limits.max_image_height = Some(4096);
-    limits.max_alloc = Some(64 * 1024 * 1024);
+    limits.max_image_width = Some(MAX_WIDTH);
+    limits.max_image_height = Some(MAX_HEIGHT);
+    limits.max_alloc = Some(MAX_ALLOC);
     reader.limits(limits);
     let decoded = reader
         .decode()
@@ -27,7 +32,37 @@ pub fn validate(bytes: &[u8]) -> Result<(), String> {
     if decoded.width() == 0 || decoded.height() == 0 {
         return Err("Image vide.".into());
     }
+    Ok(decoded)
+}
+
+/// Validate the actual decoded image, not merely its signature. The pixel
+/// budget bounds work on the Pi; allocation limits additionally cap decoders.
+pub fn validate(bytes: &[u8]) -> Result<(), String> {
+    decode(bytes)?;
     Ok(())
+}
+
+/// Create a webview-safe JPEG preview from an already bounded poster.
+///
+/// The source is never altered. Decoding happens once under the same limits as
+/// validation; repeated JPEG encodes only operate on that in-memory thumbnail.
+pub fn thumbnail(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let decoded = decode(bytes)?;
+    let preview = decoded.resize(
+        PREVIEW_WIDTH,
+        PREVIEW_HEIGHT,
+        image::imageops::FilterType::Triangle,
+    );
+    for quality in [85, 75, 65, 55, 45, 35, 25, 15, 10] {
+        let mut encoded = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, quality)
+            .encode_image(&preview)
+            .map_err(|_| "Impossible de préparer l’aperçu de l’affiche.")?;
+        if encoded.len() <= MAX_PREVIEW_BYTES {
+            return Ok(encoded);
+        }
+    }
+    Err("Aperçu d’affiche trop volumineux.".into())
 }
 fn extension(bytes: &[u8]) -> Result<&'static str, String> {
     if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
@@ -94,6 +129,20 @@ pub fn store(bytes: &[u8], cache: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
+
+    fn encoded(format: ImageFormat, width: u32, height: u32) -> Vec<u8> {
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            width,
+            height,
+            Rgba([30, 120, 210, 255]),
+        ));
+        let mut bytes = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut bytes), format)
+            .unwrap();
+        bytes
+    }
     #[test]
     fn imports_a_copy_without_changing_source_and_rejects_active_content() {
         let folder = tempfile::tempdir().unwrap();
@@ -131,5 +180,26 @@ mod tests {
         assert!(store(b"<svg onload='evil()'/>", folder.path()).is_err());
         assert!(store(b"\x89PNG\r\n\x1a\ninvalid", folder.path()).is_err());
         assert!(store(b"\xff\xd8\xffinvalid", folder.path()).is_err());
+    }
+    #[test]
+    fn thumbnail_is_a_bounded_jpeg_for_png_and_jpeg_without_mutating_source() {
+        for format in [ImageFormat::Png, ImageFormat::Jpeg] {
+            let source = encoded(format, 1440, 1080);
+            let before = source.clone();
+            let preview = thumbnail(&source).unwrap();
+            assert_eq!(source, before);
+            assert!(preview.starts_with(&[0xff, 0xd8, 0xff]));
+            assert!(preview.len() <= MAX_PREVIEW_BYTES);
+            let decoded = image::load_from_memory(&preview).unwrap();
+            assert!(decoded.width() <= PREVIEW_WIDTH);
+            assert!(decoded.height() <= PREVIEW_HEIGHT);
+        }
+    }
+    #[test]
+    fn thumbnail_rejects_svg_and_oversize_before_decode() {
+        assert!(thumbnail(b"<svg onload='evil()'/>").is_err());
+        let mut oversized_svg = vec![b'x'; MAX_BYTES + 1];
+        oversized_svg[..5].copy_from_slice(b"<svg ");
+        assert!(thumbnail(&oversized_svg).is_err());
     }
 }

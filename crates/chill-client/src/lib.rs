@@ -21,6 +21,7 @@ use thiserror::Error;
 use x509_parser::extensions::GeneralName;
 use x509_parser::prelude::*;
 pub mod appearance;
+pub mod artwork;
 pub mod playback;
 pub mod ui;
 pub mod watch_clock;
