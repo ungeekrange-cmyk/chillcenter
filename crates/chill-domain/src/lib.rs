@@ -1,6 +1,7 @@
 pub mod administration;
 pub mod catalog_browser;
 pub mod import;
+pub mod legacy;
 pub mod provider_updates;
 pub mod snapshot;
 pub mod store;
