@@ -6,4 +6,4 @@
 | [G-02](G-02-CC-DOC-001.md) | CC-DOC-001 | APPROVED | User stories et revue de cohérence. |
 | [G-03 utilisateur](G-03-CC-STORIES-001.md) | CC-STORIES-001 | APPROVED | Implémentation autorisée, « validé, go implémentation ». |
 | [G-STORY revue indépendante](G-STORY-CC-STORIES-001.md) | CC-STORIES-001 | APPROVED | Présenter le backlog à l'utilisateur ; ne remplace pas G-03. |
-| [G-04 remise logicielle](G-04-CC-COMPLETE-001.md) | CC-COMPLETE-001 | PENDING_USER_VALIDATION | Sources et bundle complet avec réserves physiques explicites ; pas133AC tous validés ni installationPi autorisée. |
+| [G-04 remise logicielle](G-04-CC-COMPLETE-001.md) | CC-COMPLETE-001 | APPROVED_BY_USER_WITH_RESERVES | Remise acceptée avec réserves ; demande explicite suivante d'installation Pi/tests NAS. Aucun essai physique supposé PASS. |
