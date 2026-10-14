@@ -738,19 +738,9 @@ impl UiClient {
                     &[],
                     8 * 1024 * 1024,
                 ))?;
-                let mime = if data.starts_with(b"\x89PNG\r\n\x1a\n") {
-                    "image/png"
-                } else if data.starts_with(&[0xff, 0xd8, 0xff]) {
-                    "image/jpeg"
-                } else if data.len() >= 12 && &data[..4] == b"RIFF" && &data[8..12] == b"WEBP" {
-                    "image/webp"
-                } else {
-                    return Err(invalid("Affiche non prise en charge."));
-                };
-                use base64::Engine;
-                Ok(
-                    json!({"src":format!("data:{mime};base64,{}",base64::engine::general_purpose::STANDARD.encode(data))}),
-                )
+                let src = crate::artwork::preview_data_uri(&data)
+                    .map_err(|_| invalid("Affiche non prise en charge."))?;
+                Ok(json!({"src": src}))
             }
             UiCommand::Saga { id } => {
                 valid_collection_id(&id)?;
