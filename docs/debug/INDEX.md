@@ -19,6 +19,8 @@ Révision `CC-DOC-001`. Ce journal sera relu avant chaque nouvelle intervention.
 
 ## Format de tout futur BUG
 
+Régressions relevées à la complétion : [BUG0024 métadonnées série/saga](BUG-0024-common-series-metadata-and-saga-cleanup.md), [BUG0025 plafonds legacy](BUG-0025-legacy-fallback-bounds.md), [BUG0026 publication bundle](BUG-0026-bundle-publication-race.md), [BUG0027 substitution source](BUG-0027-legacy-source-replacement.md). Corrections et fixtures exécutées dans le delta d'intégration, revue nouvelle requise. Les anciens rapportsdéfavorables sont conservés.
+
 Complétion du14 octobre : BUG-0015–0019 et leurs preuves restent dans ce dossier. [BUG-0020 variantes serde fermées](BUG-0020-admin-ipc-unit-variants.md), [BUG-0021 ACL Tauri](BUG-0021-tauri-admin-command-permission.md), [BUG-0022 Content-Length ZIP](BUG-0022-archive-download-content-length.md), [BUG-0023 iconutil](BUG-0023-iconutil-iconset.md). Le parcours archives Tauri réel est PASS après0022 ; packaging autonome signé et libmpv chargé, inspection Finder/Dock NOT_RUN. Les revues de slice ne valent pas remise des33 stories.
 
 Lecture HTTPS : [BUG-0012 crédit ×0,5](BUG-0012-slow-playback-final-credit.md), VERIFIED par test RED/GREEN et horloge serveur déterministe ; seuil inchangé de10s réelles.

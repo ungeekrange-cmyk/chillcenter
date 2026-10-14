@@ -698,13 +698,9 @@ impl Store {
         stable_id: &str,
         patch: &MediaPatch,
     ) -> Result<Media, String> {
-        self.require_profile(profile_id)?;
-        if patch.rating.is_some() || patch.watched.is_some() {
-            return Err("La note et le vu sont propres au profil.".into());
-        }
-        let legacy = self.legacy_id(stable_id)?;
-        let updated = self.catalogue.patch(&legacy, patch)?;
-        self.profile_view(profile_id, updated)
+        let revision = self.media_revision(stable_id)?;
+        self.update_media_at_revision(profile_id, stable_id, revision, patch)
+            .map(|(media, _)| media)
     }
 
     pub fn media_revision(&self, stable_id: &str) -> Result<u64, String> {
@@ -744,22 +740,7 @@ impl Store {
         if revision as u64 != expected {
             return Err("La fiche a changé entre-temps.".into());
         }
-        let data: String = tx
-            .query_row("SELECT data FROM media WHERE id=?1", [&legacy], |r| {
-                r.get(0)
-            })
-            .map_err(db_error)?;
-        let mut updated: Media = serde_json::from_str(&data)
-            .map_err(|_| "Catalogue local endommagé : aucune donnée remplacée.".to_string())?;
-        patch.apply(&mut updated)?;
-        tx.execute(
-            "UPDATE media SET data=?1 WHERE id=?2",
-            params![
-                serde_json::to_string(&updated).map_err(|_| "Métadonnées invalides.")?,
-                legacy
-            ],
-        )
-        .map_err(db_error)?;
+        let updated = crate::metadata_edit::apply_common_patch(&tx, &legacy, patch)?;
         tx.execute(
             "UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",
             [stable_id],

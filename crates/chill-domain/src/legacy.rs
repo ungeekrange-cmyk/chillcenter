@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 const MAX_MEDIA: usize = 100_000;
 const MAX_COLLECTIONS: usize = 1_000;
-const MAX_MEMBERS: usize = 1_000_000;
+const MAX_MEMBERS: usize = 1_000;
 const MAX_ROW: usize = 1024 * 1024;
 const MAX_DOCUMENT: usize = 64 * 1024 * 1024;
 
@@ -169,7 +169,7 @@ pub fn convert_cinefolio_snapshot(
                 .map_err(db)?;
             let mut media_ids = Vec::new();
             for value in values {
-                if media_ids.len() >= 1_000 {
+                if media_ids.len() >= MAX_MEMBERS {
                     return Err(invalid());
                 }
                 let legacy = value.map_err(db)?;
@@ -211,6 +211,15 @@ pub fn convert_cinefolio_snapshot(
         let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (legacy, media) in &source_by_id {
             if let Some(name) = &media.saga {
+                if !grouped.contains_key(name) && grouped.len() >= MAX_COLLECTIONS {
+                    return Err(invalid());
+                }
+                if grouped
+                    .get(name)
+                    .is_some_and(|members| members.len() >= MAX_MEMBERS)
+                {
+                    return Err(invalid());
+                }
                 grouped
                     .entry(name.clone())
                     .or_default()
@@ -321,6 +330,7 @@ pub fn convert_cinefolio_snapshot(
 mod tests {
     use super::*;
     use chill_catalog::database::Database;
+    use rusqlite::params;
     use std::fs;
 
     fn media(id: &str, title: &str, watched: bool, rating: Option<u8>) -> Media {
@@ -418,5 +428,38 @@ mod tests {
             .apply_portable_import(&plan, &BTreeMap::new())
             .unwrap();
         assert_eq!(target.profiles().unwrap()[0].name, "Imported");
+    }
+    #[test]
+    fn old_schema_without_collections_cannot_bypass_saga_member_or_collection_limits() {
+        for distinct_sagas in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let source = temp.path().join("legacy.sqlite");
+            let mut db = Connection::open(&source).unwrap();
+            db.execute_batch("CREATE TABLE media(id TEXT PRIMARY KEY,data TEXT NOT NULL); PRAGMA user_version=1;").unwrap();
+            let tx = db.transaction().unwrap();
+            for i in 0..1001 {
+                let mut m = media(&format!("{i}.mkv"), "Fixture", false, None);
+                m.saga = Some(if distinct_sagas {
+                    format!("Saga {i}")
+                } else {
+                    "One Saga".into()
+                });
+                tx.execute(
+                    "INSERT INTO media VALUES(?1,?2)",
+                    params![m.id, serde_json::to_string(&m).unwrap()],
+                )
+                .unwrap();
+            }
+            tx.commit().unwrap();
+            drop(db);
+            let before = fs::read(&source).unwrap();
+            let scratch = Store::open(&temp.path().join("scratch.sqlite")).unwrap();
+            assert!(
+                convert_cinefolio_snapshot(&source, &scratch, |_| Err("No image expected".into()))
+                    .is_err()
+            );
+            assert_eq!(before, fs::read(&source).unwrap());
+            assert!(scratch.profiles().unwrap().is_empty());
+        }
     }
 }

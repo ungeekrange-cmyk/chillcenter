@@ -1,0 +1,5 @@
+# BUG-0026 — Le bundle peut être imbriqué dans une destination apparue durant le build
+
+2026-10-14 ; root ; revue indépendante `d94418e` P1 du script intégré `35c9cab`. H1 confirmée sur fixtures macOS : après le précheck, créer un dossier destination puis exécuter BSD`mv stage destination` réussit et imbrique le stage dans ce dossier. Cela ne tient pas la promesse de sortie ni de refus d'un paquet existant.
+
+Correction : syscallmacOS `renamex_np` avecRENAME_EXCL, sans fallback de copie/merge/overwrite ; précheck refuse aussi les liens pendants. Source primaire locale : SDKApple`sys/stdio.h`, flag0x4 et disponibilitémacOS10.12. Tests : reproductionancienmv, destinationcrééetardivement/contenuutilisateur intact, publicationneuve et destination symlink refusée. Le stage unique appartient au script ; son cleanup ne vise jamais la destination existante. Retour : source précédente sur branche isolée, aucun paquet existant supprimé. Nouveau bundle signé à reconstruire après intégration finale ; Finder/Gatekeeper restent NOT_RUN.

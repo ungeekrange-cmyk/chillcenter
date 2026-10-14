@@ -75,7 +75,6 @@ mod tests {
     use super::*;
     use crate::Store;
     use chill_catalog::model::{Media, SeriesMetadata};
-    use rusqlite::TransactionBehavior;
 
     fn media(id: &str, category: &str) -> Media {
         Media {
@@ -145,20 +144,21 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        let tx =
-            rusqlite::Transaction::new_unchecked(&store.personal, TransactionBehavior::Immediate)
-                .unwrap();
-        let changed = apply_common_patch(
-            &tx,
-            &legacy,
-            &MediaPatch {
-                category: Some("serie".into()),
-                series: Some("Needle".into()),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        tx.commit().unwrap();
+        let revision = store.media_revision(&film_id).unwrap();
+        let (changed, next_revision) = store
+            .update_media_at_revision(
+                &profile.id,
+                &film_id,
+                revision,
+                &MediaPatch {
+                    category: Some("serie".into()),
+                    series: Some("Needle".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(changed.id, film_id);
+        assert_eq!(next_revision, revision + 1);
         assert_eq!(changed.series_metadata.as_ref().unwrap().overview, "shared");
         assert_eq!(changed.saga, None);
         assert_eq!(

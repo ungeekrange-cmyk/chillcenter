@@ -1,0 +1,5 @@
+# BUG-0027 — Réouverture d'un chemin SQLite remplacé après validation
+
+2026-10-14 ; revue `d94418e` P2 ; root. La validation initiale garde un FD sûr, mais SQLite Backup rouvre le chemin. Un remplacement local pouvait faire exporter une autre base. H1 reproduite par hook déterministe de fixture : renommer la source validée et lui substituer une autre base avant le backup.
+
+Correction minimale : conserver le FD avant backup, comparer version du FD et réouvrir descriptor-relativement le chemin après backup ; refus de publication si inode/taille/timestamps/chemin ne correspondent plus. Le snapshot privé est alors nettoyé par le propriétaire du staging, aucun ZIP publié. Une activité de checkpoint modifiant le fichier source peut provoquer un refus conservateur : réessayer après stabilisation. Cette garde avant/après ne prétend pas rendre atomique un filesystem entièrement contrôlé par le même utilisateur ; SQLite reste cohérent via sa propre API read-only/WAL. Test source substituée et source/WAL actifs stables exécutés dans le lot ; données du foyer jamais utilisées. Retour logiciel par branche, aucune source supprimée.

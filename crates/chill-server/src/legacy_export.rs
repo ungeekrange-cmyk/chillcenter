@@ -66,17 +66,10 @@ pub fn export(source: &Path, image_cache: &Path, output: &Path) -> Result<(), St
     if !fs::metadata(parent).map_err(|_| invalid())?.is_dir() {
         return Err(invalid());
     }
-    // Reject symlink components and special source files before SQLite opens it.
-    let (source_fd, _) =
-        crate::media_stream::open_indexed(source.parent().ok_or_else(invalid)?, source)
-            .map_err(|_| invalid())?;
-    if source_fd.metadata().map_err(|_| invalid())?.len() > MAX_DB {
-        return Err(invalid());
-    }
     let mut work = Workspace::new(parent)?;
     let flag = Arc::new(AtomicBool::new(false));
     let snapshot = work.own(work.root.join("source.sqlite"));
-    chill_domain::snapshot::coherent_snapshot(source, &snapshot, &flag, MAX_DB)?;
+    checked_snapshot(source, &snapshot, &flag, || {})?;
     let scratch = work.own(work.root.join("catalog.sqlite"));
     for name in [
         "catalog.sqlite-wal",
@@ -145,6 +138,30 @@ pub fn export(source: &Path, image_cache: &Path, output: &Path) -> Result<(), St
     // A failed directory fsync is an uncertain durability outcome, never a reason
     // to delete a published user's archive. Report it and preserve the archive.
     fs::File::open(parent).and_then(|d|d.sync_all()).map_err(|_|"Archive publiée mais durabilité non confirmée ; vérifiez le fichier avant de réessayer.".to_string())?;
+    Ok(())
+}
+
+fn checked_snapshot(
+    source: &Path,
+    destination: &Path,
+    cancelled: &AtomicBool,
+    before_copy: impl FnOnce(),
+) -> Result<(), String> {
+    let parent = source.parent().ok_or_else(invalid)?;
+    let (file, before) =
+        crate::media_stream::open_indexed(parent, source).map_err(|_| invalid())?;
+    if before.size > MAX_DB {
+        return Err(invalid());
+    }
+    before_copy();
+    chill_domain::snapshot::coherent_snapshot(source, destination, cancelled, MAX_DB)?;
+    let retained =
+        crate::media_stream::FileVersion::from_metadata(&file.metadata().map_err(|_| invalid())?)
+            .map_err(|_| invalid())?;
+    let (_, named) = crate::media_stream::open_indexed(parent, source).map_err(|_| invalid())?;
+    if before != retained || before != named {
+        return Err("La base source a changé pendant le snapshot. Aucun export publié ; réessayez après stabilisation de Cinéfolio.".into());
+    }
     Ok(())
 }
 
@@ -275,5 +292,23 @@ mod tests {
                 .file_type()
                 .is_symlink()
         );
+    }
+    #[test]
+    fn replacing_validated_source_is_refused_before_any_archive_publication() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let source = root.join("source.sqlite");
+        let decoy = root.join("decoy.sqlite");
+        drop(Database::open(&source).unwrap());
+        drop(Database::open(&decoy).unwrap());
+        let original = root.join("original.sqlite");
+        let snapshot = root.join("snapshot.sqlite");
+        let result = checked_snapshot(&source, &snapshot, &AtomicBool::new(false), || {
+            fs::rename(&source, &original).unwrap();
+            fs::rename(&decoy, &source).unwrap();
+        });
+        assert!(result.is_err());
+        assert!(!root.join("out.zip").exists());
+        assert!(original.exists());
     }
 }

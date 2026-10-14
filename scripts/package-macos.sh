@@ -7,7 +7,7 @@ case "$bundle_dir" in
   /*.app) ;;
   *) echo "Use an absolute .app destination." >&2; exit 1 ;;
 esac
-if [ -e "$bundle_dir" ]; then
+if [ -e "$bundle_dir" ] || [ -L "$bundle_dir" ]; then
   echo "Destination exists; choose a new path. No bundle was overwritten." >&2
   exit 1
 fi
@@ -73,5 +73,5 @@ if /usr/bin/otool -L "$stage/Contents/MacOS/chillcenter-desktop" "$stage"/Conten
   exit 1
 fi
 
-mv "$stage" "$bundle_dir"
+/usr/bin/python3 "$project_dir/scripts/helpers/publish_macos_bundle.py" "$stage" "$bundle_dir"
 echo "Standalone ad-hoc Apple Silicon bundle: $bundle_dir"

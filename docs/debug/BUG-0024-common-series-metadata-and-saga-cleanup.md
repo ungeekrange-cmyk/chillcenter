@@ -25,8 +25,8 @@ avant une création, sans refuser une saga existante.
 La régression locale utilise uniquement SQLite temporaire : métadonnées
 héritées, note personnelle conservée, UUID conservé, associations/markers
 retirés et export sans l'épisode dans une saga. L'adaptateur de la route CAS
-`Store::update_media_at_revision` reste `NOT_RUN` tant que l'agent d'identité
-ne l'a pas raccordé au helper.
+`Store::update_media_at_revision` est maintenant raccordé par le coordinateur,
+ainsi que l'ancien helper public d'édition ; la régression utilise le vrai parcours CAS et vérifie le bump de révision et l'UUID. Tests exécutés dans la preuve du delta d'intégration avant clôture ; les rapports du candidat antérieur restent historiques.
 
 ## Retour et portée
 

@@ -126,10 +126,55 @@ mod tests {
         assert_eq!(target_again.len(), 1);
         assert!(store.media(&profile_b.id, &source).unwrap().watched);
     }
+    #[test]
+    fn duplicate_heavy_proposals_are_paged_by_pair_with_relative_paths() {
+        use crate::fingerprint::FingerprintEvidence;
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&temp.path().join("db.sqlite")).unwrap();
+        let profile = store.create_profile("A").unwrap();
+        store
+            .snapshot(vec![media("Films/source.mkv", "Source")])
+            .unwrap();
+        let source = store.catalog(&profile.id).unwrap()[0].id.clone();
+        let evidence = FingerprintEvidence {
+            byte_size: 42,
+            partial_sha256: "a".repeat(64),
+            full_sha256: None,
+        };
+        store
+            .save_fingerprint(&store.fingerprint_target(&source).unwrap(), &evidence)
+            .unwrap();
+        store
+            .snapshot(
+                (0..100)
+                    .map(|i| media(&format!("Copies/{i:03}.mkv"), "Copy"))
+                    .collect(),
+            )
+            .unwrap();
+        let targets = store.catalog(&profile.id).unwrap();
+        for m in targets.iter().filter(|m| m.available) {
+            store
+                .save_fingerprint(&store.fingerprint_target(&m.id).unwrap(), &evidence)
+                .unwrap();
+        }
+        let mut seen = std::collections::HashSet::new();
+        for (offset, count, more) in [(0, 48, true), (48, 48, true), (96, 4, false)] {
+            let page = store.reassociation_proposals(offset, 48).unwrap();
+            assert_eq!(page.items.len(), count);
+            assert_eq!(page.has_more, more);
+            for item in page.items {
+                assert_eq!(item.source_relative_path, "Films/source.mkv");
+                assert!(item.target_relative_path.starts_with("Copies/"));
+                assert!(seen.insert(item.target_id));
+            }
+        }
+        assert_eq!(seen.len(), 100);
+    }
 }
 #[derive(Serialize, Clone)]
 pub struct ReassociationProposal {
     pub source_id: String,
+    pub source_relative_path: String,
     pub target_id: String,
     pub source_revision: u64,
     pub target_revision: u64,
@@ -163,57 +208,70 @@ impl Store {
             return Err("REASSOCIATION_INVALID".into());
         }
         let epoch = self.catalog_revision()?;
-        let mut unavailable=self.personal.prepare("SELECT i.stable_id,i.relative_path,COALESCE(r.revision,1),f.byte_size,f.partial_sha256,f.full_sha256 FROM cc_media_identity i JOIN media m ON m.id=i.legacy_id LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id JOIN cc_media_fingerprint f ON f.stable_id=i.stable_id WHERE json_extract(m.data,'$.available')=0 AND f.state='complete' AND f.source_path=json_extract(m.data,'$.path') AND f.byte_size IS NOT NULL AND f.partial_sha256 IS NOT NULL ORDER BY i.relative_path LIMIT ?1 OFFSET ?2").map_err(db)?;
-        let sources = unavailable
+        // Page the proposed pairs, not source rows: a duplicate-heavy library
+        // cannot produce an unbounded response from one 48-source page.
+        let mut query = self
+            .personal
+            .prepare(
+                "SELECT si.stable_id,si.relative_path,COALESCE(sr.revision,1),
+                    ti.stable_id,ti.relative_path,COALESCE(tr.revision,1),
+                    sf.full_sha256,tf.full_sha256
+             FROM cc_media_fingerprint sf
+             JOIN cc_media_identity si ON si.stable_id=sf.stable_id
+             JOIN media sm ON sm.id=si.legacy_id
+             LEFT JOIN cc_media_revision sr ON sr.stable_id=si.stable_id
+             JOIN cc_media_fingerprint tf ON tf.byte_size=sf.byte_size
+                AND tf.partial_sha256=sf.partial_sha256
+             JOIN cc_media_identity ti ON ti.stable_id=tf.stable_id
+             JOIN media tm ON tm.id=ti.legacy_id
+             LEFT JOIN cc_media_revision tr ON tr.stable_id=ti.stable_id
+             WHERE json_extract(sm.data,'$.available')=0
+                AND json_extract(tm.data,'$.available')=1
+                AND sf.state='complete' AND tf.state='complete'
+                AND sf.source_path=json_extract(sm.data,'$.path')
+                AND tf.source_path=json_extract(tm.data,'$.path')
+                AND sf.byte_size IS NOT NULL AND sf.partial_sha256 IS NOT NULL
+             ORDER BY si.relative_path,ti.relative_path
+             LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(db)?;
+        let rows = query
             .query_map(params![limit as i64 + 1, offset as i64], |r| {
                 Ok((
                     r.get::<_, String>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, i64>(2)?,
-                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(3)?,
                     r.get::<_, String>(4)?,
-                    r.get::<_, Option<String>>(5)?,
+                    r.get::<_, i64>(5)?,
+                    r.get::<_, Option<String>>(6)?,
+                    r.get::<_, Option<String>>(7)?,
                 ))
             })
-            .map_err(db)?
-            .collect::<Result<Vec<_>, _>>()
             .map_err(db)?;
-        let has_more = sources.len() > limit;
-        let mut items = Vec::new();
-        for (source_id, _source_path, source_rev, byte_size, partial, full) in sources.into_iter().take(limit) {
-            let mut candidates=self.personal.prepare("SELECT i.stable_id,i.relative_path,COALESCE(r.revision,1),f.full_sha256 FROM cc_media_identity i JOIN media m ON m.id=i.legacy_id LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id JOIN cc_media_fingerprint f ON f.stable_id=i.stable_id WHERE json_extract(m.data,'$.available')=1 AND f.state='complete' AND f.source_path=json_extract(m.data,'$.path') AND f.byte_size=?1 AND f.partial_sha256=?2 ORDER BY i.relative_path").map_err(db)?;
-            for candidate in candidates
-                .query_map(params![byte_size, partial], |r| {
-                    Ok((
-                        r.get::<_, String>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, i64>(2)?,
-                        r.get::<_, Option<String>>(3)?,
-                    ))
-                })
-                .map_err(db)?
-            {
-                let (target_id, target_path, target_rev, target_full) = candidate.map_err(db)?;
-                if source_id == target_id {
-                    continue;
-                }
-                let full_matches = full.as_ref().zip(target_full.as_ref()).is_some_and(|(a,b)| a == b);
-                items.push(ReassociationProposal {
-                    source_id: source_id.clone(),
-                    target_id,
-                    source_revision: source_rev as u64,
-                    target_revision: target_rev as u64,
-                    expected_catalogue_epoch: epoch,
-                    target_relative_path: target_path,
-                    label: "probable".into(),
-                    reason: if full_matches {
-                        "Empreinte complète identique mais réassociation automatique non applicable ; confirmation obligatoire."
-                    } else {
-                        "Taille et échantillons identiques ; confirmation obligatoire."
-                    }.into(),
-                });
-            }
+        let mut items = Vec::with_capacity(limit + 1);
+        for row in rows {
+            let (
+                source_id,
+                source_relative_path,
+                source_rev,
+                target_id,
+                target_relative_path,
+                target_rev,
+                full,
+                target_full,
+            ) = row.map_err(db)?;
+            let full_matches = full
+                .as_ref()
+                .zip(target_full.as_ref())
+                .is_some_and(|(a, b)| a == b);
+            items.push(ReassociationProposal{source_id,source_relative_path,target_id,
+                source_revision:source_rev as u64,target_revision:target_rev as u64,
+                expected_catalogue_epoch:epoch,target_relative_path,label:"probable".into(),
+                reason:if full_matches{"Empreinte complète identique mais réassociation automatique non applicable ; confirmation obligatoire."}else{"Taille et échantillons identiques ; confirmation obligatoire."}.into()});
         }
+        let has_more = items.len() > limit;
+        items.truncate(limit);
         Ok(ReassociationPage {
             items,
             has_more,
