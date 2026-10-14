@@ -19,5 +19,5 @@ if(typeof window!=="undefined"&&typeof document!=="undefined")(()=>{
  $("tmdb-enrich").onclick=async()=>{if(!state.profile_id)return;const epoch=generation,job=await command({action:"tmdb_job_start"});if(epoch===generation&&job)draw(job);};
  cancel.onclick=async()=>{const epoch=generation,job=await command({action:"tmdb_job_cancel",id});if(epoch===generation&&job)draw(job);};
  retry.onclick=async()=>{const epoch=generation,job=await command({action:"tmdb_job_retry",id});if(epoch===generation&&job)draw(job);};
- $("admin-toggle").addEventListener("click",()=>{window.tmdbContextChanged();refresh();});window.tmdbContextChanged();
+ window.refreshTmdbStatus=()=>{window.tmdbContextChanged();return refresh();};window.tmdbContextChanged();
 })();

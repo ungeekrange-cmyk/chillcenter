@@ -22,6 +22,12 @@ window.chillPlayerQa=async config=>{
   await invoke({action:"set_watched",media_id:m.id,watched:false});
   await setStep("native load");await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);
   await wait(()=>playerState.native?.debug_nonblank===true);assert(playerState.native.tracks.some(t=>t.kind==="Audio"),"audio missing");assert(playerState.native.tracks.some(t=>t.kind==="Subtitle"),"subtitle missing");
+  await setStep("default fullscreen then right pane");await wait(()=>playerState.native?.fullscreen&&document.body.classList.contains("player-fullscreen"));
+  await new Promise(r=>setTimeout(r,500));assert(videoRect().width>=innerWidth-2&&videoRect().height>=innerHeight-2,"default fullscreen does not fill viewport");
+  document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait(()=>!playerState.native?.fullscreen&&!document.body.classList.contains("player-fullscreen"));await new Promise(r=>setTimeout(r,500));
+  const pane=videoRect(),sidebar=document.querySelector(".sidebar").getBoundingClientRect();assert(Math.abs(pane.x-sidebar.right)<2&&Math.abs(pane.y)<2&&Math.abs(pane.width-(innerWidth-sidebar.right))<2&&Math.abs(pane.height-innerHeight)<2,"windowed player must fill entire right pane");
+  assert($("player-close").getBoundingClientRect().right<$("player-title").getBoundingClientRect().left,"back must be left of title");assert($("player-close").querySelector("svg"),"back must be an icon");
+  assert(parseFloat(getComputedStyle($("player-overlay")).transitionDuration)>=0.35,"controls must fade gently");
   await setStep("native overlay hit-test");
   await wait(()=>playerState.native?.debug_surface?.webview_above_video&&playerState.native.debug_surface.webview_receives_pointer);
   showPlayerControls();assert(!$("player-panel").classList.contains("controls-hidden"),"overlay controls must be shown before hit-test");const pauseRect=$("player-pause").getBoundingClientRect();assert($("player-pause").contains(document.elementFromPoint(pauseRect.x+pauseRect.width/2,pauseRect.y+pauseRect.height/2)),"overlay DOM hit-test failed");
@@ -44,8 +50,9 @@ window.chillPlayerQa=async config=>{
   await setStep("final window watch");await call({action:"seek",position:playerState.duration-12});await wait(()=>playerState.native?.ended,25);
   assert(!playerState.native.error,"unexpected EOF error");
   await call({action:"stop"});await loadPage();const updated=await invoke({action:"catalog",offset:0,category:null,q:null});assert(updated.items.find(x=>x.id===m.id).watched,"ten real seconds did not mark watched");
-  await setStep("reopen");await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded);await call({action:"stop"});
-  await window.__TAURI__.core.invoke("qa_result",{success:true,detail:"native-image-AppKit-z-order-hit-test-overlay-idle-focus-volume-fullscreen-geometry-Escape-tracks-resume-watched-EOF"});
+  await setStep("windowed launch setting");const settings=await invoke({action:"save_player_settings",fullscreen_on_start:false});state.player_presentation=settings.player_presentation;window.refreshPlayerPresentation(settings.player_presentation);
+  await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded);assert(!playerState.native.fullscreen&&!document.body.classList.contains("player-fullscreen"),"saved windowed setting ignored");assert(Math.abs(videoRect().height-innerHeight)<2,"windowed reopen shrank player");await stopPlayerForNavigation();
+  await window.__TAURI__.core.invoke("qa_result",{success:true,detail:"native-default-fullscreen-entire-right-pane-back-icon-title-fade-local-windowed-setting-image-AppKit-overlay-tracks-resume-watched-EOF"});
  }catch(e){await window.__TAURI__.core.invoke("qa_result",{success:false,detail:step+": "+e.message});}
 };
 window.chillNextSeriesQa=async config=>{

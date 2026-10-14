@@ -1,0 +1,25 @@
+.icon-button{width:44px;height:44px;padding:0;display:inline-flex;justify-content:center;align-items:center;font-size:24px;flex:none}
+#collections-panel,#collection-panel,#picker-panel{min-height:calc(100vh - 180px)}
+#collections-panel .section-head,#collection-panel .section-head,#picker-panel .section-head{flex-wrap:nowrap}
+#collection-create-toggle,#collection-add{margin-left:auto}
+#collection-create{margin:0 0 26px}
+#collection-create[hidden]{display:none}
+.collection-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:24px 18px}
+.poster-tile{position:relative;display:block;width:100%;min-width:0;padding:0;border:0;background:transparent;color:var(--text);text-align:left;overflow:hidden;border-radius:12px;font-weight:400}
+.poster-tile:hover{filter:none}.poster-tile:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.poster-tile .poster{width:100%;aspect-ratio:2/3;overflow:hidden;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--raised);font-size:54px;color:var(--muted)}
+.poster-tile .info{height:104px;padding:12px 0 0;overflow:hidden}.poster-tile h2{font-size:14px;font-weight:600;margin:0 0 6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.poster-tile p{font-size:12px;line-height:1.6;margin:0}
+.poster-tile.selected .poster{box-shadow:inset 0 0 0 3px var(--accent)}
+.poster-tile.selected::after{content:"✓";position:absolute;right:10px;top:10px;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:var(--accent);color:var(--button);font-size:18px}
+.poster-tile.selected .poster img{padding:3px;border-radius:12px}
+#collection-admin{margin:0 0 22px;color:var(--muted)}#collection-admin summary{cursor:pointer;margin:0 0 14px}#collection-admin .inline{max-width:620px}
+#saga-artwork-preview img{width:100px;border-radius:10px;display:block;margin:14px 0}
+#collection-filter{max-width:500px;margin-bottom:24px}
+#collection-members{position:relative;display:block;margin-top:20px}
+.collection-media-card .member-title{font-size:14px;line-height:1.4;padding:0;border:0;background:transparent;color:var(--text);text-align:left}
+.collection-media-card .member-copy{min-width:0}.collection-media-card .info{height:104px;overflow:hidden}
+.series-members{height:auto!important}.series-season{margin:16px 0;display:flex;flex-wrap:wrap;gap:18px}.series-season>summary,.series-season>.actions{flex-basis:100%}.series-season:not([open])>:not(summary){display:none}.series-season>.collection-media-card{width:200px}
+#picker-form input{flex:1;max-width:none}#picker-form select{max-width:190px}
+.picker-toolbar{display:flex;gap:12px;align-items:center;margin:14px 0}.picker-toolbar p{margin-right:auto}
+#picker-items{display:block;height:calc(100vh - 350px);min-height:250px;overflow:auto;position:relative;scrollbar-gutter:stable}
+.picker-virtual{position:relative;width:100%}.picker-window{position:absolute;left:0;right:0;display:grid;gap:18px}.picker-window button{position:relative;height:auto;margin:0;padding:0;white-space:normal}

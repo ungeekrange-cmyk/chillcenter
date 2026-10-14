@@ -1,7 +1,7 @@
 "use strict";
 let playerState={stage:"closed"},playerBusy=false,playerTimer=null,playerResize=null;
 let nextKey=null,nextDeadline=null,nextTimer=null,nextCancelled=false;
-let playerIdleTimer=null,playerIdleAt=Date.now(),playerHover=false,playerFullscreenRequest=null;
+let playerIdleTimer=null,playerIdleAt=Date.now(),playerHover=false,playerFullscreenRequest=null,playerAutoFullscreen=false;
 const playerIdleDelay=2500;
 function playerControlsPinned(){
   const n=playerState.native;
@@ -32,7 +32,7 @@ async function togglePlayerFullscreen(enabled){
   reposition();
 }
 function playerIcon(id,kind,label){
-  const paths={play:"M8 5v14l11-7z",pause:"M8 5v14M16 5v14",back:"M4 9a8 8 0 1 1 1 9M4 4v5h5",forward:"M20 9a8 8 0 1 0-1 9M20 4v5h-5",fullscreen:"M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"};
+  const paths={play:"M8 5v14l11-7z",pause:"M8 5v14M16 5v14",back:"M4 9a8 8 0 1 1 1 9M4 4v5h5",return:"M15 5l-7 7 7 7M8 12h13",forward:"M20 9a8 8 0 1 0-1 9M20 4v5h-5",fullscreen:"M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"};
   const button=$(id);if(button.dataset.icon===kind)return;button.dataset.icon=kind;
   button.setAttribute("aria-label",label);button.title=label;
   const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("viewBox","0 0 24 24");svg.setAttribute("aria-hidden","true");
@@ -58,6 +58,10 @@ async function playerCall(command,quiet=false){
 }
 window.chillPlay=async (media_id,context=null)=>{
   clearNext();
+  // Snapshot this Mac's preference for a new manual launch, not each status tick
+  // or automatic episode. A confirmed transfer uses the same pending intent.
+  playerAutoFullscreen=typeof state==="undefined"||state.player_presentation?.fullscreen_on_start!==false;
+  document.querySelectorAll("dialog[open]").forEach(dialog=>dialog.close());
   $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
   $("player-panel").hidden=false;document.body.classList.add("player-open");$("player-note").textContent="Chargement de la vidéo…";
   showPlayerControls();
@@ -66,7 +70,12 @@ window.chillPlay=async (media_id,context=null)=>{
   clearInterval(playerTimer);playerTimer=setInterval(()=>playerCall({action:"status"},true),500);
 };
 function clearNext(){clearTimeout(nextTimer);nextTimer=null;nextKey=null;nextDeadline=null;nextCancelled=false;$("player-next").hidden=true;}
-function hidePlayer(){clearNext();clearInterval(playerTimer);clearTimeout(playerIdleTimer);playerIdleTimer=null;playerTimer=null;playerFullscreenRequest=null;playerHover=false;$("player-panel").hidden=true;$("player-panel").classList.remove("controls-hidden");document.body.classList.remove("player-open","player-fullscreen");playerState={stage:"closed"};}
+function hidePlayer(){clearNext();clearInterval(playerTimer);clearTimeout(playerIdleTimer);playerIdleTimer=null;playerTimer=null;playerFullscreenRequest=null;playerAutoFullscreen=false;playerHover=false;$("player-panel").hidden=true;$("player-panel").classList.remove("controls-hidden");document.body.classList.remove("player-open","player-fullscreen");playerState={stage:"closed"};}
+function applyPlayerPresentation(){
+  if(!playerAutoFullscreen||playerState.stage!=="player")return;
+  playerAutoFullscreen=false;
+  requestAnimationFrame(()=>{if(playerState.stage==="player"&&!playerState.native?.fullscreen)togglePlayerFullscreen(true);});
+}
 function cancelNext(){clearTimeout(nextTimer);nextTimer=null;nextDeadline=null;nextCancelled=true;$("player-next-count").textContent="Lancement automatique annulé.";}
 async function launchNext(){
   if(playerBusy){nextTimer=setTimeout(launchNext,100);return;}
@@ -118,6 +127,7 @@ function renderPlayer(){
   if(playerState.stage!=="player"){const error=playerState.error;hidePlayer();if(error)message(error);return;}
   $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
   const n=playerState.native;$("player-panel").hidden=false;document.body.classList.add("player-open");
+  applyPlayerPresentation();
   $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note||n.error||n.notice||(n.ended?"Lecture terminée.":!n.loaded?"Chargement de la vidéo…":n.buffering?"Mise en mémoire tampon…":"");
   playerIcon("player-pause",n.paused?"play":"pause",n.paused?"Reprendre la lecture":"Mettre en pause");$("player-speed").value=String(n.speed);
   if($("player-volume")&&document.activeElement!==$("player-volume"))$("player-volume").value=String(n.volume??100);
@@ -143,7 +153,14 @@ $("player-audio").onchange=()=>playerCall({action:"audio",track_id:Number($("pla
 $("player-subtitle").onchange=()=>{const value=$("player-subtitle").value;playerCall(value.startsWith("sub-")?{action:"external_subtitle",id:value}:{action:"subtitle",track_id:value==="off"?null:Number(value)});};
 $("player-fullscreen").onclick=()=>togglePlayerFullscreen();
 if($("player-volume"))$("player-volume").onchange=()=>playerCall({action:"volume",volume:Number($("player-volume").value)});
-$("player-close").onclick=async()=>{if(document.body.classList.contains("player-fullscreen"))await togglePlayerFullscreen(false);if(await playerCall({action:"stop"})){hidePlayer();await loadPage();}};
+$("player-close").onclick=async()=>{if(await stopPlayerForNavigation())await loadPage();};
+async function stopPlayerForNavigation(){
+  playerAutoFullscreen=false;
+  if(playerState.stage==="closed")return true;
+  if(document.body.classList.contains("player-fullscreen")){await togglePlayerFullscreen(false);if(document.body.classList.contains("player-fullscreen"))return false;}
+  if(!await playerCall({action:"stop"}))return false;
+  hidePlayer();return true;
+}
 const reposition=()=>{clearTimeout(playerResize);playerResize=setTimeout(()=>{if(!$("player-panel").hidden&&playerState.stage==="player"){if(playerBusy){reposition();return;}playerCall({action:"mount",rect:videoRect()},true);}},80);};
 new ResizeObserver(reposition).observe($("native-video"));window.addEventListener("resize",reposition);window.addEventListener("scroll",reposition,{passive:true});
 $("player-panel").addEventListener("pointermove",showPlayerControls);
@@ -155,6 +172,7 @@ if($("player-overlay")){
   $("player-overlay").addEventListener("pointerleave",()=>{playerHover=false;showPlayerControls();});
 }
 playerIcon("player-back","back","Revenir de dix secondes");playerIcon("player-forward","forward","Avancer de trente secondes");playerIcon("player-fullscreen","fullscreen","Plein écran");playerIcon("player-pause","pause","Mettre en pause");
+playerIcon("player-close","return","Revenir à la bibliothèque");
 document.addEventListener("keydown",e=>{if($("player-panel").hidden)return;showPlayerControls();
   if(e.key==="Escape"&&document.body.classList.contains("player-fullscreen")){e.preventDefault();togglePlayerFullscreen(false);return;}
   if(["INPUT","SELECT","TEXTAREA","BUTTON"].includes(e.target.tagName)||e.target.isContentEditable)return;

@@ -20,6 +20,7 @@ function render(){
   if(window.refreshAppearance)window.refreshAppearance();
   if(window.renderShell)window.renderShell();
   if(window.refreshPlaybackCache)window.refreshPlaybackCache(state.playback_cache);
+  if(window.refreshPlayerPresentation)window.refreshPlayerPresentation(state.player_presentation);
   $("connection-notice").textContent=state.notice||"";$("connection-notice").hidden=!state.notice;
   for(const id of ["server-panel","trust-panel","profile-panel","catalog-panel"])$(id).hidden=true;
   const connected=state.stage==="connected";
@@ -60,7 +61,7 @@ function catalogFilters(){return {category:$("category").value,q:$("search").val
 if(typeof module!=="undefined")module.exports={catalogCommand};
 let catalogItems=[],catalogCounters={},catalogGeneration=0,catalogWindowKey="",catalogFrame=null;
 function renderCatalogWindow(){
- const target=$("media");if(!target||!catalogItems.length)return;
+ const target=$("media");if(!target||!catalogItems.length||$("catalog-panel").hidden)return;
  const rect=target.getBoundingClientRect(),list=$("view-mode").value==="list",size=Number($("poster-size").value)||200;
  const windowInfo=catalogWindow(catalogItems.length,Math.max(1,rect.width),size,-rect.top,innerHeight,list);
  target.style.height=windowInfo.height+"px";
@@ -130,7 +131,7 @@ $("reject-trust").onclick=()=>run({action:"disconnect"});
 $("server-switch").onclick=()=>run({action:"disconnect"});
 $("profile-switch").onchange=()=>selectProfile($("profile-switch").value);
 for(const id of ["create-first","create-admin"])$(id).onsubmit=async e=>{e.preventDefault();const name=e.currentTarget.elements.name.value;const r=await run({action:"create_profile",name});if(r)$(id).reset();};
-$("admin-toggle").onclick=async()=>{if(typeof playerState!=="undefined"&&playerState.stage==="player")await playerCall({action:"stop"});if(await run({action:"refresh"})){$("admin-panel").hidden=false;await pollScan();}};
+$("admin-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("admin");const context=state.server_id+":"+state.profile_id,current=()=>context===state.server_id+":"+state.profile_id&&shellSection==="admin";if(await run({action:"refresh"})){if(!current())return;$("admin-panel").hidden=false;await pollScan();if(!current())return;await unavailableAdmin();if(current())await window.refreshTmdbStatus?.();}};
 $("admin-close").onclick=()=>{$("admin-panel").hidden=true;clearTimeout(timer);};
 $("library-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_library",video_root:$("video-root").value.trim()||null,expected_revision:state.library.revision}))message("Chemin enregistré sur le serveur.");};
 $("preferences-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_preferences",audio_language:$("audio-language").value,subtitle_language:$("subtitle-language").value,autoplay_seconds:$("autoplay").value==="off"?null:Number($("autoplay").value)}))message("Préférences du profil enregistrées.");};
@@ -149,7 +150,6 @@ async function unavailableAdmin(at=0){
   const previous=node("button","Précédent","secondary"),next=node("button","Suivant","secondary");previous.disabled=at===0;next.disabled=!page.has_more;previous.onclick=()=>unavailableAdmin(Math.max(0,at-48));next.onclick=()=>unavailableAdmin(at+48);
   panel.replaceChildren(node("h2","Vidéos indisponibles"),node("p","Retirer une référence efface les historiques associés dans tous les profils. Les fichiers NAS ne sont jamais supprimés. Une vidéo redevenue disponible est protégée.","muted"),list,remove,previous,next);
 }
-$("admin-toggle").addEventListener("click",()=>unavailableAdmin());
 async function pollScan(){clearTimeout(timer);if(state.stage!=="connected"||$("admin-panel").hidden)return;const s=await run({action:"scan_status"},false);if(!s){timer=setTimeout(pollScan,2000);return;}$("scan-status").textContent=s.running?"Scan en cours…":s.last_error||(s.count!==null?s.count+" vidéos découvertes.":"Aucun scan lancé dans cette session serveur.");if(s.running)timer=setTimeout(pollScan,2000);else if(s.count!==null&&state.profile_id)await loadPage();}
 $("cancel-delete").onclick=()=>{$("confirm-delete").close();deleting=null;};
 $("confirm-delete").addEventListener("cancel",()=>{deleting=null;});

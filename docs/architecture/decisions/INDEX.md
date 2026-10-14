@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR-0012](ADR-0012-client-player-and-collection-pages.md), IMPLEMENTED_DETAIL,14octobre2026 : plein écran initial réglable parMac, panneau droit intégral, collections et sélection par vignettes en pages. Correction utilisateur directe ; aucun changement moteur/serveur/API. Voir la release REL-MAC-UI-PANELS-001 pour les preuves, pas une validation visuelle humaine supposée.
+
 Révision `CC-DOC-001`, 2026-10-13. Auteur et propriétaire : `/root`. Tous les ADR sont `ACCEPTED` par validation utilisateur de CC-DOC-001, sans prédécesseur ni successeur. La preuve est [G-02](../../gates/G-02-CC-DOC-001.md) ; les hashes historiques de revue portent sur la proposition approuvée. Les hash exacts de revue figurent dans les rapports.
 
 | ID | Décision proposée | Exigences | Statut |

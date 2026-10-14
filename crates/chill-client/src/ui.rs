@@ -244,6 +244,9 @@ pub enum UiCommand {
     SaveCacheSettings {
         cache: crate::playback_cache::PlaybackCache,
     },
+    SavePlayerSettings {
+        fullscreen_on_start: bool,
+    },
     ResolveAppearance {
         year: i32,
         month: u8,
@@ -362,6 +365,20 @@ struct Settings {
     device_id: Option<String>,
     appearance: crate::appearance::Appearance,
     playback_cache: crate::playback_cache::PlaybackCache,
+    player_presentation: PlayerPresentation,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct PlayerPresentation {
+    fullscreen_on_start: bool,
+}
+impl Default for PlayerPresentation {
+    fn default() -> Self {
+        Self {
+            fullscreen_on_start: true,
+        }
+    }
 }
 
 /// Native-host-only snapshot. Never serialized into the webview.
@@ -553,7 +570,7 @@ impl UiClient {
     fn view(&mut self) -> Result<Value, UiError> {
         if self.connected.is_none() {
             return Ok(
-                json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache}),
+                json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation}),
             );
         }
         let profiles = self.request(HttpMethod::GET, "/api/v1/profiles", None, &[], &[])?;
@@ -584,7 +601,7 @@ impl UiClient {
             None => Value::Null,
         };
         Ok(
-            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"notice":self.connected.as_ref().unwrap().notice}),
+            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation,"notice":self.connected.as_ref().unwrap().notice}),
         )
     }
     fn theme(&self) -> &str {
@@ -1354,6 +1371,17 @@ impl UiClient {
                 )
             }
             UiCommand::CacheSettings => Ok(json!({"cache":self.settings.playback_cache})),
+            UiCommand::SavePlayerSettings {
+                fullscreen_on_start,
+            } => {
+                let previous = self.settings.player_presentation;
+                self.settings.player_presentation.fullscreen_on_start = fullscreen_on_start;
+                if let Err(error) = self.save() {
+                    self.settings.player_presentation = previous;
+                    return Err(error);
+                }
+                Ok(json!({"player_presentation":self.settings.player_presentation}))
+            }
             UiCommand::SaveCacheSettings { cache } => {
                 cache.validate().map_err(invalid)?;
                 let previous = self.settings.playback_cache;
@@ -1750,6 +1778,59 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn player_presentation_defaults_fullscreen_and_is_local_durable_and_transactional() {
+        let legacy: Settings = serde_json::from_value(json!({"theme":"dark"})).unwrap();
+        assert!(legacy.player_presentation.fullscreen_on_start);
+        let dir = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let mut client = UiClient::open(dir.path()).unwrap();
+        assert_eq!(
+            client.view().unwrap()["player_presentation"]["fullscreen_on_start"],
+            true
+        );
+        let command: UiCommand = serde_json::from_value(
+            json!({"action":"save_player_settings","fullscreen_on_start":false}),
+        )
+        .unwrap();
+        assert_eq!(
+            client.dispatch(command).unwrap()["player_presentation"]["fullscreen_on_start"],
+            false
+        );
+        assert!(
+            !UiClient::open(dir.path())
+                .unwrap()
+                .settings
+                .player_presentation
+                .fullscreen_on_start
+        );
+        assert!(
+            UiClient::open(other.path())
+                .unwrap()
+                .settings
+                .player_presentation
+                .fullscreen_on_start
+        );
+        assert!(
+            client.connected.is_none(),
+            "setting must not contact a server"
+        );
+        assert!(
+            serde_json::from_value::<UiCommand>(
+                json!({"action":"save_player_settings","fullscreen_on_start":"false"})
+            )
+            .is_err()
+        );
+        client.directory = dir.path().join("missing-directory");
+        assert!(
+            client
+                .dispatch(UiCommand::SavePlayerSettings {
+                    fullscreen_on_start: true
+                })
+                .is_err()
+        );
+        assert!(!client.settings.player_presentation.fullscreen_on_start);
+    }
     #[test]
     fn cache_settings_are_local_persistent_and_default_for_legacy_settings() {
         use crate::playback_cache::PlaybackCache;
