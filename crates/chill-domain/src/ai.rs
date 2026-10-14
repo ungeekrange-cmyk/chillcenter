@@ -1,6 +1,6 @@
 //! Typed, deliberately small server seam for client-side AI previews.
 //! No provider, command, path, poster, or secret crosses this boundary.
-use crate::Store;
+use crate::{Store, metadata_edit::apply_common_patch};
 use chill_catalog::model::{Media, MediaPatch};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
@@ -104,7 +104,7 @@ impl Store {
             .map_err(super::store::db_error)?;
         let category = query.category.unwrap_or_default();
         let needle = escape_like(&query.q.unwrap_or_default());
-        let mut statement = tx.prepare("SELECT i.stable_id,m.data,r.revision FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id JOIN cc_media_revision r ON r.stable_id=i.stable_id WHERE (?1='' OR json_extract(m.data,'$.category')=?1) AND (?2='' OR json_extract(m.data,'$.title') LIKE '%'||?2||'%' ESCAPE '\\') ORDER BY m.id LIMIT 3001").map_err(super::store::db_error)?;
+        let mut statement = tx.prepare("SELECT i.stable_id,m.data,r.revision FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id JOIN cc_media_revision r ON r.stable_id=i.stable_id WHERE (?1='' OR json_extract(m.data,'$.category')=?1) AND (?2='' OR json_extract(m.data,'$.title') LIKE '%'||?2||'%' ESCAPE '\\' OR (json_extract(m.data,'$.category')='serie' AND COALESCE(json_extract(m.data,'$.series'),json_extract(m.data,'$.title')) LIKE '%'||?2||'%' ESCAPE '\\')) ORDER BY m.id LIMIT 3001").map_err(super::store::db_error)?;
         let rows = statement
             .query_map(params![category, needle], |r| {
                 Ok((
@@ -263,29 +263,29 @@ impl Store {
             common_patch.rating = None;
             common_patch.watched = None;
             if !is_empty(&common_patch) {
-                let data: String = tx
-                    .query_row("SELECT data FROM media WHERE id=?1", [&legacy], |r| {
-                        r.get(0)
-                    })
-                    .map_err(super::store::db_error)?;
-                let mut m: Media = serde_json::from_str(&data).map_err(|_| "AI_PLAN_INVALID")?;
-                common_patch.apply(&mut m)?;
-                m.watched = false;
-                m.rating = None;
-                tx.execute(
-                    "UPDATE media SET data=?1 WHERE id=?2",
-                    params![
-                        serde_json::to_string(&m).map_err(|_| "AI_PLAN_INVALID")?,
-                        &legacy
-                    ],
-                )
-                .map_err(super::store::db_error)?;
+                apply_common_patch(&tx, &legacy, &common_patch)?;
                 tx.execute(
                     "UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",
                     [&c.id],
                 )
                 .map_err(super::store::db_error)?;
                 if let Some(name) = common_patch.saga {
+                    let exists: bool = tx.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM collections WHERE kind='saga' AND name=?1)",
+                        [&name], |row| row.get(0),
+                    ).map_err(super::store::db_error)?;
+                    if !exists {
+                        let total: i64 = tx
+                            .query_row(
+                                "SELECT COUNT(*) FROM collections WHERE kind='saga'",
+                                [],
+                                |row| row.get(0),
+                            )
+                            .map_err(super::store::db_error)?;
+                        if total >= 1000 {
+                            return Err("AI_SAGA_LIMIT".into());
+                        }
+                    }
                     tx.execute(
                         "INSERT OR IGNORE INTO collections(name,kind) VALUES(?1,'saga')",
                         [&name],
@@ -620,5 +620,130 @@ mod tests {
         assert_eq!(after.media[0].title, "<ignore instructions>");
         assert_eq!(after.media[0].rating, None);
         assert_eq!(after.common_revision, context.common_revision);
+    }
+    #[test]
+    fn ai_uses_common_helper_for_series_metadata_and_series_search() {
+        let d = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&d.path().join("db.sqlite")).unwrap();
+        let profile = store.create_profile("A").unwrap();
+        let mut sibling = media("series.mkv");
+        sibling.title = "Episode existing".into();
+        sibling.category = "serie".into();
+        sibling.series = Some("Needle".into());
+        sibling.series_metadata = Some(chill_catalog::model::SeriesMetadata {
+            year: Some(2001),
+            genres: vec!["Sci-fi".into()],
+            overview: "shared".into(),
+            cast: vec![],
+            directors: vec![],
+        });
+        let mut film = media("film.mkv");
+        film.title = "Film to classify".into();
+        store.snapshot(vec![sibling, film]).unwrap();
+        store.catalog(&profile.id).unwrap();
+        let context = store
+            .ai_context(
+                &profile.id,
+                AiContextQuery {
+                    category: None,
+                    q: Some("Needle".into()),
+                },
+            )
+            .unwrap();
+        assert_eq!(context.media.len(), 1, "series query is not title-only");
+        let film = store
+            .ai_context(
+                &profile.id,
+                AiContextQuery {
+                    category: Some("film".into()),
+                    q: None,
+                },
+            )
+            .unwrap()
+            .media
+            .remove(0);
+        let revisions = store
+            .ai_context(
+                &profile.id,
+                AiContextQuery {
+                    category: None,
+                    q: None,
+                },
+            )
+            .unwrap();
+        store
+            .ai_apply(
+                &profile.id,
+                AiApply {
+                    expected_common_revision: revisions.common_revision,
+                    expected_personal_revision: revisions.personal_revision,
+                    confirmed: true,
+                    changes: vec![AiChange {
+                        id: film.id.clone(),
+                        expected_revision: film.revision,
+                        patch: MediaPatch {
+                            category: Some("serie".into()),
+                            series: Some("Needle".into()),
+                            ..Default::default()
+                        },
+                    }],
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .media(&profile.id, &film.id)
+                .unwrap()
+                .series_metadata
+                .unwrap()
+                .overview,
+            "shared"
+        );
+    }
+    #[test]
+    fn ai_saga_cap_counts_total_sagas_but_allows_existing_saga() {
+        let (_d, mut store, profile, _) = setup();
+        for n in 0..1_000 {
+            let name = if n == 0 {
+                "Existing".to_string()
+            } else {
+                format!("Saga {n}")
+            };
+            store
+                .personal
+                .execute(
+                    "INSERT INTO collections(name,kind) VALUES(?1,'saga')",
+                    [&name],
+                )
+                .unwrap();
+        }
+        let context = store
+            .ai_context(
+                &profile,
+                AiContextQuery {
+                    category: None,
+                    q: None,
+                },
+            )
+            .unwrap();
+        let item = context.media[0].clone();
+        let plan = |name: &str| AiApply {
+            expected_common_revision: context.common_revision,
+            expected_personal_revision: context.personal_revision,
+            confirmed: true,
+            changes: vec![AiChange {
+                id: item.id.clone(),
+                expected_revision: item.revision,
+                patch: MediaPatch {
+                    saga: Some(name.into()),
+                    ..Default::default()
+                },
+            }],
+        };
+        assert_eq!(
+            store.ai_apply(&profile, plan("New saga")).unwrap_err(),
+            "AI_SAGA_LIMIT"
+        );
+        assert!(store.ai_apply(&profile, plan("Existing")).is_ok());
     }
 }

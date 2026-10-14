@@ -4,6 +4,7 @@ pub mod catalog_browser;
 pub mod fingerprint;
 pub mod import;
 pub mod legacy;
+pub mod metadata_edit;
 pub mod reassociation;
 pub mod provider_updates;
 pub mod snapshot;
