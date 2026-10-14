@@ -388,6 +388,17 @@ fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String,
     }
 }
 
+fn staging_usage(dir: &FsPath) -> u64 {
+    fs::read_dir(dir).ok().into_iter().flatten().filter_map(|entry| {
+        let entry = entry.ok()?;
+        let name = entry.file_name();
+        let name = name.to_str()?;
+        let (id, ext) = name.rsplit_once('.')?;
+        (uuid::Uuid::parse_str(id).is_ok() && matches!(ext, "partial" | "zip" | "plan" | "tmp"))
+            .then(|| entry.metadata().ok().map(|m| m.len())).flatten()
+    }).sum()
+}
+
 async fn stage_and_preview(
     State(state): State<AppState>,
     body: Body,
@@ -420,10 +431,13 @@ async fn stage_and_preview(
     let partial = dir.join(format!("{id}.partial"));
     let partial_guard = PartialFile(partial.clone());
     let staged = dir.join(format!("{id}.zip"));
-    let mut output = tokio::fs::OpenOptions::new()
+    let mut options = tokio::fs::OpenOptions::new();
+    options
         .write(true)
-        .create_new(true)
-        .open(&partial)
+        .create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut output = options.open(&partial)
         .await
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
     let mut bytes = 0u64;
@@ -438,6 +452,9 @@ async fn stage_and_preview(
             let _ = tokio::fs::remove_file(&partial).await;
             return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "IMPORT_TOO_LARGE"));
         }
+        if staging_usage(&dir).saturating_add(chunk.len() as u64) > MAX_STAGING_DISK {
+            return Err(ApiError(StatusCode::INSUFFICIENT_STORAGE, "IMPORT_STAGING_FULL"));
+        }
         tokio::io::AsyncWriteExt::write_all(&mut output, &chunk)
             .await
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
@@ -450,27 +467,9 @@ async fn stage_and_preview(
         .await
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
     drop(output);
-    {
-        let records = previews()
-            .lock()
-            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?;
-        let used: u64 = records
-            .get(&dir)
-            .into_iter()
-            .flat_map(|v| v.values())
-            .filter_map(|p| fs::metadata(&p.path).ok().map(|m| m.len()))
-            .sum();
-        if used.saturating_add(bytes) > MAX_STAGING_DISK {
-            let _ = fs::remove_file(&partial);
-            return Err(ApiError(
-                StatusCode::INSUFFICIENT_STORAGE,
-                "IMPORT_STAGING_FULL",
-            ));
-        }
-    }
     fs::rename(&partial, &staged)
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "IMPORT_STORAGE"))?;
-    std::mem::forget(partial_guard);
+    let staged_guard = PartialFile(staged.clone());
     let inspect_id = id.clone();
     let checked = tokio::task::spawn_blocking({
         let path = staged.clone();
@@ -498,6 +497,8 @@ async fn stage_and_preview(
             plan: None,
         },
     );
+    std::mem::forget(partial_guard);
+    std::mem::forget(staged_guard);
     Ok(Json(ImportPreview {
         preview_id: id,
         export_id: summary.export_id,
