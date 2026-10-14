@@ -7,6 +7,7 @@ pub mod catalog_api;
 pub mod config;
 pub mod connection;
 mod media_stream;
+pub mod operations;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
