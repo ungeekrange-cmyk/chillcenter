@@ -83,6 +83,8 @@ Revues indépendantes exactSHA126da0a : codeAPPROVABLE, testsAPPROVABLE_SCOPED, 
 
 ## Promotion locale et essais matériels restants
 
+Remise effectuée et vérifiée : [DELIVERY-RECEIPT](DELIVERY-RECEIPT.md). Fast-forward local vers484be027, bundle atomique `Chill Center-126da0a.app` publié sans écrasement, signature/loader/hash/manifeste PASS après copie. Les formulations de commande et de conditions ci-dessous restent le protocole de reproduction, pas des actions encore en attente.
+
 Promotion autorisée de ce carrier documentaire (sources identiques126da0a) par fast-forward depuis2a085486 uniquement si le répertoire utilisateur est encore propre et surcodex/player-streaming. Aucun checkout/reset/main/push. Vérifier signature/hash du bundle copié et manifestes après promotion ; arrêter seulement le serveur loopback synthétique identifié. Les artefacts/tests/sourceCinéfolio/données NAS du foyer ne sont jamais effacés. Conserver l'ancien .app pour retour.
 
 Pi prêt d'après l'utilisateur, produit non installé : reste à vérifier OS/architecture32ou64bits et RAM, lecture NAS par UIDservice, buildELFARM correct et dépendances, installation Linux explicite avec configurationvariable/horloge/TLS/firewallLAN/systemd, puis deux/trois flux représentatifs pendant30min (seek/pistes, buffering/débit/RSS/CPU/mémoire/température), Wi-Fi et déconnexion/reconnexionNAS, restart/reboot/backup/restore/récupération sans vidéos supprimées. Aucune de ces opérations n'est déclaréePASS. AccèsSSHread-only en attente de socket partagé par l'utilisateur ; une autorisation d'inspection ne vaut pas installation du service ou modification du montage.

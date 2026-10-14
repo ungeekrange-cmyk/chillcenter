@@ -17,3 +17,5 @@
 ## Réserves conservées
 
 Les rapports CHANGES_REQUESTEDded8/42050 sont conservés. Sous-titreexterneillisibleE2E, vraiPi/systemd/ARM/NAS/Wi-Fi/2–3flux, veilleOS, son humain, fournisseursIA/TMDB réels, secondMacsansHomebrew, notarisation/RustSec restentnonprouvés. Le risqueLANsansauth etl'exceptionSPKIaprès expiration sont deschoixacceptés, pasnouveauxfindings. Les revues ne remplacent pas la validation utilisateur.
+
+Vérifications de promotion ajoutées après verdicts, sans modifier les sources : suite globale255/255 PASS0ignored (root47660), bundle126da0a release autonome/signature/loader PASS puis même hash après copie dans le dépôt cible ; manifeste PASS. Voir DELIVERY-RECEIPT. Ce complément ne transforme pas les essais matériels non exécutés en PASS et ne prétend pas à une nouvelle exécution indépendante des255tests par chaque reviewer.
