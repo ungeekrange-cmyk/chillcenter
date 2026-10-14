@@ -7,7 +7,7 @@
 
 ## Contexte
 
-Essai en lecture seule sur le Pi (14 octobre 2026) : le catalogue compte 369 AVI sur 2 496 titres (**15 %**). Les 5 AVI échantillonnés sont en **Xvid (MPEG-4 Part 2, « ASP »)**. Aucun navigateur ne le décode dans `<video>`/MediaSource, et rien ne laisse penser que WebCodecs le fasse (la recherche n'a trouvé aucune source officielle l'attestant ; à vérifier au runtime par `VideoDecoder.isConfigSupported()`). L'audio des AVI n'a pas été relevé. Contrainte utilisateur : technologies **stables et légères**.
+Essai en lecture seule sur le Pi (14 octobre 2026) : le catalogue compte 369 AVI sur 2 496 titres (**15 %**). Les 5 AVI échantillonnés sont en **Xvid (MPEG-4 Part 2, « ASP »)**. Aucun navigateur ne le décode dans `<video>`/MediaSource, et rien ne laisse penser que WebCodecs le fasse (la recherche n'a trouvé aucune source officielle l'attestant ; à vérifier au runtime par `VideoDecoder.isConfigSupported()`). Un relevé des en-têtes des 369 AVI (lecture seule, voir ci-dessous) a ensuite précisé résolution et audio. Contrainte utilisateur : technologies **stables et légères**.
 
 ## Ce qu'il faudrait réellement (trois pièces, pas une)
 
@@ -32,6 +32,23 @@ Hypothèse de travail (non mesurée) : WASM sans threads ralentit un décodage d
 
 Contraintes WASM : mémoire plafonnée à 1 Gio ; threads possibles seulement avec SharedArrayBuffer et en-têtes d'isolation (COOP/COEP) qui compliquent le service depuis le Pi : à éviter, donc **un seul thread** et un décodage dans un Worker.
 
+## Relevé des 369 AVI (Pi, lecture seule, 14 octobre 2026)
+
+En-tête RIFF uniquement (64 Kio par fichier), un bail volatil acquis puis libéré par fichier, aucune progression, aucun titre relevé. **368 fichiers lus sur 369** (1 non lisible par l'analyseur : à examiner).
+
+| Mesure | Résultat |
+| --- | --- |
+| Codec vidéo | **Xvid 354**, **DX50 (DivX 5) 13** — soit 367 en MPEG-4 ASP ; 1 en H.264 |
+| Largeur d'image | < 600 px : 183 ; ≈ 640 px : 168 ; ≈ 720 px : 15 ; 1 en 720p ; 1 vers 960 px — **99 % en définition standard (≤ ≈ 720 px de large)** |
+| Audio (première piste) | **MP3 stéréo : 364** ; AC-3 : 4 (dont 3 en 5.1) |
+| Pistes audio | 1 seule piste audio dans 368 fichiers |
+
+Conséquences :
+
+- **Performance** : le contenu est en SD, donc nettement moins coûteux que les cas 720p/1080p de la mesure de référence (natif : ×200 à ×300 temps réel à 640–720 px). Même avec un facteur de ralentissement WASM pessimiste de 10×, la marge théorique reste de l'ordre de ×20 sur un Mac ; **non mesuré en WASM ni sur tablette**. Le risque de fluidité est faible pour ce catalogue.
+- **Audio** : le MP3 est décodé par tous les navigateurs ; aucun décodeur audio WASM n'est nécessaire pour 364 fichiers sur 368. Les 4 AC-3 retombent dans la limite générale déjà acceptée (dépend du navigateur).
+- **Un seul décodeur** (MPEG-4 ASP, tout le catalogue AVI sauf 1 fichier) suffit : le périmètre du WASM est étroit et bien défini.
+
 ## Options de décision (pour l'utilisateur)
 
 | Option | Coût | Effet |
@@ -40,16 +57,21 @@ Contraintes WASM : mémoire plafonnée à 1 Gio ; threads possibles seulement av
 | **B. Spike borné** : variante libav.js `mpeg4` figée dans le dépôt + démuxeur AVI JS + moteur canvas/WebAudio | Élevé (second moteur de lecture, build Emscripten, conformité LGPL, tests sur appareils) | Couvre les Xvid ; reste la question audio (MP3 ok, AC-3 dépend du navigateur) |
 | C. Conversion hors projet des AVI (en H.264/MKV) | Hors périmètre : le NAS est en lecture seule et l'import ne modifie aucune vidéo | Non retenue |
 
-## Recommandation
+## Recommandation (mise à jour après le relevé)
 
-**A pour l'instant.** Le coût principal n'est pas la taille du décodeur mais le second moteur de lecture. B ne se justifie que si l'usage montre que les AVI comptent, et seulement après un spike avec critères d'arrêt chiffrés (images/s soutenues à la résolution réelle des AVI sur les appareils cibles, mémoire, taille du bundle). Avant tout spike : relever sur le Pi, en lecture seule, la résolution et l'audio réels des 369 AVI.
+Le relevé améliore le dossier de B : **99 % des AVI sont en SD et 99 % ont de l'audio MP3**, donc un seul décodeur vidéo étroit (MPEG-4 ASP) et aucun décodeur audio. La charge CPU n'est plus le risque principal. Le coût qui reste est **structurel** : un second moteur de lecture (canvas, horloge A/V, WebAudio, sous-titres) et la compilation figée d'une variante FFmpeg (outillage Emscripten, sources LGPL jointes).
+
+- **Si les AVI comptent pour l'usage (15 % du catalogue)** : B devient défendable comme **spike borné**, limité aux AVI ≤ 720 px de large, avec critères d'arrêt chiffrés (images/s soutenues sur Mac et sur l'appareil le plus faible visé, mémoire, taille du bundle < 1 Mio, aucune dépendance suivie : `.wasm` figé dans le dépôt avec ses sources et sa ligne `configure`).
+- **Sinon** : A (message explicite + client Mac) reste valable et gratuit.
+
+Décision utilisateur requise. Rien n'est téléchargé ni installé tant qu'elle n'est pas prise.
 
 ## À vérifier avant tout engagement (non fait)
 
 - Existence de fragments de configuration `decoder-mpeg4` / `demuxer-avi` dans libav.js et taille réelle d'une variante réduite (build local nécessaire : téléchargements d'outillage soumis à ton accord).
 - Licence de chaque composant lié dans la variante, ligne `configure` sans `--enable-gpl` ni `--enable-nonfree`.
 - `VideoDecoder.isConfigSupported()` pour MPEG-4 ASP sur les navigateurs cibles.
-- Résolutions et codecs audio réels des AVI du catalogue.
+- ~~Résolutions et codecs audio réels des AVI du catalogue~~ : **fait** (voir le relevé) ; reste 1 AVI illisible à examiner.
 
 ## Sources consultées (lecture seule, aucun téléchargement de binaire)
 

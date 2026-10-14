@@ -69,3 +69,4 @@ Ces résultats ne valident ni l'AVI, ni un fichier réel du NAS, ni le débit su
 ## Essai sur le Pi (lecture seule)
 
 Voir [WEB-PI-READONLY-EVIDENCE](../implementation/WEB-PI-READONLY-EVIDENCE.md) : 21 fichiers réels ouverts par les démuxeurs, inventaire du catalogue (MKV 78 %, AVI 15 % tous Xvid dans l'échantillon, MP4 7 %), AC-3 fréquent. LAVI
+AVI : coût et options dans [ADR-0014](decisions/ADR-0014-web-avi-xvid-decoder-evaluation.md) (décision utilisateur en attente).

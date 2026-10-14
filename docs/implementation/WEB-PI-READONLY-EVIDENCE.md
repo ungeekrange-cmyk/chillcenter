@@ -36,3 +36,11 @@ Limite de la mesure de débit : un seul client (ce Mac), requêtes séquentielle
 3. **AC-3/E-AC-3 est fréquent** (≈ la moitié des MKV de l'échantillon) : la lecture dépend du navigateur (Safari oui ; Chrome selon plateforme). Sans décodeur, ces fichiers seront muets ou refusés ; mesure sur les navigateurs cibles nécessaire avant toute annonce de parité.
 4. HEVC dépend du matériel/navigateur ; à tester sur les clients réels.
 5. Lecture réelle dans un navigateur depuis le Pi : **non faite** — le serveur déployé refuse encore les requêtes de navigateur (ancienne garde d'origine) et ne sert pas la PWA ; il faut le nouveau binaire (non compilé ici, `cargo` absent) et une autorisation de déploiement explicite.
+
+## Complément — relevé des en-têtes des 369 AVI (même jour, même cadre lecture seule)
+
+Un bail volatil par fichier, acquis puis libéré aussitôt (aucune progression, aucun titre relevé) : **deux passes de 369 fichiers plus un essai sur 1 fichier, soit 739 acquisitions/libérations au total**. Une première passe a échoué sur les 369 fichiers à cause d'un défaut de **mon analyseur** (entiers RIFF lus en gros-boutiste) ; elle n'a rien modifié côté serveur, a été diagnostiquée sur un seul fichier, corrigée, puis relancée. Résultat de la passe corrigée : 368 lus, 1 illisible.
+
+Xvid 354, DX50 13, H.264 1 ; largeur ≤ ≈ 720 px pour 366 fichiers ; audio MP3 stéréo 364, AC-3 4 ; une seule piste audio. Détail et conséquences dans [ADR-0014](../architecture/decisions/ADR-0014-web-avi-xvid-decoder-evaluation.md).
+
+Écritures déclarées : uniquement les baux volatils (mémoire du serveur). Aucune interruption ni erreur 409 pendant le relevé.
