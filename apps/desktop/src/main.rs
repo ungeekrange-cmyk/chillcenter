@@ -3,7 +3,9 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
+use std::path::PathBuf;
 mod artwork_bridge;
+mod admin_bridge;
 mod native_player;
 mod player_bridge;
 use player_bridge::{PlayerCommand, PlayerHost};
@@ -153,6 +155,12 @@ async fn artwork_command(
         code: "CLIENT_INTERRUPTED".into(),
     })?
 }
+#[tauri::command]
+async fn admin_import_choose(app: tauri::AppHandle) -> Result<Value, UiError> {
+    let (tx,rx)=tokio::sync::oneshot::channel(); app.dialog().file().add_filter("Archive ZIP",&["zip"]).pick_file(move|f|{let _=tx.send(f.and_then(|v|v.as_path().map(PathBuf::from)));});
+    let Some(path)=rx.await.map_err(|_|UiError{message:"Sélecteur interrompu.".into(),status:None,code:"CLIENT_INTERRUPTED".into()})? else{return Ok(serde_json::json!({"cancelled":true}));};
+    tauri::async_runtime::spawn_blocking(move||admin_bridge::selected_zip(&path).map(|_|serde_json::json!({"selected":true}))).await.map_err(|_|UiError{message:"Sélection interrompue.".into(),status:None,code:"CLIENT_INTERRUPTED".into()})?
+}
 fn main() {
     let builder = tauri::Builder::default().setup(|app| {
         let directory = app.path().app_config_dir()?;
@@ -246,6 +254,7 @@ fn main() {
             ui_command,
             player_command,
             artwork_command,
+            admin_import_choose,
             qa_result
         ])
         .on_page_load(|webview, payload| {
@@ -280,6 +289,7 @@ fn main() {
         ui_command,
         player_command,
         artwork_command
+        ,admin_import_choose
     ]);
     builder
         .run(tauri::generate_context!())
