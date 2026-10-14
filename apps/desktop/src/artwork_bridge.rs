@@ -20,6 +20,10 @@ pub enum ArtworkTarget {
         id: String,
         expected_revision: u64,
     },
+    Playlist {
+        id: String,
+        expected_revision: u64,
+    },
 }
 fn err(message: &str) -> UiError {
     UiError {
@@ -94,6 +98,16 @@ pub fn upload(
 }
 fn target_path(profile: &str, target: ArtworkTarget) -> Result<(String, u64), UiError> {
     match target {
+        ArtworkTarget::Playlist {
+            id,
+            expected_revision,
+        } => {
+            uuid::Uuid::parse_str(&id).map_err(|_| err("Liste invalide."))?;
+            Ok((
+                format!("/api/v1/profiles/{profile}/playlists/{id}/poster"),
+                expected_revision,
+            ))
+        }
         ArtworkTarget::Media {
             media_id,
             expected_revision,

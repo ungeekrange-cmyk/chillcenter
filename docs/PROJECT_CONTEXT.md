@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Lot corrections catalogue/cache — candidat en cours
+
+14octobre2026 : demande utilisateur locale, cache catalogue SQLite/images par serveur/profil, sagas sans attendre l'image, couvertures mosaïque/personnelles des listes, menu profil initiale, actions Administration visibles et suite20s/nouvelle saison/clic/annulation/auto. Voir [preuves](implementation/CATALOG-CACHE-EVIDENCE.md), ADR0013 et BUG0055–0058. Native next/shell locales PASS, source/bundle/Pi exacts à finaliser, pas de promotion revendiquée ici. Autorisation de sauvegarde privée/bascule Pi reçue ; NAS/configuration intacts. L'utilisateur demande de limiter les tests aux bugs signalés : pas de nouveau parcours général du lecteur.
+
 ## Dernier client — corrections visuelles574d255
 
 Lot14octobre livré localement : [REL-MAC-UI-PANELS-001](releases/REL-MAC-UI-PANELS-001.md), [CC-UX-003](design/CC-UX-003.md). Nouveau bundle `artifacts/macos/Chill Center-574d255.app`, source574d255 ; plein écran initial configurable parMac (défautoui), mode fenêtre sur toute la zone droite, retour/titre/fondu/contrôles, collections et ajout par pages à vignettes. 290Rust/55Node/clippy, navigateur synthétique avec images chargées et deux parcours Tauri réels sur basesHTTPSlocales neuves PASS. Pi/NAS/réglages et profils réels inchangés ; anciens bundles préservés. Validation visuelle utilisateur en attente, pas de revue indépendante nouvelle revendiquée. HTML seul = aperçu non connecté, pas clientweb ; l'utilisateur a été explicitement prévenu. ADR0012 et BUG0052–0054 conservent les décisions et RED/GREEN.

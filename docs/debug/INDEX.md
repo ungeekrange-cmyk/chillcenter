@@ -1,5 +1,9 @@
 # Journal des bugs, observations et risques
 
+[BUG0058](BUG-0058-replay-at-eof.md) : reprise à EOF lors d'une relecture, confirmée par vraie fixture native et RED unitaire ; correction locale au FileLoaded, preuve GREEN dans le lot cache.
+
+Lot cache/retours utilisateur14octobre : [BUG0055](BUG-0055-shared-client-slot.md) concurrence du pont ; [BUG0056](BUG-0056-network-catalog-navigation.md) catalogue réseau répété ; [BUG0057](BUG-0057-playlists-profile-next.md) listes/profil/suite. FIXED, preuves natives/Pi et validation humaine distinguées dans le rapport du lot.
+
 Lot de corrections visuelles14octobre : [BUG0052](BUG-0052-admin-navigation-order.md), ouverture Administration fragmentée entre callbacks et courses d'IO ; [BUG0053](BUG-0053-catalog-context-bootstrap.md), baseline de contexte après boot rapide ; [BUG0054](BUG-0054-detached-poster-observers.md), premières affiches désobservées pendant la construction d'une grille horsDOM. Causes confirmées et RED/GREEN conservés ; toutes détectées dans le candidat local avant remise, pas présentées comme pannes du Pi. Résultats et limites dans REL-MAC-UI-PANELS-001.
 
 14octobre, état courant : [BUG0051](BUG-0051-pi-update-output-quoting.md), quoting opérateur confirmé et corrigé par déployeur distinct/V4 revue indépendamment ; premier échec et restaurationR7 conservés. Pi mis à jour source9277 à19:12:40UTC ; connexion/catalogue/reconnexion du même clientRust queTauri PASS, vérification distincte post-bascule APPROVED dans ce périmètre. La connexion bloquée provenait du nouveau client face à l'ancien contrat R7, pas d'un certificat à contourner. BUG0049/0050 corrigés dans le QAdebug seulement, deux parcours natifs finaux frais PASS ; les mentions d'investigation ci-dessous sont historiques. Voir [release courante](../releases/REL-UX-API-001.md).

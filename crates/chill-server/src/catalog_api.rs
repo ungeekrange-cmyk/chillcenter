@@ -11,8 +11,44 @@ use chill_catalog::model::{MediaPatch, SeriesPatch};
 use chill_domain::{PlaybackContext, catalog_browser::BrowserQuery};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::io::Read;
-use std::{process::Stdio, time::Duration};
+use std::{
+    process::Stdio,
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant},
+};
+use uuid::Uuid;
+
+const SYNC_PAGE: usize = 100;
+const SYNC_MAX_SNAPSHOTS: usize = 3;
+const SYNC_TTL: Duration = Duration::from_secs(120);
+#[derive(Clone)]
+struct StoredSnapshot {
+    server: String,
+    profile: String,
+    revision: String,
+    created: Instant,
+    snapshot: Arc<chill_domain::SyncSnapshot>,
+    complete: bool,
+}
+#[derive(Default)]
+struct SnapshotCache {
+    snapshots: HashMap<String, StoredSnapshot>,
+}
+static SNAPSHOTS: OnceLock<Mutex<SnapshotCache>> = OnceLock::new();
+static SNAPSHOT_BOOT: OnceLock<String> = OnceLock::new();
+fn snapshot_cache() -> &'static Mutex<SnapshotCache> {
+    SNAPSHOTS.get_or_init(|| Mutex::new(SnapshotCache::default()))
+}
+fn snapshot_revision(server: &str, profile: &str, epoch: (u64, u64)) -> String {
+    format!(
+        "{server}:{}:{profile}:{}:{}",
+        SNAPSHOT_BOOT.get_or_init(|| Uuid::new_v4().to_string()),
+        epoch.0,
+        epoch.1
+    )
+}
 
 #[derive(Clone, Default, Serialize)]
 pub struct ScanStatus {
@@ -24,6 +60,14 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/admin/scan", get(scan_status).post(start_scan))
         .route("/profiles/{profile}/catalog", get(catalog))
+        .route(
+            "/profiles/{profile}/catalog/snapshot",
+            post(create_snapshot),
+        )
+        .route(
+            "/profiles/{profile}/catalog/snapshot/{snapshot}",
+            get(snapshot_page),
+        )
         .route("/sagas/{saga}/artwork", get(common_saga_artwork))
         .route(
             "/admin/unavailable",
@@ -82,6 +126,14 @@ pub fn routes() -> Router<AppState> {
             get(playlist).put(rename_playlist).delete(delete_playlist),
         )
         .route(
+            "/profiles/{profile}/playlists/{playlist}/artwork",
+            get(playlist_artwork),
+        )
+        .route(
+            "/profiles/{profile}/playlists/{playlist}/poster",
+            put(upload_playlist_poster).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
+        .route(
             "/profiles/{profile}/playlists/{playlist}/members",
             post(add_members),
         )
@@ -100,6 +152,154 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/profiles/{profile}/media/{media}/watched", put(watched))
         .route("/profiles/{profile}/media/{media}/rating", put(rating))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SnapshotRequest {
+    known_revision: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SnapshotPageQuery {
+    offset: Option<usize>,
+}
+async fn create_snapshot(
+    State(state): State<AppState>,
+    Path(profile): Path<String>,
+    Json(body): Json<SnapshotRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let server = state
+        .certificate
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "SYNC_BUSY"))?
+        .server_id
+        .clone();
+    let epoch = state
+        .database
+        .call({
+            let profile = profile.clone();
+            move |s| s.sync_revision(&profile)
+        })
+        .await?;
+    let revision = snapshot_revision(&server, &profile, epoch);
+    if body.known_revision.as_deref() == Some(&revision) {
+        return Ok(Json(json!({"revision":revision,"unchanged":true})));
+    }
+    let (captured_epoch, snapshot) = state
+        .database
+        .call({
+            let profile = profile.clone();
+            move |s| {
+                let snapshot = s.sync_snapshot(&profile)?;
+                Ok((s.sync_revision(&profile)?, snapshot))
+            }
+        })
+        .await?;
+    let revision = snapshot_revision(&server, &profile, captured_epoch);
+    let id = Uuid::new_v4().to_string();
+    let total = snapshot.items.len();
+    let first = snapshot.items[..total.min(SYNC_PAGE)].to_vec();
+    let sagas = snapshot.sagas.clone();
+    let playlists = snapshot.playlists.clone();
+    let series_revisions = snapshot.series_revisions.clone();
+    let has_more = total > first.len();
+    {
+        let mut cache = snapshot_cache()
+            .lock()
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "SYNC_BUSY"))?;
+        cache
+            .snapshots
+            .retain(|_, value| value.created.elapsed() < SYNC_TTL);
+        if cache.snapshots.len() >= SYNC_MAX_SNAPSHOTS {
+            let complete = cache
+                .snapshots
+                .iter()
+                .filter(|(_, v)| v.complete)
+                .min_by_key(|(_, v)| v.created)
+                .map(|(k, _)| k.clone());
+            if let Some(id) = complete {
+                cache.snapshots.remove(&id);
+            }
+        }
+        if cache.snapshots.len() >= SYNC_MAX_SNAPSHOTS
+            || cache
+                .snapshots
+                .values()
+                .map(|v| v.snapshot.serialized_bytes)
+                .sum::<usize>()
+                .saturating_add(snapshot.serialized_bytes)
+                > 32 * 1024 * 1024
+        {
+            return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "SYNC_BUSY"));
+        }
+        let snapshot = Arc::new(snapshot);
+        cache.snapshots.insert(
+            id.clone(),
+            StoredSnapshot {
+                server,
+                profile,
+                revision: revision.clone(),
+                created: Instant::now(),
+                snapshot: Arc::clone(&snapshot),
+                complete: !has_more,
+            },
+        );
+    }
+    let expiry_id = id.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(SYNC_TTL).await;
+        if let Ok(mut cache) = snapshot_cache().lock() {
+            cache.snapshots.remove(&expiry_id);
+        }
+    });
+    Ok(Json(
+        json!({"revision":revision,"snapshot_id":id,"total":total,"items":first,"sagas":sagas,"playlists":playlists,"series_revisions":series_revisions,"has_more":has_more,"next_offset":if has_more { Some(SYNC_PAGE) } else { None::<usize> }}),
+    ))
+}
+async fn snapshot_page(
+    State(state): State<AppState>,
+    Path((profile, snapshot)): Path<(String, String)>,
+    Query(query): Query<SnapshotPageQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let offset = query.offset.unwrap_or(0);
+    let server = state
+        .certificate
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "SYNC_BUSY"))?
+        .server_id
+        .clone();
+    state
+        .database
+        .call({
+            let profile = profile.clone();
+            move |s| s.sync_revision(&profile).map(|_| ())
+        })
+        .await?;
+    let cached = {
+        let mut cache = snapshot_cache()
+            .lock()
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "SYNC_BUSY"))?;
+        cache
+            .snapshots
+            .retain(|_, value| value.created.elapsed() < SYNC_TTL);
+        cache.snapshots.get(&snapshot).cloned()
+    }
+    .ok_or(ApiError(StatusCode::GONE, "SYNC_SNAPSHOT_EXPIRED"))?;
+    if cached.server != server || cached.profile != profile || offset > cached.snapshot.items.len()
+    {
+        return Err(ApiError(StatusCode::NOT_FOUND, "SYNC_SNAPSHOT_NOT_FOUND"));
+    }
+    let end = offset.saturating_add(SYNC_PAGE).min(cached.snapshot.items.len());
+    if end == cached.snapshot.items.len()
+        && let Ok(mut cache) = snapshot_cache().lock()
+        && let Some(value) = cache.snapshots.get_mut(&snapshot)
+    {
+        value.complete = true;
+    }
+    Ok(Json(
+        json!({"revision":cached.revision,"snapshot_id":snapshot,"total":cached.snapshot.items.len(),"items":cached.snapshot.items[offset..end].to_vec(),"has_more":end<cached.snapshot.items.len(),"next_offset":if end<cached.snapshot.items.len(){Some(end)}else{None::<usize>}}),
+    ))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -511,6 +711,41 @@ async fn playlist(
         json!({"playlist":state.database.call(move|s|s.playlist(&profile,&playlist)).await?}),
     ))
 }
+async fn playlist_artwork(
+    State(state): State<AppState>,
+    Path((profile, playlist)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let path = state
+        .database
+        .call(move |s| s.playlist_artwork_path(&profile, &playlist))
+        .await?;
+    let cache = state.config.data_dir.join("posters");
+    tokio::task::spawn_blocking(move || cached_artwork(&cache, &path))
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "ARTWORK_UNAVAILABLE"))?
+}
+async fn upload_playlist_poster(
+    State(state): State<AppState>,
+    Path((profile, playlist)): Path<(String, String)>,
+    Query(query): Query<PosterRevision>,
+    bytes: Bytes,
+) -> Result<Json<Value>, ApiError> {
+    let cache = state.config.data_dir.join("posters");
+    let view = state
+        .database
+        .call(move |s| {
+            s.set_playlist_artwork_at_revision(
+                &profile,
+                &playlist,
+                query.expected_revision,
+                &bytes,
+                &cache,
+            )?;
+            s.playlist(&profile, &playlist)
+        })
+        .await?;
+    Ok(Json(json!({"playlist":view})))
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RenamePlaylist {
@@ -558,9 +793,10 @@ async fn delete_playlist(
     State(state): State<AppState>,
     Path((profile, playlist)): Path<(String, String)>,
 ) -> Result<Json<Value>, ApiError> {
+    let cache = state.config.data_dir.join("posters");
     state
         .database
-        .call(move |s| s.delete_collection(&profile, &playlist))
+        .call(move |s| s.delete_playlist_with_artwork(&profile, &playlist, &cache))
         .await?;
     Ok(Json(json!({"deleted":true})))
 }

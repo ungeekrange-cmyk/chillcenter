@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 function harness(seconds,{available=true,error=null}={}){
  let now=0,nextTimer=0;const timers=new Map(),calls=[],elements=new Map(),listeners={};
- function element(){const classes=new Set(),events={};return {hidden:false,disabled:false,textContent:'',value:'',dataset:{},events,attributes:{},classList:{add(...items){items.forEach(x=>classes.add(x));},remove(...items){items.forEach(x=>classes.delete(x));},contains:x=>classes.has(x),toggle(x,enabled){if(enabled)classes.add(x);else classes.delete(x);}},setAttribute(key,value){this.attributes[key]=value;},addEventListener(type,fn){events[type]=fn;},append(){},replaceChildren(){},querySelector(){return null;},getBoundingClientRect(){return {x:0,y:0,width:320,height:180};}};}
+ function element(){const classes=new Set(),events={};return {hidden:false,disabled:false,textContent:'',value:'',dataset:{},events,attributes:{},classList:{add(...items){items.forEach(x=>classes.add(x));},remove(...items){items.forEach(x=>classes.delete(x));},contains:x=>classes.has(x),toggle(x,enabled){if(enabled)classes.add(x);else classes.delete(x);}},setAttribute(key,value){this.attributes[key]=value;},getAttribute(key){return this.attributes[key]??null;},addEventListener(type,fn){events[type]=fn;},append(){},replaceChildren(){},querySelector(){return null;},getBoundingClientRect(){return {x:0,y:0,width:320,height:180};}};}
  const get=id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);};
  const document={body:element(),hidden:false,activeElement:null,querySelector:get,createElementNS:element,addEventListener:(type,fn)=>listeners[type]=fn};
  const sandbox={document,window:{addEventListener(){},__TAURI__:{core:{invoke:async(_,{command})=>{calls.push(command);return {stage:'closed'};}}}},$:get,node:element,message(){},Date:{now:()=>now},setTimeout:(fn,delay)=>{const id=++nextTimer;timers.set(id,{fn,at:now+delay});return id;},clearTimeout:id=>timers.delete(id),setInterval:()=>0,clearInterval(){},requestAnimationFrame:fn=>fn(),ResizeObserver:class{observe(){}},loadPage:async()=>{}};
@@ -27,6 +27,10 @@ test('cancel, backgrounding and profile-close cancel timers without changing pre
 });
 test('launch-now skips delay and sends only expected next identity',async()=>{
  const h=harness(30);await vm.runInContext('launchNext();',h.sandbox);assert.equal(h.calls.length,1);assert.equal(h.calls[0].expected_id,'b');await h.advance(30000);assert.equal(h.calls.length,1);
+});
+test('the next thumbnail is keyboard-accessible and starts the same validated next video',async()=>{
+ const h=harness(30);const thumb=h.get('player-next-thumb');assert.equal(thumb.attributes.role,'button');assert.equal(thumb.attributes['aria-disabled'],'false');thumb.onclick();assert.equal(h.calls.length,1);assert.equal(h.calls[0].action,'next');
+ const unavailable=harness(30,{available:false}),blocked=unavailable.get('player-next-thumb');assert.equal(blocked.attributes['aria-disabled'],'true');blocked.onclick();assert.equal(unavailable.calls.length,0);
 });
 function playing(h,overrides={}){
  const native={loaded:true,paused:false,buffering:false,ended:false,error:null,...overrides};

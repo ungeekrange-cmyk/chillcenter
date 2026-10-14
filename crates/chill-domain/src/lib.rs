@@ -10,7 +10,7 @@ pub mod reassociation;
 pub mod snapshot;
 pub mod store;
 pub mod types;
-pub use store::Store;
+pub use store::{Store, SyncMedia, SyncSnapshot};
 pub use types::*;
 
 /// Safe, typed boundary for the retained legacy string-result catalogue APIs.
@@ -27,11 +27,15 @@ pub enum StoreFailure {
     FingerprintBusy,
     AiConfirmationRequired,
     AiPlanInvalid,
+    SyncTooLarge,
+    ArtworkNotFound,
     InvalidOperation,
 }
 impl From<String> for StoreFailure {
     fn from(error: String) -> Self {
         match error.as_str() {
+            "SYNC_CATALOG_TOO_LARGE" | "SYNC_SNAPSHOT_TOO_LARGE" => Self::SyncTooLarge,
+            "Affiche introuvable." => Self::ArtworkNotFound,
             "IMPORT_PLAN_STALE" => Self::ImportPlanStale,
             "PROFILE_NOT_FOUND" | "Profil introuvable." => Self::ProfileNotFound,
             "Vidéo introuvable dans le catalogue." | "Vidéo introuvable." => Self::MediaNotFound,

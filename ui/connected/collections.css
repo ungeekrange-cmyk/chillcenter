@@ -14,6 +14,7 @@
 .poster-tile.selected .poster img{padding:3px;border-radius:12px}
 #collection-admin{margin:0 0 22px;color:var(--muted)}#collection-admin summary{cursor:pointer;margin:0 0 14px}#collection-admin .inline{max-width:620px}
 #saga-artwork-preview img{width:100px;border-radius:10px;display:block;margin:14px 0}
+.poster.collection-mosaic{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:2px;padding:0;background:var(--raised);font-size:0}.collection-mosaic-cell{min-width:0;min-height:0;overflow:hidden;display:grid;place-items:center;background:linear-gradient(145deg,#354554,#14282e);color:var(--accent);font-size:20px;font-weight:700}.collection-mosaic-cell img{width:100%;height:100%;object-fit:cover}
 #collection-filter{max-width:500px;margin-bottom:24px}
 #collection-members{position:relative;display:block;margin-top:20px}
 .collection-media-card .member-title{font-size:14px;line-height:1.4;padding:0;border:0;background:transparent;color:var(--text);text-align:left}

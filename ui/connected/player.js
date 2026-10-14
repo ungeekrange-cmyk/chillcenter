@@ -77,6 +77,11 @@ function applyPlayerPresentation(){
   requestAnimationFrame(()=>{if(playerState.stage==="player"&&!playerState.native?.fullscreen)togglePlayerFullscreen(true);});
 }
 function cancelNext(){clearTimeout(nextTimer);nextTimer=null;nextDeadline=null;nextCancelled=true;$("player-next-count").textContent="Lancement automatique annulé.";}
+async function cancelNextAndClose(){
+  cancelNext();
+  await stopPlayerForNavigation();
+  if(typeof loadPage==="function")await loadPage();
+}
 async function launchNext(){
   if(playerBusy){nextTimer=setTimeout(launchNext,100);return;}
   const id=playerState.next?.media?.id;if(!id||!playerState.next.available)return;
@@ -101,6 +106,7 @@ function renderNext(){
     $("player-next-thumb").textContent=media.title.slice(0,1).toUpperCase();
     if(media.poster&&window.chillArtwork)window.chillArtwork($("player-next-thumb"),media.id);
     $("player-next-now").disabled=!next.available||!media.available;
+    const thumb=$("player-next-thumb"),playable=Boolean(next.available&&media.available);thumb.tabIndex=playable?0:-1;thumb.setAttribute("role","button");thumb.setAttribute("aria-label",playable?"Lancer "+media.title:"Vidéo suivante indisponible");thumb.setAttribute("aria-disabled",String(!playable));
     if(!next.available||!media.available){$("player-next-count").textContent="Vidéo suivante indisponible.";nextCancelled=true;}
     else if(playerState.autoplay_seconds===null){$("player-next-count").textContent="Lancement automatique désactivé.";}
     else {requestAnimationFrame(()=>{if(nextKey===key&&!nextCancelled){nextDeadline=Date.now()+playerState.autoplay_seconds*1000;countdownNext();}});}
@@ -142,7 +148,8 @@ function renderPlayer(){
   $("player-decoder").textContent=n.hardware_decoder&&n.hardware_decoder!=="no"?"Décodage matériel · "+n.hardware_decoder:"Décodage logiciel · "+(n.decoder||"initialisation");
   renderNext();
 }
-$("player-next-now").onclick=launchNext;$("player-next-cancel").onclick=cancelNext;
+$("player-next-now").onclick=launchNext;$("player-next-cancel").onclick=cancelNextAndClose;
+$("player-next-thumb").onclick=()=>{if($("player-next-thumb").getAttribute("aria-disabled")!=="true")launchNext();};$("player-next-thumb").onkeydown=event=>{if((event.key==="Enter"||event.key===" ")&&$("player-next-thumb").getAttribute("aria-disabled")!=="true"){event.preventDefault();launchNext();}};
 $("transfer-confirm").onclick=()=>playerCall({action:"confirm_transfer"});$("transfer-refuse").onclick=()=>playerCall({action:"refuse_transfer"});
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&nextDeadline!==null)cancelNext();});
 $("player-pause").onclick=()=>playerCall({action:playerState.native?.paused?"resume":"pause"});

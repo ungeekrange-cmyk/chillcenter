@@ -5,8 +5,8 @@ const CATALOG_PAGE_SIZE=48;
 function message(value="") { $("message").textContent=value;document.querySelectorAll(".dialog-message").forEach(n=>n.textContent=value); }
 function node(tag,text,cls) { const n=document.createElement(tag); if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n; }
 async function invoke(command) { return window.__TAURI__.core.invoke("ui_command",{command}); }
-async function run(command, update=true) {
-  if(busy)return null; busy=true;document.body.setAttribute("aria-busy","true");const disabledBefore=new Map();document.querySelectorAll("button,input,select").forEach(n=>{disabledBefore.set(n,n.disabled);n.disabled=true;});message();
+async function run(command, update=true, progress="") {
+  if(busy)return null; busy=true;document.body.setAttribute("aria-busy","true");const disabledBefore=new Map();document.querySelectorAll("button,input,select").forEach(n=>{disabledBefore.set(n,n.disabled);n.disabled=true;});message(progress);
   try { const result=await invoke(command);if(update){state=result;render();}return result; }
   catch(error){$("profile-switch").value=state.profile_id||"";message(error?.message||String(error));if(error?.status===404)setTimeout(async()=>{if(await run({action:"refresh"})){if(!state.profile_id)$("media").replaceChildren();}},0);return null;}
   finally{busy=false;document.body.removeAttribute("aria-busy");for(const [n,disabled] of disabledBefore)if(n.isConnected)n.disabled=disabled;pager();}
@@ -21,12 +21,14 @@ function render(){
   if(window.renderShell)window.renderShell();
   if(window.refreshPlaybackCache)window.refreshPlaybackCache(state.playback_cache);
   if(window.refreshPlayerPresentation)window.refreshPlayerPresentation(state.player_presentation);
-  $("connection-notice").textContent=state.notice||"";$("connection-notice").hidden=!state.notice;
+  const cacheNotice=state.catalog_cache?.offline?(state.catalog_cache.notice||"Catalogue local disponible hors connexion."):"";
+  const notice=[state.notice,cacheNotice].filter(Boolean).join(" · ");
+  $("connection-notice").textContent=notice;$("connection-notice").hidden=!notice;
   for(const id of ["server-panel","trust-panel","profile-panel","catalog-panel"])$(id).hidden=true;
   const connected=state.stage==="connected";
-  $("admin-toggle").hidden=!connected;$("server-switch").hidden=!connected;$("profile-switch").hidden=!connected||!(state.profiles?.length);
+  $("admin-toggle").hidden=!connected;$("server-switch").hidden=!connected;$("profile-menu").hidden=!connected||!(state.profiles?.length);
   document.documentElement.dataset.theme=state.theme||"system";$("theme").value=state.theme||"system";
-  if(!connected){$("admin-panel").hidden=true;clearTimeout(timer);$("media").replaceChildren();$("profile-choices").replaceChildren();$("admin-profiles").replaceChildren();$("profile-switch").replaceChildren();}
+  if(!connected){$("admin-panel").hidden=true;clearTimeout(timer);$("media").replaceChildren();$("profile-choices").replaceChildren();$("admin-profiles").replaceChildren();$("profile-switch").replaceChildren();$("profile-menu").open=false;}
   if(state.stage==="server"){
     $("server-panel").hidden=false;$("address").value=state.address||draftAddress;
     $("saved-servers").replaceChildren();for(const address of state.servers||[]){const b=node("button",address,"secondary");b.onclick=()=>connect(address);$("saved-servers").append(b);}return;
@@ -45,10 +47,17 @@ function render(){
     const rename=node("button","Renommer","secondary");rename.onclick=async()=>{await run({action:"rename_profile",id:p.id,name:name.value,expected_revision:p.revision});};
     const remove=node("button","Supprimer","secondary danger");remove.onclick=()=>{deleting=p;$("delete-name").textContent=p.name;$("confirm-delete").showModal();};row.append(name,rename,remove);$("admin-profiles").append(row);
   }
-  $("profile-switch").value=state.profile_id||"";$("profile-empty").hidden=Boolean(state.profiles.length);
+  $("profile-switch").value=state.profile_id||"";
+  const activeProfile=state.profiles.find(profile=>profile.id===state.profile_id);
+  const activeName=activeProfile?.name||"Choisir un profil";
+  $("profile-name").textContent=activeName;
+  $("profile-avatar").textContent=activeName.trim().slice(0,1).toLocaleUpperCase()||"?";
+  if(activeProfile)$("profile-menu").open=false;
+  $("profile-empty").hidden=Boolean(state.profiles.length);
   $("profile-panel").hidden=Boolean(state.profile_id);$("catalog-panel").hidden=!state.profile_id;
   if(!state.profile_id)$("media").replaceChildren();
   $("video-root").value=state.library.video_root||"";$("personal-settings").hidden=!state.profile_id;
+  if(!$("autoplay").querySelector('option[value="15"]'))$("autoplay").append(new Option("Après 15 secondes","15"));
   if(state.preferences){$("audio-language").value=state.preferences.audio_language;$("subtitle-language").value=state.preferences.subtitle_language;$("autoplay").value=state.preferences.autoplay_seconds===null?"off":String(state.preferences.autoplay_seconds);}
   else{$("audio-language").value="";$("subtitle-language").value="";}
   if(window.renderShell)window.renderShell();
@@ -130,13 +139,13 @@ $("approve-trust").onclick=async()=>{const r=await run({action:"approve",token:s
 $("reject-trust").onclick=()=>run({action:"disconnect"});
 $("server-switch").onclick=()=>run({action:"disconnect"});
 $("profile-switch").onchange=()=>selectProfile($("profile-switch").value);
-for(const id of ["create-first","create-admin"])$(id).onsubmit=async e=>{e.preventDefault();const name=e.currentTarget.elements.name.value;const r=await run({action:"create_profile",name});if(r)$(id).reset();};
+for(const id of ["create-first","create-admin","create-profile-menu"])$(id).onsubmit=async e=>{e.preventDefault();const name=e.currentTarget.elements.name.value;const r=await run({action:"create_profile",name});if(r){$(id).reset();$("profile-menu").open=false;}};
 $("admin-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("admin");const context=state.server_id+":"+state.profile_id,current=()=>context===state.server_id+":"+state.profile_id&&shellSection==="admin";if(await run({action:"refresh"})){if(!current())return;$("admin-panel").hidden=false;await pollScan();if(!current())return;await unavailableAdmin();if(current())await window.refreshTmdbStatus?.();}};
 $("admin-close").onclick=()=>{$("admin-panel").hidden=true;clearTimeout(timer);};
 $("library-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_library",video_root:$("video-root").value.trim()||null,expected_revision:state.library.revision}))message("Chemin enregistré sur le serveur.");};
 $("preferences-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_preferences",audio_language:$("audio-language").value,subtitle_language:$("subtitle-language").value,autoplay_seconds:$("autoplay").value==="off"?null:Number($("autoplay").value)}))message("Préférences du profil enregistrées.");};
 $("theme").onchange=()=>run({action:"theme",theme:$("theme").value});
-$("filter-form").onsubmit=e=>{e.preventDefault();offset=0;loadPage();};$("refresh-catalog").onclick=()=>loadPage();
+$("filter-form").onsubmit=e=>{e.preventDefault();offset=0;loadPage();};$("refresh-catalog").onclick=async()=>{const control=$("refresh-catalog");control.disabled=true;try{const refreshed=await run({action:"refresh"},true,"Vérification des nouveautés sur le serveur…");if(refreshed){await loadPage();message(state.catalog_cache?.offline?state.catalog_cache.notice:"Catalogue actualisé.");}}finally{control.disabled=false;}};
 $("view-mode").onchange=()=>{catalogWindowKey="";renderCatalogWindow();};
 $("poster-size").oninput=()=>{document.documentElement.style.setProperty("--poster-size",$("poster-size").value+"px");catalogWindowKey="";renderCatalogWindow();};
 $("scan").onclick=async()=>{if(await run({action:"start_scan"},false))await pollScan();};
@@ -154,4 +163,6 @@ async function pollScan(){clearTimeout(timer);if(state.stage!=="connected"||$("a
 $("cancel-delete").onclick=()=>{$("confirm-delete").close();deleting=null;};
 $("confirm-delete").addEventListener("cancel",()=>{deleting=null;});
 $("confirm-delete-button").onclick=async()=>{if(!deleting)return;const p=deleting;$("confirm-delete").close();deleting=null;if(await run({action:"delete_profile",id:p.id,confirm_id:p.id})){$("media").replaceChildren();if(state.profile_id)await loadPage();}};
+let lastFocusRefresh=0;
+window.addEventListener("focus",async()=>{if(state.stage!=="connected"||!state.profile_id||busy||playerState?.stage==="player")return;const now=Date.now();if(now-lastFocusRefresh<5000)return;lastFocusRefresh=now;const refreshed=await run({action:"refresh"},true,"Vérification des nouveautés sur le serveur…");if(refreshed&&state.profile_id)await loadPage();});
 window.chillReady=(async()=>{if(!window.__TAURI__){message("Ouvrez cette interface depuis l'application Chill Center, pas directement dans un navigateur.");return;}const r=await run({action:"boot"});if(r?.profile_id)await loadPage();})();

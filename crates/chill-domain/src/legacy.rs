@@ -281,6 +281,7 @@ pub fn convert_cinefolio_snapshot(
                 id: Uuid::new_v4().to_string(),
                 name,
                 media_ids,
+                poster_ref: None,
             });
         }
     }

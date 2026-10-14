@@ -19,6 +19,8 @@ impl Default for Preferences {
         Self {
             audio_language: "en".into(),
             subtitle_language: "en".into(),
+            // Historical API default. The current desktop explicitly saves 20
+            // when creating a profile; old clients retain their old semantics.
             autoplay_seconds: Some(10),
         }
     }
@@ -30,7 +32,7 @@ impl Preferences {
             || self.subtitle_language.len() > 32
             || self
                 .autoplay_seconds
-                .is_some_and(|s| ![0, 5, 10, 20, 30].contains(&s))
+                .is_some_and(|s| ![0, 5, 10, 15, 20, 30].contains(&s))
         {
             return Err("Préférences invalides.".into());
         }

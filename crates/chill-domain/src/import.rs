@@ -82,6 +82,8 @@ pub struct PortablePlaylist {
     pub id: String,
     pub name: String,
     pub media_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster_ref: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlannedProfile {
@@ -170,7 +172,7 @@ fn unique_refs(values: &[String], known: &BTreeSet<String>) -> Result<(), String
 
 impl ArchiveDocument {
     pub fn validate(&self) -> Result<(), String> {
-        if self.format_version != 1
+        if ![1, 2].contains(&self.format_version)
             || !self.leases.is_empty()
             || self.media.len() > 100_000
             || self.profiles.len() > 1000
@@ -246,6 +248,10 @@ impl ArchiveDocument {
             let mut names = BTreeSet::new();
             for l in &p.playlists {
                 uuid(&l.id)?;
+                poster(&l.poster_ref)?;
+                if self.format_version == 1 && l.poster_ref.is_some() {
+                    return Err(invalid());
+                }
                 if !ids.insert(&l.id) || !names.insert(valid_collection_name(&l.name)?) {
                     return Err(invalid());
                 }
@@ -709,6 +715,16 @@ impl Store {
                 for (position, id) in list.media_ids.iter().enumerate() {
                     tx.execute("INSERT INTO cc_playlist_members(playlist_id,stable_media_id,position) VALUES(?1,?2,?3)",params![list.id,id,position as i64]).map_err(db)?;
                 }
+                if let Some(reference) = &list.poster_ref {
+                    let path = poster_paths.get(reference).ok_or("IMPORT_POSTER_MISSING")?;
+                    tx.execute("INSERT INTO cc_playlist_artwork(playlist_id,poster) VALUES(?1,?2) ON CONFLICT(playlist_id) DO UPDATE SET poster=excluded.poster",params![list.id,path]).map_err(db)?;
+                } else {
+                    tx.execute(
+                        "DELETE FROM cc_playlist_artwork WHERE playlist_id=?1",
+                        [&list.id],
+                    )
+                    .map_err(db)?;
+                }
             }
         }
         tx.execute(
@@ -845,6 +861,7 @@ mod tests {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: "À regarder".into(),
                     media_ids: vec![a, b],
+                    poster_ref: None,
                 }],
             }],
             leases: Vec::new(),
@@ -1026,4 +1043,93 @@ mod tests {
             "Migration/Films/A.mkv"
         );
     }
+}
+#[test]
+fn playlist_images_are_profile_scoped_cas_and_archive_v2_roundtrips() {
+    let temp = tempfile::tempdir().unwrap();
+    let cache = temp.path().join("posters");
+    let mut source = Store::open(&temp.path().join("source.sqlite")).unwrap();
+    let profile = source.create_profile("Original").unwrap();
+    let other = source.create_profile("Other").unwrap();
+    let playlist = source
+        .create_playlist_with_members(&profile.id, "Images", &[])
+        .unwrap();
+    let image = include_bytes!("../../../icons/icon.png");
+    assert!(
+        source
+            .set_playlist_artwork_at_revision(&other.id, &playlist.id, 1, image, &cache)
+            .is_err()
+    );
+    source
+        .set_playlist_artwork_at_revision(&profile.id, &playlist.id, 1, image, &cache)
+        .unwrap();
+    let old = source
+        .playlist_artwork_path(&profile.id, &playlist.id)
+        .unwrap();
+    assert!(
+        source
+            .set_playlist_artwork_at_revision(&profile.id, &playlist.id, 1, image, &cache)
+            .is_err()
+    );
+    assert_eq!(std::fs::read_dir(&cache).unwrap().count(), 1);
+    source
+        .set_playlist_artwork_at_revision(&profile.id, &playlist.id, 2, image, &cache)
+        .unwrap();
+    assert!(!old.exists());
+    let mut bytes = Vec::new();
+    let posters = source
+        .write_archive_json(&mut bytes, &uuid::Uuid::new_v4().to_string(), &cache)
+        .unwrap();
+    let document: ArchiveDocument = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(document.format_version, 2);
+    document.validate().unwrap();
+    assert!(
+        !String::from_utf8(bytes)
+            .unwrap()
+            .contains(&cache.to_string_lossy().to_string())
+    );
+    let destination = Store::open(&temp.path().join("destination.sqlite")).unwrap();
+    let mapping = ImportMapping {
+        profile_map: document
+            .profiles
+            .iter()
+            .map(|p| {
+                (
+                    p.id.clone(),
+                    ProfileTarget::New {
+                        name: format!("Imported {}", p.name),
+                    },
+                )
+            })
+            .collect(),
+        root_prefix: String::new(),
+        conflict_policy: ConflictPolicy::KeepDestination,
+    };
+    let plan = destination
+        .prepare_portable_import(document, &mapping, Path::new("/fixture"))
+        .unwrap();
+    let paths = posters
+        .iter()
+        .map(|p| {
+            (
+                p.reference.clone(),
+                cache.join(&p.relative).to_string_lossy().to_string(),
+            )
+        })
+        .collect();
+    destination.apply_portable_import(&plan, &paths).unwrap();
+    let imported = plan
+        .profiles
+        .iter()
+        .find(|p| p.source == profile.id)
+        .unwrap();
+    let lists = destination.playlists(&imported.id).unwrap();
+    assert!(lists[0].poster.is_some());
+    let retained = source
+        .playlist_artwork_path(&profile.id, &playlist.id)
+        .unwrap();
+    source
+        .delete_playlist_with_artwork(&profile.id, &playlist.id, &cache)
+        .unwrap();
+    assert!(!retained.exists());
 }

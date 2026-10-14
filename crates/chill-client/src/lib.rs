@@ -22,6 +22,7 @@ use x509_parser::extensions::GeneralName;
 use x509_parser::prelude::*;
 pub mod appearance;
 pub mod artwork;
+mod catalog_cache;
 pub mod playback;
 pub mod playback_cache;
 pub mod ui;
@@ -576,10 +577,18 @@ impl Transport {
         }
         let mut response = request.send().await?;
         let status = response.status();
-        const MAX_JSON: usize = 4 * 1024 * 1024;
+        // Only the closed catalogue snapshot routes carry a bounded full mirror
+        // manifest. Keep all other JSON endpoints at the established 4 MiB cap.
+        let snapshot =
+            path.starts_with("/api/v1/profiles/") || path.starts_with("/api/2026-10-14/profiles/");
+        let max_json = if snapshot && path.contains("/catalog/snapshot") {
+            34 * 1024 * 1024
+        } else {
+            4 * 1024 * 1024
+        };
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await? {
-            if bytes.len().saturating_add(chunk.len()) > MAX_JSON {
+            if bytes.len().saturating_add(chunk.len()) > max_json {
                 return Err(ClientError::InvalidRangeResponse(
                     "Réponse JSON trop volumineuse".into(),
                 ));
@@ -949,7 +958,10 @@ mod tests {
     fn endpoint_rejects_http_and_path_escape() {
         assert!(ServerEndpoint::parse("id", "http://pi.lan").is_err());
         let endpoint = ServerEndpoint::parse("id", "https://pi.lan:8443").unwrap();
-        assert_eq!(endpoint.request_url("/api/v1/server").unwrap().path(), "/api/2026-10-14/server");
+        assert_eq!(
+            endpoint.request_url("/api/v1/server").unwrap().path(),
+            "/api/2026-10-14/server"
+        );
         assert!(endpoint.request_url("//attacker.invalid/x").is_err());
         assert!(endpoint.request_url("/api/../admin").is_err());
     }

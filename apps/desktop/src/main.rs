@@ -14,6 +14,7 @@ use player_bridge::{PlayerCommand, PlayerHost};
 struct Bridge {
     client: Arc<Mutex<UiClient>>,
     slot: Arc<tokio::sync::Semaphore>,
+    context_epoch: Arc<std::sync::atomic::AtomicU64>,
     player: Arc<tokio::sync::Mutex<PlayerHost>>,
     closing: Arc<std::sync::atomic::AtomicBool>,
     rendering: Arc<std::sync::atomic::AtomicBool>,
@@ -27,15 +28,46 @@ async fn ui_command(
     command: UiCommand,
 ) -> Result<Value, UiError> {
     let bridge = state.inner().clone();
+    let epoch = bridge
+        .context_epoch
+        .load(std::sync::atomic::Ordering::Acquire);
+    let artwork = match &command {
+        UiCommand::Artwork { media_id } => Some(("media", media_id.clone())),
+        UiCommand::SagaArtwork { id } => Some(("sagas", id.clone())),
+        UiCommand::PlaylistArtwork { id } => Some(("playlists", id.clone())),
+        _ => None,
+    };
+    if let Some((kind, id)) = artwork {
+        let client = bridge.client.clone();
+        let task = tauri::async_runtime::spawn_blocking(move || {
+            client
+                .lock()
+                .map_err(|_| player_bridge::error("Client indisponible."))?
+                .artwork_task(kind, &id)
+        })
+        .await
+        .map_err(|_| player_bridge::error("Préparation image interrompue."))??;
+        return task.fetch().await;
+    }
     let permit = bridge
         .slot
         .clone()
-        .try_acquire_owned()
+        .acquire_owned()
+        .await
         .map_err(|_| UiError {
             message: "Une opération est déjà en cours.".into(),
             status: None,
             code: "CLIENT_BUSY".into(),
         })?;
+    if epoch
+        != bridge
+            .context_epoch
+            .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err(player_bridge::error(
+            "Le profil ou le serveur a changé : relancez l’opération.",
+        ));
+    }
     if matches!(
         &command,
         UiCommand::Connect { .. }
@@ -44,6 +76,9 @@ async fn ui_command(
             | UiCommand::DeleteProfile { .. }
             | UiCommand::SaveLibrary { .. }
     ) {
+        bridge
+            .context_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         bridge.administration.cancel_all();
         bridge.assistant.cancel_all();
         bridge.player.lock().await.stop(&window).await?;
@@ -90,7 +125,8 @@ async fn ai_command(
     let permit = bridge
         .slot
         .clone()
-        .try_acquire_owned()
+        .acquire_owned()
+        .await
         .map_err(|_| ai_bridge::error("Une opération est déjà en cours.", "CLIENT_BUSY"))?;
     let client = bridge.client.clone();
     let current = tauri::async_runtime::spawn_blocking(move || {
@@ -138,15 +174,27 @@ async fn player_command(
     command: PlayerCommand,
 ) -> Result<Value, UiError> {
     let bridge = state.inner().clone();
-    let _permit = bridge
-        .slot
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| UiError {
-            message: "Une opération est déjà en cours.".into(),
-            status: None,
-            code: "CLIENT_BUSY".into(),
-        })?;
+    // Status, controls and EOF must not wait for catalogue/admin/artwork I/O.
+    // Start/next stay serialized with profile changes to preserve their scope.
+    let _permit = if matches!(
+        &command,
+        PlayerCommand::Start { .. } | PlayerCommand::Next { .. }
+    ) {
+        Some(
+            bridge
+                .slot
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|_| UiError {
+                    message: "Une opération est déjà en cours.".into(),
+                    status: None,
+                    code: "CLIENT_BUSY".into(),
+                })?,
+        )
+    } else {
+        None
+    };
     if let PlayerCommand::Start {
         media_id,
         rect,
@@ -169,7 +217,19 @@ async fn player_command(
             .start(&window, connection, media_id, rect, context)
             .await
     } else {
-        bridge.player.lock().await.command(&window, command).await
+        let stops = matches!(&command, PlayerCommand::Stop);
+        let result = bridge.player.lock().await.command(&window, command).await;
+        if stops && result.is_ok() {
+            let client = bridge.client.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Ok(mut client) = client.lock() {
+                    client.invalidate_catalog();
+                }
+            })
+            .await
+            .map_err(|_| player_bridge::error("Actualisation interrompue."))?;
+        }
+        result
     }
 }
 #[tauri::command]
@@ -182,7 +242,8 @@ async fn artwork_command(
     let permit = bridge
         .slot
         .clone()
-        .try_acquire_owned()
+        .acquire_owned()
+        .await
         .map_err(|_| UiError {
             message: "Une opération est déjà en cours.".into(),
             status: None,
@@ -453,6 +514,7 @@ fn main() {
         app.manage(Bridge {
             client: Arc::new(Mutex::new(client)),
             slot: Arc::new(tokio::sync::Semaphore::new(1)),
+            context_epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             player: Arc::new(tokio::sync::Mutex::new(player)),
             closing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rendering,
@@ -485,8 +547,8 @@ fn main() {
                 .load(std::sync::atomic::Ordering::Acquire)
             {
                 timer.tick().await;
-                if let Ok(_permit) = tick_bridge.slot.clone().try_acquire_owned() {
-                    let _ = tick_bridge.player.lock().await.tick(&tick_window).await;
+                if let Ok(mut player) = tick_bridge.player.try_lock() {
+                    let _ = player.tick(&tick_window).await;
                 }
             }
         });
@@ -565,7 +627,7 @@ fn main() {
                 std::env::var("CHILL_UI_QA_ROOT"),
             ) {
                 let mode = std::env::var("CHILL_UI_QA_MODE").unwrap_or_default();
-                if mode == "player" && native_player::qa_prepare_visible_player(webview).is_err() {
+                if matches!(mode.as_str(),"player"|"next_series") && native_player::qa_prepare_visible_player(webview).is_err() {
                     let _ = webview.eval("window.__TAURI__.core.invoke('qa_result',{success:false,detail:'qa visible preparation failed'});");
                     return;
                 }
