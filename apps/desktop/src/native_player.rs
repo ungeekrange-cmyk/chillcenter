@@ -10,7 +10,10 @@ use chill_player::{
 };
 use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly};
-use objc2::{msg_send, runtime::AnyClass};
+use objc2::{
+    msg_send,
+    runtime::{AnyClass, AnyObject},
+};
 use objc2_app_kit::{
     NSOpenGLContext, NSOpenGLPFAAccelerated, NSOpenGLPFAAlphaSize, NSOpenGLPFAColorSize,
     NSOpenGLPFADoubleBuffer, NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat,
@@ -301,6 +304,30 @@ pub async fn guard_paused<R: Runtime>(
     rx.await
         .map_err(|_| NativePlayerError::Disconnected)?
         .ok_or_else(|| NativePlayerError::Surface("aucun lecteur chargé".into()))
+}
+#[cfg(debug_assertions)]
+pub fn qa_prepare_visible_player<R: Runtime>(
+    window: &tauri::Webview<R>,
+) -> Result<(), NativePlayerError> {
+    window
+        .run_on_main_thread(|| {
+            if let Some(app_class) = AnyClass::get(c"NSApplication") {
+                let app: *mut AnyObject = unsafe { msg_send![app_class, sharedApplication] };
+                if !app.is_null() {
+                    unsafe {
+                        let _: () = msg_send![app, unhide: std::ptr::null::<AnyObject>()];
+                        let _: () = msg_send![app, activateIgnoringOtherApps: true];
+                    }
+                }
+            }
+        })
+        .map_err(|e| NativePlayerError::Surface(e.to_string()))?;
+    window
+        .show()
+        .map_err(|e| NativePlayerError::Surface(e.to_string()))?;
+    window
+        .set_focus()
+        .map_err(|e| NativePlayerError::Surface(e.to_string()))
 }
 fn deadline_has_passed(
     now: Instant,

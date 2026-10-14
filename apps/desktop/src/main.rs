@@ -565,6 +565,12 @@ fn main() {
                 std::env::var("CHILL_UI_QA_ROOT"),
             ) {
                 let mode = std::env::var("CHILL_UI_QA_MODE").unwrap_or_default();
+                if mode == "player" {
+                    if native_player::qa_prepare_visible_player(webview).is_err() {
+                        let _ = webview.eval("window.__TAURI__.core.invoke('qa_result',{success:false,detail:'qa visible preparation failed'});");
+                        return;
+                    }
+                }
                 let _ = webview.eval(format!(
                     "{}\n{}({});",
                     [include_str!("../../../ui/connected/qa.js"),

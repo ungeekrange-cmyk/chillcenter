@@ -4,9 +4,11 @@ window.chillPlayerQa=async config=>{
  let step="boot",startedAt=Date.now();
  const assert=(ok,s)=>{if(!ok)throw Error(s);};
  const setStep=async next=>{step=next;await window.__TAURI__.core.invoke("qa_result",{success:false,detail:"TRACE player phase="+next+" elapsed_ms="+(Date.now()-startedAt)+" document_hidden="+document.hidden});};
+ const waitForVisible=async()=>{await window.__TAURI__.core.invoke("qa_result",{success:false,detail:"TRACE player phase=visible-wait elapsed_ms="+(Date.now()-startedAt)+" document_hidden="+document.hidden});if(document.hidden)await new Promise(resolve=>document.addEventListener("visibilitychange",function visible(){if(!document.hidden){document.removeEventListener("visibilitychange",visible);resolve();}}));await window.__TAURI__.core.invoke("qa_result",{success:false,detail:"TRACE player phase=visible-ready elapsed_ms="+(Date.now()-startedAt)+" document_hidden="+document.hidden});};
  const wait=async(check,seconds=25)=>{const end=Date.now()+seconds*1000;while(!check()){if(Date.now()>end)throw Error("timeout: "+$("message").textContent+" / "+$("player-note").textContent);await new Promise(r=>setTimeout(r,60));}};
  const call=async cmd=>{await wait(()=>!playerBusy);playerBusy=true;try{let failure;for(let attempt=0;attempt<20;attempt++){try{const v=await window.__TAURI__.core.invoke("player_command",{command:cmd});playerState=v;renderPlayer();return v;}catch(e){failure=e;if(e.code!=="CLIENT_BUSY")break;await new Promise(r=>setTimeout(r,80));}}throw Error("player_command action="+cmd.action+" status="+(failure?.status??"none")+" code="+(failure?.code??"none"));}finally{playerBusy=false;}};
  try{
+  await waitForVisible();
   await setStep("boot");
   await window.chillReady;
   if(state.stage!=="connected"){
