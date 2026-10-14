@@ -1,4 +1,5 @@
 window.chillPlayerQa=async config=>{
+ if(config.mode==="next_series")return window.chillNextSeriesQa(config);
  if(config.mode&&config.mode.startsWith("transfer_"))return window.chillTransferQa(config);
  let step="boot";
  const assert=(ok,s)=>{if(!ok)throw Error(s);};
@@ -28,6 +29,14 @@ window.chillPlayerQa=async config=>{
   step="reopen";await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded);await call({action:"stop"});
   await window.__TAURI__.core.invoke("qa_result",{success:true,detail:"native-Tauri-image-controls-tracks-fullscreen-resume-watched-EOF"});
  }catch(e){await window.__TAURI__.core.invoke("qa_result",{success:false,detail:step+": "+e.message});}
+};
+window.chillNextSeriesQa=async config=>{
+ let step="boot",original=[],outcome={success:false,detail:"boot"};const assert=(x,s)=>{if(!x)throw Error(s)};const wait=async f=>{const end=Date.now()+30000;while(!f()){if(Date.now()>end)throw Error("timeout "+step);await new Promise(r=>setTimeout(r,80));}};const call=async c=>{let failure;for(let i=0;i<20;i++){try{const v=await window.__TAURI__.core.invoke("player_command",{command:c});playerState=v;renderPlayer();return v}catch(e){failure=e;if(e.code!=="CLIENT_BUSY")break;await new Promise(r=>setTimeout(r,80));}}throw Error("player_command action="+c.action+" status="+(failure?.status??"none")+" code="+(failure?.code??"none"));};
+ try{await window.chillReady;if(state.stage!=="connected"){await connect(config.address);if(state.stage==="trust")await run({action:"approve",token:state.token});}if(!state.profiles.length)await run({action:"create_profile",name:"Next QA"});await selectProfile(state.profiles[0].id);await run({action:"save_library",video_root:config.root,expected_revision:state.library.revision});await run({action:"start_scan"},false);for(let i=0;i<100;i++){const s=await invoke({action:"scan_status"});if(!s.running)break;await new Promise(r=>setTimeout(r,80));}
+  const p=await invoke({action:"catalog",offset:0,category:null,q:null});const [a,b]=p.items;assert(a&&b,"two fixtures");for(const [m,season] of [[a,1],[b,2]]){const d=await invoke({action:"media_detail",media_id:m.id});original.push(d);await invoke({action:"edit_media",media_id:m.id,expected_revision:d.revision,patch:{category:"serie",series:"QA Saison",season,episode:1}})}
+  step="series speed";await window.chillPlay(a.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);await call({action:"speed",speed:1.5});await call({action:"stop"});await window.chillPlay(b.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);assert(playerState.native.speed===1.5,"series speed not persisted");
+  step="next banner";await call({action:"stop"});await window.chillPlay(a.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);await call({action:"seek",position:playerState.duration-12});await wait(()=>playerState.native?.ended);assert(playerState.next?.new_season===true,"new season missing");assert(!$("player-next").hidden&&$("player-next-season").textContent==="Nouvelle saison","banner missing");$("player-next-cancel").click();assert($("player-next-count").textContent.includes("annulé"),"cancel missing");await call({action:"next",expected_id:b.id});await wait(()=>playerState.native?.loaded&&!playerState.native.paused);await call({action:"stop"});outcome={success:true,detail:"next-now-cancel-new-season-series-speed"};
+ }catch(e){outcome={success:false,detail:step+": "+e.message};}finally{for(const d of original){try{const m=d.media;await invoke({action:"edit_media",media_id:m.id,expected_revision:d.revision+1,patch:{category:m.category,series:m.series,season:m.season,episode:m.episode}})}catch(_){outcome={success:false,detail:"restore failed"};}}await window.__TAURI__.core.invoke("qa_result",outcome);}
 };
 window.chillTransferQa=async config=>{
  let step="boot";const assert=(ok,s)=>{if(!ok)throw Error(s);};
