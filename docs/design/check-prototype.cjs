@@ -1,0 +1,71 @@
+// Visual-prototype checks only. Does not exercise Tauri, libmpv or the server.
+const { chromium } = require(process.env.CHILL_PREVIEW_NODE_MODULES + '/playwright');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const { pathToFileURL } = require('node:url');
+(async () => {
+  const output = process.argv[2];
+  assert(output, 'Pass a screenshot output directory');
+  await fs.mkdir(output, { recursive: true });
+  const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--disable-background-networking', '--no-first-run'] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('http://**/*', route => route.abort());
+    await page.route('https://**/*', route => route.abort());
+    await page.goto(pathToFileURL(path.join(__dirname, 'prototype.html')).href);
+    await page.screenshot({ path: path.join(output, 'catalogue.png'), fullPage: true });
+    assert.equal(await page.locator('.media-card').count(), 8);
+    await page.getByRole('button', { name: 'Voir la fiche de Dune', exact: true }).click();
+    const bounds = await page.locator('#detail').boundingBox();
+    assert(bounds.width > 1100, 'Detail fiche should be wide on desktop');
+    await page.screenshot({ path: path.join(output, 'fiche.png') });
+    await page.locator('#detail-play').click();
+    await page.mouse.move(650, 400);
+    assert.equal(await page.locator('#play-pause').getAttribute('aria-label'), 'Mettre en pause');
+    await page.screenshot({ path: path.join(output, 'lecteur.png') });
+    await page.waitForFunction(() => document.getElementById('player').classList.contains('idle'), { timeout: 5000 });
+    await page.mouse.move(670, 420);
+    assert.equal(await page.locator('#player').evaluate(el => el.classList.contains('idle')), false);
+    await page.locator('#play-pause').click();
+    await page.locator('#play-pause').evaluate(el => el.blur());
+    await page.waitForTimeout(2800);
+    assert.equal(await page.locator('#player').evaluate(el => el.classList.contains('idle')), false, 'Paused controls stay visible');
+    await page.locator('#fullscreen').click();
+    assert.equal(await page.evaluate(() => document.fullscreenElement?.id), 'player');
+    const full = await page.locator('#player').boundingBox();
+    const viewport = page.viewportSize();
+    assert(full.width >= viewport.width && full.height >= viewport.height);
+    await page.locator('#back').click();
+    await page.locator('#side-admin').click();
+    await page.locator('[data-tab="tmdb"]').click();
+    await page.screenshot({ path: path.join(output, 'tmdb.png') });
+    await page.locator('#tmdb-token').fill('NOT_A_REAL_SECRET_TEST_FIXTURE');
+    await page.locator('#tmdb-form button').click();
+    assert.equal(await page.locator('#tmdb-token').inputValue(), '');
+    assert.equal(await page.evaluate(() => localStorage.length), 0);
+    await page.locator('#side-ai').click();
+    await page.locator('#ai-form .primary').click();
+    await page.screenshot({ path: path.join(output, 'ia.png') });
+    await page.locator('[data-category="all"]').click();
+    await page.locator('#list-view').click();
+    assert((await page.locator('.poster-open').first().boundingBox()).height < 150);
+    await page.getByRole('button', { name: 'Affichage en grille', exact: true }).click();
+    for (const width of [1180, 760, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+      assert.equal(overflow, false, 'Horizontal overflow at ' + width);
+      await page.screenshot({ path: path.join(output, `catalogue-${width}.png`), fullPage: true });
+    }
+    assert.deepEqual(errors, []);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.locator('#side-admin').click();
+    await page.locator('[data-tab="client"]').click();
+    await page.locator('#theme').selectOption('light');
+    await page.locator('[data-category="all"]').click();
+    await page.screenshot({ path: path.join(output, 'catalogue-clair.png'), fullPage: true });
+    console.log('PASS: prototype layout, wide fiche, simulated playback/controls/fullscreen, IA/TMDB reachability, responsive widths. Native playback NOT_RUN.');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

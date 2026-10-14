@@ -1,5 +1,7 @@
 # Index des validations
 
+[G-UI-PROJECT-CC-UX-001](G-UI-PROJECT-CC-UX-001.md) : **PENDING**, reprise visuelle Cinéfolio demandée le14octobre ; pas de remise applicative ni de nouvelle découverte globale.
+
 | Gate | Révision | État | Action autorisée |
 | --- | --- | --- | --- |
 | G-01, evidence dans SCOPE/TRACEABILITY | CC-FONC-002 | APPROVED | Documentation/architecture. |

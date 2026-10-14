@@ -2,6 +2,8 @@
 
 ## Point de reprise actuel — 14 octobre 2026
 
+Nouvelle demande UI : sidebar et recherche Cinéfolio, administration basse/serveur à l'intérieur, pas de pages, grandes fiches, clé TMDB/automatisme, commandes vidéo standard et accès IA visible. Diagnostic [BUG0045](debug/BUG-0045-client-ui-port.md) ; [maquette CC-UX-001](design/prototype.html) et [spec](design/DESIGN_SYSTEM.md), [gate visuel PENDING](gates/G-UI-PROJECT-CC-UX-001.md). Pas de correction applicative, bundle ou déploiement dans ce checkpoint. Continuer après confirmation visuelle avec un builder distinct du diagnostic lecteur ; ne pas annoncer une preuve DOM comme preuve AppKit native. Worktree isolé `/private/tmp/chillcenter-ui-rework.4oZp3D/repo`, branche `codex/cinefolio-ui-rework`, base8e83922. Serveur et bundle précédents restent inchangés.
+
 G-01/02/03 et G-04 sont approuvés. L'utilisateur a accepté la remise logicielle avec réserves, puis autorisé explicitement l'installation sur le Pi et les tests NAS ; il a aussi approuvé le compte système dans le groupe existant marvin-admin984 après avertissement. Ne pas relancer discovery ou ajouter de l'authentification, un serveur Mac, du cloud ou du transcodage.
 
 Chill Center est désormais installé et actif sur **192.168.1.42:8443**, Pi3B+Rev1.3/Debian13.7 ARM64/905MiB/Wi-Fi. Source fonctionnelle126da0a, binaire13MiB9a17ffe…36a6 ; archive immuable R7 et overlay WorkingDirectory corrigent le démarrage, compte997:983+984/nologin, configurationroot0640 et données0700. NAS //192.168.1.92/Video monté RO sur /srv/volumes/video, inchangé. SSH/Cockpit préservés. L'accès SSH se fait par le master privé /private/tmp/chillcenter-ssh.UAjtlb/control établi par l'utilisateur ; pas de clé ou mot de passe à copier, ne pas contourner un échec d'agent.
