@@ -24,6 +24,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 use tokio_util::io::ReaderStream;
+use tokio::io::AsyncReadExt;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 const MAX_COMPRESSED: u64 = 1024 * 1024 * 1024;
@@ -1431,6 +1432,15 @@ mod tests {
             .unwrap();
         let response = app.clone().oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+        let content_length = response
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        assert_eq!(content_length, ready["bytes"].as_u64().unwrap());
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         let archive = bytes.clone();
         let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1683,14 +1693,26 @@ async fn download(
     let file = tokio::fs::File::open(path)
         .await
         .map_err(|_| ApiError(StatusCode::NOT_FOUND, "EXPORT_NOT_FOUND"))?;
+    let metadata = file
+        .metadata()
+        .await
+        .map_err(|_| ApiError(StatusCode::NOT_FOUND, "EXPORT_NOT_FOUND"))?;
+    if !metadata.is_file() || metadata.len() > MAX_COMPRESSED {
+        return Err(ApiError(StatusCode::NOT_FOUND, "EXPORT_NOT_FOUND"));
+    }
+    let size = metadata.len();
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/zip")
+        .header(header::CONTENT_LENGTH, size)
         .header(
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=chillcenter-{id}.zip"),
         )
         .header(header::CACHE_CONTROL, "no-store")
-        .body(Body::from_stream(ReaderStream::new(file)))
+        .body(Body::from_stream(ReaderStream::with_capacity(
+            file.take(size),
+            64 * 1024,
+        )))
         .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "EXPORT_STORAGE"))
 }
