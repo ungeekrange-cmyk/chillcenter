@@ -1788,6 +1788,9 @@ fn insert_identities(tx: &rusqlite::Transaction<'_>, media: &[Media]) -> Result<
     for m in media {
         tx.execute("INSERT OR IGNORE INTO cc_media_identity(stable_id,legacy_id,relative_path) VALUES(?1,?2,?3)",params![Uuid::new_v4().to_string(),m.id,m.id]).map_err(db_error)?;
     }
+    // Publish CAS revisions in the same transaction, not lazily through the
+    // unbounded legacy catalogue reader. Existing revisions are never reset.
+    tx.execute("INSERT OR IGNORE INTO cc_media_revision(stable_id,revision) SELECT stable_id,1 FROM cc_media_identity",[]).map_err(db_error)?;
     Ok(())
 }
 pub(crate) fn db_error(_: rusqlite::Error) -> String {
@@ -1941,6 +1944,14 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use tempfile::tempdir;
+    #[test]
+    fn scan_publishes_new_media_revision_without_legacy_catalog_warmup(){
+        let dir=tempdir().unwrap();let mut s=Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        s.snapshot(vec![media("New.mp4","/nas/New.mp4")]).unwrap();
+        let id=s.stable_id("New.mp4").unwrap();assert_eq!(s.media_revision(&id).unwrap(),1);
+        assert_eq!(s.fingerprint_target(&id).unwrap().media_revision,1);
+        assert_eq!(s.fingerprint_status(&id).unwrap().state,"not_requested");
+    }
     #[test]
     fn failed_identity_extension_rolls_back_catalogue_scan_marker_and_mapping() {
         let mut s = store();

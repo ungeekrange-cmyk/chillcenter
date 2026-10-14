@@ -537,6 +537,13 @@ impl Player {
                 native_window: options.native_window,
             };
             player.set_option("terminal", "no")?;
+            // Only the Rust grant-bound callback may fetch media. Container/
+            // playlist references and ambient mpv configuration are not inputs.
+            for (name,value) in [
+                ("config","no"),("load-scripts","no"),("ytdl","no"),
+                ("access-references","no"),("autoload-files","no"),
+                ("osc","no"),
+            ]{player.set_option(name,value)?;}
             player.set_option("input-default-bindings", "no")?;
             player.set_option("input-vo-keyboard", "no")?;
             player.set_option(
@@ -1501,6 +1508,25 @@ mod tests {
         fn size(&self) -> Option<u64> {
             Some(self.0.len() as u64)
         }
+    }
+
+    #[test]
+    fn media_references_cannot_open_unpinned_http(){
+        use std::net::TcpListener;
+        use std::io::{Read,Write};
+        if !controlled_library_paths().iter().any(|path|path.exists()){return;}
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();
+        let address=listener.local_addr().unwrap();let contacted=Arc::new(AtomicBool::new(false));let observed=contacted.clone();
+        let worker=thread::spawn(move||{let end=Instant::now()+Duration::from_secs(2);while Instant::now()<end{match listener.accept(){Ok((mut socket,_))=>{observed.store(true,Ordering::Release);let _=socket.set_read_timeout(Some(Duration::from_millis(100)));let _=socket.read(&mut [0;1024]);let _=socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");},Err(e)if e.kind()==std::io::ErrorKind::WouldBlock=>thread::sleep(Duration::from_millis(10)),Err(e)=>panic!("fixture listener: {e}")}}});
+        let mut options=PlayerOptions::default();options.extra.insert("vo".into(),"null".into());options.extra.insert("ao".into(),"null".into());
+        let mut player=Player::new(options).unwrap();player.register_stream("chill-memory",Arc::new(MemoryFactory(format!("#EXTM3U\nhttp://{address}/must-not-open.mp4\n").into_bytes()))).unwrap();
+        player.load("chill-memory://reference-fixture.mp4").unwrap();
+        let end=Instant::now()+Duration::from_secs(2);while Instant::now()<end{let _=player.poll_event(Duration::from_millis(20));}
+        worker.join().unwrap();assert!(!contacted.load(Ordering::Acquire),"embedded media reference bypassed the pinned transport");
+    }
+    #[test]
+    fn transport_safety_options_cannot_be_overridden(){
+        for name in ["config","load-scripts","ytdl","access-references","autoload-files","demuxer-lavf-o","scripts"]{assert!(!allowed_extra_option(name));}
     }
 
     #[test]

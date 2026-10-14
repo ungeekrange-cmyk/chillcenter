@@ -381,8 +381,8 @@ impl Store {
                 },
             )
             .optional()
-            .map_err(db)?
-            .ok_or_else(|| "FINGERPRINT_NOT_REQUESTED".into())
+            .map_err(db)
+            .map(|status|status.unwrap_or_else(||FingerprintStatus{media_id:media_id.to_owned(),state:"not_requested".into(),strength:None}))
     }
 }
 
