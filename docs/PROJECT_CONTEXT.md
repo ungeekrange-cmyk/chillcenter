@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Dernier client — corrections visuelles574d255
+
+Lot14octobre livré localement : [REL-MAC-UI-PANELS-001](releases/REL-MAC-UI-PANELS-001.md), [CC-UX-003](design/CC-UX-003.md). Nouveau bundle `artifacts/macos/Chill Center-574d255.app`, source574d255 ; plein écran initial configurable parMac (défautoui), mode fenêtre sur toute la zone droite, retour/titre/fondu/contrôles, collections et ajout par pages à vignettes. 290Rust/55Node/clippy, navigateur synthétique avec images chargées et deux parcours Tauri réels sur basesHTTPSlocales neuves PASS. Pi/NAS/réglages et profils réels inchangés ; anciens bundles préservés. Validation visuelle utilisateur en attente, pas de revue indépendante nouvelle revendiquée. HTML seul = aperçu non connecté, pas clientweb ; l'utilisateur a été explicitement prévenu. ADR0012 et BUG0052–0054 conservent les décisions et RED/GREEN.
+
 ## Remise locale effective — Pi mis à jour
 
 Interface/API source9277ac4 promue localement, bundle `artifacts/macos/Chill Center-9277ac4.app` et archive Linux disponibles ; [release](releases/REL-UX-API-001.md). Après confirmation explicite renouvelée, déployeur distinct et revue opérateur V4 APPROVED, Pi mis à jour le14octobre à19:12:40UTC : binaire1eb24… actifPID5145. Sauvegarde privée offline et rollbackR7 conservés surPi ; NAS/configuration/unité/TLS/profil foyer inchangés. [Vérification indépendante post-bascule APPROVED](releases/REL-UX-API-001-pi-verification.md), [gate](gates/G-POST-CC-UX-API-001.md) : processus/hash stable/NRestarts0, sauvegarde cohérente, TLS strict/API datée/v1/OpenAPI et propre sonde réelle du même clientRust queTauri connexion/catalogue48/reconnexion PASS. Sans écriture serveur ni accès aux réglages réels du Mac ; pas une validation humaine de la fenêtre/son ni une nouvelle lecture NAS. [BUG0051](debug/BUG-0051-pi-update-output-quoting.md) conserve la première tentative opérateur échouée et le redémarrage sûr deR7.
