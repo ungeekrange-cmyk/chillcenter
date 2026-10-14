@@ -3,10 +3,11 @@
 // remuxes them to fMP4 in the browser, the browser decodes. No dependency, no transcoding.
 (function (root) {
   const Mp4 = typeof module !== "undefined" ? require("./mp4.js") : root.ChillMp4;
+  const Mkv = typeof module !== "undefined" ? require("./mkv.js") : root.ChillMkv;
   const { RangeReader } = typeof module !== "undefined" ? require("./range-reader.js") : root.ChillRangeReader;
   const fail = message => Object.assign(new Error(message), { code: "PLAYER_ERROR" });
   const LABELS = { "ac-3": "AC-3", "ec-3": "E-AC-3", flac: "FLAC", opus: "Opus" };
-  const codecLabel = c => LABELS[c] || (c || "inconnu").split(".")[0];
+  const codecLabel = c => LABELS[c] || (/^mp4a\.6B/i.test(c || "") ? "MP3" : /^mp4a/.test(c || "") ? "AAC" : (c || "inconnu").split(".")[0]);
 
   function sniffContainer(head) {
     const tag = String.fromCharCode(...head.subarray(4, 8));
@@ -32,11 +33,10 @@
       this.reader = new RangeReader({ mediaId, lease, fetch: this.d.fetch });
       await this.reader.open();
       const kind = sniffContainer(this.reader.head);
-      if (kind === "mkv") throw fail("Format MKV : lecture dans le navigateur pas encore disponible dans cette version.");
       if (kind === "avi") throw fail("Format AVI : lecture dans le navigateur pas encore disponible dans cette version.");
-      if (kind !== "mp4") throw fail("Format de fichier non reconnu.");
-      const moov = await Mp4.locateMoov((a, b) => this.reader.read(a, b), this.reader.size);
-      this.movie = Mp4.parseMoov(moov);
+      if (kind !== "mp4" && kind !== "mkv") throw fail("Format de fichier non reconnu.");
+      this.src = kind === "mp4" ? new Mp4.Mp4Source(this.reader) : new Mkv.MkvSource(this.reader);
+      this.movie = await this.src.open();
       const supported = t => t.mime && MS.isTypeSupported(t.mime);
       const video = this.movie.tracks.find(t => t.kind === "video" && supported(t));
       if (!video) {
@@ -57,16 +57,17 @@
       this.url = this.d.URL.createObjectURL(this.ms);
       this.video.src = this.url;
       await new Promise((res, rej) => { this.ms.addEventListener("sourceopen", res, { once: true }); setTimeout(() => rej(fail("MediaSource indisponible.")), 5000); });
-      this.ms.duration = this.movie.duration;
+      if (this.movie.duration) this.ms.duration = this.movie.duration;
       for (const t of [video, this.activeAudio].filter(Boolean)) {
         const sb = this.ms.addSourceBuffer(t.mime);
         sb.mode = "segments"; sb.timestampOffset = t.shift;
-        this.streams.push({ track: t, sb, next: 0, seq: 1, done: false });
+        this.streams.push({ track: t, sb, done: false });
       }
+      this.src.setActive?.(this.streams.map(x => x.track.id));
       this.cache = this.cacheSeconds();
       for (const s of this.streams) await this.append(s.sb, Mp4.initSegment(s.track));
       this.video.playbackRate = speed || 1; this.rate = speed || 1;
-      this.rewind(startAt || 0);
+      await this.rewind(startAt || 0);
       this.video.currentTime = startAt || 0;
       this.probeHardware(video);
       await this.pump();
@@ -121,12 +122,12 @@
       return t;
     }
     isBuffered(t) { return this.streams.every(s => this.bufferedEnd(s.sb, t) > t + 0.05); }
-    rewind(t) { for (const s of this.streams) { s.next = Mp4.sampleAtTime(s.track, t); s.done = false; } }
+    async rewind(t) { await this.src.seek(t); for (const s of this.streams) s.done = false; }
     async reposition(t) {
       this.epoch++;
       await this.waitIdle();
       for (const s of this.streams) { if (s.sb.updating) { try { s.sb.abort(); } catch { /* ignore */ } } await this.removeRange(s.sb, 0, Infinity); }
-      this.rewind(t);
+      await this.rewind(t);
       this.pumping = false;
       await this.pump();
     }
@@ -148,17 +149,12 @@
     async feed(s, epoch) {
       const t = this.video.currentTime;
       if (this.bufferedEnd(s.sb, t) - t >= this.cache.forward) return false;
-      if (s.next >= s.track.count) { s.done = true; return false; }
       await this.evict(s.sb, this.cache.back);
-      const plan = Mp4.planFragment(s.track, s.next, 2);
-      const chunks = [];
-      for (const [a, b] of Mp4.sampleRanges(s.track, plan.from, plan.to)) chunks.push({ a, bytes: await this.reader.read(a, b) });
+      const fragment = await this.src.next(s.track.id);
       if (epoch !== this.epoch || this.closed) return false;
-      const data = (off, size) => { for (const c of chunks) if (off >= c.a && off + size <= c.a + c.bytes.length) return c.bytes.subarray(off - c.a, off - c.a + size); throw fail("Échantillon vidéo hors plage lue."); };
-      await this.append(s.sb, Mp4.buildFragment(s.track, plan.from, plan.to, s.seq++, data));
-      if (epoch !== this.epoch) return false;
-      s.next = plan.to;
-      return true;
+      if (!fragment) { s.done = true; return false; }
+      await this.append(s.sb, fragment.data);
+      return epoch === this.epoch;
     }
 
     // ---- Engine interface --------------------------------------------------------------
@@ -176,9 +172,9 @@
       await this.removeRange(s.sb, 0, Infinity);
       if (s.track.mime !== next.mime) s.sb.changeType(next.mime);
       s.track = next; s.sb.timestampOffset = next.shift; this.activeAudio = next;
+      this.src.setActive?.(this.streams.map(x => x.track.id));
       await this.append(s.sb, Mp4.initSegment(next));
-      s.next = Mp4.sampleAtTime(next, this.video.currentTime); s.done = false;
-      await this.pump();
+      await this.reposition(this.video.currentTime);
     }
     snapshot() {
       const v = this.video;

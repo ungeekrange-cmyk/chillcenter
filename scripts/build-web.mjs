@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ui = join(root, "ui/connected");
 const src = join(root, "web/src");
 const out = resolve(process.argv[2] || join(root, "web/dist"));
-const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "range-reader.js", "mse-engine.js", "player-web.js", "bridge.js", "register-sw.js"];
+const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "mkv.js", "range-reader.js", "mse-engine.js", "player-web.js", "bridge.js", "register-sw.js"];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });

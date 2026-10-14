@@ -21,7 +21,7 @@ Demande utilisateur (14 octobre 2026) : technologies **le moins sujettes aux cha
 
 1. **Aucune bibliothèque tierce dans le client web** : ni npm, ni CDN, ni WASM. Le seul « runtime » est le navigateur : `fetch` avec `Range`, `MediaSource`/`SourceBuffer`, `HTMLVideoElement`.
 2. **Le navigateur décode** (matériel quand disponible). Le code propre ne fait que **démuxer et remuxer en fMP4** (réécriture de boîtes, aucun décodage), exécuté chez le client. Le serveur reste un simple lecteur d'octets.
-3. Démuxeurs écrits dans le dépôt, testés contre des fichiers générés par ffmpeg (outil de test uniquement, jamais livré) : d'abord **MP4/MOV**, puis **Matroska/WebM** (EBML). AVI : seulement si la bibliothèque réelle en contient assez pour justifier un démuxeur (format ancien, codecs souvent MPEG-4 ASP non décodables par navigateur) ; sinon message explicite.
+3. Démuxeurs écrits dans le dépôt, testés contre des fichiers générés par ffmpeg (outil de test uniquement, jamais livré) : **MP4/MOV** et **Matroska/WebM** (EBML) sont implémentés ; AVI reste à décider. AVI : seulement si la bibliothèque réelle en contient assez pour justifier un démuxeur (format ancien, codecs souvent MPEG-4 ASP non décodables par navigateur) ; sinon message explicite.
 4. **Limite assumée** : un codec que le navigateur ne décode pas (AC-3/E-AC-3/DTS sur plusieurs navigateurs, MPEG-4 ASP/DivX, parfois HEVC) n'est pas lu. Le moteur choisit une autre piste audio décodable quand elle existe, sinon affiche le codec en cause. Aucun transcodage serveur ; un éventuel décodage WASM d'une seule piste audio fera l'objet d'un ADR ultérieur, après mesure du besoin réel.
 5. Les sous-titres texte sont rendus par le client (`<track>`/cues) à partir de ressources déjà prévues par l'API ; le format ASS complet n'est pas promis.
 
@@ -34,4 +34,4 @@ Demande utilisateur (14 octobre 2026) : technologies **le moins sujettes aux cha
 
 ## Validation
 
-Tests Node sur fichiers MP4 générés (H.264/AAC, VP9/Opus), lecture réelle dans le navigateur intégré (VP9/Opus), à compléter par un essai sur Mac/Safari/Chrome avec de vrais fichiers du NAS après autorisation. Revue indépendante non faite.
+Tests Node sur fichiers MP4 et MKV générés (H.264/AAC avec B-frames, VP9/Opus), lecture réelle dans le navigateur intégré (MP4 VP9/Opus, MKV VP9/Opus, MKV H.264/AAC avec B-frames), à compléter par un essai sur Mac/Safari/Chrome avec de vrais fichiers du NAS après autorisation. Revue indépendante non faite.

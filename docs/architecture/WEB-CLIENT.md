@@ -29,7 +29,7 @@ Démux, décodage, rendu, sous-titres, cache de lecture et horloge de visionnage
 | Cache de lecture ADR-0010 | Plafonds sur le tampon MSE | Réglages stockés ; application à faire |
 | Bail, heartbeat 5 s, progression, `WatchClock`, enchaînement | `player-web.js`, `watch-clock.js` | Implémenté, testé avec moteur factice |
 | Lecture MP4/MOV (codecs au choix du navigateur : H.264, HEVC, VP9, AV1, AAC, Opus…) | `mp4.js` (démux + remux fMP4 en JS pur), `range-reader.js`, `mse-engine.js` ; le navigateur décode ([ADR-0013](decisions/ADR-0013-web-playback-engine.md)) | Implémenté ; vérifié sur fichier généré VP9/Opus, **pas encore sur un fichier réel du NAS ni sur le Pi** |
-| Lecture MKV | Démuxeur EBML en JS pur, même chaîne | **À faire** (message explicite en attendant) |
+| Lecture MKV/WebM | `mkv.js` : démuxeur EBML en JS pur (Cues pour les sauts, sinon parcours des en-têtes de clusters ; laçage Xiph/EBML/fixe ; réordonnancement des B-frames en flux) | Implémenté ; vérifié sur fichiers générés (H.264/AAC avec B-frames, VP9/Opus), **pas encore sur un MKV réel du NAS** |
 | Lecture AVI | À décider après inventaire des codecs réels | **Non démarré** |
 | AC-3/E-AC-3/DTS, MPEG-4 ASP, ASS complet | Non décodés par le navigateur : piste alternative sinon message ; aucun WASM sans ADR | Limite assumée |
 | Transfert confirmé de lecture, SSE | `player-web.js` | À faire |
@@ -48,7 +48,7 @@ Base `/api/2026-10-14`. `GET /server` est lu au démarrage et le client refuse u
 
 ## Risques ouverts
 
-1. Lecture MKV/AVI en navigateur : démuxeur MKV à écrire, AVI à justifier ; codecs réellement présents dans la bibliothèque à inventorier avant d'annoncer la parité (F-22).
+1. Lecture AVI en navigateur à justifier ; MKV à confirmer sur de vrais fichiers ; codecs réellement présents dans la bibliothèque à inventorier avant d'annoncer la parité (F-22).
 2. Certificat autogénéré : Service Worker et installation PWA souvent refusés sans approbation système.
 3. Safari/iOS : MSE limité ; non évalué.
 4. Garde d'origine fondée sur `Sec-Fetch-Site` ; à valider sur les navigateurs cibles.
@@ -58,10 +58,10 @@ Base `/api/2026-10-14`. `GET /server` est lu au démarrage et le client refuse u
 
 | Vérification | Résultat |
 | --- | --- |
-| `node --test web/test/*.test.js` : pont, JSON 64 bits, `WatchClock`, contrôleur de lecture (moteur factice), lecteur `Range`, démuxeur MP4 sur fichiers ffmpeg (H.264/AAC avec B-frames, VP9/Opus, `moov` en fin de fichier) dont fMP4 reconstruit décodé sans erreur par ffmpeg | 26/26 PASS (ffmpeg requis pour les tests MP4) |
-| Lecture réelle dans le navigateur intégré, contre un serveur factice servant un MP4 VP9/Opus de 40 s en `Range` : bail, `If-Match`, saut +30 s, vitesse ×1,5, saut hors tampon, retour arrière, tampon borné (~20 s), fin de vidéo, libération du bail, révision 64 bits exacte | PASS |
+| `node --test web/test/*.test.js` : pont, JSON 64 bits, `WatchClock`, contrôleur de lecture (moteur factice), lecteur `Range`, démuxeurs MP4 et MKV sur fichiers ffmpeg (H.264/AAC avec B-frames, VP9/Opus, `moov` en fin de fichier) dont fMP4 reconstruit décodé sans erreur par ffmpeg | 32/32 PASS (ffmpeg requis pour les tests MP4/MKV) |
+| Lecture réelle dans le navigateur intégré, contre un serveur factice servant en `Range` un MP4 VP9/Opus, un MKV VP9/Opus et un MKV H.264 (3 B-frames)/AAC de 40 s : bail, `If-Match`, saut +30 s, vitesse ×1,5, saut hors tampon, retour arrière, tampon borné (~20 s), fin de vidéo, libération du bail, révision 64 bits exacte | PASS |
 | `node scripts/build-web.mjs`, UI Mac chargée dans le navigateur intégré contre une API **factice** locale (HTTP, 3 fiches) : connexion, choix de profil, grille catalogue, aucune erreur console | PASS (aperçu visuel seul) |
 | Rust : garde d'origine, service statique, tests ajoutés (`api.rs`, `web_static.rs`) | **NOT_RUN** — `cargo` absent ; code non compilé |
 | Vrai serveur Pi, TLS réel, vraie vidéo, Service Worker sur certificat autogénéré | **NOT_RUN** |
 
-Ces résultats ne valident ni MKV/AVI, ni un fichier réel du NAS, ni le débit sur Wi-Fi, ni le déploiement.
+Ces résultats ne valident ni l'AVI, ni un fichier réel du NAS, ni le débit sur Wi-Fi, ni le déploiement.

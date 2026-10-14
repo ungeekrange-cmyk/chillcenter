@@ -279,6 +279,34 @@
     throw fail("Index MP4 (moov) introuvable.");
   }
 
-  const api = { boxes, parseMoov, initSegment, planFragment, sampleRanges, buildFragment, sampleAtTime, locateMoov, concat };
+  /**
+   * Common source interface used by the engine (also implemented by mkv.js):
+   *   open() -> {duration, tracks}   seek(seconds)   next(trackId) -> {data, end} | null
+   * `tracks[i]` carries kind/id/mime/language/codec/shift and what initSegment() needs.
+   */
+  class Mp4Source {
+    constructor(reader) { this.reader = reader; this.cursor = new Map(); }
+    async open() {
+      const moov = await locateMoov((a, b) => this.reader.read(a, b), this.reader.size);
+      this.movie = parseMoov(moov);
+      for (const t of this.movie.tracks) this.cursor.set(t.id, 0);
+      return this.movie;
+    }
+    seek(seconds) { for (const t of this.movie.tracks) this.cursor.set(t.id, sampleAtTime(t, seconds)); }
+    async next(trackId) {
+      const track = this.movie.tracks.find(t => t.id === trackId);
+      const from = this.cursor.get(trackId);
+      if (from >= track.count) return null;
+      const plan = planFragment(track, from, 2);
+      const chunks = [];
+      for (const [a, b] of sampleRanges(track, plan.from, plan.to)) chunks.push({ a, bytes: await this.reader.read(a, b) });
+      const data = (off, size) => { for (const c of chunks) if (off >= c.a && off + size <= c.a + c.bytes.length) return c.bytes.subarray(off - c.a, off - c.a + size); throw fail("Échantillon vidéo hors plage lue."); };
+      const out = buildFragment(track, plan.from, plan.to, (this.seq = (this.seq || 0) + 1), data);
+      this.cursor.set(trackId, plan.to);
+      return { data: out };
+    }
+  }
+
+  const api = { boxes, parseMoov, initSegment, planFragment, sampleRanges, buildFragment, sampleAtTime, locateMoov, concat, box, full, u32b, sampleEntry, Mp4Source };
   if (typeof module !== "undefined") module.exports = api; else root.ChillMp4 = api;
 })(typeof window !== "undefined" ? window : globalThis);
