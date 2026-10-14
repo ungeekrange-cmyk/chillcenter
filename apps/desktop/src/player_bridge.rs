@@ -61,7 +61,13 @@ pub enum PlayerCommand {
     ExternalSubtitle {
         id: String,
     },
-    Fullscreen,
+    Fullscreen {
+        #[serde(default)]
+        enabled: Option<bool>,
+    },
+    Volume {
+        volume: u8,
+    },
 }
 pub fn error(message: &str) -> UiError {
     UiError {
@@ -105,6 +111,12 @@ struct Session {
     subtitle_cache: Vec<(String, std::path::PathBuf)>,
     cache_dir: std::path::PathBuf,
     controls: Option<ControlSubscription>,
+    external_task: Option<tokio::task::JoinHandle<Result<DiscoveredSubtitles, UiError>>>,
+}
+struct DiscoveredSubtitles {
+    external: Vec<ExternalSubtitle>,
+    selected_before: Option<String>,
+    preferred: Option<(ExternalSubtitle, Result<Vec<u8>, UiError>)>,
 }
 struct PendingTransfer {
     connection: PlaybackConnection,
@@ -134,7 +146,7 @@ impl PlayerHost {
         context: Option<PlaybackContext>,
     ) -> Result<Value, UiError> {
         uuid_check(&media)?;
-        self.stop(w).await?;
+        self.stop_session(w, false).await?;
         let info = c.transport.playback_info(&c.profile_id, &media).await?;
         if !info.media.available {
             return Err(error("Vidéo indisponible."));
@@ -279,6 +291,7 @@ impl PlayerHost {
             subtitle_cache: Vec::new(),
             cache_dir: self.cache_dir.clone(),
             controls,
+            external_task: None,
         });
         self.view()
     }
@@ -321,6 +334,9 @@ impl PlayerHost {
             return Ok(());
         };
         if let Some(event) = s.controls.as_mut().and_then(|c| c.receiver.try_recv().ok()) {
+            if let Some(task) = s.external_task.take() {
+                task.abort();
+            }
             self.rendering.store(false, Ordering::Release);
             let playing = !s.snapshot.paused;
             let previous = s.snapshot.clone();
@@ -379,12 +395,12 @@ impl PlayerHost {
             self.rendering.store(false, Ordering::Release);
             if let Some(l) = &s.lease
                 && matches!(s.transport.heartbeat_playback(&s.profile,&control(l)).await,Err(chill_client::ClientError::Api{code,..}) if code=="TRANSFER_PENDING")
-                {
-                    let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
-                    s.snapshot.paused = true;
-                    s.snapshot.position = s.snapshot.position.or(previous.position);
-                    s.note = Some("Interruption pour transfert en cours…".into());
-                    return Ok(());
+            {
+                let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
+                s.snapshot.paused = true;
+                s.snapshot.position = s.snapshot.position.or(previous.position);
+                s.note = Some("Interruption pour transfert en cours…".into());
+                return Ok(());
             }
             let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
             s.snapshot.paused = true;
@@ -433,57 +449,15 @@ impl PlayerHost {
         }
         if !s.started && s.snapshot.loaded && s.lease.is_some() {
             renew(s, w).await?;
-            let lease = s.lease.as_ref().unwrap();
-            match s.transport.external_subtitles(&s.profile, lease).await {
-                Ok(external) => {
-                    s.external = external;
-                    let preferred = s.info.preferences.subtitle_language.as_str();
-                    let matched: Vec<_> = s
-                        .external
-                        .iter()
-                        .filter(|t| {
-                            !t.unavailable
-                                && t.language
-                                    .as_deref()
-                                    .is_some_and(|l| language_equal(l, preferred))
-                        })
-                        .map(|t| t.id.clone())
-                        .collect();
-                    let has_integrated = s.snapshot.tracks.iter().any(|t| {
-                        t.kind == TrackKind::Subtitle
-                            && t.language
-                                .as_deref()
-                                .is_some_and(|l| language_equal(l, preferred))
-                    });
-                    let chosen = if s.subtitle_override.is_some() {
-                        None
-                    } else {
-                        s.selected_external.clone().or_else(|| {
-                            (!has_integrated && matched.len() == 1).then(|| matched[0].clone())
-                        })
-                    };
-                    if let Some(id) = chosen {
-                        if add_external(s, w, &id).await.is_err() {
-                            s.note = Some(
-                                "Sous-titre externe indisponible ; choisissez une autre piste."
-                                    .into(),
-                            );
-                        }
-                    } else if !has_integrated && matched.len() > 1 {
-                        s.note=Some("Plusieurs sous-titres correspondent à votre langue : choisissez la piste souhaitée.".into());
-                    }
-                }
-                Err(_) => s.note = Some("Impossible de vérifier les sous-titres externes.".into()),
-            }
             if let Some(track_id) = s.audio_override
                 && s.snapshot
                     .tracks
                     .iter()
                     .any(|t| t.id == track_id && t.kind == TrackKind::Audio)
-                {
-                    s.snapshot = native_player::action(w, NativeAction::Audio { track_id })
-                        .await
-                        .map_err(native_error)?;
+            {
+                s.snapshot = native_player::action(w, NativeAction::Audio { track_id })
+                    .await
+                    .map_err(native_error)?;
             }
             if let Some(track_id) = s.subtitle_override
                 && (track_id.is_none()
@@ -491,42 +465,89 @@ impl PlayerHost {
                         .tracks
                         .iter()
                         .any(|t| Some(t.id) == track_id && t.kind == TrackKind::Subtitle))
-                {
-                    s.snapshot = native_player::action(w, NativeAction::Subtitle { track_id })
-                        .await
-                        .map_err(native_error)?;
+            {
+                s.snapshot = native_player::action(w, NativeAction::Subtitle { track_id })
+                    .await
+                    .map_err(native_error)?;
             }
             s.snapshot = native_player::action(w, NativeAction::Pause { paused: false })
                 .await
                 .map_err(native_error)?;
             s.started = true;
+            self.rendering.store(true, Ordering::Release);
             report(s, true, true).await?; // Anchor only, initial resume is a seek, never credit.
             report(s, true, false).await?;
+            discover_external(s);
+        }
+        // Network discovery/download never owns the host mutex or delays the
+        // first unpause. Session-bound results are consumed only while its lease
+        // remains valid, and a newer manual choice always wins.
+        if s.external_task
+            .as_ref()
+            .is_some_and(|task| task.is_finished())
+        {
+            let task = s.external_task.take().unwrap();
+            match task.await {
+                Ok(Ok(found)) if s.lease.is_some() && !s.snapshot.paused => {
+                    s.external = found.external;
+                    if s.subtitle_override.is_none() && s.selected_external == found.selected_before
+                    {
+                        if let Some((candidate, bytes)) = found.preferred {
+                            let applied = match bytes {
+                                Ok(bytes) => {
+                                    apply_downloaded_external(s, w, candidate, bytes).await
+                                }
+                                Err(error) => Err(error),
+                            };
+                            if applied.is_err() {
+                                s.note = Some(
+                                    "Sous-titre externe indisponible ; choisissez une autre piste."
+                                        .into(),
+                                );
+                            }
+                        } else if matching_external(
+                            &s.external,
+                            &s.info.preferences.subtitle_language,
+                        )
+                        .len()
+                            > 1
+                        {
+                            s.note = Some("Plusieurs sous-titres correspondent à votre langue : choisissez la piste souhaitée.".into());
+                        }
+                    }
+                }
+                Ok(Err(_)) => {
+                    s.note = Some("Impossible de vérifier les sous-titres externes.".into())
+                }
+                _ => {}
+            }
         }
         if let Some(target) = s.desired_position
             && s.lease.is_some()
-                && s.snapshot
-                    .position
-                    .is_some_and(|p| (p - target).abs() < 0.5)
-                && !s.snapshot.buffering
-            {
-                s.desired_position = None;
-                s.clock.forget_credit();
-                report(s, !s.snapshot.paused, true).await?;
-                report(s, !s.snapshot.paused, false).await?;
+            && s.snapshot
+                .position
+                .is_some_and(|p| (p - target).abs() < 0.5)
+            && !s.snapshot.buffering
+        {
+            s.desired_position = None;
+            s.clock.forget_credit();
+            report(s, !s.snapshot.paused, true).await?;
+            report(s, !s.snapshot.paused, false).await?;
         }
         self.rendering.store(
             s.started && !s.snapshot.paused && !s.snapshot.buffering && !s.snapshot.ended,
             Ordering::Release,
         );
-        if s.lease.is_some() && s.last_beat.elapsed() >= Duration::from_secs(5)
-            && let Err(e) = renew(s, w).await {
-                let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
-                s.snapshot.paused = true;
-                s.note = Some(e.message.clone());
-                abandon(s);
-                self.rendering.store(false, Ordering::Release);
-                return Err(e);
+        if s.lease.is_some()
+            && s.last_beat.elapsed() >= Duration::from_secs(5)
+            && let Err(e) = renew(s, w).await
+        {
+            let _ = native_player::action(w, NativeAction::Pause { paused: true }).await;
+            s.snapshot.paused = true;
+            s.note = Some(e.message.clone());
+            abandon(s);
+            self.rendering.store(false, Ordering::Release);
+            return Err(e);
         }
         if s.lease.is_some() && s.started && s.last_save.elapsed() >= Duration::from_secs(5) {
             s.last_save = Instant::now();
@@ -551,6 +572,8 @@ impl PlayerHost {
                 return Err(error("Le transfert est déjà confirmé."));
             }
             self.pending = None;
+            w.set_fullscreen(false)
+                .map_err(|_| error("Plein écran indisponible."))?;
             return self.view();
         }
         if matches!(cmd, PlayerCommand::ConfirmTransfer) {
@@ -799,12 +822,22 @@ impl PlayerHost {
                     .map_err(native_error)?;
                 s.subtitle_override = Some(track_id);
             }
-            PlayerCommand::Fullscreen => {
+            PlayerCommand::Fullscreen { enabled } => {
                 w.set_fullscreen(
-                    !w.is_fullscreen()
-                        .map_err(|_| error("Plein écran indisponible."))?,
+                    enabled.unwrap_or(
+                        !w.is_fullscreen()
+                            .map_err(|_| error("Plein écran indisponible."))?,
+                    ),
                 )
                 .map_err(|_| error("Plein écran indisponible."))?;
+            }
+            PlayerCommand::Volume { volume } => {
+                if volume > 100 {
+                    return Err(error("Volume invalide."));
+                }
+                s.snapshot = native_player::action(w, NativeAction::Volume { volume })
+                    .await
+                    .map_err(native_error)?;
             }
             PlayerCommand::ExternalSubtitle { id } => {
                 s.subtitle_override = None;
@@ -837,29 +870,44 @@ impl PlayerHost {
         self.view()
     }
     pub async fn stop(&mut self, w: &WebviewWindow) -> Result<(), UiError> {
+        self.stop_session(w, true).await
+    }
+    async fn stop_session(
+        &mut self,
+        w: &WebviewWindow,
+        leave_fullscreen: bool,
+    ) -> Result<(), UiError> {
+        if leave_fullscreen {
+            w.set_fullscreen(false)
+                .map_err(|_| error("Plein écran indisponible."))?;
+        }
         self.rendering.store(false, Ordering::Release);
         self.last_error = None;
         if let Some(p) = self.pending.take()
             && p.confirmed
             && let Ok(status) = p
-                    .connection
-                    .transport
-                    .transfer_status(&p.connection.profile_id, &p.offer.token)
-                    .await
-            && let Some(lease) = status.lease {
-                        let _ = p
-                            .connection
-                            .transport
-                            .release_playback(
-                                &p.connection.profile_id,
-                                &ReleasePlayback {
-                                    lease: control(&lease),
-                                    progress: None,
-                                },
-                            )
-                            .await;
+                .connection
+                .transport
+                .transfer_status(&p.connection.profile_id, &p.offer.token)
+                .await
+            && let Some(lease) = status.lease
+        {
+            let _ = p
+                .connection
+                .transport
+                .release_playback(
+                    &p.connection.profile_id,
+                    &ReleasePlayback {
+                        lease: control(&lease),
+                        progress: None,
+                    },
+                )
+                .await;
         }
         if let Some(mut s) = self.session.take() {
+            if let Some(task) = s.external_task.take() {
+                task.abort();
+            }
             if let Ok(snapshot) = native_player::action(w, NativeAction::Poll).await {
                 s.snapshot = snapshot;
             }
@@ -944,20 +992,36 @@ fn uuid_check(s: &str) -> Result<(), UiError> {
     }
 }
 fn language_equal(a: &str, b: &str) -> bool {
-    let a=language_key(a); let b=language_key(b);
-    a.is_some() && a==b
+    let a = language_key(a);
+    let b = language_key(b);
+    a.is_some() && a == b
 }
 // Both integrated and external tracks use the same language comparison.
 // Empty/invalid input is disabled; valid unknown codes remain distinct so an
 // absent preference triggers the visible fallback, never a None==None match.
-pub(crate) fn language_key(s:&str)->Option<String>{
-    let normalized=s.trim().split(['-','_']).next()?.to_ascii_lowercase();
-    if !(2..=3).contains(&normalized.len())||!normalized.bytes().all(|b|b.is_ascii_alphabetic()){return None;}
-    Some(match normalized.as_str(){
-        "eng"=>"en", "fra"|"fre"=>"fr", "deu"|"ger"=>"de", "spa"=>"es", "ita"=>"it",
-        "jpn"=>"ja", "por"=>"pt", "zho"|"chi"=>"zh", "rus"=>"ru", "nld"|"dut"=>"nl", "kor"=>"ko",
-        s=>s,
-    }.to_owned())
+pub(crate) fn language_key(s: &str) -> Option<String> {
+    let normalized = s.trim().split(['-', '_']).next()?.to_ascii_lowercase();
+    if !(2..=3).contains(&normalized.len()) || !normalized.bytes().all(|b| b.is_ascii_alphabetic())
+    {
+        return None;
+    }
+    Some(
+        match normalized.as_str() {
+            "eng" => "en",
+            "fra" | "fre" => "fr",
+            "deu" | "ger" => "de",
+            "spa" => "es",
+            "ita" => "it",
+            "jpn" => "ja",
+            "por" => "pt",
+            "zho" | "chi" => "zh",
+            "rus" => "ru",
+            "nld" | "dut" => "nl",
+            "kor" => "ko",
+            s => s,
+        }
+        .to_owned(),
+    )
 }
 async fn add_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<(), UiError> {
     let candidate = s
@@ -990,6 +1054,99 @@ async fn add_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<()
         .as_ref()
         .ok_or_else(|| error("Bail de lecture absent."))?;
     let bytes = s.transport.download_subtitle(&s.profile, lease, id).await?;
+    apply_downloaded_external(s, w, candidate, bytes).await
+}
+
+fn matching_external<'a>(
+    external: &'a [ExternalSubtitle],
+    language: &str,
+) -> Vec<&'a ExternalSubtitle> {
+    external
+        .iter()
+        .filter(|t| {
+            !t.unavailable
+                && t.language
+                    .as_deref()
+                    .is_some_and(|l| language_equal(l, language))
+        })
+        .collect()
+}
+
+fn discover_external(s: &mut Session) {
+    if let Some(task) = s.external_task.take() {
+        task.abort();
+    }
+    let Some(lease) = s.lease.clone() else {
+        return;
+    };
+    let transport = s.transport.clone();
+    let profile = s.profile.clone();
+    let language = s.info.preferences.subtitle_language.clone();
+    let selected_before = s.selected_external.clone();
+    let manual = s.subtitle_override.is_some();
+    let integrated = s.snapshot.tracks.iter().any(|t| {
+        t.kind == TrackKind::Subtitle
+            && t.language
+                .as_deref()
+                .is_some_and(|l| language_equal(l, &language))
+    });
+    s.external_task = Some(tokio::spawn(async move {
+        let external = transport.external_subtitles(&profile, &lease).await?;
+        let matches = matching_external(&external, &language);
+        let chosen = if manual {
+            None
+        } else {
+            selected_before
+                .as_ref()
+                .and_then(|id| external.iter().find(|t| &t.id == id && !t.unavailable))
+                .or_else(|| (!integrated && matches.len() == 1).then(|| matches[0]))
+        };
+        let preferred = if let Some(candidate) = chosen {
+            let bytes = transport
+                .download_subtitle(&profile, &lease, &candidate.id)
+                .await
+                .map_err(UiError::from);
+            Some((candidate.clone(), bytes))
+        } else {
+            None
+        };
+        Ok(DiscoveredSubtitles {
+            external,
+            selected_before,
+            preferred,
+        })
+    }));
+}
+
+async fn apply_downloaded_external(
+    s: &mut Session,
+    w: &WebviewWindow,
+    candidate: ExternalSubtitle,
+    bytes: Vec<u8>,
+) -> Result<(), UiError> {
+    if s.lease.is_none() {
+        return Err(error("Bail de lecture absent."));
+    }
+    let id = candidate.id.clone();
+    if let Some((_, path)) = s.subtitle_cache.iter().find(|(key, _)| key == &id) {
+        s.snapshot = native_player::action(
+            w,
+            NativeAction::AddSubtitle {
+                path: path.clone(),
+                title: candidate.title,
+                language: candidate.language,
+            },
+        )
+        .await
+        .map_err(native_error)?;
+        s.selected_external = Some(id);
+        return Ok(());
+    }
+    if s.subtitle_cache.len() >= 4 {
+        return Err(error(
+            "Cache de sous-titres plein pour cette lecture. Fermez puis rouvrez la vidéo.",
+        ));
+    }
     let dir = s.cache_dir.clone();
     tokio::fs::create_dir_all(&dir)
         .await
@@ -1032,7 +1189,7 @@ async fn add_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<()
         return Err(error("Cache indisponible."));
     }
     drop(file);
-    s.subtitle_cache.push((id.into(), path.clone()));
+    s.subtitle_cache.push((id.clone(), path.clone()));
     s.snapshot = native_player::action(
         w,
         NativeAction::AddSubtitle {
@@ -1043,7 +1200,7 @@ async fn add_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<()
     )
     .await
     .map_err(native_error)?;
-    s.selected_external = Some(id.into());
+    s.selected_external = Some(id);
     Ok(())
 }
 async fn renew(s: &mut Session, w: &WebviewWindow) -> Result<(), UiError> {
@@ -1101,6 +1258,9 @@ fn observation(s: &Session, playing: bool, seek: bool) -> Observation {
     }
 }
 async fn release(s: &mut Session) -> Result<(), UiError> {
+    if let Some(task) = s.external_task.take() {
+        task.abort();
+    }
     s.controls = None;
     if let Some(l) = s.lease.take() {
         s.clock.forget_credit();
@@ -1122,6 +1282,9 @@ async fn release(s: &mut Session) -> Result<(), UiError> {
 /// capability. The server then expires its lease at the previously fixed
 /// deadline instead of the paused client continuing to hold it locally.
 fn abandon(s: &mut Session) {
+    if let Some(task) = s.external_task.take() {
+        task.abort();
+    }
     s.controls = None;
     s.lease = None;
     s.clock.forget_credit();
@@ -1170,15 +1333,21 @@ mod language_tests {
     use super::*;
     #[test]
     fn supported_and_absent_preferences_have_one_shared_key() {
-        for (a,b) in [("en-US","eng"),(" FR_ca ","fre"),("de","ger"),("JA","jpn"),("pt-BR","por")] {
-            assert!(language_equal(a,b));
+        for (a, b) in [
+            ("en-US", "eng"),
+            (" FR_ca ", "fre"),
+            ("de", "ger"),
+            ("JA", "jpn"),
+            ("pt-BR", "por"),
+        ] {
+            assert!(language_equal(a, b));
         }
-        assert_eq!(language_key("ja").as_deref(),Some("ja"));
-        assert_ne!(language_key("ja"),language_key("eng"));
+        assert_eq!(language_key("ja").as_deref(), Some("ja"));
+        assert_ne!(language_key("ja"), language_key("eng"));
         assert!(!language_equal("", ""));
         assert!(!language_equal("und", "ja"));
         assert!(!language_equal("unknown", "unknown"));
-        assert_eq!(language_key(""),None);
-        assert_eq!(language_key("../../"),None);
+        assert_eq!(language_key(""), None);
+        assert_eq!(language_key("../../"), None);
     }
 }

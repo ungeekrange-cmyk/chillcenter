@@ -18,16 +18,29 @@ window.chillPlayerQa=async config=>{
   await invoke({action:"set_watched",media_id:m.id,watched:false});
   step="native load";await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded&&!playerState.native.paused);
   await wait(()=>playerState.native?.debug_nonblank===true);assert(playerState.native.tracks.some(t=>t.kind==="Audio"),"audio missing");assert(playerState.native.tracks.some(t=>t.kind==="Subtitle"),"subtitle missing");
+  step="native overlay hit-test";
+  await wait(()=>playerState.native?.debug_surface?.webview_above_video&&playerState.native.debug_surface.webview_receives_pointer);
+  const pauseRect=$("player-pause").getBoundingClientRect();assert($("player-pause").contains(document.elementFromPoint(pauseRect.x+pauseRect.width/2,pauseRect.y+pauseRect.height/2)),"overlay DOM hit-test failed");
+  step="overlay inactivity";document.activeElement?.blur();playerHover=false;showPlayerControls();await wait(()=>$("player-panel").classList.contains("controls-hidden"),6);
+  $("player-panel").dispatchEvent(new PointerEvent("pointermove",{bubbles:true}));assert(!$("player-panel").classList.contains("controls-hidden"),"pointer did not reveal overlay");
+  $("player-audio").focus();await new Promise(r=>setTimeout(r,2700));assert(!$("player-panel").classList.contains("controls-hidden"),"focused menu hidden");$("player-audio").blur();
   step="manual tracks persist pause/reload";const chosenAudio=playerState.native.tracks.find(t=>t.kind==="Audio"&&t.selected)||playerState.native.tracks.find(t=>t.kind==="Audio");await call({action:"audio",track_id:chosenAudio.id});await call({action:"subtitle",track_id:null});assert(playerState.native.tracks.filter(t=>t.kind==="Subtitle").every(t=>!t.selected),"subtitle off failed");await call({action:"pause"});assert(playerState.native.paused&&!playerState.active,"pause must release lease");await call({action:"resume"});await wait(()=>playerState.native?.loaded&&!playerState.native.paused);assert(playerState.native.tracks.some(t=>t.kind==="Audio"&&t.id===chosenAudio.id&&t.selected),"manual audio lost after reload");assert(playerState.native.tracks.filter(t=>t.kind==="Subtitle").every(t=>!t.selected),"manual subtitle off lost after reload");
   step="near-zero seek";await call({action:"pause"});await call({action:"seek",position:0.5});assert(Math.abs(playerState.position-0.5)<0.2,"paused target not saved");await call({action:"resume"});await wait(()=>playerState.native?.loaded&&!playerState.native.paused);
   step="navigation bounds";await call({action:"jump",seconds:-10});await wait(()=>playerState.position<2);await call({action:"jump",seconds:30});await wait(()=>playerState.position>29&&playerState.position<34);
   step="speed";await call({action:"speed",speed:1.5});assert(playerState.native.speed===1.5,"speed failed");await call({action:"speed",speed:1});
-  step="fullscreen";await call({action:"fullscreen"});await new Promise(r=>setTimeout(r,800));await call({action:"mount",rect:videoRect()});await call({action:"fullscreen"});await new Promise(r=>setTimeout(r,800));await call({action:"mount",rect:videoRect()});
+  step="volume";await call({action:"volume",volume:37});assert(playerState.native.volume===37,"volume failed");await call({action:"volume",volume:100});
+  step="fullscreen geometry";const normal=videoRect();await call({action:"fullscreen",enabled:true});await wait(()=>playerState.native?.fullscreen);await new Promise(r=>setTimeout(r,500));await call({action:"mount",rect:videoRect()});
+  const full=playerState.native.debug_surface;assert(full.webview_above_video&&full.webview_receives_pointer,"fullscreen overlay native order lost");
+  assert(Math.abs(full.frame.width-full.bounds.width)<2&&Math.abs(full.frame.height-full.bounds.height)<2&&Math.abs(full.frame.x)<2&&Math.abs(full.frame.y)<2,"native fullscreen surface does not fill content bounds");
+  assert(full.screen&&Math.abs(full.frame.width-full.screen.width)<3&&Math.abs(full.frame.height-full.screen.height)<3,"native fullscreen surface does not fill screen bounds");
+  assert(videoRect().width>=window.innerWidth-2&&videoRect().height>=window.innerHeight-2,"DOM fullscreen cutout constrained");
+  await window.__TAURI__.core.invoke("qa_result",{success:false,detail:"TRACE fullscreen native "+JSON.stringify(full)});
+  step="Escape restores window";document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait(()=>!playerState.native?.fullscreen&&!document.body.classList.contains("player-fullscreen"));await new Promise(r=>setTimeout(r,500));await call({action:"mount",rect:videoRect()});assert(Math.abs(videoRect().width-normal.width)<3&&Math.abs(videoRect().height-normal.height)<3,"normal surface not restored");
   step="final window watch";await call({action:"seek",position:playerState.duration-12});await wait(()=>playerState.native?.ended,25);
   assert(!playerState.native.error,"unexpected EOF error");
   await call({action:"stop"});await loadPage();const updated=await invoke({action:"catalog",offset:0,category:null,q:null});assert(updated.items.find(x=>x.id===m.id).watched,"ten real seconds did not mark watched");
   step="reopen";await window.chillPlay(m.id);await wait(()=>playerState.native?.loaded);await call({action:"stop"});
-  await window.__TAURI__.core.invoke("qa_result",{success:true,detail:"native-Tauri-image-controls-tracks-fullscreen-resume-watched-EOF"});
+  await window.__TAURI__.core.invoke("qa_result",{success:true,detail:"native-image-AppKit-z-order-hit-test-overlay-idle-focus-volume-fullscreen-geometry-Escape-tracks-resume-watched-EOF"});
  }catch(e){await window.__TAURI__.core.invoke("qa_result",{success:false,detail:step+": "+e.message});}
 };
 window.chillNextSeriesQa=async config=>{

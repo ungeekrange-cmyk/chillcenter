@@ -10,12 +10,13 @@ use chill_player::{
 };
 use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly};
+use objc2::{msg_send, runtime::AnyClass};
 use objc2_app_kit::{
     NSOpenGLContext, NSOpenGLPFAAccelerated, NSOpenGLPFAAlphaSize, NSOpenGLPFAColorSize,
     NSOpenGLPFADoubleBuffer, NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat,
     NSOpenGLProfileVersion3_2Core, NSOpenGLView, NSView,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSNumber, NSPoint, NSRect, NSSize, NSString};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::ffi::{CStr, c_int, c_uint, c_void};
@@ -146,8 +147,21 @@ pub struct NativeSnapshot {
     pub notice: Option<String>,
     pub decoder: Option<String>,
     pub hardware_decoder: Option<String>,
+    pub fullscreen: bool,
+    pub volume: u8,
     #[cfg(debug_assertions)]
     pub debug_nonblank: Option<bool>,
+    #[cfg(debug_assertions)]
+    pub debug_surface: NativeSurfaceGeometry,
+}
+#[cfg(debug_assertions)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NativeSurfaceGeometry {
+    pub frame: NativeRect,
+    pub bounds: NativeRect,
+    pub screen: Option<NativeRect>,
+    pub webview_above_video: bool,
+    pub webview_receives_pointer: bool,
 }
 #[derive(Debug, thiserror::Error)]
 pub enum NativePlayerError {
@@ -339,8 +353,10 @@ struct SurfacePlayer {
     factory: HttpMediaFactory,
     renderer: OpenGlRenderer,
     view: Retained<NSOpenGLView>,
+    overlay: Retained<NSView>,
     context: Retained<NSOpenGLContext>,
     framebuffer: Framebuffer,
+    drawable_size: (i32, i32),
     media_id: String,
     paused: bool,
     ended: bool,
@@ -365,14 +381,33 @@ impl SurfacePlayer {
         let parent = unsafe { &*(parent as *mut NSView) };
         let rect = NSRect::new(NSPoint::new(0., 0.), NSSize::new(1., 1.));
         let view = open_gl_view(rect)?;
-        parent.addSubview(&view);
+        // Wry's WKWebView and the renderer are siblings in the content NSView.
+        // Keep the WKWebView above OpenGL: transparent DOM exposes the image,
+        // while real web controls and all pointer/key events stay in WebKit.
+        let webview_class = AnyClass::get(c"WKWebView")
+            .ok_or_else(|| NativePlayerError::Surface("webview native absente".into()))?;
+        let overlay = parent
+            .subviews()
+            .iter()
+            .find(|child| unsafe { msg_send![&**child, isKindOfClass: webview_class] })
+            .ok_or_else(|| NativePlayerError::Surface("webview native absente".into()))?;
+        unsafe {
+            let no = NSNumber::numberWithBool(false);
+            let key = NSString::from_str("drawsBackground");
+            let _: () = msg_send![&*overlay, setValue: &*no, forKey: &*key];
+            let _: () =
+                msg_send![parent, addSubview: &*view, positioned: -1isize, relativeTo: &*overlay];
+        }
         view.setHidden(true);
         view.setWantsBestResolutionOpenGLSurface(true);
         let context = view
             .openGLContext()
             .ok_or_else(|| NativePlayerError::Surface("contexte OpenGL absent".into()))?;
         context.makeCurrentContext();
-        let mut options = PlayerOptions { cache, ..PlayerOptions::default() };
+        let mut options = PlayerOptions {
+            cache,
+            ..PlayerOptions::default()
+        };
         options.extra.insert("vo".into(), "libmpv".into());
         let mut player = Player::new(options)?;
         // Never decode/play before the server-confirmed heartbeat allows the bridge to unpause.
@@ -387,8 +422,10 @@ impl SurfacePlayer {
             factory,
             renderer,
             view,
+            overlay,
             context,
             framebuffer: Framebuffer::new(1, 1)?,
+            drawable_size: (1, 1),
             media_id: playback.media_id,
             paused: true,
             ended: false,
@@ -495,8 +532,8 @@ impl SurfacePlayer {
             .all(f64::is_finite)
             || css.width <= 0.
             || css.height <= 0.
-            || css.width > 4096.
-            || css.height > 2160.
+            || css.width > 16384.
+            || css.height > 16384.
         {
             return Err(NativePlayerError::Surface(
                 "rectangle lecteur invalide".into(),
@@ -517,12 +554,20 @@ impl SurfacePlayer {
             .min((bounds.size.height - h).max(0.));
         self.view
             .setFrame(NSRect::new(NSPoint::new(x, y), NSSize::new(w, h)));
+        // Mounts also restore ordering after a native full-screen transition.
+        unsafe {
+            let _: () = msg_send![&*parent, addSubview: &*self.view, positioned: -1isize, relativeTo: &*self.overlay];
+        }
         self.context.makeCurrentContext();
-        self.framebuffer = Framebuffer::new(
-            (w * scale).ceil().min(8192.) as i32,
-            (h * scale).ceil().min(4320.) as i32,
-        )?;
+        self.drawable_size = ((w * scale).ceil() as i32, (h * scale).ceil() as i32);
+        let (fw, fh) = framebuffer_size(self.drawable_size.0, self.drawable_size.1);
+        if self.framebuffer.w != fw || self.framebuffer.h != fh {
+            self.framebuffer = Framebuffer::new(fw, fh)?;
+        }
         self.view.setHidden(false);
+        if self.loaded {
+            self.render_frame()?;
+        }
         Ok(())
     }
     fn expired(&self) -> bool {
@@ -544,28 +589,32 @@ impl SurfacePlayer {
     fn render_tick(&mut self) -> Result<(), NativePlayerError> {
         self.expire_if_needed()?;
         if !self.paused && !self.ended && !self.view.isHidden() {
-            self.context.makeCurrentContext();
-            self.framebuffer.clear();
-            self.renderer
-                .render(&mut self.framebuffer.descriptor(), true)?;
-            unsafe {
-                glBindFramebuffer(GL_READ_FRAMEBUFFER, self.framebuffer.id);
-                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-                glBlitFramebuffer(
-                    0,
-                    0,
-                    self.framebuffer.w,
-                    self.framebuffer.h,
-                    0,
-                    0,
-                    self.framebuffer.w,
-                    self.framebuffer.h,
-                    0x4000,
-                    GL_LINEAR as c_uint,
-                );
-            }
-            self.context.flushBuffer();
+            self.render_frame()?;
         }
+        Ok(())
+    }
+    fn render_frame(&mut self) -> Result<(), NativePlayerError> {
+        self.context.makeCurrentContext();
+        self.framebuffer.clear();
+        self.renderer
+            .render(&mut self.framebuffer.descriptor(), true)?;
+        unsafe {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, self.framebuffer.id);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glBlitFramebuffer(
+                0,
+                0,
+                self.framebuffer.w,
+                self.framebuffer.h,
+                0,
+                0,
+                self.drawable_size.0,
+                self.drawable_size.1,
+                0x4000,
+                GL_LINEAR as c_uint,
+            );
+        }
+        self.context.flushBuffer();
         Ok(())
     }
     fn poll_and_render(&mut self) -> Result<(), NativePlayerError> {
@@ -609,17 +658,22 @@ impl SurfacePlayer {
         self.speed = pending.speed;
         let tracks = self.player.tracks()?;
         let wanted_subtitle = pending.subtitle_language.as_deref().and_then(language_key);
-        let (audio,audio_unavailable)=preferred_audio(&tracks,pending.audio_language.as_deref());
+        let (audio, audio_unavailable) =
+            preferred_audio(&tracks, pending.audio_language.as_deref());
         if let Some(track) = audio {
             self.player.select_audio(track.id)?;
         }
         if audio_unavailable {
-            self.notice = Some("Langue audio préférée indisponible : audio original ou première piste utilisé.".into());
+            self.notice = Some(
+                "Langue audio préférée indisponible : audio original ou première piste utilisé."
+                    .into(),
+            );
         }
         if let Some(wanted) = wanted_subtitle {
             if let Some(track) = tracks.iter().find(|track| {
                 matches!(track.kind, chill_player::TrackKind::Subtitle)
-                    && track.language.as_deref().and_then(language_key).as_deref() == Some(wanted.as_str())
+                    && track.language.as_deref().and_then(language_key).as_deref()
+                        == Some(wanted.as_str())
             }) {
                 self.player.select_subtitle(Some(track.id))?;
             } else {
@@ -629,8 +683,13 @@ impl SurfacePlayer {
             }
         } else {
             self.player.select_subtitle(None)?;
-            if pending.subtitle_language.as_deref().is_some_and(|s|!s.trim().is_empty()){
-                self.notice=Some("Langue de sous-titres non reconnue : sous-titres désactivés.".into());
+            if pending
+                .subtitle_language
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty())
+            {
+                self.notice =
+                    Some("Langue de sous-titres non reconnue : sous-titres désactivés.".into());
             }
         }
         self.loaded = true;
@@ -652,15 +711,68 @@ impl SurfacePlayer {
             notice: self.notice.clone(),
             decoder: self.player.decoder()?,
             hardware_decoder: self.player.hardware_decoder()?,
+            fullscreen: self.view.window().is_some_and(|w| {
+                let mask: usize = unsafe { msg_send![&*w, styleMask] };
+                mask & (1 << 14) != 0 // NSWindowStyleMaskFullScreen
+            }),
+            volume: self.volume,
             #[cfg(debug_assertions)]
             debug_nonblank: Some(self.framebuffer.nonblank()),
+            #[cfg(debug_assertions)]
+            debug_surface: self.surface_geometry(),
         })
     }
+    #[cfg(debug_assertions)]
+    fn surface_geometry(&self) -> NativeSurfaceGeometry {
+        let rect = |r: NSRect| NativeRect {
+            x: r.origin.x,
+            y: r.origin.y,
+            width: r.size.width,
+            height: r.size.height,
+        };
+        let parent = unsafe { self.view.superview() }.expect("mounted surface");
+        let views = parent.subviews();
+        let index = |view: &NSView| views.iter().position(|v| std::ptr::eq(&*v, view));
+        let frame = self.view.frame();
+        let point = NSPoint::new(
+            frame.origin.x + frame.size.width / 2.,
+            frame.origin.y + frame.size.height / 2.,
+        );
+        let hit = parent.hitTest(point);
+        NativeSurfaceGeometry {
+            frame: rect(frame),
+            bounds: rect(parent.bounds()),
+            screen: parent
+                .window()
+                .and_then(|window| window.screen())
+                .map(|screen| rect(screen.frame())),
+            webview_above_video: index(&self.view)
+                .zip(index(&self.overlay))
+                .is_some_and(|(video, web)| video < web),
+            webview_receives_pointer: hit.is_some_and(|hit| hit.isDescendantOf(&self.overlay)),
+        }
+    }
+}
+
+fn framebuffer_size(width: i32, height: i32) -> (i32, i32) {
+    let factor = (8192. / f64::from(width))
+        .min(8192. / f64::from(height))
+        .min(1.);
+    (
+        (f64::from(width) * factor).round() as i32,
+        (f64::from(height) * factor).round() as i32,
+    )
 }
 
 #[cfg(test)]
 mod deadline_clock_tests {
     use super::*;
+    #[test]
+    fn oversized_framebuffers_keep_ratio_and_normal_retina_size() {
+        assert_eq!(framebuffer_size(3840, 2160), (3840, 2160));
+        assert_eq!(framebuffer_size(15360, 8640), (8192, 4608));
+        assert_eq!(framebuffer_size(8640, 15360), (4608, 8192));
+    }
     #[test]
     fn wall_clock_expiry_covers_a_monotonic_clock_that_did_not_advance_during_suspend() {
         let now = Instant::now();
@@ -810,14 +922,30 @@ struct PendingLoad {
 fn language_key(language: &str) -> Option<String> {
     crate::player_bridge::language_key(language)
 }
-fn preferred_audio<'a>(tracks:&'a [Track], requested:Option<&str>)->(Option<&'a Track>,bool){
-    let wanted=requested.and_then(language_key);
-    let chosen=wanted.as_ref().and_then(|wanted|tracks.iter().find(|t|t.kind==chill_player::TrackKind::Audio&&t.language.as_deref().and_then(language_key).as_ref()==Some(wanted)))
-        .or_else(||tracks.iter().find(|t|t.kind==chill_player::TrackKind::Audio&&t.original))
-        .or_else(||tracks.iter().find(|t|t.kind==chill_player::TrackKind::Audio));
-    let unavailable=requested.is_some_and(|s|!s.trim().is_empty())
-        && (wanted.is_none() || chosen.is_none_or(|t|t.language.as_deref().and_then(language_key)!=wanted));
-    (chosen,unavailable)
+fn preferred_audio<'a>(tracks: &'a [Track], requested: Option<&str>) -> (Option<&'a Track>, bool) {
+    let wanted = requested.and_then(language_key);
+    let chosen = wanted
+        .as_ref()
+        .and_then(|wanted| {
+            tracks.iter().find(|t| {
+                t.kind == chill_player::TrackKind::Audio
+                    && t.language.as_deref().and_then(language_key).as_ref() == Some(wanted)
+            })
+        })
+        .or_else(|| {
+            tracks
+                .iter()
+                .find(|t| t.kind == chill_player::TrackKind::Audio && t.original)
+        })
+        .or_else(|| {
+            tracks
+                .iter()
+                .find(|t| t.kind == chill_player::TrackKind::Audio)
+        });
+    let unavailable = requested.is_some_and(|s| !s.trim().is_empty())
+        && (wanted.is_none()
+            || chosen.is_none_or(|t| t.language.as_deref().and_then(language_key) != wanted));
+    (chosen, unavailable)
 }
 fn open_gl_view(rect: NSRect) -> Result<Retained<NSOpenGLView>, NativePlayerError> {
     let mtm = MainThreadMarker::new()
@@ -926,7 +1054,9 @@ impl Framebuffer {
             }
         }
         samples
-            .as_chunks::<4>().0.iter()
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|pixel| pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0)
     }
 }
@@ -945,14 +1075,37 @@ mod preferred_audio_tests {
     use chill_player::TrackKind;
     #[test]
     fn non_normalizable_preference_never_matches_an_untagged_track_before_original() {
-        let audio=|id,language:Option<&str>,original|Track{id,kind:TrackKind::Audio,language:language.map(str::to_owned),title:None,selected:false,external:false,original};
-        let tracks=vec![audio(1,None,false),audio(2,Some("eng"),true),audio(3,Some("fra"),false)];
-        let (chosen,notice)=preferred_audio(&tracks,Some("Japanese"));
-        assert_eq!(chosen.unwrap().id,2);assert!(notice);
-        let (chosen,notice)=preferred_audio(&tracks,Some("ja"));assert_eq!(chosen.unwrap().id,2);assert!(notice);
-        let (chosen,notice)=preferred_audio(&tracks,Some("fr-CA"));assert_eq!(chosen.unwrap().id,3);assert!(!notice);
-        let (chosen,notice)=preferred_audio(&tracks,Some(""));assert_eq!(chosen.unwrap().id,2);assert!(!notice);
-        let (chosen,notice)=preferred_audio(&tracks[0..1],Some("Japanese"));assert_eq!(chosen.unwrap().id,1);assert!(notice);
-        let (chosen,notice)=preferred_audio(&[],Some("en"));assert!(chosen.is_none());assert!(notice);
+        let audio = |id, language: Option<&str>, original| Track {
+            id,
+            kind: TrackKind::Audio,
+            language: language.map(str::to_owned),
+            title: None,
+            selected: false,
+            external: false,
+            original,
+        };
+        let tracks = vec![
+            audio(1, None, false),
+            audio(2, Some("eng"), true),
+            audio(3, Some("fra"), false),
+        ];
+        let (chosen, notice) = preferred_audio(&tracks, Some("Japanese"));
+        assert_eq!(chosen.unwrap().id, 2);
+        assert!(notice);
+        let (chosen, notice) = preferred_audio(&tracks, Some("ja"));
+        assert_eq!(chosen.unwrap().id, 2);
+        assert!(notice);
+        let (chosen, notice) = preferred_audio(&tracks, Some("fr-CA"));
+        assert_eq!(chosen.unwrap().id, 3);
+        assert!(!notice);
+        let (chosen, notice) = preferred_audio(&tracks, Some(""));
+        assert_eq!(chosen.unwrap().id, 2);
+        assert!(!notice);
+        let (chosen, notice) = preferred_audio(&tracks[0..1], Some("Japanese"));
+        assert_eq!(chosen.unwrap().id, 1);
+        assert!(notice);
+        let (chosen, notice) = preferred_audio(&[], Some("en"));
+        assert!(chosen.is_none());
+        assert!(notice);
     }
 }
