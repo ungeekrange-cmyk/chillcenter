@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Livraison noms de fichiers / fiche du15octobre — suspendue, Pi inchangé
+
+[Rapport](releases/REL-FILENAME-SCROLL-001.md) : candidat isolé71bd7a0 depuis la base livrée5bebf10, séries incomplètes exclues. Builds/tests ciblés effectués, mais test de molette interne Tauri non concluant après cinq hypothèses ; pas de bundle livré ni de déploiement. Essais expérimentaux préservés à28b1c64 sur `codex/diagnostic-modal-scroll`, hors candidat. Nouvel accord utilisateur/essai manuel requis avant nouvelle investigation. Pi toujoursCFC87de actifPID6808, Mac livré7a0f480 ; données/NAS/configuration/TLS intacts.
+
 ## Reprise 15 octobre — noms de fichiers et fiche, candidat local non livré
 
 Branche de livraison `codex/release-filename-scroll`, base livrée `5bebf10`, reprise ciblée de `f74aa09`. [BUG0062](debug/BUG-0062-release-filename-parsing.md) : séparateurs répétés, parenthèses vides, champs/codecs audio/vidéo et VOSTA/VOST/DDP nettoyés ; recherche automatique des anciens titres utilise le même traitement, sans réécriture des métadonnées ou requêtes manuelles. [BUG0063](debug/BUG-0063-media-detail-scroll-and-path.md) : chemin relatif du fichier remis dans la fiche et scroll de fond verrouillé ; Chromium isolé RED/GREEN, confirmation Tauri à faire. Demande explicite de bundle et déploiement reçue. Le chantier séries/saisons incomplet demeure préservé sur `codex/series-tmdb-scopes`/`codex/filename-parsing`, hors de cette livraison. Les défauts distincts de fiche TMDB périmée, comparaison français/original et synchronisation bloquante/diff ne sont pas corrigés ici. Pi CFC87de/Mac7a0f480 inchangés avant bascule.

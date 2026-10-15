@@ -1,0 +1,13 @@
+# Livraison noms de fichiers / fiche — suspendue avant déploiement
+
+2026-10-15, candidat `71bd7a0`, branche `codex/release-filename-scroll`, base utilisateur `5bebf10`. Reprise ciblée de `f74aa09` ; chantier série/saison incomplet exclu et préservé sur ses branches. Auteur/opérateur `/root`.
+
+Autorisation utilisateur explicite : intégrer au bundle, vérifier Tauri, déployer surPi avec sauvegarde. La vérification native ne passe pas ; aucun déploiement, aucune promotion dans le dépôt utilisateur et aucun nouveau bundle remis. Les versions utilisables restent Mac7a0f480 et serveurCFC87de. Pi contrôlé par SSH approuvé : actifPID6808/NRestarts0/hashf85375ad4ac33fd0993151b547e8ca731d0ffa49441beb8b85756f0433f842cd ; aucun arrêt, backup nouveau, changement de NAS/configuration/TLS ni tâche fournisseur.
+
+Preuves du candidat isolé : 74 catalogue +53 domaine +2 tests serveur `exact_match` PASS ; contrat70routes datées/v1 PASS ;16Node catalogue PASS. BuildARM64/glibc2.28 PASS, archive non publiée. Builds Mac debug/release intermédiaires exécutés, mais modifications expérimentales pendant compilation : pas un paquet exact immuable prêt à remettre.
+
+Le test AppKit/WKWebView de la propre fenêtre, données synthétiques/réglages privés/aucune vidéo, reçoit la molette trusted sur `detail-overview`, mais ne démontre pas son scroll interne. Un défaut de coordonnées du harnais a été corrigé ; cinq hypothèses restantes n'ont pas établi de cause suffisante. L'expérience combinant retrait des overflow avec modification de scrollTop est confondue, pas une preuve de cause CSS. Arrêt pour nouvel accord utilisateur/essai manuel, sans patch spéculatif livré.
+
+Instrumentation, essais et journal complet BUG0064 conservés au commit `28b1c64`, branche `codex/diagnostic-modal-scroll`. Cette branche est expérimentale, pas candidate au déploiement. Aucune dépendance ou pilote de bureau installé. Le candidat de livraison est revenu propre à71bd7a0 avant ce rapport ; ses corrections initiales ont seulement une preuve Chromium pour le scroll. Le vérificateur distinct `/root/verify_filename_release` a préparé ses contrôles, mais n'a effectué aucune connexion/post-vérification puisqu'aucune bascule n'a eu lieu.
+
+Scratch opérateur `/private/tmp/chillcenter-filename-release.aEa4OM`, script `deploy-pi.sh` **non exécuté**, build Linux dans `linux-target`, cible Mac réutilisée `/private/tmp/chillcenter-series-target.ZXNxst`. Anciennes sauvegardes/bundles/sources/historiques conservés. Rollback non nécessaire : production familiale inchangée. Prochaine étape : nouvel accord pour vérifier par geste manuel ou pilote natif autorisé, puis geler/recompiler/packager le SHA exact, sauvegarder et déployer seulement après succès du contrôle requis.
