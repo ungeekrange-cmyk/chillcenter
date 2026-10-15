@@ -21,9 +21,9 @@
 -8testsNode sagas/mosaïque/profil/TMDB PASS, puis1test ordre Administration PASS. Aucun parcours général lecteur relancé après la restriction explicite.
 - Builds Mac7a0 et serveurARM64/073 PASS ; signature/48dylibs/loader bundle Mac PASS. Pas de modification runtime/dépendance.
 
-## Reste avant vérification Pi
+## Déploiement Pi du15octobre
 
-Nouvelle sauvegarde privée et bascule autorisée, smoke connexion/cache contre le Pi puis vérification indépendante. L'opérateur refuse pour l'instant les connexions sortantes TMDB : tâche réelle en cours, choix utilisateur attendu avant interruption. Ancien service inchangé. Fenêtres/appdata/bases de tests séparées du foyer ; clés privées et sauvegardes restent sur le Pi.
+Après report initial conservé dans la release, confirmation utilisateur « Non déploie la nouvelle version ». Opérateur inchangé/revu exit0 à02:06:48UTC : sauvegarde offline privée c8897485… vérifiée, rollback1eb24… conservé, binaire11cb… actifPID6451, HTTPS strict daté PASS. NAS/configuration/unité/SPKI inchangés. Vérification indépendante connexion/cache en cours, pas encore un résultat prétendu. Fenêtres/appdata/bases de tests séparées du foyer ; clés privées et sauvegardes restent sur le Pi.
 
 ## Limites
 

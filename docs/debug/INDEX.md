@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+Déploiement15octobre : [BUG0059](BUG-0059-lazy-saga-revisions.md) révisions absentes pour sagas TMDB paresseuses,422sagas/snapshot confirmé37/30 ; [BUG0060](BUG-0060-backup-empty-sidecars.md) deux fichiers auxiliaires SQLite vides rendent la sauvegarde non conforme au validateur strict. Première vérification indépendante défavorable conservée ; ne pas déclarer le client connecté avant correction/revérification ciblées.
+
 [BUG0058](BUG-0058-replay-at-eof.md) : reprise à EOF lors d'une relecture, confirmée par vraie fixture native et RED unitaire ; correction locale au FileLoaded, preuve GREEN dans le lot cache.
 
 Lot cache/retours utilisateur14octobre : [BUG0055](BUG-0055-shared-client-slot.md) concurrence du pont ; [BUG0056](BUG-0056-network-catalog-navigation.md) catalogue réseau répété ; [BUG0057](BUG-0057-playlists-profile-next.md) listes/profil/suite. FIXED, preuves natives/Pi et validation humaine distinguées dans le rapport du lot.

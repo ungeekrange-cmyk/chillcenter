@@ -1,8 +1,8 @@
 # Contexte du projet
 
-## Lot corrections catalogue/cache — source revue, bascule Pi suspendue
+## Lot corrections catalogue/cache — Pi mis à jour le15octobre
 
-14octobre2026 : source finale7a0f480 et serveur07358f7 revus indépendamment APPROVED ; bundle Mac7a0 reconstruit. Cache catalogue SQLite/images par serveur/profil, navigation/suggestions locales, échec de synchronisation sans répétition à chaque clic, scan concurrent refusé de façon bornée, purge immédiate après suppression confirmée. Sagas/listes/menu profil/Administration et suite20s : [release](releases/REL-CATALOG-CACHE-001.md), [preuves](implementation/CATALOG-CACHE-EVIDENCE.md), ADR0013 accepté et BUG0055–0058. Bascule Pi autorisée mais PAS exécutée : l'opérateur refuse les connexions sortantes TMDB pendant un enrichissement1348/2496, autre tâche queued0/2483 au dernier relevé. Question utilisateur attendre/interrompre posée ; ancien servicePID5145/hash1eb24… préservé, NAS/configuration intacts. Ne pas lancer le nouveau client contre l'ancien serveur sans routes snapshot. L'utilisateur demande de limiter les tests aux bugs signalés : aucun nouveau parcours général du lecteur.
+Source finale7a0f480 et serveur07358f7 revus indépendamment APPROVED ; bundle Mac `artifacts/macos/Chill Center-7a0f480.app` reconstruit et publié. Cache catalogue SQLite/images par serveur/profil, navigation/suggestions locales, échec de synchronisation sans répétition à chaque clic, scan concurrent refusé de façon bornée, purge immédiate après suppression confirmée. Sagas/listes/menu profil/Administration et suite20s : [release](releases/REL-CATALOG-CACHE-001.md), [preuves](implementation/CATALOG-CACHE-EVIDENCE.md), ADR0013 accepté et BUG0055–0058. Après report TMDB historique et confirmation « Non déploie la nouvelle version », bascule réussie le15octobre2026 à02:06:48UTC : serveur11cb… actifPID6451, sauvegarde offline privée c8897485… et rollback1eb24… vérifiés ; NAS/configuration/unité/TLS inchangés. Contrôle indépendant connexion/cache en cours, pas de nouveau parcours général du lecteur demandé/interprété.
 
 ## Dernier client — corrections visuelles574d255
 
