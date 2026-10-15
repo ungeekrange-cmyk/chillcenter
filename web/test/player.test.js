@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { WebPlayer, pickTrack } = require("../src/player-web.js");
+const { WebPlayer, pickTrack, uuidV4 } = require("../src/player-web.js");
 const { UnsupportedEngine } = require("../src/engines.js");
 
 const P = "11111111-1111-4111-8111-111111111111", M = "22222222-2222-4222-8222-222222222222", N = "33333333-3333-4333-8333-333333333333";
@@ -99,4 +99,12 @@ test("without a real engine the player fails plainly and releases the lease", as
   const view = await h.cmd({ action: "start", media_id: M, context: { kind: "standalone", id: null } });
   assert.equal(view.stage, "closed"); assert.match(view.error, /moteur de lecture/);
   assert.equal(h.calls.some(c => c.path.endsWith("/release")), true);
+});
+
+test("device ids work in an insecure context (no crypto.randomUUID), and stay valid v4 UUIDs", () => {
+  const insecure = { getRandomValues: a => { for (let i = 0; i < a.length; i++) a[i] = (i * 37 + 11) & 0xff; return a; } };
+  const id = uuidV4(insecure);
+  assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(uuidV4({ randomUUID: () => "from-native" }), "from-native");
+  assert.match(uuidV4(require("node:crypto").webcrypto), /^[0-9a-f-]{36}$/);
 });

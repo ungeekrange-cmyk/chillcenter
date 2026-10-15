@@ -1,5 +1,5 @@
 use chill_server::{
-    api::{AppState, DatabaseActor, router},
+    api::{AppState, DatabaseActor, router, router_http},
     config::{LibrarySettings, ServerConfig, prepare_data_dir},
     connection::LimitedAcceptor,
     operations::{self, DataLock},
@@ -143,21 +143,35 @@ async fn run() -> Result<(), String> {
         .handshake_timeout(std::time::Duration::from_secs(5))
         .acceptor(LimitedAcceptor::new(16));
     let mut server = axum_server::bind(state.config.listen).acceptor(acceptor);
-    server
-        .http_builder()
+    tune(server.http_builder());
+    // Optional plain-HTTP listener for the bundled web client (ADR-0018); same limits, same router, other scheme.
+    let http_server = state.config.http_listen.map(|address| {
+        let mut http = axum_server::bind(address).acceptor(LimitedAcceptor::new(16));
+        tune(http.http_builder());
+        http.serve(router_http(state.clone()).into_make_service())
+    });
+    let https_server = server.serve(router(state).into_make_service());
+    match http_server {
+        Some(http_server) => tokio::select! {
+            result = https_server => result.map_err(|_| "Service HTTPS arrêté sur erreur.".to_string()),
+            result = http_server => result.map_err(|_| "Service HTTP arrêté sur erreur.".to_string()),
+        },
+        None => https_server
+            .await
+            .map_err(|_| "Service HTTPS arrêté sur erreur.".to_string()),
+    }
+}
+
+fn tune(builder: &mut hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor>) {
+    builder
         .http1()
         .timer(hyper_util::rt::TokioTimer::new())
         .header_read_timeout(std::time::Duration::from_secs(5))
         .keep_alive(false);
-    server
-        .http_builder()
+    builder
         .http2()
         .timer(hyper_util::rt::TokioTimer::new())
         .max_concurrent_streams(8)
         .keep_alive_interval(Some(std::time::Duration::from_secs(10)))
         .keep_alive_timeout(std::time::Duration::from_secs(5));
-    server
-        .serve(router(state).into_make_service())
-        .await
-        .map_err(|_| "Service HTTPS arrêté sur erreur.".to_string())
 }

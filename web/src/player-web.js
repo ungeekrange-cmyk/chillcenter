@@ -221,7 +221,16 @@
     }
   }
 
-  const api = { WebPlayer, pickTrack };
+  // `crypto.randomUUID` only exists in secure contexts; the plain-HTTP listener (ADR-0018) is not one, but getRandomValues is.
+  function uuidV4(c) {
+    if (typeof c.randomUUID === "function") return c.randomUUID();
+    const b = c.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+
+  const api = { WebPlayer, pickTrack, uuidV4 };
   if (typeof module !== "undefined") module.exports = api;
   else {
     root.ChillPlayerCore = api;
@@ -232,7 +241,7 @@
           request: ctx.request.bind ? (m, p, o) => ctx.request(m, p, o) : ctx.request,
           engineFactory: () => root.ChillEngines.create(document.getElementById("native-video")),
           storage: root.localStorage, now: () => performance.now(), setInterval: (f, t) => root.setInterval(f, t), clearInterval: t => root.clearInterval(t),
-          EventSource: root.EventSource, uuid: () => crypto.randomUUID(),
+          EventSource: root.EventSource, uuid: () => uuidV4(root.crypto),
           setFullscreen: async on => { // browsers refuse this without a recent user gesture: report the real state instead of failing
           const el = document.getElementById("player-panel");
           try { if (on) await el.requestFullscreen?.(); else if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* refused */ }

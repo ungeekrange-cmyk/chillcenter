@@ -7,7 +7,7 @@ mkdir -p "$WORK/bin" "$WORK/data"; chmod 700 "$WORK/data"
 cp "$REPO/target/aarch64-unknown-linux-gnu/release/chill-server" "$WORK/bin/chill-server"
 tar -xf "$REPO/artifacts/web-pi/chillcenter-web.tar" -C "$WORK/bin"
 cat > "$WORK/server.json" <<EOF
-{ "listen": "127.0.0.1:18443", "data_dir": "$WORK/data", "tls_names": ["127.0.0.1", "localhost"] }
+{ "listen": "127.0.0.1:18443", "http_listen": "127.0.0.1:18080", "data_dir": "$WORK/data", "tls_names": ["127.0.0.1", "localhost"] }
 EOF
 chmod 640 "$WORK/server.json"
 echo "uname: $(uname -m) $(. /etc/os-release; echo "$PRETTY_NAME"), glibc $(ldd --version | head -1 | awk '{print $NF}')"
@@ -41,5 +41,20 @@ check "SHA256SUMS non servi hors liste MIME"     404 "$(c -o /dev/null -w '%{htt
 check "méthode POST sur fichier statique"        405 "$(c -X POST -o /dev/null -w '%{http_code}' $B/index.html)"
 check "HEAD sur page"                            200 "$(c -I -o /dev/null -w '%{http_code}' $B/index.html)"
 check "hôte inattendu refusé"                    403 "$(c -o /dev/null -w '%{http_code}' -H 'Host: attacker.example:18443' $B/)"
+# ---- plain-HTTP listener (ADR-0018): same web client and API, but only its own origin and ports ----------------------------------------
+H=http://127.0.0.1:18080; h() { curl -sS --max-time 10 "$@"; }
+check "http : page d'accueil"                    200 "$(h -o /dev/null -w '%{http_code}' $H/)"
+check "http : décodeur wasm (type MIME)"         "application/wasm" "$(h -o /dev/null -w '%{content_type}' $H/vendor/mpeg4/mpeg4-decoder.wasm)"
+check "http : API sans en-tête"                  200 "$(h -o /dev/null -w '%{http_code}' $H/api/2026-10-14/server)"
+check "http : Origin propre sans Sec-Fetch"      200 "$(h -o /dev/null -w '%{http_code}' -H 'Origin: http://127.0.0.1:18080' $H/api/2026-10-14/server)"
+check "http : Origin étrangère"                  403 "$(h -o /dev/null -w '%{http_code}' -H 'Origin: http://attacker.example' $H/api/2026-10-14/server)"
+check "http : Origin en https refusée"           403 "$(h -o /dev/null -w '%{http_code}' -H 'Origin: https://127.0.0.1:18080' $H/api/2026-10-14/server)"
+check "http : cross-site"                        403 "$(h -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: cross-site' $H/api/2026-10-14/server)"
+check "http : Host sans port (80 redirigé)"      200 "$(h -o /dev/null -w '%{http_code}' -H 'Host: 127.0.0.1' $H/api/2026-10-14/server)"
+check "http : Host du port HTTPS refusé"         403 "$(h -o /dev/null -w '%{http_code}' -H 'Host: 127.0.0.1:18443' $H/api/2026-10-14/server)"
+check "http : hôte inattendu refusé"             403 "$(h -o /dev/null -w '%{http_code}' -H 'Host: attacker.example:18080' $H/)"
+check "http : écriture, Origin propre (garde passée, corps vide refusé)" 422 "$(h -o /dev/null -w '%{http_code}' -X PUT -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:18080' -d '{}' $H/api/2026-10-14/admin/library)"
+check "http : écriture avec Origin étrangère"    403 "$(h -o /dev/null -w '%{http_code}' -X PUT -H 'Content-Type: application/json' -H 'Origin: http://attacker.example' -d '{}' $H/api/2026-10-14/admin/library)"
+check "https : Origin seule toujours refusée"    403 "$(c -o /dev/null -w '%{http_code}' -H 'Origin: https://127.0.0.1:18443' $B/api/2026-10-14/server)"
 kill "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
 echo "résultat: $pass PASS, $failn FAIL"; rm -rf "$WORK"; [ "$failn" -eq 0 ]

@@ -185,7 +185,22 @@ fn api_routes() -> Router<AppState> {
         .route("/openapi.json", get(crate::api_version::openapi))
 }
 
+/// Which listener a request came in on. The plain-HTTP listener (ADR-0018) serves the bundled web client only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scheme {
+    Https,
+    Http,
+}
+
 pub fn router(state: AppState) -> Router {
+    build_router(state, Scheme::Https)
+}
+
+pub fn router_http(state: AppState) -> Router {
+    build_router(state, Scheme::Http)
+}
+
+fn build_router(state: AppState, scheme: Scheme) -> Router {
     let api = api_routes();
     Router::new()
         .nest(crate::api_version::PREFIX, api.clone())
@@ -193,6 +208,7 @@ pub fn router(state: AppState) -> Router {
         .fallback(crate::web_static::serve)
         .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), same_origin))
+        .layer(axum::Extension(scheme))
         .layer(middleware::from_fn(crate::api_version::normalize_response))
         .with_state(state)
 }
@@ -226,12 +242,27 @@ fn check_browser_origin_and_host(
         .and_then(|h| h.to_str().ok())
         .or_else(|| request.uri().authority().map(|a| a.as_str()))
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "HOST_REQUIRED"))?;
+    let scheme = request
+        .extensions()
+        .get::<Scheme>()
+        .copied()
+        .unwrap_or(Scheme::Https);
+    let (prefix, default_port, listen_port) = match scheme {
+        Scheme::Https => ("https", 443, state.config.listen.port()),
+        Scheme::Http => ("http", 80, state.config.http_listen.map_or(0, |a| a.port())),
+    };
+    let expected_origin = format!("{prefix}://{host}");
     let header = |name: &str| request.headers().get(name).map(|v| v.to_str().ok());
     let browser_allowed = match (header("sec-fetch-site"), header("origin")) {
         (None, None) => true,
         (Some(Some("same-origin")), None) => true,
         (Some(Some("same-origin")), Some(Some(origin))) => {
-            origin.eq_ignore_ascii_case(&format!("https://{host}"))
+            origin.eq_ignore_ascii_case(&expected_origin)
+        }
+        // Browsers send no `Sec-Fetch-*` to a plain-HTTP origin that is not "potentially trustworthy" (a LAN address is
+        // not), but they always send `Origin` on non-GET requests: it must be this server's own origin (ADR-0018).
+        (None, Some(Some(origin))) if scheme == Scheme::Http => {
+            origin.eq_ignore_ascii_case(&expected_origin)
         }
         // `none` is a user-typed navigation: static page only, never the API.
         (Some(Some("none")), None) => {
@@ -252,13 +283,13 @@ fn check_browser_origin_and_host(
         .trim_end_matches(']');
     // The default HTTPS port is also accepted: a network-level redirect 443 -> listen port (ADR-0017) makes
     // browsers send `Host: <name>` without a port. The name is still checked against the certificate names.
-    let port = authority.port_u16().unwrap_or(443);
+    let port = authority.port_u16().unwrap_or(default_port);
     if !state
         .config
         .tls_names
         .iter()
         .any(|n| n.eq_ignore_ascii_case(raw_host))
-        || (port != state.config.listen.port() && port != 443)
+        || (port != listen_port && port != default_port)
     {
         return Err(ApiError(StatusCode::FORBIDDEN, "HOST_REFUSED"));
     }
@@ -608,9 +639,13 @@ mod tests {
         );
     }
     fn setup() -> (tempfile::TempDir, Router) {
+        setup_with(false)
+    }
+    fn setup_with(http: bool) -> (tempfile::TempDir, Router) {
         let dir = tempfile::tempdir().unwrap();
         let config = ServerConfig {
             data_dir: dir.path().to_owned(),
+            http_listen: http.then(|| "127.0.0.1:8080".parse().unwrap()),
             ..ServerConfig::default()
         };
         let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
@@ -623,7 +658,14 @@ mod tests {
             config: Arc::new(config),
             certificate: Arc::new(Mutex::new(certificates.schedule)),
         };
-        (dir, router(state))
+        (
+            dir,
+            if http {
+                router_http(state)
+            } else {
+                router(state)
+            },
+        )
     }
     fn request(method: &str, path: &str, body: Value) -> Request<Body> {
         Request::builder()
@@ -944,13 +986,115 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn default_https_port_is_accepted_for_a_redirected_443_but_names_and_other_ports_are_not() {
+    async fn plain_http_listener_accepts_only_its_own_origin_and_ports() {
+        let (_dir, app) = setup_with(true);
+        let call = |host: &str, headers: &[(&str, &str)]| {
+            let mut r = request("PUT", "/api/v1/admin/library", json!({}));
+            r.headers_mut().insert("host", host.parse().unwrap());
+            for (k, v) in headers {
+                r.headers_mut().insert(
+                    axum::http::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                    v.parse().unwrap(),
+                );
+            }
+            let app = app.clone();
+            async move { app.oneshot(r).await.unwrap().status() }
+        };
+        let refused = StatusCode::FORBIDDEN;
+        // Hosts: the HTTP listener's own port and the default port 80; never the HTTPS port or another one.
+        for host in ["localhost:8080", "localhost", "localhost:80"] {
+            assert_ne!(call(host, &[]).await, refused, "{host}");
+        }
+        for host in [
+            "localhost:8443",
+            "localhost:443",
+            "localhost:9090",
+            "attacker.example:8080",
+            "attacker.example",
+        ] {
+            assert_eq!(call(host, &[]).await, refused, "{host}");
+        }
+        // Browsers send no Sec-Fetch-* to a plain-HTTP LAN origin, but always an Origin on writes: it must be our own.
+        assert_ne!(
+            call("localhost:8080", &[("origin", "http://localhost:8080")]).await,
+            refused
+        );
+        assert_ne!(
+            call("localhost", &[("origin", "http://localhost")]).await,
+            refused
+        );
+        assert_ne!(
+            call("localhost", &[("origin", "HTTP://LOCALHOST")]).await,
+            refused
+        );
+        for origin in [
+            "http://attacker.example",
+            "http://localhost:9090",
+            "https://localhost:8080",
+            "null",
+            "",
+        ] {
+            assert_eq!(
+                call("localhost:8080", &[("origin", origin)]).await,
+                refused,
+                "origin {origin:?}"
+            );
+        }
+        // Cross-site and same-site hints are refused when a browser does send them (localhost is trustworthy).
+        for site in ["cross-site", "same-site"] {
+            assert_eq!(
+                call("localhost:8080", &[("sec-fetch-site", site)]).await,
+                refused
+            );
+        }
+        assert_ne!(
+            call(
+                "localhost:8080",
+                &[
+                    ("sec-fetch-site", "same-origin"),
+                    ("origin", "http://localhost:8080")
+                ]
+            )
+            .await,
+            refused
+        );
+        assert_eq!(
+            call(
+                "localhost:8080",
+                &[
+                    ("sec-fetch-site", "same-origin"),
+                    ("origin", "https://localhost:8080")
+                ]
+            )
+            .await,
+            refused
+        );
+    }
+
+    #[tokio::test]
+    async fn https_listener_still_refuses_an_origin_without_fetch_metadata() {
+        let (_dir, app) = setup();
+        for origin in ["https://localhost:8443", "http://localhost:8443"] {
+            let mut r = request("PUT", "/api/v1/admin/library", json!({}));
+            r.headers_mut().insert("origin", origin.parse().unwrap());
+            assert_eq!(
+                app.clone().oneshot(r).await.unwrap().status(),
+                StatusCode::FORBIDDEN,
+                "{origin}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn default_https_port_is_accepted_for_a_redirected_443_but_names_and_other_ports_are_not()
+    {
         let (_dir, app) = setup();
         let with_host = |host: &str, origin: Option<&str>| {
             let mut r = request("GET", "/api/v1/server", Value::Null);
             r.headers_mut().insert("host", host.parse().unwrap());
             if let Some(origin) = origin {
-                r.headers_mut().insert("sec-fetch-site", "same-origin".parse().unwrap());
+                r.headers_mut()
+                    .insert("sec-fetch-site", "same-origin".parse().unwrap());
                 r.headers_mut().insert("origin", origin.parse().unwrap());
             }
             r
@@ -959,9 +1103,15 @@ mod tests {
             let app = app.clone();
             async move { app.oneshot(r).await.unwrap().status() }
         };
-        assert_eq!(status(with_host("localhost:8443", None)).await, StatusCode::OK);
+        assert_eq!(
+            status(with_host("localhost:8443", None)).await,
+            StatusCode::OK
+        );
         assert_eq!(status(with_host("localhost", None)).await, StatusCode::OK);
-        assert_eq!(status(with_host("localhost:443", None)).await, StatusCode::OK);
+        assert_eq!(
+            status(with_host("localhost:443", None)).await,
+            StatusCode::OK
+        );
         assert_eq!(
             status(with_host("localhost", Some("https://localhost"))).await,
             StatusCode::OK
@@ -971,8 +1121,17 @@ mod tests {
             status(with_host("localhost:8443", Some("https://localhost"))).await,
             StatusCode::FORBIDDEN
         );
-        for refused in ["localhost:9443", "localhost:80", "attacker.example", "attacker.example:443"] {
-            assert_eq!(status(with_host(refused, None)).await, StatusCode::FORBIDDEN, "{refused}");
+        for refused in [
+            "localhost:9443",
+            "localhost:80",
+            "attacker.example",
+            "attacker.example:443",
+        ] {
+            assert_eq!(
+                status(with_host(refused, None)).await,
+                StatusCode::FORBIDDEN,
+                "{refused}"
+            );
         }
     }
 
@@ -981,7 +1140,8 @@ mod tests {
         let (dir, app) = setup();
         let with = |site: &str, origin: Option<&str>, path: &str| {
             let mut r = request("GET", path, Value::Null);
-            r.headers_mut().insert("sec-fetch-site", site.parse().unwrap());
+            r.headers_mut()
+                .insert("sec-fetch-site", site.parse().unwrap());
             if let Some(origin) = origin {
                 r.headers_mut().insert("origin", origin.parse().unwrap());
             }
@@ -1008,15 +1168,16 @@ mod tests {
             with("cross-site", None, "/api/v1/server"),
             with("same-site", None, "/api/v1/server"),
             with("none", None, "/api/v1/server"),
-            with("same-origin", Some("https://other.example"), "/api/v1/server"),
+            with(
+                "same-origin",
+                Some("https://other.example"),
+                "/api/v1/server",
+            ),
         ] {
             assert_eq!(status(refused).await, StatusCode::FORBIDDEN);
         }
         // Without a web directory the static fallback is a plain 404; with one it serves.
-        assert_eq!(
-            status(with("none", None, "/")).await,
-            StatusCode::NOT_FOUND
-        );
+        assert_eq!(status(with("none", None, "/")).await, StatusCode::NOT_FOUND);
         std::fs::create_dir(dir.path().join("web")).unwrap();
         std::fs::write(dir.path().join("web/index.html"), b"<!doctype html>").unwrap();
         crate::web_static::set_test_root(Some(dir.path().join("web")));
@@ -1066,7 +1227,11 @@ mod tests {
             StatusCode::FORBIDDEN
         );
         // Origin `null`, non-UTF-8 origin, foreign origin: refused even when same-origin is claimed.
-        for origin in [b"null".to_vec(), vec![0xff, 0xfe], b"https://other.example".to_vec()] {
+        for origin in [
+            b"null".to_vec(),
+            vec![0xff, 0xfe],
+            b"https://other.example".to_vec(),
+        ] {
             let mut h = same();
             h.push(("origin", origin));
             assert_eq!(send("GET", "/", h).await.status(), StatusCode::FORBIDDEN);
@@ -1078,7 +1243,14 @@ mod tests {
         // HEAD is served without a body, other methods are refused on static files.
         let head = send("HEAD", "/index.html", same()).await;
         assert_eq!(head.status(), StatusCode::OK);
-        assert!(head.into_body().collect().await.unwrap().to_bytes().is_empty());
+        assert!(
+            head.into_body()
+                .collect()
+                .await
+                .unwrap()
+                .to_bytes()
+                .is_empty()
+        );
         assert_eq!(
             send("POST", "/index.html", same()).await.status(),
             StatusCode::METHOD_NOT_ALLOWED
