@@ -1,7 +1,7 @@
 use chill_server::{
     api::{AppState, DatabaseActor, router, router_http},
     config::{LibrarySettings, ServerConfig, prepare_data_dir},
-    connection::LimitedAcceptor,
+    connection::{FirstByteAcceptor, LimitedAcceptor},
     operations::{self, DataLock},
     tls,
 };
@@ -146,8 +146,20 @@ async fn run() -> Result<(), String> {
     tune(server.http_builder());
     // Optional plain-HTTP listener for the bundled web client (ADR-0018); same limits, same router, other scheme.
     let http_server = state.config.http_listen.map(|address| {
-        let mut http = axum_server::bind(address).acceptor(LimitedAcceptor::new(16));
-        tune(http.http_builder());
+        let mut http = axum_server::bind(address).acceptor(FirstByteAcceptor::new(
+            16,
+            std::time::Duration::from_secs(5),
+        ));
+        // No protocol sniffing in clear text: browsers speak HTTP/1 here, and the sniffing step has no timeout, so 16 silent
+        // sockets would starve the pool (review 6). `http1_only` goes straight to the HTTP/1 read, whose header timeout applies.
+        *http.http_builder() =
+            hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .http1_only();
+        http.http_builder()
+            .http1()
+            .timer(hyper_util::rt::TokioTimer::new())
+            .header_read_timeout(std::time::Duration::from_secs(5))
+            .keep_alive(false);
         http.serve(router_http(state.clone()).into_make_service())
     });
     let https_server = server.serve(router(state).into_make_service());

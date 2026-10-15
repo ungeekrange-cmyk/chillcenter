@@ -23,7 +23,7 @@ Constats techniques sur une origine HTTP dont l'hôte est une adresse LAN (non �
 | A. Autorité privée maison | gratuit, TLS conservé | refusée par l'utilisateur (installation sur chaque appareil) |
 | B. Domaine + Let's Encrypt (DNS-01) | reconnu par tous, TLS conservé | exige un domaine (coût) et un accès internet du Pi pour les renouvellements ; non disponible |
 | C. Ne rien faire | aucun risque nouveau | le client web reste inutilisable pour les autres membres |
-| **D. Second listener HTTP clair, optionnel, pour le web seulement** | aucun prérequis ; fonctionne sur tout appareil de la maison | trafic non chiffré sur le réseau local ; pas de PWA ni de Service Worker |
+| **D. Second listener HTTP clair, optionnel, pour le client web** | aucun prérequis ; fonctionne sur tout appareil de la maison | trafic non chiffré sur le réseau local ; pas de PWA ni de Service Worker |
 
 ## Décision
 
@@ -38,6 +38,8 @@ Option **D**, strictement bornée.
 ## Conséquences et risques acceptés par l'utilisateur
 
 - **Confidentialité** : tout ce qui transite par le port HTTP (catalogue, profils, flux vidéo, identifiants de bail) est lisible et modifiable par n'importe quel appareil du réseau Wi-Fi/LAN. Le serveur n'ayant pas d'authentification, l'API est déjà joignable de tout le LAN en HTTPS ; la nouveauté est l'**absence de chiffrement et d'authentification du serveur** (un appareil du réseau peut se faire passer pour le serveur ou altérer les pages servies, donc exécuter du JavaScript dans l'origine du client web).
+- **Surface exposée** : le listener HTTP sert la même API que le HTTPS (catalogue, profils, bibliothèque, lecture, administration de la bibliothèque), pas seulement les fichiers du client web. Pour limiter les secrets en clair, **les routes qui portent la clé TMDB ou des archives (`/admin/tmdb*`, `/admin/exports*`, `/admin/imports*`) sont refusées sur ce listener** (`HTTPS_ONLY`) ; elles restent disponibles en HTTPS, le client web ne les utilise pas. Ne jamais saisir de clé ni d'archive via le port HTTP.
+- **Disponibilité** : le listener HTTP a son propre plafond de 16 connexions, avec un délai de 5 s sur le premier octet (la poignée de main TLS a le même rôle en HTTPS) ; un appareil du réseau qui maintient des connexions actives peut néanmoins saturer ce plafond. Le HTTPS n'est pas touché (réserves séparées).
 - **CSRF / navigateur tiers** : une page web quelconque ne peut pas écrire (l'`Origin` est vérifiée) ni lire (pas de CORS) ; le contrôle `Host` écarte le DNS rebinding. Les GET sont sans effet de bord.
 - **Fonctions web perdues sur ce port** : installation en PWA, Service Worker, plein écran persistant selon navigateur, Wake Lock. Le client HTTPS (`https://192.168.1.42`) garde ces fonctions pour qui accepte l'avertissement de certificat.
 - **Le Pi ne doit pas être exposé à internet** : ce listener rendrait l'accès sans protection ; ne jamais ouvrir 80/8080 sur la box.

@@ -56,5 +56,28 @@ check "http : hôte inattendu refusé"             403 "$(h -o /dev/null -w '%{h
 check "http : écriture, Origin propre (garde passée, corps vide refusé)" 422 "$(h -o /dev/null -w '%{http_code}' -X PUT -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:18080' -d '{}' $H/api/2026-10-14/admin/library)"
 check "http : écriture avec Origin étrangère"    403 "$(h -o /dev/null -w '%{http_code}' -X PUT -H 'Content-Type: application/json' -H 'Origin: http://attacker.example' -d '{}' $H/api/2026-10-14/admin/library)"
 check "https : Origin seule toujours refusée"    403 "$(c -o /dev/null -w '%{http_code}' -H 'Origin: https://127.0.0.1:18443' $B/api/2026-10-14/server)"
+check "http : secret TMDB réservé au HTTPS"      403 "$(h -o /dev/null -w '%{http_code}' $H/api/2026-10-14/admin/tmdb)"
+check "http : exports réservés au HTTPS"         403 "$(h -o /dev/null -w '%{http_code}' $H/api/2026-10-14/admin/exports/x)"
+check "https : TMDB toujours disponible"         200 "$(c -o /dev/null -w '%{http_code}' $B/api/2026-10-14/admin/tmdb)"
+# 16 silent TCP connections must not starve the listener (review 6, finding 1): the header timeout (5 s) closes them.
+python3 - <<PY
+import socket, time, sys, urllib.request
+socks = [socket.create_connection(("127.0.0.1", 18080)) for _ in range(16)]
+time.sleep(7)
+closed = 0
+for s in socks:
+    s.settimeout(1)
+    try:
+        if s.recv(1) == b"": closed += 1
+    except (ConnectionResetError, BrokenPipeError): closed += 1
+    except socket.timeout: pass
+try:
+    ok = urllib.request.urlopen("http://127.0.0.1:18080/api/2026-10-14/server", timeout=5).status == 200
+except Exception as e:
+    ok = False
+print("idle_closed=%d/16 probe_ok=%s" % (closed, ok))
+sys.exit(0 if ok and closed == 16 else 1)
+PY
+check "http : 16 connexions muettes fermées, service disponible" 0 "$?"
 kill "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
 echo "résultat: $pass PASS, $failn FAIL"; rm -rf "$WORK"; [ "$failn" -eq 0 ]

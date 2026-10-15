@@ -91,16 +91,19 @@ added="$(diff "$config" "$candidate" | grep -c '^>' || true)"; removed="$(diff "
 [[ "$added" == 1 && "$removed" == 0 ]] || { echo "unexpected configuration diff ($added added, $removed removed)" >&2; exit 2; }
 if command -v python3 >/dev/null; then python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$candidate"; fi
 install -o 0 -g 0 -m 0600 "$config" "$backup"                          # private copy of the previous file, never overwritten
-cmp -s "$config" "$backup"
+[[ "$(sha256sum "$backup" | awk '{print $1}')" == "$previous_sha" ]]    # the copy itself is checked against the pinned hash
 install -o "$owner_uid" -g "$owner_gid" -m "$file_mode" "$candidate" "$candidate.final"
+# Everything the recovery needs is prepared BEFORE the configuration is touched, so recovery is one atomic rename (review 6).
+install -o "$owner_uid" -g "$owner_gid" -m "$file_mode" "$backup" "$candidate.restore"
+[[ "$(sha256sum "$candidate.restore" | awk '{print $1}')" == "$previous_sha" ]]
 revert_now() {
-  trap - ERR; echo 'FAILURE: restoring the previous configuration' >&2
-  install -o "$owner_uid" -g "$owner_gid" -m "$file_mode" "$backup" "$candidate.restore" && mv -f -- "$candidate.restore" "$config"
+  trap - ERR HUP INT TERM; echo 'FAILURE: restoring the previous configuration' >&2
+  mv -f -- "$candidate.restore" "$config"
   systemctl restart "$service" || true; wait_listening "$https_port" || true
   [[ "$(systemctl is-active "$service" || true)" == 'active' ]] && echo 'RECOVERY: service is active with the previous configuration' >&2
   rm -f -- "$candidate.final" "$candidate.restore"; exit 1
 }
-trap revert_now ERR
+trap revert_now ERR HUP INT TERM   # a dropped SSH session or Ctrl-C inside the risky window restores the file too
 mv -f -- "$candidate.final" "$config"
 systemctl restart "$service"
 
@@ -111,6 +114,6 @@ code="$(curl -q -sS --noproxy '*' --max-time 10 -o /dev/null -w '%{http_code}' "
 page="$(curl -q -sS --noproxy '*' --max-time 10 "http://$lan_ip:$http_port/")"; [[ "$page" == *'<title>Chill Center</title>'* ]]
 code="$(curl -q -sS --noproxy '*' --max-time 10 --cacert "$CHILLCENTER_TLS_CERT_PATH" -o /dev/null -w '%{http_code}' "https://$lan_ip:$https_port/api/2026-10-14/server")"; [[ "$code" == 200 ]]
 code="$(curl -q -sS --noproxy '*' --max-time 10 -o /dev/null -w '%{http_code}' -H 'Origin: http://attacker.example' "http://$lan_ip:$http_port/api/2026-10-14/server")"; [[ "$code" == 403 ]]
-trap cleanup EXIT; trap - ERR
+trap cleanup EXIT; trap - ERR HUP INT TERM
 printf 'enabled_utc=%s\nhttp_listen=%s:%s\nconfig_sha256=%s\nprevious_config_sha256=%s\nbackup=%s\nservice_active=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$lan_ip" "$http_port" \
   "$(sha256sum "$config" | awk '{print $1}')" "$previous_sha" "$backup" "$(systemctl is-active "$service")"

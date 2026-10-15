@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Review-only operator script (ADR-0018): redirect TCP 80 -> 8080 (the plain-HTTP listener of the web client) for the Pi's LAN address,
-# in a dedicated nftables table loaded by a dedicated systemd unit. Mechanically derived from pi-redirect-80-operator.sh (reviewed in
+# in a dedicated nftables table loaded by a dedicated systemd unit. Mechanically derived from pi-redirect-443-operator.sh (reviewed in
 # review 5): same structure, other names and ports. Requires the service to already listen on <LAN_IP>:8080 (http_listen). DO NOT EXECUTE before an independent reviewer has approved THESE EXACT BYTES (sha256 of
 # this file) and the user has given explicit go for the Pi. Runs as root on the Pi, fed through stdin:
 #   install: ssh <strict batch control connection> 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s --'          < pi-redirect-80-operator.sh

@@ -81,6 +81,7 @@ SCRIPT="$W/broken-verify.sh" run; unset SCRIPT
 echo "$OUT" | grep -q "RECOVERY: service is active" && ok "E4 message de récupération" || ko "E4 message" "absent"
 expect "E4 configuration d'origine restaurée (octets)" "$(sha "$CFG")" "$ORIG_SHA"
 expect "E4 HTTPS répond, HTTP coupé" "$(https)/$(http "http://$LAN:8080/")" "200/000"
+expect "E4 propriétaire et droits restaurés (récupération automatique)" "$(stat -c '%U:%G:%a' "$CFG")" "root:nogroup:640"
 expect "E4 aucun temporaire résiduel" "$(tmp_left)" 0
 rm -f "$RB"/server.json.*
 
@@ -92,6 +93,23 @@ SCRIPT="$W/broken-config.sh" run; unset SCRIPT
 [[ "$RC" != 0 ]] && ok "E5 configuration refusée par le serveur : sortie non nulle ($RC)" || ko "E5 code" "0"
 expect "E5 configuration d'origine restaurée" "$(sha "$CFG")" "$ORIG_SHA"
 [[ "$(systemctl is-active chillcenter)" == active && "$(https)" == 200 ]] && ok "E5 service actif avec l'ancienne configuration" || ko "E5 service" "arrêté"
+expect "E5 propriétaire et droits restaurés (récupération automatique)" "$(stat -c '%U:%G:%a' "$CFG")" "root:nogroup:640"
+rm -f "$RB"/server.json.*
+
+# ---- E5b the guard "exactly one added line" refuses a doubled insertion before anything is touched (review 6, mutant M6) --------------------
+reset_cfg; before_pid="$(pid)"
+sed 's/{ print line; done=1 }/{ print line; print line; done=1 }/' "$OP" > "$W/broken-guard.sh"; cmp -s "$OP" "$W/broken-guard.sh" && ko "E5b préparation du mutant" "sed sans effet"
+SCRIPT="$W/broken-guard.sh" run; unset SCRIPT
+expect "E5b insertion doublée : refus (2)" "$RC" 2
+expect "E5b service, configuration et sauvegardes intacts" "$(pid)|$(sha "$CFG")|$(ls "$RB" | wc -l | tr -d ' ')" "$before_pid|$ORIG_SHA|0"
+
+# ---- E5c a TERM signal inside the risky window restores the configuration (review 6, finding 3) -------------------------------------------
+reset_cfg
+sed 's/^systemctl restart "\$service"$/systemctl restart "$service"; kill -TERM $$; sleep 5/' "$OP" > "$W/term-window.sh"; cmp -s "$OP" "$W/term-window.sh" && ko "E5c préparation du mutant" "sed sans effet"
+SCRIPT="$W/term-window.sh" run; unset SCRIPT
+[[ "$RC" != 0 ]] && ok "E5c signal TERM dans la fenêtre : sortie non nulle ($RC)" || ko "E5c code" "0"
+expect "E5c configuration d'origine restaurée par le signal" "$(sha "$CFG")" "$ORIG_SHA"
+[[ "$(systemctl is-active chillcenter)" == active && "$(https)" == 200 ]] && ok "E5c service actif avec l'ancienne configuration" || ko "E5c service" "arrêté"
 rm -f "$RB"/server.json.*
 
 # ---- E6 second activation refused, then revert mode ----------------------------------------------------------------------------------------

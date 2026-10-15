@@ -185,6 +185,23 @@ fn api_routes() -> Router<AppState> {
         .route("/openapi.json", get(crate::api_version::openapi))
 }
 
+/// Routes that carry secrets or whole archives never go over the clear-text listener (ADR-0018); the web client does not use them.
+fn https_only_path(path: &str) -> bool {
+    let rest = path
+        .strip_prefix("/api/")
+        .and_then(|p| p.split_once('/'))
+        .map_or("", |(_, rest)| rest)
+        .trim_start_matches('/');
+    ["admin/tmdb", "admin/exports", "admin/imports"]
+        .iter()
+        .any(|prefix| {
+            rest == *prefix
+                || rest
+                    .strip_prefix(prefix)
+                    .is_some_and(|r| r.starts_with('/'))
+        })
+}
+
 /// Which listener a request came in on. The plain-HTTP listener (ADR-0018) serves the bundled web client only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scheme {
@@ -251,6 +268,9 @@ fn check_browser_origin_and_host(
         Scheme::Https => ("https", 443, state.config.listen.port()),
         Scheme::Http => ("http", 80, state.config.http_listen.map_or(0, |a| a.port())),
     };
+    if scheme == Scheme::Http && https_only_path(request.uri().path()) {
+        return Err(ApiError(StatusCode::FORBIDDEN, "HTTPS_ONLY"));
+    }
     let expected_origin = format!("{prefix}://{host}");
     let header = |name: &str| request.headers().get(name).map(|v| v.to_str().ok());
     let browser_allowed = match (header("sec-fetch-site"), header("origin")) {
@@ -1069,6 +1089,67 @@ mod tests {
             .await,
             refused
         );
+    }
+
+    #[tokio::test]
+    async fn secrets_and_archives_are_https_only() {
+        let (_dir, http) = setup_with(true);
+        let (_dir2, https) = setup();
+        let get = |path: &str, host: &str| {
+            let mut r = request("GET", path, Value::Null);
+            r.headers_mut().insert("host", host.parse().unwrap());
+            r
+        };
+        for path in [
+            "/api/v1/admin/tmdb",
+            "/api/v1/admin/tmdb/jobs",
+            "/api/v1/admin/tmdb/jobs/x/cancel",
+            "/api/2026-10-14/admin/tmdb",
+            "/api/v1/admin/exports",
+            "/api/v1/admin/exports/abc",
+            "/api/v1/admin/imports",
+            "/api/v1/admin/imports/abc/apply",
+        ] {
+            assert_eq!(
+                http.clone()
+                    .oneshot(get(path, "localhost:8080"))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN,
+                "{path} must be refused over HTTP"
+            );
+            assert_ne!(
+                https
+                    .clone()
+                    .oneshot(get(path, "localhost:8443"))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN,
+                "{path} must stay available over HTTPS"
+            );
+        }
+        // Everything the web client needs stays reachable; look-alike prefixes are not caught.
+        for path in [
+            "/api/v1/admin/library",
+            "/api/v1/profiles",
+            "/api/v1/admin/scan",
+            "/api/v1/admin/tmdbx",
+            "/api/v1/admin/exportsx",
+        ] {
+            assert_ne!(
+                http.clone()
+                    .oneshot(get(path, "localhost:8080"))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN,
+                "{path}"
+            );
+        }
+        assert!(super::https_only_path("/api/v1//admin/tmdb"));
+        assert!(!super::https_only_path("/admin/tmdb"));
     }
 
     #[tokio::test]

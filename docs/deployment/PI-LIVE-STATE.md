@@ -42,6 +42,8 @@ Décision de l'utilisateur : le client web doit être joignable par les autres m
 
 Nouveaux fichiers de livraison (hashes dans le runbook, étapes 9 à 12) : `scripts/pi-enable-http-operator.sh`, `scripts/pi-redirect-80-operator.sh`, noms réservés `chillcenter-redirect-http.service`, `/etc/chillcenter/redirect-80.nft`, table `chillcenter_http`, sauvegarde de configuration `/root/chillcenter-rollback/server.json.<12 premiers hex>`.
 
+Après l'étape d'activation, **le hash de `/etc/chillcenter/server.json` change** (`ea24f2f0…` → nouveau) : tout script qui épingle l'ancien hash refusera de tourner, ce qui est voulu. **Tout script qui réécrit `server.json` doit conserver `http_listen`**, sinon le port HTTP disparaît ; un binaire sans ce champ refuse la configuration (`deny_unknown_fields`). Le binaire à venir (`ffcc6349…`) remplace `a7ab7b07…` dans §1 une fois déployé.
+
 Ce qui reste à faire sur le Pi, **chaque étape après revue indépendante et feu vert explicite de l'utilisateur** : nouveau binaire, ajout de `"http_listen": "192.168.1.42:8080"` à `/etc/chillcenter/server.json` (avec sauvegarde de l'ancien fichier), redirection du port 80 vers 8080 dans une table distincte. **Après cette étape, un retour vers un binaire sans `http_listen` exige de restaurer l'ancienne configuration.**
 
 ## 4. Pour l'agent du client Mac : ce qu'il faut adapter

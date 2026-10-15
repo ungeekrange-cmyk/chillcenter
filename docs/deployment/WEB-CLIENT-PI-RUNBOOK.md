@@ -201,16 +201,18 @@ Chaque étape exige : la revue indépendante n° 6 des octets exacts, puis ton f
 
 | Fichier | SHA-256 |
 | --- | --- |
-| Binaire ARM64 (avec `http_listen`) | `92917152b3a954fe682c0a788011bfa389aa72d3f4ca5824609bfcb3ede379a0` (14 884 936 octets) |
-| Archive web (repli `randomUUID`) | `f8a051ae9fc36f0393acf5c6a36a83e40865ea1ada9d50c1791f8bea38f09518` |
+| Binaire ARM64 (avec `http_listen`) | `ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7` (14 890 920 octets) |
+| Archive web (repli `randomUUID`) | `24839b3d81f21632818903c5c097471a98086748303ac304477f23e480d00df2` |
 | `scripts/pi-update-web-operator.sh` (V8, **inchangé**) | `dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29` |
-| `scripts/pi-enable-http-operator.sh` | `e5f687d90e84c72507d4e0171aa5ec8c3aafd8237600fbe91c643abaf12ddd14` |
-| `scripts/pi-redirect-80-operator.sh` | `c0f8e000fc6518797bd96c89c172913b0e4e9fc7eea48cf7312210ffaf837e9e` |
+| `scripts/pi-enable-http-operator.sh` | `fb88ceffb9558a7b4988f0a929e3696760952b6102f5fb3e83decabb616c748b` |
+| `scripts/pi-redirect-80-operator.sh` | `07d49c26e46e307f0f06841c452a0a11c8609e540b110fb5c288e038da30f3a0` |
 
-9. **Nouveau binaire et archive** : étapes 2 à 6 avec le script V8, `OLD_BINARY_SHA256=a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527` (binaire actuellement installé), `NEW_BINARY_SHA256=92917152b3a954fe682c0a788011bfa389aa72d3f4ca5824609bfcb3ede379a0`, `WEB_ARCHIVE_SHA256=f8a051ae9fc36f0393acf5c6a36a83e40865ea1ada9d50c1791f8bea38f09518`. Le nouveau binaire sans `http_listen` se comporte comme l'actuel.
-10. **Activer le listener** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 NEW_BINARY_SHA256=92917152b3a954fe682c0a788011bfa389aa72d3f4ca5824609bfcb3ede379a0 CONFIG_SHA256=ea24f2f0a98db2b0a080ab70113a2fbe8eb1006a20e2eae646d115448f3783f9 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem /bin/bash -s --' < scripts/pi-enable-http-operator.sh`. Refuse (42) si un client est connecté. Sauvegarde privée : `/root/chillcenter-rollback/server.json.ea24f2f0a98d`. Récupération automatique en cas d'échec. **Retour arrière** : même commande avec `CONFIG_SHA256=<hash affiché après activation> PREVIOUS_CONFIG_SHA256=ea24f2f0…3783f9` et `-s -- --revert`.
+9. **Nouveau binaire et archive** : étapes 2 à 6 avec le script V8, `OLD_BINARY_SHA256=a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527` (binaire actuellement installé), `NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7`, `WEB_ARCHIVE_SHA256=24839b3d81f21632818903c5c097471a98086748303ac304477f23e480d00df2`. Le nouveau binaire sans `http_listen` se comporte comme l'actuel.
+10. **Activer le listener** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7 CONFIG_SHA256=ea24f2f0a98db2b0a080ab70113a2fbe8eb1006a20e2eae646d115448f3783f9 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem /bin/bash -s --' < scripts/pi-enable-http-operator.sh`. Refuse (42) si un client est connecté. Sauvegarde privée : `/root/chillcenter-rollback/server.json.ea24f2f0a98d`. Récupération automatique en cas d'échec. **Retour arrière** : même commande avec `CONFIG_SHA256=<hash affiché après activation> PREVIOUS_CONFIG_SHA256=ea24f2f0…3783f9` et `-s -- --revert`.
 11. **Rediriger le port 80** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s --' < scripts/pi-redirect-80-operator.sh` (table `chillcenter_http`, unité `chillcenter-redirect-http.service`) ; retrait : `-s -- --remove`.
 12. **Tests Mac → Pi** : `http://192.168.1.42/` depuis le Mac et un téléphone du Wi-Fi ; lecture d'un film MP4, MKV et AVI ; `https://192.168.1.42:8443` pour le client Mac inchangé.
+
+Après un `--revert` de l'étape 10, la redirection du port 80 (étape 11) pointe vers un port fermé : la retirer aussi (`--remove`). L'exécution de l'étape 10 est réservée à une fenêtre où tu as un accès console au Pi (un redémarrage du service y est fait).
 
 **Ordre impératif** : 9, 10, 11 (le script de redirection exige que le service écoute déjà sur `192.168.1.42:8080`). Un retour du binaire (étape 7) vers un build sans `http_listen` exige d'abord le `--revert` de l'étape 10.
 
