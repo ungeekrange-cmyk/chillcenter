@@ -123,7 +123,7 @@
       // A zero-length chunk repeats the previous frame: keep the time base by frame position.
       const times = []; const list = [];
       all.forEach((e, i) => { if (e.size > 0) { list.push(e); times.push(i * frame); } });
-      const track = { id: index + 1, kind: "video", timescale: 90000, language: null, codec: null, mime: null, type: s.fourcc, width: s.width, height: s.height, decoder: { fourcc: s.fourcc, width: s.width, height: s.height }, name: null };
+      const track = { id: index + 1, kind: "video", timescale: 90000, language: null, codec: null, mime: null, type: s.fourcc, width: s.width, height: s.height, ptsMode: "decode", decoder: { fourcc: s.fourcc, width: s.width, height: s.height }, name: null };
       return this.finish(track, list, times);
     }
 

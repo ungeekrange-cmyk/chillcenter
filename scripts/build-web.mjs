@@ -3,7 +3,7 @@
 // ui/connected is never modified: the web client follows it at every build (ADR-0012).
 // Usage: node scripts/build-web.mjs [outDir]   (default: web/dist)
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ui = join(root, "ui/connected");
 const src = join(root, "web/src");
 const out = resolve(process.argv[2] || join(root, "web/dist"));
-const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "mkv.js", "avi.js", "soft-video.js", "range-reader.js", "mse-engine.js", "player-web.js", "bridge.js", "register-sw.js"];
+const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "bridge.js", "register-sw.js"];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -20,6 +20,13 @@ cpSync(ui, out, {
   filter: path => !/(\/qa\.js|-qa\.js|\.test\.js)$/.test(path) && !path.endsWith("/tests"),
 });
 for (const name of [...webScripts, "web.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name));
+// MPEG-4 (Xvid/DivX) WebAssembly decoder: built by web/decoder/mpeg4, loaded by a Worker only when needed.
+mkdirSync(join(out, "vendor/mpeg4"), { recursive: true });
+const vendor = join(root, "web/vendor/mpeg4");
+if (existsSync(join(vendor, "mpeg4-decoder.wasm"))) {
+  cpSync(vendor, join(out, "vendor/mpeg4"), { recursive: true });
+  for (const name of ["mpeg4-core.js", "mpeg4-worker.js"]) cpSync(join(src, name), join(out, "vendor/mpeg4", name));
+} else console.warn("web/vendor/mpeg4 absent : les AVI Xvid/DivX resteront non lisibles.");
 
 // Device wording: this is no longer "this Mac".
 const patch = (file, from, to) => {

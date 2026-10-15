@@ -1,6 +1,6 @@
 # ADR-0014 — Évaluation d'un décodeur MPEG-4 ASP (Xvid) en WebAssembly pour l'AVI web
 
-- Status : `PROPOSED` — direction **B** demandée par l'utilisateur (voir l'historique) ; **aucun décodeur adopté, rien téléchargé ni installé**. Date : `2026-10-14`.
+- Status : `PROPOSED` — direction **B** demandée par l'utilisateur ; **décodeur compilé et intégré le 15 octobre 2026** (voir « Réalisation »). Revue indépendante et mesures sur appareils réels à faire. Date : `2026-10-14`.
 - Decision Owner / Author Instance : `/root` ; Reviewer Instance : à désigner (≠ auteur).
 - Branche : `codex/web-pwa`. Supersedes / Superseded By : `NONE` / `NONE`. Complète ADR-0013 (qui réserve le WASM à un ADR dédié).
 - Related Items : ADR-0012/0013, [preuve Pi](../../implementation/WEB-PI-READONLY-EVIDENCE.md), F-22.
@@ -81,9 +81,35 @@ Décision utilisateur requise. Rien n'est téléchargé ni installé tant qu'ell
 | Audio MP3 en flux brut `audio/mpeg` quand `audio/mp4` ne l'accepte pas (constaté sur ce Chromium) + **resynchronisation sur frontière de trame** (des AVI du catalogue découpent les trames entre chunks : première synchro à l'octet 84 sur un fichier réel) | Fait | 2 tests MP3 ; navigateur OK |
 | Interface de décodeur `ChillSoft.decoders.register({match, create})` ; message clair tant qu'aucun décodeur n'est installé | Fait | Test : « Le décodeur logiciel Xvid (MPEG-4) n'est pas installé… » |
 
-**Manque encore : le décodeur MPEG-4 ASP lui-même** (l'unique pièce WebAssembly). Tout le reste du chemin AVI est prêt et éprouvé avec un décodeur factice.
+**Le décodeur MPEG-4 ASP (l'unique pièce WebAssembly) est maintenant compilé et branché** (voir « Réalisation »).
 
-## Téléchargements nécessaires pour le décodeur réel — soumis à ton accord, rien n'est téléchargé
+## Réalisation (15 octobre 2026) — accord utilisateur reçu, décodeur compilé
+
+Téléchargements effectués, aux tailles annoncées et confirmées :
+
+| Élément | Taille exacte | Vérification |
+| --- | ---: | --- |
+| FFmpeg 9.0.2 (`ffmpeg-9.0.2.tar.xz`) | 12 040 788 octets | SHA-256 `8c385028…002e` = valeur du formula Homebrew (FFmpeg ne publie pas de SHA-256 ; `gpg` absent) |
+| Image `emscripten/emsdk` 6.0.12, arm64, par digest `sha256:a7883da4…8c98` | 826 234 814 octets compressés (3,39 Go décompressée) | Digest identique après `docker pull` |
+| Image VM Colima `ubuntu-24.04-minimal-cloudimg-arm64-docker` | 332 354 401 octets | Docker Desktop n'étant pas installé, Colima (déjà présent, sans VM) a été démarré avec l'accord explicite de l'utilisateur ; sha512 fourni par le binaire colima |
+
+**Écart de procédure à signaler** : une première tentative de compilation a échoué car la VM ne partage que le dossier personnel (l'archive sous `/private/tmp` n'était pas visible) ; le contrôle SHA-256 du script a refusé de continuer. L'archive est désormais copiée dans `.build-cache/` (ignoré par Git).
+
+Résultat : `web/vendor/mpeg4/mpeg4-decoder.wasm` **652 895 octets** (231 303 octets compressé gzip), `mpeg4-decoder.js` 14 954 octets ; compilé **sans** `--enable-gpl` ni `--enable-nonfree`, un seul thread (aucun `SharedArrayBuffer`, aucun en-tête COOP/COEP) ; provenance dans `BUILD-INFO.json`, [avis LGPL](../../../web/vendor/mpeg4/NOTICE-LGPL.md), reconstruction par `web/decoder/mpeg4/build-in-docker.sh`.
+
+Vérifications (Node + navigateur) :
+
+| Vérification | Résultat |
+| --- | --- |
+| Images décodées = images de `ffmpeg` natif (PSNR luma > 40 dB), B-frames, ordre et nombre d'images exacts | PASS |
+| Reprise après saut (reset puis keyframe), paquet corrompu toléré sans exception | PASS |
+| Débit WASM mono-thread, Node, contenu `mandelbrot` détaillé, B-frames : 640×272 → 3 100 i/s ; 720×400 → 2 132 ; 640×480 → **1 901 i/s (×76 temps réel)** ; 1280×720 → 740 (×30) ; ≈ 2× plus lent que le natif | Critère « ≥ 30 i/s à 640×480 » **dépassé** sur Mac (M-series) |
+| Taille du `.wasm` < 1 Mio | 652 895 octets : PASS |
+| Navigateur intégré, vrai AVI Xvid + MP3 : lecture, saut via la barre de progression de l'interface ; temps incrusté dans l'image = temps audio à 30 ms près | PASS |
+
+**Non vérifié** : tablette/téléphone/PC lent (critère « appareil le plus faible visé »), 10 min de lecture continue (dérive A/V), mémoire (< 150 Mio), contenu réel (films) au lieu de synthétique, lecture depuis le Pi par navigateur. Les AVI avec flux packed-bitstream DivX n'ont pas été testés.
+
+## Téléchargements nécessaires pour le décodeur réel (prévision initiale, voir « Réalisation » pour le réel)
 
 Choix technique, cohérent avec « léger et stable » : **pas de libav.js ni ffmpeg.wasm**. On compile un module minimal à partir des sources de FFmpeg, avec notre propre enveloppe C d'une centaine de lignes (ouverture du décodeur `mpeg4`, envoi d'un paquet, récupération d'une image I420), puis on **fige le `.wasm` dans le dépôt** (aucune dépendance suivie à l'exécution).
 
