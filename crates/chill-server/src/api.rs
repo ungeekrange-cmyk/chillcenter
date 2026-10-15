@@ -694,6 +694,100 @@ mod tests {
         )
     }
     #[tokio::test]
+    async fn legacy_titles_equal_to_opaque_keys_cannot_select_or_edit_another_group() {
+        for use_media_key in [false, true] {
+            let (dir, app) = setup();
+            let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+            let profile = store.create_profile("Selector").unwrap();
+            let items = [1001, 2002]
+                .into_iter()
+                .map(|tv| {
+                    let mut m = chill_catalog::scanner::parse_file(
+                        std::path::Path::new("/fixture"),
+                        &std::path::PathBuf::from(format!("/fixture/Show{tv}/S01E01.mkv")),
+                    );
+                    m.category = "serie".into();
+                    m.series = Some(format!("Show{tv}"));
+                    m.tmdb_id = Some(tv);
+                    m.season = Some(1);
+                    m.episode = Some(1);
+                    m
+                })
+                .collect();
+            store.snapshot(items).unwrap();
+            let items = store.catalog(&profile.id).unwrap();
+            let target = items.iter().find(|m| m.tmdb_id == Some(1001)).unwrap();
+            let literal = items.iter().find(|m| m.tmdb_id == Some(2002)).unwrap();
+            let key = if use_media_key {
+                format!("media:{}", target.id)
+            } else {
+                "tmdb:tv:1001".into()
+            };
+            store
+                .update_media_at_revision(
+                    &profile.id,
+                    &literal.id,
+                    store.media_revision(&literal.id).unwrap(),
+                    &chill_catalog::model::MediaPatch {
+                        series: Some(key.clone()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            for version in ["2026-10-14", "v1"] {
+                let endpoint = format!("/api/{version}/profiles/{}/series/{key}", profile.id);
+                for (suffix, tv) in [
+                    ("", 2002),
+                    ("?selector=title", 2002),
+                    ("?selector=key", 1001),
+                ] {
+                    let (status, view) =
+                        json_call(&app, "GET", &(endpoint.clone() + suffix), Value::Null).await;
+                    assert_eq!(status, StatusCode::OK);
+                    assert_eq!(view["episodes"].as_array().unwrap().len(), 1);
+                    assert_eq!(view["episodes"][0]["tmdb_id"], tv);
+                }
+                for (suffix, tv, overview) in [
+                    ("", 2002, "Legacy literal title"),
+                    ("?selector=key", 1001, "Explicit opaque target"),
+                ] {
+                    let before = store.catalog(&profile.id).unwrap();
+                    let patch_name = before
+                        .iter()
+                        .find(|m| m.tmdb_id == Some(tv))
+                        .unwrap()
+                        .series
+                        .clone()
+                        .unwrap();
+                    let body = json!({"expected_revision":store.common_revision().unwrap(),"patch":{"name":patch_name,"year":0,"genres":[],"overview":overview,"cast":[],"directors":[]}});
+                    let (status, _) =
+                        json_call(&app, "PUT", &(endpoint.clone() + suffix), body).await;
+                    assert_eq!(status, StatusCode::OK);
+                    let after = store.catalog(&profile.id).unwrap();
+                    for old in before {
+                        let new = after.iter().find(|m| m.id == old.id).unwrap();
+                        if old.tmdb_id == Some(tv) {
+                            assert_eq!(new.series_overview, overview);
+                        } else {
+                            assert_eq!(
+                                new, &old,
+                                "Unselected group must remain completely unchanged"
+                            );
+                        }
+                        assert_eq!(new.tmdb_id, old.tmdb_id);
+                        assert_eq!(new.path, old.path);
+                    }
+                }
+                assert_eq!(
+                    json_call(&app, "GET", &(endpoint + "?selector=invalid"), Value::Null)
+                        .await
+                        .0,
+                    StatusCode::BAD_REQUEST
+                );
+            }
+        }
+    }
+    #[tokio::test]
     async fn legacy_title_series_api_keeps_web_reads_and_edits_without_merging_identities() {
         let (dir, app) = setup();
         let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
@@ -751,7 +845,10 @@ mod tests {
                 let (status, one) = json_call(
                     &app,
                     "GET",
-                    &format!("/api/{version}/profiles/{}/series/{key}", profile.id),
+                    &format!(
+                        "/api/{version}/profiles/{}/series/{key}?selector=key",
+                        profile.id
+                    ),
                     Value::Null,
                 )
                 .await;
@@ -787,7 +884,7 @@ mod tests {
             store.series(&profile.id, "Doctor Who legacy").is_err(),
             "Internal title-based mutations must remain guarded"
         );
-        let (status,updated)=json_call(&app,"PUT",&format!("/api/2026-10-14/profiles/{}/series/tmdb:tv:1001",profile.id),json!({"expected_revision":store.common_revision().unwrap(),"patch":{"name":"Doctor Who isolated","year":0,"genres":[],"overview":"One show only","cast":[],"directors":[]}})).await;
+        let (status,updated)=json_call(&app,"PUT",&format!("/api/2026-10-14/profiles/{}/series/tmdb:tv:1001?selector=key",profile.id),json!({"expected_revision":store.common_revision().unwrap(),"patch":{"name":"Doctor Who isolated","year":0,"genres":[],"overview":"One show only","cast":[],"directors":[]}})).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(updated["episodes"].as_array().unwrap().len(), 1);
         assert_eq!(

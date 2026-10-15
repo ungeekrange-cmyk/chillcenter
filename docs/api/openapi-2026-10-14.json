@@ -1041,8 +1041,15 @@
           "required": true,
           "schema": {
             "type": "string",
-            "description": "Nom URL-encodé."
+            "description": "Titre URL-encodé par défaut ; clé opaque uniquement avec selector=key."
           }
+        },
+        {
+          "name": "selector",
+          "in": "query",
+          "required": false,
+          "description": "title conserve strictement la vue historique par titre, y compris les titres commençant par media: ou tmdb:tv:. key sélectionne explicitement une identité opaque pour les nouveaux clients.",
+          "schema": { "type": "string", "enum": ["title", "key"], "default": "title" }
         }
       ]
     },

@@ -1892,11 +1892,12 @@ impl UiClient {
                 valid_series_name(&name)?;
                 let p = self.profile()?;
                 let segment = percent_segment(&name);
+                let selector = series_selector_query(&name);
                 self.request(
                     HttpMethod::GET,
                     &format!("/api/v1/profiles/{p}/series/{segment}"),
                     None,
-                    &[],
+                    &selector,
                     &[],
                 )
             }
@@ -1909,11 +1910,12 @@ impl UiClient {
                 let payload = series_edit_payload(expected_revision, patch)?;
                 let p = self.profile()?;
                 let segment = percent_segment(&series);
+                let selector = series_selector_query(&series);
                 self.request(
                     HttpMethod::PUT,
                     &format!("/api/v1/profiles/{p}/series/{segment}"),
                     Some(&payload),
-                    &[],
+                    &selector,
                     &[],
                 )
             }
@@ -2396,6 +2398,13 @@ fn valid_tmdb_query(query: &str) -> Result<(), UiError> {
     }
     Ok(())
 }
+fn series_selector_query(name: &str) -> Vec<(&'static str, String)> {
+    if name.starts_with("media:") || name.starts_with("tmdb:tv:") {
+        vec![("selector", "key".into())]
+    } else {
+        vec![]
+    }
+}
 fn valid_series_name(name: &str) -> Result<(), UiError> {
     if name.trim().is_empty() || name.len() > 500 {
         return Err(invalid("Série invalide."));
@@ -2474,6 +2483,18 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn opaque_series_keys_are_explicit_on_the_wire() {
+        assert_eq!(
+            super::series_selector_query("tmdb:tv:1001"),
+            vec![("selector", "key".into())]
+        );
+        assert_eq!(
+            super::series_selector_query("media:11111111-1111-4111-8111-111111111111"),
+            vec![("selector", "key".into())]
+        );
+        assert!(super::series_selector_query("Doctor Who").is_empty());
+    }
     use super::*;
     #[test]
     fn sync_generation_accepts_dirty_base_but_rejects_late_mutation() {

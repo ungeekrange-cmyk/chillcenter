@@ -483,15 +483,33 @@ async fn update_media(
         .await?;
     Ok(Json(json!({"media":updated,"revision":revision})))
 }
+#[derive(Deserialize, Default)]
+struct SeriesSelector {
+    selector: Option<String>,
+}
+impl SeriesSelector {
+    fn opaque(&self) -> Result<bool, ApiError> {
+        match self.selector.as_deref() {
+            None | Some("title") => Ok(false),
+            Some("key") => Ok(true),
+            Some(_) => Err(ApiError(StatusCode::BAD_REQUEST, "INVALID_OPERATION")),
+        }
+    }
+}
 async fn series(
     State(state): State<AppState>,
     Path((profile, series)): Path<(String, String)>,
+    Query(selector): Query<SeriesSelector>,
 ) -> Result<Json<Value>, ApiError> {
+    let opaque = selector.opaque()?;
+    if opaque && !series.starts_with("media:") && !series.starts_with("tmdb:tv:") {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "INVALID_OPERATION"));
+    }
     let key = series.clone();
     let (members, revision, seasons, tv_id) = state
         .database
         .call(move |store| {
-            let members = if key.starts_with("media:") || key.starts_with("tmdb:tv:") {
+            let members = if opaque {
                 store.series(&profile, &key)?
             } else {
                 store.legacy_series_view(&profile, &key)?
@@ -545,12 +563,17 @@ struct SharedSeriesEdit {
 async fn edit_series(
     State(state): State<AppState>,
     Path((profile, series)): Path<(String, String)>,
+    Query(selector): Query<SeriesSelector>,
     Json(body): Json<SharedSeriesEdit>,
 ) -> Result<Json<Value>, ApiError> {
+    let opaque = selector.opaque()?;
+    if opaque && !series.starts_with("media:") && !series.starts_with("tmdb:tv:") {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "INVALID_OPERATION"));
+    }
     let result = state
         .database
         .call(move |s| {
-            if !series.starts_with("media:") && !series.starts_with("tmdb:tv:") {
+            if !opaque {
                 let next = body.patch.name.trim().to_owned();
                 s.update_legacy_series_view(
                     &profile,
