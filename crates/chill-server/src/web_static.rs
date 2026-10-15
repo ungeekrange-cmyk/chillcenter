@@ -10,7 +10,7 @@ use axum::{
     body::Body,
     extract::State,
     http::{Method, Request, StatusCode},
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use std::path::{Path, PathBuf};
 
@@ -35,8 +35,8 @@ fn web_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/nonexistent/chillcenter-web"))
 }
 
-const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
-const PAGE_POLICY: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024; // whole file is read into memory: keep it small on a 1 GiB device
+const PAGE_POLICY: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 fn content_type(name: &str) -> Option<&'static str> {
     Some(match name.rsplit_once('.')?.1 {
@@ -92,6 +92,12 @@ pub async fn serve(
     request: Request<Body>,
 ) -> Result<Response, ApiError> {
     let not_found = || ApiError(StatusCode::NOT_FOUND, "NOT_FOUND");
+    // An unknown API route keeps its previous behaviour for every method: a bare 404 that
+    // `normalize_response` turns into the JSON `ROUTE_NOT_FOUND` envelope.
+    let path = request.uri().path();
+    if path == "/api" || path.starts_with("/api/") {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
     if request.method() != Method::GET && request.method() != Method::HEAD {
         return Err(ApiError(
             StatusCode::METHOD_NOT_ALLOWED,
@@ -178,5 +184,11 @@ mod tests {
         assert_eq!(read_file(&root, "link.json"), None);
         assert_eq!(read_file(&root, "missing.js"), None);
         assert_eq!(read_file(&dir.path().join("absent"), "index.html"), None);
+        // A symlinked directory inside the web root is refused as well (not only a symlinked file).
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("secret.json"), b"{}").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("dirlink")).unwrap();
+        assert_eq!(read_file(&root, "dirlink/secret.json"), None);
     }
 }

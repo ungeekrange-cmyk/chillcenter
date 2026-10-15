@@ -814,6 +814,73 @@ mod tests {
         );
     }
 
+    // The test web root lives in a thread-local: `#[tokio::test]` runs the whole request on the test's own thread.
+    #[tokio::test]
+    async fn static_files_obey_the_same_guard_and_unknown_api_routes_stay_json_404() {
+        let (dir, app) = setup();
+        std::fs::create_dir(dir.path().join("web")).unwrap();
+        std::fs::write(dir.path().join("web/index.html"), b"<!doctype html>").unwrap();
+        crate::web_static::set_test_root(Some(dir.path().join("web")));
+        let send = |method: &str, path: &str, headers: Vec<(&str, Vec<u8>)>| {
+            let app = app.clone();
+            let mut r = Request::builder()
+                .method(method)
+                .uri(path)
+                .header("host", "localhost:8443")
+                .body(Body::empty())
+                .unwrap();
+            for (name, value) in headers {
+                r.headers_mut().insert(
+                    axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                    axum::http::HeaderValue::from_bytes(&value).unwrap(),
+                );
+            }
+            async move { app.oneshot(r).await.unwrap() }
+        };
+        let same = || vec![("sec-fetch-site", b"same-origin".to_vec())];
+        // Static files are refused to other sites, like the API.
+        assert_eq!(
+            send("GET", "/", vec![("sec-fetch-site", b"cross-site".to_vec())])
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        // Typed-in navigation (`none`) may only GET static files.
+        assert_eq!(
+            send("POST", "/", vec![("sec-fetch-site", b"none".to_vec())])
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        // Origin `null`, non-UTF-8 origin, foreign origin: refused even when same-origin is claimed.
+        for origin in [b"null".to_vec(), vec![0xff, 0xfe], b"https://other.example".to_vec()] {
+            let mut h = same();
+            h.push(("origin", origin));
+            assert_eq!(send("GET", "/", h).await.status(), StatusCode::FORBIDDEN);
+        }
+        // Scheme/host case is irrelevant to the origin comparison.
+        let mut h = same();
+        h.push(("origin", b"HTTPS://LOCALHOST:8443".to_vec()));
+        assert_eq!(send("GET", "/", h).await.status(), StatusCode::OK);
+        // HEAD is served without a body, other methods are refused on static files.
+        let head = send("HEAD", "/index.html", same()).await;
+        assert_eq!(head.status(), StatusCode::OK);
+        assert!(head.into_body().collect().await.unwrap().to_bytes().is_empty());
+        assert_eq!(
+            send("POST", "/index.html", same()).await.status(),
+            StatusCode::METHOD_NOT_ALLOWED
+        );
+        // Unknown API routes keep the JSON ROUTE_NOT_FOUND envelope for every method.
+        for method in ["GET", "POST", "PUT", "DELETE"] {
+            let response = send(method, "/api/2026-10-14/does-not-exist", Vec::new()).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{method}");
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(body["code"], "ROUTE_NOT_FOUND", "{method}");
+        }
+    }
+
     #[tokio::test]
     async fn http2_authority_without_host_is_accepted() {
         let (_dir, app) = setup();
