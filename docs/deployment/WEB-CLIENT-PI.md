@@ -112,7 +112,7 @@ Résultats après corrections :
 | Build ARM64 (`cargo zigbuild … .2.28`) | OK en 1 min 9 s ; `file` : ELF aarch64 strippé |
 | `node --test web/test/*.test.js` | 49 passés |
 | Essai binaire + archive sous Linux aarch64 (`scripts/web-e2e-linux.sh`) | **20 sur 20** |
-| **Simulation du déploiement** (`scripts/pi-operator-simulation.sh`, VM Ubuntu 24.04 aarch64, GNU tar 1.35, coreutils 9.4, curl 8.5.0, root, vrai ancien binaire `1eb24e97…` comme service via un `systemctl` factice, script envoyé par stdin comme en production) | **34 PASS, 0 FAIL** : A déploiement nominal (binaire, web, rollback, sauvegarde, invariants, aucun résidu) ; B mauvaise URL refusée **avant** l'arrêt ; C échec de vérification ⇒ ancien binaire restauré, `web/` retiré, service actif ; D idem avec un ancien `web/` qui revient ; E redéploiement avec copie de rollback réutilisée et ancien web conservé ; F copie de rollback douteuse refusée ; G connexion cliente établie ⇒ refus (42) ; H archive avec lien symbolique refusée |
+| **Simulation du déploiement** (`scripts/pi-operator-simulation.sh`, VM Ubuntu 24.04 aarch64, GNU tar 1.35, coreutils 9.4, curl 8.5.0, root, vrai ancien binaire `1eb24e97…` comme service via un `systemctl` factice, script envoyé par stdin comme en production) | **34 PASS, 0 FAIL** (état de V6, dépassé : V7 passe **45 PASS**, voir « Reprise après la revue n° 2 ») : A déploiement nominal (binaire, web, rollback, sauvegarde, invariants, aucun résidu) ; B mauvaise URL refusée **avant** l'arrêt ; C échec de vérification ⇒ ancien binaire restauré, `web/` retiré, service actif ; D idem avec un ancien `web/` qui revient ; E redéploiement avec copie de rollback réutilisée et ancien web conservé ; F copie de rollback douteuse refusée ; G connexion cliente établie ⇒ refus (42) ; H archive avec lien symbolique refusée |
 
 Limites honnêtes de cette simulation : l'UID de service 997 était pris dans la VM ; la copie testée du script ne diffère de l'original **que** par ce nombre (2 lignes, substitution mécanique `sed`). Le « service » est piloté par un `systemctl` factice, pas par systemd ; l'environnement est Ubuntu 24.04, pas Debian 13 ; mémoire et CPU du Pi 3B+ non représentatifs. Un premier essai de simulation a échoué sur le défaut de signaux ci-dessus et sur des artefacts du banc (arrêt factice trop court, processus d'un essai interrompu) : corrigés, rien n'a été caché.
 
@@ -133,7 +133,7 @@ La [revue n° 2](../reviews/web-pi-deploy-v6-review-2.md) (nouvel agent, qui a r
 
 Résultat de la simulation étendue (VM Ubuntu 24.04 aarch64, GNU tar 1.35, coreutils 9.4, curl 8.5.0, vrai ancien binaire, script par stdin) : **45 PASS, 0 FAIL** (scénarios A à J et N). Un premier passage a signalé un échec **de mon scénario J** (j'avais rendu le dossier de données illisible pour le service, qui ne pouvait plus redémarrer ; le script l'avait dit honnêtement, `SERVICE IS NOT ACTIVE`) : le scénario ne sabote désormais que le dossier des sauvegardes. Le Rust (`3a0d53a`), le binaire et l'archive web **ne changent pas** : hashes inchangés.
 
-## 4. Revue indépendante (obligatoire avant exécution) — la la revue n° 3 doit porter sur les octets V7 ci-dessus
+## 4. Revue indépendante (obligatoire avant exécution) — la revue n° 3 a porté sur les octets V7 ci-dessus (voir « Revue indépendante n° 3 »)
 
 Un reviewer distinct de l'auteur (et sans droit d'édition sur le contenu revu) approuve **les octets exacts** de : `pi-update-web-operator.sh` (hash §2), le diff Rust, l'archive web finale et le hash du binaire. Points à contrôler : arrêt refusé si connexion établie ; sauvegarde hors ligne sous l'UID 997 ; copie de rollback sans écrasement ; remplacement atomique du binaire ; refus des liens symboliques/membres spéciaux dans l'archive ; `SHA256SUMS` couvrant tout l'arbre ; vérifications en TLS strict (jamais `-k`) ; **restauration automatique** (ancien binaire + ancien dossier web) à tout échec avant `completed=1` ; invariants config/unité/SPKI. Auto-test local : `bash scripts/pi-update-web-operator.sh --self-test` → `parser_self_test=PASS`, `bash -n` OK ; `shellcheck` non disponible. Preuve d'exécution réelle sous Linux : simulation 45/45 (§3).
 
@@ -147,7 +147,7 @@ Prérequis : une **connexion maître SSH stricte/batch** ouverte par toi (les an
 CP=<chemin du ControlPath que tu as ouvert>;  HOST=<hôte Pi>
 # a) Préflight en LECTURE SEULE (aucune écriture) : sudoers autorise `env`, service actif, hash binaire installé,
 #    espace disque, curl et ss présents, chemin du certificat public
-ssh -S "$CP" "$HOST" 'sudo -n env true && echo sudo_env_ok; sudo -n sha256sum /usr/lib/chillcenter/chill-server; systemctl is-active chillcenter; df -h /usr /var/tmp | tail -2; command -v curl ss; ls -l /var/lib/chillcenter/data/tls/certificate.pem'
+ssh -S "$CP" "$HOST" 'sudo -n env true && echo sudo_env_ok; sudo -n sha256sum /usr/lib/chillcenter/chill-server; systemctl is-active chillcenter; df -h /usr /var/tmp | tail -2; command -v curl ss openssl runuser seq; ls -l /var/lib/chillcenter/data/tls/certificate.pem'
 # b) Copie des deux fichiers vers /var/tmp du Pi (écriture déclarée : 2 fichiers, ≈ 8 Mio)
 scp -o ControlPath="$CP" target/aarch64-unknown-linux-gnu/release/chill-server "$HOST":/var/tmp/chill-server-web.new
 scp -o ControlPath="$CP" artifacts/web-pi/chillcenter-web.tar "$HOST":/var/tmp/chillcenter-web.tar
@@ -184,9 +184,26 @@ Aucune migration SQLite n'est introduite par ce lot : l'ancien binaire reste com
 
 ## 8. Ce qui n'est pas prouvé
 
-Exécution du script opérateur sur le vrai Pi (`NOT_RUN` ; seule la simulation Linux/VM a eu lieu), durée réelle d'interruption, revue indépendante n° 3 des octets V7 (`À FAIRE`), lecture réelle depuis un navigateur sur le Pi, performances sur appareils faibles, Service Worker sur certificat auto-signé. Compilation, tests Rust, build ARM64 et essai de bout en bout Linux : faits (§3).
+Exécution du script opérateur sur le vrai Pi (`NOT_RUN` ; seule la simulation Linux/VM a eu lieu), durée réelle d'interruption, revue indépendante n° 3 des octets V7 (faite : APPROVED_WITH_CONDITIONS ; elle ne remplace pas ton feu vert), lecture réelle depuis un navigateur sur le Pi, performances sur appareils faibles, Service Worker sur certificat auto-signé. Compilation, tests Rust, build ARM64 et essai de bout en bout Linux : faits (§3).
 
 Rejouer l'essai de bout en bout : `colima start` puis `colima ssh -- <repo>/scripts/web-e2e-linux.sh <repo>` (le binaire et `artifacts/web-pi/chillcenter-web.tar` doivent exister), puis `colima stop`.
+
+## Revue indépendante n° 3 (15 octobre 2026)
+
+Verdict **APPROVED_WITH_CONDITIONS** sur le script **V7** (`b61b9fd6…`, 17 609 octets, 218 lignes lues) : aucun défaut critique, majeur ni moyen ; Rust et artefacts inchangés APPROVED ; bancs d'essai APPROVED ; rapport verbatim : [web-pi-deploy-v7-review-3.md](../reviews/web-pi-deploy-v7-review-3.md). Le reviewer (nouvel agent) a rejoué la simulation (45/45), l'essai de bout en bout (20/20), la preuve par mutation, `cargo test` (102), et 19 scénarios adverses de son cru (récupération interrompue par des signaux de groupe, `systemctl start` ou `stop` qui échouent, `ss` trompeur, proxy et `~/.curlrc` hostiles, ancien `web/` non vide, outil absent…). **Toute modification du script annule cette revue.**
+
+Conditions du reviewer et décisions :
+
+| Condition / constat | Décision |
+| --- | --- |
+| Ligne périmée « 34 PASS » du plan | corrigée dans ce document |
+| `openssl` et `runuser` à vérifier avant exécution | ajoutés au préflight manuel §5a ; le script les exige de toute façon avant tout arrêt (sortie 2) |
+| **LOW-1** le contrôle d'URL ne compare que le **port**, pas l'hôte : une URL mal saisie vers un autre hôte du LAN présentant le même certificat passerait la sonde | **risque accepté** (un seul hôte cible, le Pi ; la sonde TLS stricte vérifie déjà le certificat). Ne pas se fier à l'URL seule : relire `CHILLCENTER_BASE_URL` avant l'exécution (`https://192.168.1.42:8443`) |
+| **LOW-2** code de sortie 1 après un déploiement **réussi** si stdout est fermé (le `printf` final échoue) | **risque accepté, à connaître** : un code 1 avec « RECOVERY » absent de la sortie et un service actif sur le nouveau hash signifie « installé, résumé non imprimé » ; vérifier l'état par la sonde du §6, ne pas relancer à l'aveugle |
+| **LOW-3** binaire dans un état tiers (ni ancien ni nouveau) non signalé pendant la récupération | accepté (hérité de V6 ; improbable : `mv -f` atomique suivi d'un contrôle de hash) |
+| INFO-1 `is-active` avant `stop` dans le gestionnaire (unité en `activating (auto-restart)`) ; INFO-2 `BASH_ENV` honoré (seul root via `sudo env` peut le fournir) ; INFO-3 quelques outils coreutils non listés | acceptés |
+
+Non vérifié par aucune revue : exécution sur **Debian 13 réel avec systemd réel**, sudoers/`use_pty`, mémoire de 905 Mio, durée réelle d'interruption (≈ 3 à 30 s dans la VM). Ces points ne se lèvent que par l'exécution réelle, qui exige ton feu vert explicite et la connexion SSH maître.
 
 ## Revue indépendante n° 2 (15 octobre 2026)
 
