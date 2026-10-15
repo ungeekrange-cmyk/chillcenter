@@ -9,7 +9,7 @@ echo "run_as_uid=$(id -u)"
 . /etc/os-release 2>/dev/null; echo "os=${PRETTY_NAME:-unknown} arch=$(uname -m)"
 echo "tools: $(tar --version | head -1) | $(sha256sum --version | head -1) | $(curl --version | head -1 | cut -d' ' -f1-2) | $(openssl version)"
 for t in curl ss openssl runuser seq install mktemp sha256sum tar find du stat df awk; do command -v "$t" >/dev/null || echo "MISSING_TOOL=$t"; done
-echo "installed_binary_sha256=$(sha256sum "$bin" | awk '{print $1}')   (attendu 1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181)"
+echo "installed_binary_sha256=$(sha256sum "$bin" | awk '{print $1}')   (attendu = valeur de OLD_BINARY_SHA256 : cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3 pour ce déploiement)"
 echo "service_active=$(systemctl is-active chillcenter)"
 systemctl show chillcenter -p MainPID -p NRestarts -p Restart -p TimeoutStopUSec -p ActiveEnterTimestamp 2>/dev/null
 echo "chillcenter_uid=$(id -u chillcenter)   (attendu 997)"

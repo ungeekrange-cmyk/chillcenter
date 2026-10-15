@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Review-only operator script (candidate V7; supersedes V6 `ba9777cd…` refused by independent review n°2 (N1 SIGPIPE) and V5
+# Review-only operator script (candidate V8 = V7 `b61b9fd6…` approved by review n°3, with the previously hardcoded old-binary hash
+# made a mandatory parameter OLD_BINARY_SHA256; supersedes V6 `ba9777cd…` refused by independent review n°2 (N1 SIGPIPE) and V5
 # `8d47e9df…` refused by review n°1; derived from the independently approved V4 `55c6be48…`).
 # DO NOT EXECUTE before an independent reviewer has approved THESE EXACT BYTES (sha256 of this file)
 # and the user has given explicit go for the Pi. Runs as root on the Pi, fed through stdin:
-#   ssh <strict batch control connection> 'sudo -n env NEW_BINARY_SHA256=… … /bin/bash -s --' < pi-update-web-operator.sh
+#   ssh <strict batch control connection> 'sudo -n env OLD_BINARY_SHA256=… NEW_BINARY_SHA256=… … /bin/bash -s --' < pi-update-web-operator.sh
 # (sudoers must allow `env`: check beforehand with `sudo -n env true`; see docs/deployment/WEB-CLIENT-PI.md §5).
 #
 # Authority (nothing else): stop the service, private offline backup, replace the server binary,
@@ -16,10 +17,9 @@ set -Eeuo pipefail
 trap '' PIPE
 # Name the failing command: the recovery output alone does not say why a deployment was rolled back (review 2, N5).
 trap 'echo "ERR line $LINENO: $BASH_COMMAND" >&2' ERR
-old_expected='1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181'   # binary installed by V4 on 2026-10-14
 service='chillcenter'; binary='/usr/lib/chillcenter/chill-server'; web_dir='/usr/lib/chillcenter/web'
 incoming_bin='/var/tmp/chill-server-web.new'; incoming_web='/var/tmp/chillcenter-web.tar'
-rollback_dir='/root/chillcenter-rollback'; rollback="$rollback_dir/chill-server-1eb24e97bcdf"
+rollback_dir='/root/chillcenter-rollback'
 backup_root='/var/lib/chillcenter/data/backups'; config='/etc/chillcenter/server.json'; unit='/usr/lib/systemd/system/chillcenter.service'
 max_web_bytes=8388608; min_free_kb=65536
 
@@ -62,10 +62,13 @@ if [[ "${1:-}" == '--self-test' ]]; then
   printf 'parser_self_test=PASS\n'; exit 0
 fi
 
-: "${NEW_BINARY_SHA256:?}" "${WEB_ARCHIVE_SHA256:?}" "${CHILLCENTER_TLS_CERT_PATH:?set absolute public certificate path}" "${CHILLCENTER_BASE_URL:?e.g. https://192.168.1.42:8443}"
-[[ "$NEW_BINARY_SHA256" =~ ^[0-9a-f]{64}$ && "$WEB_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ && "$NEW_BINARY_SHA256" != "$old_expected" ]] || { echo 'invalid expected hashes' >&2; exit 2; }
+: "${OLD_BINARY_SHA256:?hash of the binary currently installed}" "${NEW_BINARY_SHA256:?}" "${WEB_ARCHIVE_SHA256:?}" "${CHILLCENTER_TLS_CERT_PATH:?set absolute public certificate path}" "${CHILLCENTER_BASE_URL:?e.g. https://192.168.1.42:8443}"
+[[ "$OLD_BINARY_SHA256" =~ ^[0-9a-f]{64}$ && "$NEW_BINARY_SHA256" =~ ^[0-9a-f]{64}$ && "$WEB_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ && "$NEW_BINARY_SHA256" != "$OLD_BINARY_SHA256" ]] || { echo 'invalid expected hashes' >&2; exit 2; }
 [[ "$CHILLCENTER_BASE_URL" =~ ^https://([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]{1,5}$ ]] || { echo 'invalid base url' >&2; exit 2; }
 new_expected="$NEW_BINARY_SHA256"
+old_expected="$OLD_BINARY_SHA256"
+# Rollback names derive from the validated old hash (hex only, so no path surprise).
+rollback="$rollback_dir/chill-server-${old_expected:0:12}"; rollback_tmp_prefix="$rollback_dir/.chill-server-${old_expected:0:12}."
 [[ "$(id -u)" == '0' ]] || { echo 'must run as root' >&2; exit 2; }
 [[ "$CHILLCENTER_TLS_CERT_PATH" == /* && -f "$CHILLCENTER_TLS_CERT_PATH" && ! -L "$CHILLCENTER_TLS_CERT_PATH" ]] || { echo 'invalid public certificate path' >&2; exit 2; }
 for path in /usr /usr/lib /usr/lib/chillcenter "$binary" "$web_dir" /etc /etc/chillcenter "$config" /root "$incoming_bin" "$incoming_web" /var/tmp; do [[ ! -L "$path" ]] || { echo "symlink refused: $path" >&2; exit 2; }; done
@@ -134,7 +137,7 @@ recover_on_failure() {
     else echo 'RECOVERY: SERVICE IS NOT ACTIVE' >&2; fi
   fi
   cleanup_owned_file "$root_stage" '/usr/lib/chillcenter/.chill-server-web.'
-  cleanup_owned_file "$rollback_tmp" "$rollback_dir/.chill-server-1eb24e97bcdf."
+  cleanup_owned_file "$rollback_tmp" "$rollback_tmp_prefix"
   cleanup_owned_file "$restore_stage" '/usr/lib/chillcenter/.chill-server-rollback.'
   [[ -n "$web_stage" && "$web_stage" == /usr/lib/chillcenter/.web-new.* && -d "$web_stage" && ! -L "$web_stage" ]] && rm -rf --one-file-system -- "$web_stage"
   exit "$status"
@@ -180,7 +183,7 @@ manifest_mtime="$(stat -c '%Y' "$manifest")"; latest_mtime="$(find "$backup_path
 # Binary rollback copy (the directory already holds the R7 copy; the target file is created without overwriting).
 if (( rollback_exists == 0 )); then
   [[ ! -e "$rollback" && ! -L "$rollback" ]]
-  rollback_tmp="$(mktemp "$rollback_dir/.chill-server-1eb24e97bcdf.XXXXXX")"
+  rollback_tmp="$(mktemp "${rollback_tmp_prefix}XXXXXX")"
   install -o root -g root -m 0755 "$binary" "$rollback_tmp"
   [[ -f "$rollback_tmp" && ! -L "$rollback_tmp" && "$(sha256sum "$rollback_tmp" | awk '{print $1}')" == "$old_expected" ]]
   ln "$rollback_tmp" "$rollback"

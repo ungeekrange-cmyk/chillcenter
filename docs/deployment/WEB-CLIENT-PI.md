@@ -20,14 +20,34 @@ Interruption du service : arrêt, sauvegarde hors ligne, copies et redémarrage 
 
 | Entrée | Valeur |
 | --- | --- |
-| Binaire actuellement installé (V4, 14 oct. 19:12 UTC) | `1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181` |
+| Binaire actuellement installé sur le Pi (build `c610ea9`, constaté au préflight du 15 oct.) | `cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3` → `OLD_BINARY_SHA256` (le V4 `1eb24e97…` des revues 1 à 3 n'est plus celui du Pi) |
 | Ancien rollback R7 (déjà sur le Pi) | `/root/chillcenter-rollback/chill-server-r7-9a17ffe55e3d`, `9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6` |
 | Certificat public du Pi (lu le 15 oct.) | SPKI SHA-256 `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`, valide du 14/10/2026 au 14/04/2028 ; `server_id` `885f7713-b8c6-4891-a8d1-c1410d5f1537` |
-| Script opérateur candidat **V7** `scripts/pi-update-web-operator.sh` (remplace V6 `ba9777cd…` refusé par la revue n° 2 et V5 `8d47e9df…` refusé par la revue n° 1) | 17 609 octets, SHA-256 **`b61b9fd6274f19669dcddabcf180e443b865f8f3777529b63d57ebad07e64872`** — **toute modification, même un commentaire, annule la revue** |
-| **Archive web finale** (`scripts/package-web-pi.sh`, sans métadonnées macOS) | `artifacts/web-pi/chillcenter-web.tar`, **1 099 264 octets**, 54 fichiers, SHA-256 **`486e8eb248ab74169af953ef5e6a125d26adde7b157e67c600c93713513b0756`**. Le tar n'est pas reproductible octet pour octet (horodatages) : **ce fichier exact** est celui à copier ; le contenu (build web `387b98d9b0ad`) est reproductible |
+| Script opérateur candidat **V8** `scripts/pi-update-web-operator.sh` (= V7 `b61b9fd6…` approuvé par la revue n° 3, dont le hash de l'ancien binaire, auparavant codé en dur, devient le paramètre obligatoire `OLD_BINARY_SHA256` ; **V8 n'a pas encore été relu** : revue n° 4 requise) | 17 916 octets, SHA-256 **`dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29`** — **toute modification, même un commentaire, annule la revue** |
+| **Archive web finale** (`scripts/package-web-pi.sh`, sans métadonnées macOS) | `artifacts/web-pi/chillcenter-web.tar`, **1 125 376 octets**, 56 entrées (54 fichiers), SHA-256 **`894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118`**. Le tar n'est pas reproductible octet pour octet (horodatages) : **ce fichier exact** est celui à copier ; contenu : build web `1556174bd809` |
 | Décodeur MPEG-4 embarqué | `mpeg4-decoder.wasm` SHA-256 `453fb7b171fde50d1306a57793ebac571459a7c324d28bd8b4f6c3db6b7bda53` (652 895 o), `mpeg4-decoder.js` `64d97f891594c386652cf3f783dfbdaf65d358ddb0bf1be96f1fbe3b2d3be827` ; FFmpeg 9.0.2 `8c385028…002e`, emsdk 6.0.12 `sha256:a7883da4…8c98` |
-| **Nouveau binaire serveur** (`cargo zigbuild --release --locked -p chill-server --target aarch64-unknown-linux-gnu.2.28`) | `target/aarch64-unknown-linux-gnu/release/chill-server`, **14 601 992 octets**, ELF 64-bit ARM aarch64 dynamique, strippé, SHA-256 **`241205689e656b949d0a9a6058d74408f1a6b70ac2446f0daf3c014b1b30ac29`** → `NEW_BINARY_SHA256` |
-| Source | binaire construit à partir de `3a0d53a4d88c1ae903cc83194e4430af56a246a3` ; `git diff 3a0d53a HEAD -- crates` est vide |
+| **Nouveau binaire serveur** (`cargo zigbuild --release --locked --offline -p chill-server --target aarch64-unknown-linux-gnu.2.28`) | `target/aarch64-unknown-linux-gnu/release/chill-server`, **14 765 736 octets**, ELF 64-bit ARM aarch64 dynamique, strippé, SHA-256 **`b80408da05e9f013c897c4599805494282a63afb3630f8e305faa90e0939c89f`** → `NEW_BINARY_SHA256` |
+| Source | binaire construit à partir du merge `7204e19` (codex/player-streaming `a59f5e6` dans codex/web-pwa) ; le code Rust ne change plus après ce commit |
+
+## Reprise après intégration de `codex/player-streaming` (15 octobre 2026)
+
+**Pourquoi.** Le préflight du 15 octobre a montré que le Pi exécute le build `c610ea9` (`cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3`) et non le `1eb24e97…` attendu par le script V7. Décision de l'utilisateur : intégrer la branche Mac `codex/player-streaming` (jusqu'à `a59f5e6`) dans `codex/web-pwa`, tout retester, rendre le hash de l'ancien binaire paramétrable. Rien n'a été exécuté sur le Pi depuis.
+
+| Étape | Résultat réellement obtenu |
+| --- | --- |
+| Merge `a59f5e6` | commit `7204e19`, sans conflit textuel (`api.rs` compris) ; ADR web renumérotés 0014/0015/0016 car 0012/0013 appartiennent désormais au client Mac (voir `docs/architecture/decisions/INDEX.md`) |
+| Pont web (`web/src/bridge.js`) | ajout de `playlist_artwork`, `saga_artwork`, `save_player_settings` et `player_presentation` (plein écran au lancement, défaut `true`, stocké localement) ; la demande de plein écran refusée par le navigateur n'est plus une erreur de lecture. **Écart assumé** : le client Mac sert désormais le catalogue depuis un miroir SQLite local (ADR-0013) ; le client web continue de lire l'API serveur, inchangée (ajout seul), et n'a pas de miroir |
+| `node --test web/test/*.test.js` | 50 tests, 0 échec |
+| `cargo test --locked --offline -p chill-server` | 104 + 2 tests, 0 échec |
+| `cargo clippy --locked --offline -p chill-server --all-targets -- -D warnings` | sans avertissement |
+| Build ARM64 | Zig 0.17.0 et cargo-zigbuild 0.23.4 déjà présents dans `/private/tmp/chillcenter-linux-cross.1M5r5u/venv` (aucun nouveau téléchargement) ; binaire et archive : voir §2 |
+| Simulation sur VM jetable (Colima Ubuntu 24.04 aarch64, ancien binaire réel `c610ea9`) | **52 PASS, 0 FAIL** (scénarios A–J, N, P) ; P = paramètre `OLD_BINARY_SHA256` vide ou erroné refusé avant tout arrêt. Première passe : 1 FAIL, mon attente de code de sortie (2) était fausse, `${VAR:?}` sort en 1 comme pour les autres variables obligatoires ; attente corrigée, script inchangé |
+| Essai Linux aarch64 (`scripts/web-e2e-linux.sh`) | 20 PASS, 0 FAIL |
+| Preuve de mutation de l'auto-test | les deux mutants sont détectés, l'original passe |
+
+**Changements du script V8 par rapport à V7** : suppression de `old_expected='1eb24e97…'` et des noms `chill-server-1eb24e97bcdf` codés en dur ; `OLD_BINARY_SHA256` est obligatoire (64 hex, différent de `NEW_BINARY_SHA256`), le nom du rollback et le préfixe des temporaires en sont dérivés (12 premiers hex). Aucune autre ligne modifiée. Le préflight lecture seule affiche désormais l'attendu `cef54cd0…`.
+
+**Statut.** V8 est **relu seulement par son auteur** : la revue indépendante n° 4, sur ces octets exacts, est la prochaine étape ; aucune exécution sur le Pi avant elle et sans nouveau feu vert explicite.
 
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 

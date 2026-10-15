@@ -69,3 +69,7 @@ Ces résultats ne valident ni l'AVI, ni un fichier réel du NAS, ni le débit su
 ## Essai sur le Pi (lecture seule)
 
 Voir [WEB-PI-READONLY-EVIDENCE](../implementation/WEB-PI-READONLY-EVIDENCE.md) : 21 fichiers réels ouverts par les démuxeurs, inventaire du catalogue (MKV 78 %, AVI 15 % tous Xvid dans l'échantillon, MP4 7 %), AC-3 fréquent. LAVI
+
+## Écart assumé avec le client Mac : pas de miroir local du catalogue (15 octobre 2026)
+
+Depuis [ADR-0013](decisions/ADR-0013-client-catalog-mirror.md), le client Mac sert le catalogue depuis un miroir SQLite local et expose `catalog_cache` dans son état. Le client web lit toujours l'API serveur inchangée (la branche Mac n'a fait qu'ajouter des routes) : pas de miroir, `catalog_cache` absent de l'état (l'interface partagée le tolère). Le pont web gère en revanche les commandes ajoutées côté Mac : `playlist_artwork`, `saga_artwork`, `save_player_settings` (réglage « plein écran au lancement », conservé dans le stockage local du navigateur). Un miroir web (IndexedDB) serait une décision à part, donc un ADR dédié, non pris ici.

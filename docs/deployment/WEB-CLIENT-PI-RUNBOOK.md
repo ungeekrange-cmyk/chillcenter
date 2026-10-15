@@ -54,11 +54,11 @@ Un seul bloc ; il doit afficher quatre `OK`. **Un seul `MISMATCH` = on s'arrête
 ```bash
 cd "$R"
 chk() { [ "$(shasum -a 256 "$1" | cut -d' ' -f1)" = "$2" ] && echo "OK       $1" || echo "MISMATCH $1"; }
-chk scripts/pi-update-web-operator.sh                                   b61b9fd6274f19669dcddabcf180e443b865f8f3777529b63d57ebad07e64872
-chk target/aarch64-unknown-linux-gnu/release/chill-server               241205689e656b949d0a9a6058d74408f1a6b70ac2446f0daf3c014b1b30ac29
-chk artifacts/web-pi/chillcenter-web.tar                                486e8eb248ab74169af953ef5e6a125d26adde7b157e67c600c93713513b0756
-chk scripts/pi-preflight-readonly.sh                                    fa7b1f45523321bf636f1bb9e077efb7bc38f9752f43981b7a5114c8ba07965d
-wc -c < scripts/pi-update-web-operator.sh                               # 17609
+chk scripts/pi-update-web-operator.sh                                   dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29
+chk target/aarch64-unknown-linux-gnu/release/chill-server               b80408da05e9f013c897c4599805494282a63afb3630f8e305faa90e0939c89f
+chk artifacts/web-pi/chillcenter-web.tar                                894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118
+chk scripts/pi-preflight-readonly.sh                                    2ee4a5a9d93a882d738d0f11e256f6aad702c25555a0c788d6f5b73196d50d44
+wc -c < scripts/pi-update-web-operator.sh                               # 17916
 bash scripts/pi-update-web-operator.sh --self-test                      # parser_self_test=PASS
 ```
 
@@ -75,7 +75,7 @@ Valeurs attendues (sinon **stop**, ne passe pas à l'étape 4) :
 | --- | --- |
 | `sudo_env_ok` | présent (sudoers autorise `env`) |
 | `run_as_uid` | `0` |
-| `installed_binary_sha256` | `1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181` |
+| `installed_binary_sha256` | `cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3` |
 | `service_active` | `active` ; `NRestarts=0` |
 | `chillcenter_uid` | `997` |
 | `established_chill_server_sockets` | `0` |
@@ -98,20 +98,20 @@ pi_scp artifacts/web-pi/chillcenter-web.tar                   admin@192.168.1.42
 pi 'chmod 600 /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar; sha256sum /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar'
 ```
 
-Les deux hashes affichés par le Pi doivent être **exactement** `241205689e656b94…ac29` (binaire) et `486e8eb248ab7416…0756` (archive). Sinon : `pi 'rm -f /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar'` et stop.
+Les deux hashes affichés par le Pi doivent être **exactement** `b80408da05e9f013…c89f` (binaire) et `894fbe952a58bdae…7118` (archive). Sinon : `pi 'rm -f /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar'` et stop.
 
-## Étape 5 — exécution du script V7, **par stdin** (le déploiement)
+## Étape 5 — exécution du script V8, **par stdin** (le déploiement)
 
 Relire à voix haute avant de coller : l'URL est `https://192.168.1.42:8443` (le script ne vérifie que le **port**, LOW-1), les deux hashes sont ceux de l'étape 4.
 
 ```bash
 cd "$R"
-[ "$(shasum -a 256 scripts/pi-update-web-operator.sh | cut -d' ' -f1)" = b61b9fd6274f19669dcddabcf180e443b865f8f3777529b63d57ebad07e64872 ] && echo "script V7 conforme" || echo "SCRIPT MODIFIÉ : STOP"
-pi "sudo -n env NEW_BINARY_SHA256=241205689e656b949d0a9a6058d74408f1a6b70ac2446f0daf3c014b1b30ac29 WEB_ARCHIVE_SHA256=486e8eb248ab74169af953ef5e6a125d26adde7b157e67c600c93713513b0756 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://192.168.1.42:8443 /bin/bash -s --" < scripts/pi-update-web-operator.sh
+[ "$(shasum -a 256 scripts/pi-update-web-operator.sh | cut -d' ' -f1)" = dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29 ] && echo "script V8 conforme" || echo "SCRIPT MODIFIÉ : STOP"
+pi "sudo -n env OLD_BINARY_SHA256=cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3 NEW_BINARY_SHA256=b80408da05e9f013c897c4599805494282a63afb3630f8e305faa90e0939c89f WEB_ARCHIVE_SHA256=894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://192.168.1.42:8443 /bin/bash -s --" < scripts/pi-update-web-operator.sh
 echo "code de sortie : $?"
 ```
 
-**Succès** (code 0) : 7 lignes `deployed_utc`, `service_pid`, `installed_hash=2412…ac29`, `rollback_hash=1eb2…c181`, `web_archive_hash=486e…0756`, `web_previous=none`, `backup_path=/var/lib/chillcenter/data/backups/<uuid>`.
+**Succès** (code 0) : 7 lignes `deployed_utc`, `service_pid`, `installed_hash=b804…c89f`, `rollback_hash=cef5…b3c3`, `web_archive_hash=894f…7118`, `web_previous=none`, `backup_path=/var/lib/chillcenter/data/backups/<uuid>`.
 
 | Code de sortie / signe | Signification | À faire |
 | --- | --- | --- |
@@ -147,18 +147,18 @@ Fermer la connexion maître quand tout est fini : `ssh -O exit -S "$CP" admin@19
 
 ## Étape 7 — retour arrière **manuel** (seulement en cas de besoin)
 
-Base de données, configuration, TLS et NAS ne sont **pas** touchés par le déploiement : le retour ne concerne que le binaire et le dossier web. L'ancien binaire est dans `/root/chillcenter-rollback/chill-server-1eb24e97bcdf` (hash `1eb24e97…c181`) ; le plus ancien R7 reste dans `chill-server-r7-9a17ffe55e3d` (`9a17ffe5…36a6`).
+Base de données, configuration, TLS et NAS ne sont **pas** touchés par le déploiement : le retour ne concerne que le binaire et le dossier web. L'ancien binaire est dans `/root/chillcenter-rollback/chill-server-cef54cd0e8ba` (hash `cef54cd0…b3c3`) ; le plus ancien R7 reste dans `chill-server-r7-9a17ffe55e3d` (`9a17ffe5…36a6`).
 
 ```bash
 pi 'sudo -n systemctl stop chillcenter'
-pi 'sudo -n install -o root -g root -m 0755 /root/chillcenter-rollback/chill-server-1eb24e97bcdf /usr/lib/chillcenter/chill-server'
-pi 'sudo -n sha256sum /usr/lib/chillcenter/chill-server'          # doit afficher 1eb24e97bcdf8f66…179ac181
+pi 'sudo -n install -o root -g root -m 0755 /root/chillcenter-rollback/chill-server-cef54cd0e8ba /usr/lib/chillcenter/chill-server'
+pi 'sudo -n sha256sum /usr/lib/chillcenter/chill-server'          # doit afficher cef54cd0e8baf45f…24b3c3
 pi 'sudo -n rm -rf --one-file-system /usr/lib/chillcenter/web'     # (ou, s'il existait avant : mv -T /root/chillcenter-rollback/web-<horodatage> /usr/lib/chillcenter/web)
 pi 'sudo -n systemctl start chillcenter'
 pi 'systemctl is-active chillcenter'
 ```
 
-Puis refaire le préflight (étape 3) : binaire `1eb24e97…`, service actif, `web_dir=absent`. La sauvegarde privée créée par le déploiement (`backup_path` imprimé) reste sur le Pi, `0700`, jamais copiée ni affichée ; la restaurer (`--restore … --confirm-replace`) n'est **pas** nécessaire pour ce retour, car aucune donnée n'est modifiée.
+Puis refaire le préflight (étape 3) : binaire `cef54cd0…`, service actif, `web_dir=absent`. La sauvegarde privée créée par le déploiement (`backup_path` imprimé) reste sur le Pi, `0700`, jamais copiée ni affichée ; la restaurer (`--restore … --confirm-replace`) n'est **pas** nécessaire pour ce retour, car aucune donnée n'est modifiée.
 
 ## Ce que ce runbook ne garantit pas
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Simulation of the Pi deployment on a THROWAWAY Linux VM (Colima Ubuntu, aarch64), as root.
 # It recreates the Pi layout (uid 997, /usr/lib/chillcenter, /etc/chillcenter, rollback dir, data dir), runs the REAL
-# previous binary (1eb24e97…) as the "service" through a fake systemctl, then feeds scripts/pi-update-web-operator.sh
+# previous binary (the one given as OLD_SHA, default cef54cd0… = build c610ea9 on the Pi) as the "service" through a fake systemctl, then feeds scripts/pi-update-web-operator.sh
 # through stdin exactly like the real procedure and checks success and failure paths. Touches no real host.
-#   usage (from the Mac):  colima ssh -- sudo -n <repo>/scripts/pi-operator-simulation.sh <repo> <old-release.tar.gz>
+#   usage (from the Mac):  colima ssh -- sudo -n <repo>/scripts/pi-operator-simulation.sh <repo> <old-release.tar.gz> [expected-old-sha256]
 set -uo pipefail
 REPO="$1"; OLD_TARBALL="$2"
 OP="$REPO/scripts/pi-update-web-operator.sh"; ORIG_OP="$OP"
 NEWBIN_SRC="$REPO/target/aarch64-unknown-linux-gnu/release/chill-server"; WEB_TAR="$REPO/artifacts/web-pi/chillcenter-web.tar"
-OLD_SHA=1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181
+OLD_SHA="${3:-cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3}"; OLD_RB="chill-server-${OLD_SHA:0:12}"
 BIN=/usr/lib/chillcenter/chill-server; WEB=/usr/lib/chillcenter/web; RB=/root/chillcenter-rollback; CFG=/etc/chillcenter/server.json
 UNIT=/usr/lib/systemd/system/chillcenter.service; BASE=https://127.0.0.1:18443; CERT=/var/lib/chillcenter/data/tls/certificate.pem
 FAKE=/opt/fake-cc-bin; WORK="$(mktemp -d /tmp/cc-sim.XXXXXX)"; pass=0; fail=0
@@ -79,7 +79,7 @@ reset_state() {  # old binary running, no web dir, rollback dir with the R7 stan
 }
 stage() { install -m 0600 "$NEWBIN_SRC" /var/tmp/chill-server-web.new; install -m 0600 "${1:-$WEB_TAR}" /var/tmp/chillcenter-web.tar; }
 run_operator() {  # $1 base url, $2 web archive sha  ->  sets RC and OUT ; script is fed through stdin like the real procedure
-  OUT="$(env PATH="$PATH" NEW_BINARY_SHA256="$NEW_SHA" WEB_ARCHIVE_SHA256="${2:-$WEB_SHA}" CHILLCENTER_TLS_CERT_PATH="$CERT" CHILLCENTER_BASE_URL="${1:-$BASE}" /bin/bash -s${SIM_TRACE:+x} -- < "$OP" 2>&1)"; RC=$?
+  OUT="$(env PATH="$PATH" OLD_BINARY_SHA256="${OLD_PARAM-$OLD_SHA}" NEW_BINARY_SHA256="$NEW_SHA" WEB_ARCHIVE_SHA256="${2:-$WEB_SHA}" CHILLCENTER_TLS_CERT_PATH="$CERT" CHILLCENTER_BASE_URL="${1:-$BASE}" /bin/bash -s${SIM_TRACE:+x} -- < "$OP" 2>&1)"; RC=$?
 }
 backups() { ls /var/lib/chillcenter/data/backups 2>/dev/null | wc -l | tr -d ' '; }
 broken_archive() {  # a valid, hash-consistent archive that lacks the wasm file => post-install verification must fail
@@ -101,7 +101,7 @@ reset_state; stage; before_pid="$(svc_pid)"; run_operator
 expect "A  déploiement nominal : code de sortie 0" "$RC" 0
 expect "A  binaire installé = nouveau" "$(sha "$BIN")" "$NEW_SHA"
 [[ -d "$WEB" && "$(stat -c '%a:%u:%g' "$WEB")" == "755:0:0" && -f "$WEB/index.html" ]] && ok "A  dossier web installé, root:root 755" || ko "A  dossier web" "absent ou droits inattendus"
-expect "A  copie de rollback = ancien binaire" "$(sha "$RB/chill-server-1eb24e97bcdf" 2>/dev/null)" "$OLD_SHA"
+expect "A  copie de rollback = ancien binaire" "$(sha "$RB/$OLD_RB" 2>/dev/null)" "$OLD_SHA"
 [[ -n "$(svc_pid)" && "$(svc_pid)" != "$before_pid" ]] && ok "A  service actif avec un nouveau processus" || ko "A  service" "pid inchangé ou arrêté"
 expect "A  une sauvegarde privée créée" "$(backups)" 1
 unchanged_world && ok "A  config, unité et certificat inchangés" || ko "A  invariants" "modifiés"
@@ -134,13 +134,13 @@ expect "D  ancien binaire restauré" "$(sha "$BIN")" "$OLD_SHA"
 [[ -n "$(svc_pid)" ]] && ok "D  service actif" || ko "D  service" "arrêté"
 
 # ---- E. redeploy over an existing web directory + reuse of an identical rollback copy (review S4) ------------
-reset_state; mkdir -p "$WEB"; echo old > "$WEB/MARQUEUR"; install -o root -g root -m 0755 "$OLDBIN" "$RB/chill-server-1eb24e97bcdf"; stage; run_operator
+reset_state; mkdir -p "$WEB"; echo old > "$WEB/MARQUEUR"; install -o root -g root -m 0755 "$OLDBIN" "$RB/$OLD_RB"; stage; run_operator
 expect "E  redéploiement : code 0" "$RC" 0
 [[ -f "$WEB/index.html" && ! -e "$WEB/MARQUEUR" ]] && ok "E  nouveau web installé" || ko "E  web" "contenu inattendu"
 ls "$RB"/web-*/MARQUEUR >/dev/null 2>&1 && ok "E  ancien web conservé dans le répertoire de rollback" || ko "E  web précédent" "perdu"
 
 # ---- F. rollback copy with unexpected content: refused BEFORE the stop (review S4) -------------------------
-reset_state; echo corrompu > "$RB/chill-server-1eb24e97bcdf"; stage; before_pid="$(svc_pid)"; run_operator
+reset_state; echo corrompu > "$RB/$OLD_RB"; stage; before_pid="$(svc_pid)"; run_operator
 expect "F  copie de rollback douteuse : refus (2)" "$RC" 2
 expect "F  service intact" "$(svc_pid)" "$before_pid"
 
@@ -158,7 +158,7 @@ expect "H  service intact" "$(svc_pid)" "$before_pid"
 
 # ---- I. lost output channel (SSH dropped) while a verification fails: SIGPIPE must not kill the recovery (review 2, N1) --------
 reset_state; BR="$(broken_archive)"; stage "$BR"
-env PATH="$PATH" NEW_BINARY_SHA256="$NEW_SHA" WEB_ARCHIVE_SHA256="$(sha "$BR")" CHILLCENTER_TLS_CERT_PATH="$CERT" CHILLCENTER_BASE_URL="$BASE" /bin/bash -s -- < "$OP" 2>&1 | { read -r _first; exit 0; }
+env PATH="$PATH" OLD_BINARY_SHA256="$OLD_SHA" NEW_BINARY_SHA256="$NEW_SHA" WEB_ARCHIVE_SHA256="$(sha "$BR")" CHILLCENTER_TLS_CERT_PATH="$CERT" CHILLCENTER_BASE_URL="$BASE" /bin/bash -s -- < "$OP" 2>&1 | { read -r _first; exit 0; }
 RC=${PIPESTATUS[0]}
 [[ "$RC" != 0 && "$RC" != 141 ]] && ok "I  sortie non nulle et pas 141 (SIGPIPE) : $RC" || ko "I  code" "$RC"
 expect "I  ancien binaire restauré malgré la sortie fermée" "$(sha "$BIN")" "$OLD_SHA"
@@ -178,6 +178,17 @@ reset_state; stage; stop_service; run_operator
 expect "N  service arrêté : refus (2)" "$RC" 2
 [[ -z "$(svc_pid)" ]] && ok "N  le script n'a pas démarré le service" || ko "N  service" "démarré"
 expect "N  ancien binaire intact, aucun web" "$(sha "$BIN")|$([[ -e $WEB ]] && echo web || echo none)" "$OLD_SHA|none"
+
+# ---- P. the old-binary hash is a mandatory, exact parameter (V8) ----------------------------------------------------------------
+reset_state; stage; before_pid="$(svc_pid)"; OLD_PARAM=""; run_operator; unset OLD_PARAM
+expect "P  OLD_BINARY_SHA256 vide : refus (1, comme toute variable obligatoire absente)" "$RC" 1
+echo "$OUT" | grep -q "OLD_BINARY_SHA256: hash of the binary currently installed" && ok "P  message nommant OLD_BINARY_SHA256" || ko "P  message" "absent"
+expect "P  service intact (paramètre vide)" "$(svc_pid)" "$before_pid"
+OLD_PARAM="1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181"; run_operator; unset OLD_PARAM
+expect "P  mauvais ancien hash : refus (2) avant tout arrêt" "$RC" 2
+echo "$OUT" | grep -q "installed binary is not the expected one" && ok "P  message : le binaire installé n'est pas celui attendu" || ko "P  message" "absent"
+expect "P  service intact (mauvais hash)" "$(svc_pid)" "$before_pid"
+expect "P  aucun web, aucune sauvegarde" "$([[ -e $WEB ]] && echo web || echo none)|$(backups)" "none|0"
 
 # ---- teardown (also runs on any early exit) ------------------------------------------------------------
 echo "== résultat : $pass PASS, $fail FAIL"; [[ "$fail" -eq 0 ]]
