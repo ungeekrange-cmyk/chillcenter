@@ -346,7 +346,6 @@ async fn page(
     if !has_more && let Ok(mut c) = cache().lock() {
         c.values.remove(&id);
     }
-    let (sagas, playlists, series_revisions, season_metadata) = document(&value.snapshot);
     Ok(Json(
         serde_json::to_value(CatalogChanges {
             revision: value.revision,
@@ -356,10 +355,10 @@ async fn page(
             total: value.snapshot.items.len(),
             items: value.snapshot.items[offset..end].to_vec(),
             deleted_ids: Vec::new(),
-            sagas,
-            playlists,
-            series_revisions,
-            season_metadata,
+            sagas: Vec::new(),
+            playlists: Vec::new(),
+            series_revisions: Default::default(),
+            season_metadata: Default::default(),
             has_more,
             next_offset: has_more.then_some(end),
         })

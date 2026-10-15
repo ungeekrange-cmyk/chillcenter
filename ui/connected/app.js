@@ -63,7 +63,7 @@ function render(){
   else{$("audio-language").value="";$("subtitle-language").value="";}
   if(window.renderShell)window.renderShell();
 }
-async function connect(address){draftAddress=address;state={stage:"server",address,theme:state.theme,servers:state.servers||[]};render();const r=await run({action:"connect",address});if(r?.profile_id)await loadPage();}
+async function connect(address){draftAddress=address;state={stage:"server",address,theme:state.theme,servers:state.servers||[]};render();const r=await run({action:"connect",address});if(r?.profile_id){await loadPage();void syncCatalog();}}
 async function selectProfile(id){if(!id)return;clearCatalogContext();offset=0;await run({action:"select_profile",id});await loadPage();void syncCatalog();}
 function pager(){} // API batches remain internal; no page-navigation UI.
 function catalogCommand(filters,at,grouped){return {action:"catalog",offset:at,category:filters.category||null,q:filters.q||null,genre:filters.genre||null,year:filters.year===""?null:Number(filters.year),watched:filters.watched===""?null:filters.watched==="true",sort:filters.sort||null,grouped,available:filters.available===""?null:filters.available==="true"};}
@@ -136,7 +136,7 @@ async function loadPage(){
  if(catalogItems.length)renderCatalogWindow();else{$("media").style.height="";$("media").replaceChildren(node("p","Aucun titre ne correspond. Configurez puis scannez la bibliothèque dans Administration.","muted"));}
 }
 $("connect-form").onsubmit=e=>{e.preventDefault();connect($("address").value);};
-$("approve-trust").onclick=async()=>{const r=await run({action:"approve",token:state.token});if(r?.profile_id)await loadPage();};
+$("approve-trust").onclick=async()=>{const r=await run({action:"approve",token:state.token});if(r?.profile_id){await loadPage();void syncCatalog();}};
 $("reject-trust").onclick=()=>run({action:"disconnect"});
 $("server-switch").onclick=()=>run({action:"disconnect"});
 $("profile-switch").onchange=()=>selectProfile($("profile-switch").value);

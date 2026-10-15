@@ -641,6 +641,9 @@ mod tests {
         .await;
         assert_eq!(page.0, StatusCode::OK);
         assert_eq!(page.1["items"].as_array().unwrap().len(), 3);
+        assert_eq!(page.1["sagas"], json!([]));
+        assert_eq!(page.1["series_revisions"], json!({}));
+        assert_eq!(page.1["season_metadata"], json!({}));
         assert_eq!(
             json_call(
                 &app,

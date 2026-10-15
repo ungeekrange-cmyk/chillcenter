@@ -11,6 +11,8 @@ Une identité UUID de série autonome serait plus stable face aux réorganisatio
 
 TMDB ne recherche pas une saison comme un film : choisir la série TV puis demander `tv/{id}/season/{n}`. Une saison sans parent choisi est rejetée avant I/O fournisseur. Les données saison sont séparées des champs propres aux épisodes, indexées `(tv_id, saison)`, transférées dans le miroir et projetées en URLs opaques pour les affiches. Import série : groupe figé complet ; import saison : cette saison seulement. CAS sur révisions et groupe, images fraîchement créées retirées en cas d’échec, jamais celles déjà référencées.
 
+La transaction de publication IMMEDIATE relit les révisions communes/média et recalcule le groupe courant depuis son ancre avant toute écriture ; le contrôle avant téléchargement ne suffit pas. Un scan intermédiaire entraîne un conflit explicite, jamais une association partielle. Métadonnées, révisions et migration des vitesses vers l’identité sont committées ensemble. Le contrôle commun exclut les activités personnelles indépendantes.
+
 ## Conséquences et validation
 
 SQLite ajoute des tables dérivées de regroupement et un stockage saison. Le regroupement est recalculé une fois par révision commune, pas à chaque lot de 48 titres. Les anciens champs et routes demeurent ; compteur catalogue enrichi de `series_key`, réponse d’édition de `key`. Les clients anciens échouent de façon explicite face à un simple nom devenu ambigu, au lieu de modifier deux séries.

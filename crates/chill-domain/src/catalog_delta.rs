@@ -94,6 +94,17 @@ pub fn bounded(snapshot: &SyncSnapshot) -> Result<(), &'static str> {
 }
 
 impl crate::Store {
+    fn clear_legacy_delta_checkpoints(&self) -> Result<(), String> {
+        // Only a disposable generated cache from the unreleased prototype;
+        // never catalogue, profiles, personal history or media files.
+        let exists:bool=self.personal.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cc_catalog_delta_checkpoint')",[],|row|row.get(0)).map_err(|_|"SYNC_CHECKPOINT_UNAVAILABLE")?;
+        if exists {
+            self.personal
+                .execute("DELETE FROM cc_catalog_delta_checkpoint", [])
+                .map_err(|_| "SYNC_CHECKPOINT_UNAVAILABLE")?;
+        }
+        Ok(())
+    }
     /// Durable, bounded baselines let a client cursor survive a server restart.
     /// They contain only fixed hashes and opaque ids, never media metadata,
     /// video bytes or SQLite files. Four per profile, 16 MiB globally.
@@ -103,6 +114,7 @@ impl crate::Store {
         revision: &str,
     ) -> Result<Option<SignatureCheckpoint>, String> {
         self.sync_revision(profile)?; // profile ownership/liveness
+        self.clear_legacy_delta_checkpoints()?;
         if revision.len() > 255 {
             return Ok(None);
         }
@@ -128,6 +140,7 @@ impl crate::Store {
         snapshot: &SyncSnapshot,
     ) -> Result<(), String> {
         self.sync_revision(profile)?;
+        self.clear_legacy_delta_checkpoints()?;
         bounded(snapshot).map_err(str::to_owned)?;
         if revision.len() > 255 {
             return Err("SYNC_CHECKPOINT_INVALID".into());
@@ -177,6 +190,31 @@ impl crate::Store {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_generated_snapshots_are_not_retained_outside_signature_budget() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::Store::open(&directory.path().join("catalog.sqlite")).unwrap();
+        let profile = store.create_profile("Old cache").unwrap();
+        store.personal.execute_batch("CREATE TABLE cc_catalog_delta_checkpoint(profile_id TEXT,revision TEXT,snapshot TEXT); INSERT INTO cc_catalog_delta_checkpoint VALUES('old','r0','generated metadata');").unwrap();
+        assert!(
+            store
+                .catalog_delta_checkpoint(&profile.id, "r0")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            store
+                .personal
+                .query_row(
+                    "SELECT COUNT(*) FROM cc_catalog_delta_checkpoint",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(store.profiles().unwrap().len(), 1);
+    }
     #[test]
     fn checkpoint_budget_is_global_across_profiles() {
         let directory = tempfile::tempdir().unwrap();

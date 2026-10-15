@@ -1123,7 +1123,7 @@
       "post": {
         "tags": ["Catalog"],
         "operationId": "catalogChanges_post",
-        "description": "Retourne une révision inchangée ou un delta calculé côté serveur depuis known_revision. Le curseur est durable pour ce serveur et ce profil; reset=true indique qu'un instantané complet est nécessaire (première connexion ou curseur élagué). Les pages sont immuables pendant 120 secondes.",
+        "description": "Retourne une révision inchangée ou un delta calculé côté serveur depuis known_revision. Le curseur est durable pour ce serveur et ce profil; reset=true indique qu'un instantané complet est nécessaire (première connexion ou curseur élagué). Les pages sont immuables jusqu'à 120 secondes; la dernière page libère le transfert. Les documents auxiliaires sont complets dans cette réponse initiale uniquement.",
         "responses": {
           "200": { "description": "Révision inchangée ou première page du delta.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogChangesResponse" } } } },
           "413": { "$ref": "#/components/responses/Error" },
@@ -1141,7 +1141,7 @@
       "get": {
         "tags": ["Catalog"],
         "operationId": "catalogChangesPage_get",
-        "description": "Lit une page immuable du delta. Le snapshot est lié au profil et expire après 120 secondes; 404 signifie que le curseur est inconnu ou expiré et impose de relancer POST changes.",
+        "description": "Lit une page immuable du delta. Le snapshot est lié au profil et expire après 120 secondes ou après la dernière page; 404 impose de relancer POST changes sans publier de résultat partiel. sagas, playlists, series_revisions et season_metadata sont vides ici : conserver les documents de la réponse POST initiale.",
         "responses": {
           "200": { "description": "Page d'au plus 100 éléments.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogChangesPage" } } } },
           "404": { "$ref": "#/components/responses/Error" },

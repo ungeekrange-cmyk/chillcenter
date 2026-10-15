@@ -22,6 +22,38 @@ impl Drop for PendingPoster {
     }
 }
 
+fn assert_frozen_provider_tx(
+    tx: &rusqlite::Transaction<'_>,
+    stable: &str,
+    revision: u64,
+    common: u64,
+    members: &[Media],
+) -> Result<(), String> {
+    let current_common: i64 = tx
+        .query_row(
+            "SELECT revision FROM cc_common_epoch WHERE id=1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| "Erreur de base locale.")?;
+    let current_revision: i64 = tx
+        .query_row(
+            "SELECT revision FROM cc_media_revision WHERE stable_id=?1",
+            [stable],
+            |row| row.get(0),
+        )
+        .map_err(|_| "Vidéo introuvable dans le catalogue.")?;
+    if u64::try_from(current_common).ok() != Some(common)
+        || u64::try_from(current_revision).ok() != Some(revision)
+    {
+        return Err(
+            "La fiche ou la série a changé pendant la requête. Relancez l’opération.".into(),
+        );
+    }
+    chill_catalog::database::Database::checked_series_members(tx, members)?;
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct ProviderSnapshot {
     pub media: Media,
@@ -185,6 +217,7 @@ impl Store {
             &snapshot.members,
             provider,
             explicit,
+            |tx| assert_frozen_provider_tx(tx,stable,snapshot.anchor_revision,snapshot.common_revision,&snapshot.members),
             |tx, updated| {for item in updated {
             let stable: Option<String> = tx
                 .query_row(
@@ -230,10 +263,18 @@ impl Store {
         }
         let data =
             serde_json::to_string(provider).map_err(|_| "Métadonnées de saison invalides.")?;
-        let tx = self
-            .personal
-            .unchecked_transaction()
-            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.personal,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        assert_frozen_provider_tx(
+            &tx,
+            stable,
+            snapshot.revision,
+            snapshot.common_revision,
+            &snapshot.members,
+        )?;
         tx.execute(
             "INSERT INTO cc_season_provider(tv_id,season,data,updated_at) VALUES(?1,?2,?3,strftime('%s','now')) ON CONFLICT(tv_id,season) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at",
             params![provider.tv_id, provider.season, data],
@@ -317,10 +358,18 @@ impl Store {
         self.assert_provider_cas(stable, snapshot.anchor_revision, snapshot.common_revision)?;
         let poster = chill_catalog::poster::store(bytes, cache)?;
         let mut pending = PendingPoster(Some(poster.clone()));
-        let tx = self
-            .personal
-            .unchecked_transaction()
-            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.personal,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        assert_frozen_provider_tx(
+            &tx,
+            stable,
+            snapshot.anchor_revision,
+            snapshot.common_revision,
+            &snapshot.members,
+        )?;
         for item in &snapshot.members {
             let data: String = tx
                 .query_row("SELECT data FROM media WHERE id=?1", [&item.id], |r| {
@@ -400,10 +449,18 @@ impl Store {
                 poster: None,
             });
         provider.poster = Some(poster);
-        let tx = self
-            .personal
-            .unchecked_transaction()
-            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.personal,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        assert_frozen_provider_tx(
+            &tx,
+            stable,
+            snapshot.revision,
+            snapshot.common_revision,
+            &snapshot.members,
+        )?;
         tx.execute(
             "INSERT INTO cc_season_provider(tv_id,season,data,updated_at) VALUES(?1,?2,?3,strftime('%s','now')) ON CONFLICT(tv_id,season) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at",
             params![tv_id, season, serde_json::to_string(&provider).map_err(|_| "Métadonnées de saison invalides.")?],
@@ -438,6 +495,55 @@ mod tests {
     use super::*;
     use chill_catalog::model::{Media, SeriesPatch};
     use tempfile::tempdir;
+
+    #[test]
+    fn final_transaction_rejects_scan_committed_after_early_cas() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("catalog.sqlite");
+        let mut store = Store::open(&path).unwrap();
+        let profile = store.create_profile("Viewer").unwrap();
+        let mut item = media("Show/Season 1/E1.mkv", "Pilot");
+        item.category = "serie".into();
+        item.series = Some("Show".into());
+        item.season = Some(1);
+        item.episode = Some(1);
+        store.snapshot(vec![item.clone()]).unwrap();
+        let id = store.catalog(&profile.id).unwrap()[0].id.clone();
+        let snapshot = store.provider_series_snapshot(&profile.id, &id, 1).unwrap();
+        store
+            .assert_provider_cas(&id, snapshot.anchor_revision, snapshot.common_revision)
+            .unwrap();
+        let mut scanner = Store::open(&path).unwrap();
+        let mut second = item.clone();
+        second.id = "Show/Season 1/E2.mkv".into();
+        second.path = format!("/nas/{}", second.id);
+        second.episode = Some(2);
+        scanner.snapshot(vec![item, second]).unwrap();
+        let tx = rusqlite::Transaction::new_unchecked(
+            &store.personal,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .unwrap();
+        assert!(
+            assert_frozen_provider_tx(
+                &tx,
+                &id,
+                snapshot.anchor_revision,
+                snapshot.common_revision,
+                &snapshot.members
+            )
+            .is_err()
+        );
+        drop(tx);
+        assert_eq!(store.catalog(&profile.id).unwrap().len(), 2);
+        assert!(
+            store
+                .catalog(&profile.id)
+                .unwrap()
+                .iter()
+                .all(|item| item.tmdb_id.is_none())
+        );
+    }
 
     fn media(id: &str, title: &str) -> Media {
         Media {

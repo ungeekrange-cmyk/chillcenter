@@ -37,3 +37,35 @@ Ces preuves sont ciblées. Aucun bundle natif, Pi, NAS, RSS ou latence réelle n
 ## ADR-0014
 
 La séparation réseau/verrou, le reset explicite et la compatibilité 404 sont justifiés. L'ADR ne peut toutefois pas être accepté tant que sa décision assume des métadonnées complètes par checkpoint (`ADR-0014:13`) et affirme une rétention disque bornée alors qu'elle ne l'est que par profil. Il doit être révisé avec la représentation compacte, la borne globale, la protection des transferts paginés actifs et le comportement après restauration d'une ancienne base (risque d'ABA des compteurs de révision).
+
+---
+
+## Revue r2 — candidat `3bbb87db5a3331f8f07d12ab1404afd8a5d86ee7`
+
+- Base r2 : `f544684b002ad8c1bf5d31f98006da573f576019`
+- Verdict code : **CHANGES_REQUESTED**
+- Verdict ADR-0014 : **CHANGES_REQUESTED**
+
+Les quatre constats de la revue précédente sont corrigés pour les nouveaux flux : checkpoints SHA-256 bornés globalement, admission avant persistance sans éviction active, une seule image de transfert, remise à zéro du contexte visuel, fusion O(n) et publication SQLite détachée avec CAS/sonde d'annulation. La génération privée invalide également un curseur après restauration officielle tout en survivant à un redémarrage normal.
+
+### Constats bloquants r2
+
+1. **P2 — La migration laisse indéfiniment les anciens checkpoints complets, hors de la nouvelle borne globale.** La base `f544684` créait `cc_catalog_delta_checkpoint` et y stockait jusqu'à 32 Mio d'instantanés complets par profil (`f544684:crates/chill-domain/src/catalog_delta.rs:70-134`). Le candidat ne crée, ne borne et ne purge que la nouvelle table `cc_catalog_delta_checkpoint_v2` (`crates/chill-domain/src/catalog_delta.rs:109-174`) ; aucune migration ne référence l'ancienne table. Reproduction : partir d'une base `f544684` ayant quatre checkpoints, ouvrir/synchroniser avec `3bbb87d`, puis mesurer les deux tables ; les lignes `cc_catalog_delta_checkpoint.snapshot` et leurs chemins/métadonnées sont toujours présentes, ne comptent pas dans les 16 Mio et sont encore recopiées dans les sauvegardes SQLite. Correction requise : dans une migration transactionnelle idempotente, supprimer au minimum toutes les lignes puis la table legacy (les anciens curseurs peuvent déjà recevoir `reset=true` à cause de la nouvelle génération), et ajouter un test d'ouverture d'une base pré-v2 qui prouve l'absence de la table/charge legacy après migration.
+
+2. **P2 — Un transfert paginé répète le document auxiliaire complet sur chaque page et contourne le budget réseau client.** Chaque GET de page reclone et renvoie sagas, playlists, révisions de séries et métadonnées de saisons (`crates/chill-server/src/sync_api.rs:349-365`). Le client ne conserve que le document de la première réponse et, pour les pages suivantes, n'ajoute au compteur de 32 Mio que `items` (`crates/chill-client/src/catalog_cache.rs:247-285`). Un instantané légal proche de 32 Mio avec 10 000 éléments peut donc répéter jusqu'à 99 fois un document volumineux : le contrôle accepte chaque réponse individuellement (34 Mio), mais le transfert cumulé peut atteindre plusieurs Gio et durer des dizaines de minutes sur le Wi-Fi du Pi. Correction requise : ne transmettre les documents auxiliaires que dans la première page (pages suivantes vides), ou imposer côté client une borne cumulée portant sur les octets réellement reçus ; ajouter un test avec un document volumineux et plusieurs pages qui borne le total transféré.
+
+3. **P2 — Une connexion manuelle avec cache chaud n'amorce aucune vérification serveur.** Le démarrage automatique et le changement de profil appellent `syncCatalog`, mais les deux chemins de connexion manuelle se limitent à `loadPage` (`ui/connected/app.js:66`, `:139`, contre `:167-177`). Reproduction : démarrer déconnecté avec un miroir local r0 et un serveur r1, soumettre l'adresse (ou accepter le certificat) sans défocaliser la fenêtre ; r0 reste affiché et aucun `sync_catalog` n'est invoqué jusqu'à un futur focus, un passage Administration ou une action manuelle. Correction requise : après le chargement local réussi de `connect` et `approve-trust`, lancer `void syncCatalog()` comme au boot, et couvrir les deux parcours par un test DOM qui vérifie que la grille chaude reste disponible pendant l'appel.
+
+### Preuves r2 exécutées sur l'archive exacte
+
+- `cargo test --locked --offline -p chill-domain catalog_delta` : 2 PASS.
+- `cargo test --locked --offline -p chill-client detached_publish_cancels_before_write_when_local_mutation_wins` : 1 PASS.
+- `cargo test --locked --offline -p chill-server catalog_changes_contract_paging_profile_isolation_and_real_delta` : 1 PASS.
+- `node --test ui/connected/sync.dom.test.js ui/connected/catalog-loading.dom.test.js` : 8 PASS.
+- `git diff --check f544684b002ad8c1bf5d31f98006da573f576019..3bbb87db5a3331f8f07d12ab1404afd8a5d86ee7` : PASS.
+
+Ces preuves sont ciblées ; les 38/62/103 tests, clippy et la suite Node annoncés par l'intégrateur n'ont pas tous été rejoués ici. Aucun bundle natif, Pi, NAS, réseau ou fournisseur n'a été vérifié.
+
+### ADR-0014 r2
+
+La décision est techniquement cohérente pour les nouveaux enregistrements et pour la restauration officielle, mais `Rétention disque bornée` (`ADR-0014:23`) est faux lors d'une mise à niveau tant que la table legacy reste dans SQLite. L'ADR ne borne pas non plus les octets cumulés d'un transfert paginé et son parcours de déclenchement ne couvre pas la reconnexion manuelle. Ces trois points doivent être intégrés à la décision, aux conséquences et aux tests avant acceptation.

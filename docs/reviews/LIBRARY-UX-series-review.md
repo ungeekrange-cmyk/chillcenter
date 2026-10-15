@@ -49,3 +49,31 @@ Exécution indépendante sur le SHA exact :
 `cargo test --locked --offline -p chill-domain -p chill-client -p chill-server --lib`
 
 Résultat : `37 + 59 + 102` tests PASS. Ces tests ne reproduisent pas les constats ci-dessus ; le verdict reste `CHANGES_REQUESTED`. ADR-0015 reste `PENDING` car ses garanties de CAS atomique et de compatibilité non ambiguë ne sont pas encore satisfaites par le candidat.
+
+---
+
+## Réévaluation delta — candidat `3bbb87db5a3331f8f07d12ab1404afd8a5d86ee7`
+
+- Delta revu : `f544684b002ad8c1bf5d31f98006da573f576019..3bbb87db5a3331f8f07d12ab1404afd8a5d86ee7`
+- Mode : réévaluation opérationnelle ciblée, sources en lecture seule
+- Verdict : `CHANGES_REQUESTED`
+
+Les quatre défauts historiques ont une correction effective dans ce delta : écriture fournisseur/révisions/vitesse dans une transaction SQLite unique, alias de révision `media:<id>` pour chaque épisode avec alias de nom seulement lorsqu'il est non ambigu, identité stable pour la vitesse et migration prudente, regroupement dérivé sous transaction `IMMEDIATE` avec revérification de la révision. Les chemins inspectés restent bornés à 10 000 médias et ne sérialisent pas la racine NAS.
+
+### P1 — Le CAS fournisseur ne protège plus la complétude du groupe figé
+
+`Store::provider_apply_series` contrôle `common_revision` avant les lectures de migration, puis ouvre la transaction plus tard (`crates/chill-domain/src/provider_updates.rs:180-188`). Le scan publie sur une autre connexion SQLite ; il peut donc ajouter un épisode entre ce contrôle et la transaction. Dans `Database::apply_series_provider_with`, l'état courant est ensuite filtré uniquement par les identifiants déjà capturés (`crates/chill-catalog/src/database.rs:425-448`) : un nouveau membre du même groupe n'est ni détecté ni mis à jour. La série se retrouve partiellement associée à TMDB et peut être scindée en deux cartes.
+
+La régression existe déjà sans ordonnancement artificiel : `database::tests::series_provider_rejects_stale_group_but_preserves_concurrent_episode_edits` ajoute un troisième épisode après la capture et l'opération réussit à tort (`crates/chill-catalog/src/database.rs:2511-2519`). Les imports d'affiche ont la même fenêtre : ils contrôlent la révision avant l'écriture du fichier, puis appliquent seulement `snapshot.members` sans revérifier la révision commune dans leur transaction (`crates/chill-domain/src/provider_updates.rs:316-324`, `384-411`).
+
+Correction attendue : dans la transaction `IMMEDIATE` qui publie, relire et comparer la révision commune attendue, puis recalculer l'ensemble courant depuis l'ancre et vérifier qu'il correspond exactement aux identifiants capturés avant toute écriture. Appliquer le même contrôle transactionnel aux affiches série/saison. Ajouter un test à deux connexions qui fait committer un scan entre capture et publication.
+
+### P1 — La suite propriétaire `chill-catalog` est rouge sur le SHA exact
+
+Commande indépendante :
+
+`cargo test --locked --offline -p chill-catalog -p chill-domain --lib`
+
+Résultat : `chill-catalog` **73 PASS / 2 FAIL**. Outre le test de groupe périmé ci-dessus, `database::tests::series_provider_rejects_collision_and_rolls_back_sql_failure` échoue sur son ancienne attente qu'un libellé homonyme soit rejeté (`crates/chill-catalog/src/database.rs:2531-2536`). Autoriser deux séries portant le même nom mais ayant des identités TMDB distinctes est la nouvelle décision correcte ; ce test doit donc être réécrit pour vérifier la séparation par identité tout en conservant ses assertions d'identifiant invalide et de rollback SQL. La commande combinée s'arrête avant `chill-domain`; exécuté séparément, `chill-domain` est vert à **62 PASS**.
+
+ADR-0015 reste `PENDING` sur ce candidat : son contrat « groupe figé complet » et son exigence de CAS ne sont pas encore garantis au point de commit. Une nouvelle révision source rendra cette réévaluation historique et nécessitera un nouveau verdict exact-SHA.

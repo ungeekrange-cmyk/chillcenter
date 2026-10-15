@@ -18,6 +18,17 @@ use std::{
 
 pub type CatalogPublication = Option<(Value, bool, String)>;
 
+fn account_page(previous: usize, page: &Value) -> Result<usize, UiError> {
+    let size = serde_json::to_vec(page)
+        .map_err(|_| error("Catalogue invalide."))?
+        .len();
+    let total = previous.saturating_add(size);
+    if total > 32 * 1024 * 1024 {
+        return Err(error("Catalogue trop volumineux."));
+    }
+    Ok(total)
+}
+
 fn error(message: &str) -> UiError {
     UiError {
         message: message.into(),
@@ -239,14 +250,12 @@ impl SyncTask {
         {
             return Err(error("Suppressions de catalogue invalides."));
         }
+        let mut bytes = account_page(0, &first)?;
         let mut items: Vec<SyncMedia> = serde_json::from_value(first["items"].take())
             .map_err(|_| error("Catalogue invalide."))?;
         if items.len() > 100 {
             return Err(error("Page de catalogue trop volumineuse."));
         }
-        let mut bytes = serde_json::to_vec(&first)
-            .map_err(|_| error("Catalogue invalide."))?
-            .len();
         let mut page = first.clone();
         while page["has_more"] == true {
             let offset = page["next_offset"]
@@ -269,18 +278,11 @@ impl SyncTask {
             if page["revision"] != revision {
                 return Err(error("Le catalogue a changé pendant la copie."));
             }
+            bytes = account_page(bytes, &page)?;
             let part: Vec<SyncMedia> = serde_json::from_value(page["items"].take())
                 .map_err(|_| error("Page catalogue invalide."))?;
             if part.is_empty() || part.len() > 100 {
                 return Err(error("Page de catalogue invalide."));
-            }
-            bytes = bytes.saturating_add(
-                serde_json::to_vec(&part)
-                    .map_err(|_| error("Catalogue invalide."))?
-                    .len(),
-            );
-            if bytes > 32 * 1024 * 1024 {
-                return Err(error("Catalogue trop volumineux."));
             }
             items.extend(part);
         }
@@ -348,15 +350,13 @@ impl SyncTask {
             .as_u64()
             .filter(|n| *n <= 10_000)
             .ok_or_else(|| error("Catalogue trop volumineux."))? as usize;
+        let mut bytes = account_page(0, &first)?;
         let mut items: Vec<SyncMedia> = serde_json::from_value(first["items"].take())
             .map_err(|_| error("Catalogue invalide."))?;
         if items.len() > 100 {
             return Err(error("Page de catalogue trop volumineuse."));
         }
         let mut page = first.clone();
-        let mut bytes = serde_json::to_vec(&first)
-            .map_err(|_| error("Catalogue invalide."))?
-            .len();
         while page["has_more"] == true {
             let offset = page["next_offset"]
                 .as_u64()
@@ -378,18 +378,11 @@ impl SyncTask {
             if page["revision"] != revision {
                 return Err(error("Le catalogue a changé pendant la copie."));
             }
+            bytes = account_page(bytes, &page)?;
             let part: Vec<SyncMedia> = serde_json::from_value(page["items"].take())
                 .map_err(|_| error("Page catalogue invalide."))?;
             if part.is_empty() || part.len() > 100 {
                 return Err(error("Page de catalogue invalide."));
-            }
-            bytes = bytes.saturating_add(
-                serde_json::to_vec(&part)
-                    .map_err(|_| error("Catalogue invalide."))?
-                    .len(),
-            );
-            if bytes > 32 * 1024 * 1024 {
-                return Err(error("Catalogue trop volumineux."));
             }
             items.extend(part);
         }
@@ -883,6 +876,13 @@ impl LocalCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cumulative_budget_counts_auxiliary_documents_and_first_page_items() {
+        let page = json!({"items":[{"title":"first"}],"sagas":[{"name":"metadata"}],"season_metadata":{"x":"value"}});
+        let size = serde_json::to_vec(&page).unwrap().len();
+        assert_eq!(account_page(0, &page).unwrap(), size);
+        assert!(account_page(32 * 1024 * 1024 - size + 1, &page).is_err());
+    }
     fn sync_item(id: &str, title: &str) -> SyncMedia {
         serde_json::from_value(json!({"media":{"id":id,"path":format!("/{id}"),"title":title,"category":"film","year":null,"series":null,"season":null,"episode":null,"genres":[],"overview":"","poster":null,"saga":null,"watched":false,"rating":null,"available":true,"added_at":1,"tmdb_id":null},"revision":1})).unwrap()
     }

@@ -392,7 +392,14 @@ impl Database {
         provider: &SeriesProvider,
         explicit: bool,
     ) -> Result<Vec<Media>, String> {
-        self.apply_series_provider_with(series, originals, provider, explicit, |_, _| Ok(()))
+        self.apply_series_provider_with(
+            series,
+            originals,
+            provider,
+            explicit,
+            |_| Ok(()),
+            |_, _| Ok(()),
+        )
     }
     /// The shared catalogue and its caller's revision rows live in the same
     /// database. Publish both in this transaction, never as two commits.
@@ -402,6 +409,7 @@ impl Database {
         originals: &[Media],
         provider: &SeriesProvider,
         explicit: bool,
+        before_write: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<(), String>,
         after_write: impl FnOnce(&rusqlite::Transaction<'_>, &[Media]) -> Result<(), String>,
     ) -> Result<Vec<Media>, String> {
         let sample = originals.first().ok_or("Série introuvable.")?;
@@ -422,32 +430,8 @@ impl Database {
             rusqlite::TransactionBehavior::Immediate,
         )
         .map_err(db_error)?;
-        let all = self.list()?;
-        // The captured ids, rather than the (mutable and non-unique) display
-        // name, define the group being changed.  This is the important guard
-        // for same-title shows such as Doctor Who (2005)/(2023).
-        let mut members: Vec<_> = all
-            .iter()
-            .filter(|m| originals.iter().any(|original| original.id == m.id))
-            .cloned()
-            .collect();
-        if members.len() != originals.len()
-            || members.iter().any(|m| {
-                !originals.iter().any(|o| {
-                    o.id == m.id
-                        && o.series == m.series
-                        && o.category == m.category
-                        && o.series_manual == m.series_manual
-                        && o.series_metadata == m.series_metadata
-                        && o.series_overview == m.series_overview
-                        && o.tmdb_id == m.tmdb_id
-                        && o.poster == m.poster
-                        && o.poster_custom == m.poster_custom
-                })
-            })
-        {
-            return Err("La série a changé pendant la recherche. Vos corrections sont conservées ; relancez l’opération.".into());
-        }
+        before_write(&tx)?;
+        let mut members = Self::checked_series_members(&tx, originals)?;
         let keep_name = !explicit && members.iter().any(|m| m.series_manual);
         let name = if keep_name {
             series
@@ -479,6 +463,51 @@ impl Database {
         }
         after_write(&tx, &members)?;
         tx.commit().map_err(db_error)?;
+        Ok(members)
+    }
+
+    /// Re-resolve the complete group while the caller holds its write reservation.
+    /// Checking captured ids alone misses newly scanned episodes of this group.
+    pub fn checked_series_members(
+        tx: &rusqlite::Transaction<'_>,
+        originals: &[Media],
+    ) -> Result<Vec<Media>, String> {
+        let sample = originals.first().ok_or("Série introuvable.")?;
+        let mut statement = tx.prepare("SELECT data FROM media").map_err(db_error)?;
+        let all = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(db_error)?
+            .map(|row| {
+                serde_json::from_str::<Media>(&row.map_err(db_error)?)
+                    .map_err(|_| "Catalogue local endommagé.".to_owned())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let anchor = all
+            .iter()
+            .find(|item| item.id == sample.id)
+            .ok_or("Série introuvable.")?;
+        let members: Vec<_> = all
+            .iter()
+            .filter(|item| same_series_group(anchor, item))
+            .cloned()
+            .collect();
+        if members.len() != originals.len()
+            || members.iter().any(|m| {
+                !originals.iter().any(|o| {
+                    o.id == m.id
+                        && o.series == m.series
+                        && o.category == m.category
+                        && o.series_manual == m.series_manual
+                        && o.series_metadata == m.series_metadata
+                        && o.series_overview == m.series_overview
+                        && o.tmdb_id == m.tmdb_id
+                        && o.poster == m.poster
+                        && o.poster_custom == m.poster_custom
+                })
+            })
+        {
+            return Err("La série a changé pendant la recherche. Vos corrections sont conservées ; relancez l’opération.".into());
+        }
         Ok(members)
     }
 
@@ -2509,7 +2538,8 @@ mod tests {
         );
         assert_eq!(db.list().unwrap(), before);
         let originals = db.series_members("Nouvelle correction").unwrap();
-        let c = movie("Nouvelle correction.S03E01.mkv");
+        let mut c = movie("Nouvelle correction.S03E01.mkv");
+        c.tmdb_id = originals[0].tmdb_id;
         db.put(&c).unwrap();
         let before = db.list().unwrap();
         assert!(
@@ -2520,20 +2550,35 @@ mod tests {
     }
 
     #[test]
-    fn series_provider_rejects_collision_and_rolls_back_sql_failure() {
+    fn series_provider_allows_title_collision_but_rolls_back_sql_failure() {
         let mut db = db();
         let a = movie("Dark.S01E01.mkv");
         let b = movie("Dark.S02E01.mkv");
         let other = movie("Other.S01E01.mkv");
         db.snapshot(vec![a, b, other]).unwrap();
         let originals = db.series_members("Dark").unwrap();
-        let before = db.list().unwrap();
         let mut p = provider();
         p.name = "Other".into();
+        let changed = db
+            .apply_series_provider("Dark", &originals, &p, true)
+            .unwrap();
+        assert_eq!(changed.len(), 2);
         assert!(
-            db.apply_series_provider("Dark", &originals, &p, true)
-                .is_err()
+            changed
+                .iter()
+                .all(|item| item.series.as_deref() == Some("Other")
+                    && item.tmdb_id == Some(p.tmdb_id))
         );
+        let untouched = db
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|item| !originals.iter().any(|original| original.id == item.id))
+            .unwrap();
+        assert_eq!(untouched.tmdb_id, None);
+        assert_eq!(db.series_members_for(&untouched).unwrap().len(), 1);
+        let originals = changed;
+        let before = db.list().unwrap();
         p = provider();
         p.tmdb_id = -1;
         assert!(
