@@ -57,7 +57,7 @@ svc_pid() { pgrep -f '^/usr/lib/chillcenter/chill-server --config' | head -1; }
 case "$1" in
   is-active) [[ -n "$(svc_pid)" ]] ;;
   stop) pid="$(svc_pid)"; [[ -n "$pid" ]] && kill "$pid"; for _ in $(seq 1 900); do [[ -z "$(svc_pid)" ]] && exit 0; sleep 0.1; done; exit 1 ;;  # systemd waits up to TimeoutStopSec (90 s)
-  start) cd /usr/lib/chillcenter; setsid runuser -u chillcenter -- /usr/lib/chillcenter/chill-server --config /etc/chillcenter/server.json >/run/fake-cc/service.log 2>&1 </dev/null &
+  start) cd /usr/lib/chillcenter; setsid env --default-signal=HUP,INT,TERM,PIPE runuser -u chillcenter -- /usr/lib/chillcenter/chill-server --config /etc/chillcenter/server.json >/run/fake-cc/service.log 2>&1 </dev/null &
          for _ in $(seq 1 50); do [[ -n "$(svc_pid)" ]] && exit 0; sleep 0.1; done; exit 1 ;;
   show) svc_pid ;;
   *) exit 1 ;;
@@ -155,6 +155,29 @@ reset_state; rm -rf "$WORK/h"; mkdir -p "$WORK/h/web"; echo x > "$WORK/h/web/ind
 stage "$WORK/hostile.tar"; before_pid="$(svc_pid)"; run_operator "$BASE" "$(sha "$WORK/hostile.tar")"
 expect "H  archive avec lien symbolique : refus (2)" "$RC" 2
 expect "H  service intact" "$(svc_pid)" "$before_pid"
+
+# ---- I. lost output channel (SSH dropped) while a verification fails: SIGPIPE must not kill the recovery (review 2, N1) --------
+reset_state; BR="$(broken_archive)"; stage "$BR"
+env PATH="$PATH" NEW_BINARY_SHA256="$NEW_SHA" WEB_ARCHIVE_SHA256="$(sha "$BR")" CHILLCENTER_TLS_CERT_PATH="$CERT" CHILLCENTER_BASE_URL="$BASE" /bin/bash -s -- < "$OP" 2>&1 | { read -r _first; exit 0; }
+RC=${PIPESTATUS[0]}
+[[ "$RC" != 0 && "$RC" != 141 ]] && ok "I  sortie non nulle et pas 141 (SIGPIPE) : $RC" || ko "I  code" "$RC"
+expect "I  ancien binaire restauré malgré la sortie fermée" "$(sha "$BIN")" "$OLD_SHA"
+[[ ! -e "$WEB" ]] && ok "I  dossier web retiré" || ko "I  web" "toujours présent"
+[[ -n "$(svc_pid)" ]] && wait_api && ok "I  service actif et répond" || ko "I  service" "arrêté"
+
+# ---- J. backup fails AFTER the stop: the old service must come back -----------------------------------------------------------
+reset_state; stage; mkdir -p /var/lib/chillcenter/data/backups; chown root:root /var/lib/chillcenter/data/backups; chmod 0555 /var/lib/chillcenter/data/backups
+before_pid="$(svc_pid)"; run_operator
+[[ "$RC" != 0 ]] && ok "J  sauvegarde impossible : sortie non nulle ($RC)" || ko "J  code" "0"
+expect "J  ancien binaire intact" "$(sha "$BIN")" "$OLD_SHA"
+[[ -n "$(svc_pid)" ]] && ok "J  service redémarré après l'arrêt" || ko "J  service" "reste arrêté"
+echo "$OUT" | grep -q "ERR line" && ok "J  la sortie nomme la commande en échec (ERR line …)" || ko "J  diagnostic" "pas de ligne ERR"
+
+# ---- N. service already stopped: refused before anything, and the script never starts it ----------------------------------------
+reset_state; stage; stop_service; run_operator
+expect "N  service arrêté : refus (2)" "$RC" 2
+[[ -z "$(svc_pid)" ]] && ok "N  le script n'a pas démarré le service" || ko "N  service" "démarré"
+expect "N  ancien binaire intact, aucun web" "$(sha "$BIN")|$([[ -e $WEB ]] && echo web || echo none)" "$OLD_SHA|none"
 
 # ---- teardown (also runs on any early exit) ------------------------------------------------------------
 echo "== résultat : $pass PASS, $fail FAIL"; [[ "$fail" -eq 0 ]]

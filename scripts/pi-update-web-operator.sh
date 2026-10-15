@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Review-only operator script (candidate V6; supersedes V5 `8d47e9df…`, which the independent review n°1 refused
-# with CHANGES_REQUESTED; derived from the independently approved V4 `55c6be48…`).
+# Review-only operator script (candidate V7; supersedes V6 `ba9777cd…` refused by independent review n°2 (N1 SIGPIPE) and V5
+# `8d47e9df…` refused by review n°1; derived from the independently approved V4 `55c6be48…`).
 # DO NOT EXECUTE before an independent reviewer has approved THESE EXACT BYTES (sha256 of this file)
 # and the user has given explicit go for the Pi. Runs as root on the Pi, fed through stdin:
 #   ssh <strict batch control connection> 'sudo -n env NEW_BINARY_SHA256=… … /bin/bash -s --' < pi-update-web-operator.sh
@@ -11,7 +11,11 @@
 # Not touched: configuration, systemd unit, NAS mount, TLS material, identity, profiles, databases.
 # Accepted residual risk (review S6): the incoming archive in /var/tmp is read several times; its only possible
 # writer is a root-equivalent operator, so no privilege boundary is crossed.
-set -euo pipefail
+set -Eeuo pipefail
+# A closed stdout/stderr (lost SSH session) must never kill the script, least of all its recovery (review 2, N1).
+trap '' PIPE
+# Name the failing command: the recovery output alone does not say why a deployment was rolled back (review 2, N5).
+trap 'echo "ERR line $LINENO: $BASH_COMMAND" >&2' ERR
 old_expected='1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181'   # binary installed by V4 on 2026-10-14
 service='chillcenter'; binary='/usr/lib/chillcenter/chill-server'; web_dir='/usr/lib/chillcenter/web'
 incoming_bin='/var/tmp/chill-server-web.new'; incoming_web='/var/tmp/chillcenter-web.tar'
@@ -38,20 +42,21 @@ validate_archive_listing() {
     [[ "${name:0:1}" == '-' || "${name:0:1}" == 'd' ]] || return 1
   done <<<"$detail"
 }
+must_fail() { if "$@" >/dev/null 2>&1; then echo "SELF-TEST FAILED (accepted what must be refused): $*" >&2; exit 1; fi; }  # `! cmd` never trips errexit
 if [[ "${1:-}" == '--self-test' ]]; then
   good='Sauvegarde terminée : /var/lib/chillcenter/data/backups/ba950d51-fc88-49ee-b801-4641fac531ff'
   [[ "$(parse_backup_path "$good")" == '/var/lib/chillcenter/data/backups/ba950d51-fc88-49ee-b801-4641fac531ff' ]]
-  ! parse_backup_path 'Sauvegarde terminée : /tmp/not-allowed' >/dev/null
-  ! parse_backup_path 'backup completed' >/dev/null
+  must_fail parse_backup_path 'Sauvegarde terminée : /tmp/not-allowed'
+  must_fail parse_backup_path 'backup completed'
   validate_archive_listing $'web/\nweb/index.html\nweb/vendor/mpeg4/mpeg4-decoder.wasm' $'drwxr-xr-x a\n-rw-r--r-- b\n-rw-r--r-- c'
-  ! validate_archive_listing $'web/index.html\n../etc/passwd' $'-rw-r--r-- a\n-rw-r--r-- b'
-  ! validate_archive_listing $'/etc/passwd' $'-rw-r--r-- a'
-  ! validate_archive_listing $'web/link' $'lrwxrwxrwx a'
-  ! validate_archive_listing $'web/hard' $'hrw-r--r-- a'
-  ! validate_archive_listing $'other/file' $'-rw-r--r-- a'
-  ! validate_archive_listing $'web' $'-rw-r--r-- a'
-  ! validate_archive_listing $'web/a\nb/c' $'-rw-r--r-- a'
-  ! validate_archive_listing '' ''
+  must_fail validate_archive_listing $'web/index.html\n../etc/passwd' $'-rw-r--r-- a\n-rw-r--r-- b'
+  must_fail validate_archive_listing $'/etc/passwd' $'-rw-r--r-- a'
+  must_fail validate_archive_listing $'web/link' $'lrwxrwxrwx a'
+  must_fail validate_archive_listing $'web/hard' $'hrw-r--r-- a'
+  must_fail validate_archive_listing $'other/file' $'-rw-r--r-- a'
+  must_fail validate_archive_listing $'web' $'-rw-r--r-- a'
+  must_fail validate_archive_listing $'web/a\nb/c' $'-rw-r--r-- a'
+  must_fail validate_archive_listing '' ''
   # A pipe whose reader quits early must not break the checks (review S1): capture, then match.
   page="$(printf '%s' "$(head -c 40000 /dev/zero | tr '\0' 'x')<title>Chill Center</title>")"; [[ "$page" == *'<title>Chill Center</title>'* ]]
   printf 'parser_self_test=PASS\n'; exit 0
@@ -64,7 +69,7 @@ new_expected="$NEW_BINARY_SHA256"
 [[ "$(id -u)" == '0' ]] || { echo 'must run as root' >&2; exit 2; }
 [[ "$CHILLCENTER_TLS_CERT_PATH" == /* && -f "$CHILLCENTER_TLS_CERT_PATH" && ! -L "$CHILLCENTER_TLS_CERT_PATH" ]] || { echo 'invalid public certificate path' >&2; exit 2; }
 for path in /usr /usr/lib /usr/lib/chillcenter "$binary" "$web_dir" /etc /etc/chillcenter "$config" /root "$incoming_bin" "$incoming_web" /var/tmp; do [[ ! -L "$path" ]] || { echo "symlink refused: $path" >&2; exit 2; }; done
-command -v curl >/dev/null && command -v ss >/dev/null || { echo 'curl and ss are required on the Pi' >&2; exit 2; }
+for tool in curl ss openssl runuser seq install mktemp sha256sum tar find du stat df awk; do command -v "$tool" >/dev/null || { echo "required tool missing: $tool" >&2; exit 2; }; done
 [[ -f "$incoming_bin" && "$(sha256sum "$incoming_bin" | awk '{print $1}')" == "$new_expected" ]] || { echo 'incoming binary invalid' >&2; exit 2; }
 [[ -f "$incoming_web" && "$(sha256sum "$incoming_web" | awk '{print $1}')" == "$WEB_ARCHIVE_SHA256" ]] || { echo 'incoming web archive invalid' >&2; exit 2; }
 [[ "$(sha256sum "$binary" | awk '{print $1}')" == "$old_expected" ]] || { echo 'installed binary is not the expected one' >&2; exit 2; }
@@ -82,7 +87,11 @@ fi
 free_kb() { df -Pk "$1" | awk 'NR==2{print $4}'; }
 [[ "$(free_kb /usr/lib/chillcenter)" -ge "$min_free_kb" && "$(free_kb /var/lib/chillcenter/data)" -ge "$min_free_kb" && "$(free_kb "$rollback_dir")" -ge "$min_free_kb" ]] || { echo 'not enough free disk space' >&2; exit 2; }
 
-curl_tls() { curl -sS --max-time 10 --cacert "$CHILLCENTER_TLS_CERT_PATH" "$@" </dev/null; }
+# -q ignores ~/.curlrc and --noproxy ignores proxy variables of the root environment (review 2, N7).
+curl_tls() { curl -q -sS --noproxy '*' --max-time 10 --cacert "$CHILLCENTER_TLS_CERT_PATH" "$@" </dev/null; }
+# The url must point at a port the chill-server process is really listening on, not at another LAN host with the same certificate.
+listening="$(ss -Hltnp </dev/null 2>/dev/null | grep -F chill-server || true)"
+[[ "$listening" == *":${CHILLCENTER_BASE_URL##*:} "* ]] || { echo 'chill-server is not listening on the port of the given url' >&2; exit 2; }
 # Strict-TLS probe of the CURRENT service before anything is stopped (review S3): wrong SAN, port or CA fails here, not after the swap.
 [[ "$(curl_tls -o /dev/null -w '%{http_code}' "$CHILLCENTER_BASE_URL/api/2026-10-14/server")" == '200' ]] || { echo 'current service does not answer 200 over strict TLS at the given url' >&2; exit 2; }
 
@@ -94,12 +103,12 @@ recover_on_failure() {
   local status=$? current_hash restored=1
   # Recovery must run to the end whatever fails inside it (review S2): no errexit, no interruption by signals.
   set +e
-  trap : HUP INT TERM   # intercepted (a no-op), not ignored: recovery is not interrupted and children do not inherit an ignored signal
-  trap - EXIT
+  trap '' HUP INT TERM   # ignored: neither this handler nor the install/mv it spawns can be interrupted half way (review 2, N2)
+  trap - EXIT ERR
   if (( completed == 0 && stop_attempted == 1 )); then
     echo "RECOVERY: restoring the previous state (exit status $status)" >&2
     if systemctl is-active --quiet "$service"; then systemctl stop "$service"; fi
-    if ! systemctl is-active --quiet "$service"; then
+    if systemctl is-active --quiet "$service"; then echo 'RECOVERY: the service could not be stopped; binary and web directory left untouched' >&2; else
       current_hash="$(sha256sum "$binary" | awk '{print $1}')"
       if [[ "$current_hash" == "$new_expected" ]]; then
         restored=0
@@ -119,7 +128,10 @@ recover_on_failure() {
     fi
     # Start only after a stop was attempted; an early precondition failure is inert.
     if ! systemctl is-active --quiet "$service"; then systemctl start "$service"; fi
-    systemctl is-active --quiet "$service" && echo 'RECOVERY: service is active' >&2 || echo 'RECOVERY: SERVICE IS NOT ACTIVE' >&2
+    if systemctl is-active --quiet "$service"; then
+      echo 'RECOVERY: service is active' >&2
+      sleep 2; if curl_tls -o /dev/null "$CHILLCENTER_BASE_URL/api/2026-10-14/server" 2>/dev/null; then echo 'RECOVERY: service answers over strict TLS' >&2; else echo 'RECOVERY: service active but NOT answering over strict TLS' >&2; fi
+    else echo 'RECOVERY: SERVICE IS NOT ACTIVE' >&2; fi
   fi
   cleanup_owned_file "$root_stage" '/usr/lib/chillcenter/.chill-server-web.'
   cleanup_owned_file "$rollback_tmp" "$rollback_dir/.chill-server-1eb24e97bcdf."
@@ -156,7 +168,7 @@ connections="$(grep -F chill-server <<<"$sockets" || true)"
 [[ -z "$connections" ]] || { echo 'active established client connection; refusing stop' >&2; exit 42; }
 stop_attempted=1
 systemctl stop "$service"
-! systemctl is-active --quiet "$service"
+if systemctl is-active --quiet "$service"; then echo 'service still active after stop' >&2; exit 1; fi
 
 backup_output="$(runuser -u chillcenter -- /bin/bash -c "cd /usr/lib/chillcenter && exec $binary --backup --config $config" </dev/null)"
 backup_path="$(parse_backup_path "$backup_output")"
