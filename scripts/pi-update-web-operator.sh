@@ -94,7 +94,7 @@ recover_on_failure() {
   local status=$? current_hash restored=1
   # Recovery must run to the end whatever fails inside it (review S2): no errexit, no interruption by signals.
   set +e
-  trap '' HUP INT TERM
+  trap : HUP INT TERM   # intercepted (a no-op), not ignored: recovery is not interrupted and children do not inherit an ignored signal
   trap - EXIT
   if (( completed == 0 && stop_attempted == 1 )); then
     echo "RECOVERY: restoring the previous state (exit status $status)" >&2

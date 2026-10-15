@@ -6,22 +6,37 @@
 #   usage (from the Mac):  colima ssh -- sudo -n <repo>/scripts/pi-operator-simulation.sh <repo> <old-release.tar.gz>
 set -uo pipefail
 REPO="$1"; OLD_TARBALL="$2"
-OP="$REPO/scripts/pi-update-web-operator.sh"
+OP="$REPO/scripts/pi-update-web-operator.sh"; ORIG_OP="$OP"
 NEWBIN_SRC="$REPO/target/aarch64-unknown-linux-gnu/release/chill-server"; WEB_TAR="$REPO/artifacts/web-pi/chillcenter-web.tar"
 OLD_SHA=1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181
 BIN=/usr/lib/chillcenter/chill-server; WEB=/usr/lib/chillcenter/web; RB=/root/chillcenter-rollback; CFG=/etc/chillcenter/server.json
 UNIT=/usr/lib/systemd/system/chillcenter.service; BASE=https://127.0.0.1:18443; CERT=/var/lib/chillcenter/data/tls/certificate.pem
 FAKE=/opt/fake-cc-bin; WORK="$(mktemp -d /tmp/cc-sim.XXXXXX)"; pass=0; fail=0
 [[ "$(id -u)" == 0 ]] || { echo "must be root"; exit 2; }
+teardown() {
+  pkill -f '^/usr/lib/chillcenter/chill-server --config' 2>/dev/null; pkill -f 'runuser -u chillcenter' 2>/dev/null; sleep 0.5
+  rm -rf "$WEB" "$RB" /var/lib/chillcenter /usr/lib/chillcenter "$CFG" /etc/chillcenter "$UNIT" /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar "$FAKE" /run/fake-cc "${WORK:-/nonexistent}"
+  userdel chillcenter 2>/dev/null; groupdel chillcenter 2>/dev/null
+}
+teardown; WORK="$(mktemp -d /tmp/cc-sim.XXXXXX)"   # purge anything left by an interrupted run, then start clean
+trap teardown EXIT
 sha() { sha256sum "$1" | awk '{print $1}'; }
 ok() { pass=$((pass+1)); echo "PASS  $1"; }
-ko() { fail=$((fail+1)); echo "FAIL  $1 — $2"; }
+ko() { fail=$((fail+1)); echo "FAIL  $1 — $2"; [[ -n "${OUT:-}" ]] && echo "$OUT" | tail -${SIM_TAIL:-12} | sed "s/^/        | /"; }
 expect() { if [[ "$2" == "$3" ]]; then ok "$1"; else ko "$1" "attendu '$3', obtenu '$2'"; fi; }
 
 # ---- the Pi layout ------------------------------------------------------------------------------------
-if getent passwd 997 >/dev/null && [[ "$(getent passwd 997 | cut -d: -f1)" != chillcenter ]]; then echo "uid 997 déjà pris par un autre compte : simulation impossible"; exit 2; fi
-getent group chillcenter >/dev/null || groupadd -g 983 chillcenter
-getent passwd chillcenter >/dev/null || useradd -r -u 997 -g 983 -M -s /usr/sbin/nologin chillcenter
+# The Pi's service account is uid 997 / gid 983. If those ids are taken on this VM, the ONLY change made to the tested
+# script is a mechanical substitution of that number in a COPY (reported below); everything else runs byte for byte.
+SIM_UID=997; SIM_GID=983
+if getent passwd 997 >/dev/null && [[ "$(getent passwd 997 | cut -d: -f1)" != chillcenter ]]; then SIM_UID=4997; SIM_GID=4983; fi
+getent group chillcenter >/dev/null || groupadd -g "$SIM_GID" chillcenter
+getent passwd chillcenter >/dev/null || useradd -r -u "$SIM_UID" -g "$SIM_GID" -M -s /usr/sbin/nologin chillcenter
+if [[ "$SIM_UID" != 997 ]]; then
+  sed -e "s/'997'/'$SIM_UID'/g" -e "s/700:997/700:$SIM_UID/g" "$OP" > "$WORK/operator-copy.sh"
+  echo "NOTE : uid 997 indisponible sur la VM ; copie du script avec uid $SIM_UID (seule différence : $(diff <(cat "$OP") "$WORK/operator-copy.sh" | grep -c '^>') lignes)"
+  OP="$WORK/operator-copy.sh"
+fi
 mkdir -p /usr/lib/chillcenter /etc/chillcenter /var/lib/chillcenter/data /usr/lib/systemd/system "$FAKE" /run/fake-cc /var/tmp
 chmod 755 /usr/lib/chillcenter; chown root:root /usr/lib/chillcenter
 chown chillcenter:chillcenter /var/lib/chillcenter /var/lib/chillcenter/data; chmod 700 /var/lib/chillcenter /var/lib/chillcenter/data
@@ -41,7 +56,7 @@ cat > "$FAKE/systemctl" <<'EOF'
 svc_pid() { pgrep -f '^/usr/lib/chillcenter/chill-server --config' | head -1; }
 case "$1" in
   is-active) [[ -n "$(svc_pid)" ]] ;;
-  stop) pid="$(svc_pid)"; [[ -n "$pid" ]] && kill "$pid"; for _ in $(seq 1 50); do [[ -z "$(svc_pid)" ]] && exit 0; sleep 0.1; done; exit 1 ;;
+  stop) pid="$(svc_pid)"; [[ -n "$pid" ]] && kill "$pid"; for _ in $(seq 1 900); do [[ -z "$(svc_pid)" ]] && exit 0; sleep 0.1; done; exit 1 ;;  # systemd waits up to TimeoutStopSec (90 s)
   start) cd /usr/lib/chillcenter; setsid runuser -u chillcenter -- /usr/lib/chillcenter/chill-server --config /etc/chillcenter/server.json >/run/fake-cc/service.log 2>&1 </dev/null &
          for _ in $(seq 1 50); do [[ -n "$(svc_pid)" ]] && exit 0; sleep 0.1; done; exit 1 ;;
   show) svc_pid ;;
@@ -60,11 +75,11 @@ reset_state() {  # old binary running, no web dir, rollback dir with the R7 stan
   install -o root -g root -m 0755 "$OLDBIN" "$BIN"
   mkdir -m 0700 "$RB"; echo "R7 stand-in" > "$RB/chill-server-r7-9a17ffe55e3d"
   rm -rf /var/lib/chillcenter/data/backups
-  systemctl start chillcenter; wait_api || { echo "service de base ne démarre pas"; cat /run/fake-cc/service.log; exit 2; }
+  systemctl start chillcenter; wait_api || { echo "service de base ne démarre pas"; cat /run/fake-cc/service.log; ss -ltnp | grep 18443; exit 2; }
 }
 stage() { install -m 0600 "$NEWBIN_SRC" /var/tmp/chill-server-web.new; install -m 0600 "${1:-$WEB_TAR}" /var/tmp/chillcenter-web.tar; }
 run_operator() {  # $1 base url, $2 web archive sha  ->  sets RC and OUT ; script is fed through stdin like the real procedure
-  OUT="$(env PATH="$PATH" NEW_BINARY_SHA256="$NEW_SHA" WEB_ARCHIVE_SHA256="${2:-$WEB_SHA}" CHILLCENTER_TLS_CERT_PATH="$CERT" CHILLCENTER_BASE_URL="${1:-$BASE}" /bin/bash -s -- < "$OP" 2>&1)"; RC=$?
+  OUT="$(env PATH="$PATH" NEW_BINARY_SHA256="$NEW_SHA" WEB_ARCHIVE_SHA256="${2:-$WEB_SHA}" CHILLCENTER_TLS_CERT_PATH="$CERT" CHILLCENTER_BASE_URL="${1:-$BASE}" /bin/bash -s${SIM_TRACE:+x} -- < "$OP" 2>&1)"; RC=$?
 }
 backups() { ls /var/lib/chillcenter/data/backups 2>/dev/null | wc -l | tr -d ' '; }
 broken_archive() {  # a valid, hash-consistent archive that lacks the wasm file => post-install verification must fail
@@ -79,7 +94,7 @@ unchanged_world() { # config, unit, certificate untouched
 reset_state; CFG_SHA="$(sha "$CFG")"; UNIT_SHA="$(sha "$UNIT")"; CERT_SHA="$(sha "$CERT")"
 
 echo "== Environnement : $(uname -m) $(. /etc/os-release; echo "$PRETTY_NAME"), tar $(tar --version | head -1), coreutils $(sha256sum --version | head -1 | awk '{print $NF}'), curl $(curl --version | head -1 | awk '{print $2}')"
-echo "== ancien binaire $OLD_SHA ; nouveau $NEW_SHA ; archive web $WEB_SHA ; script $(sha "$OP")"
+echo "== ancien binaire $OLD_SHA ; nouveau $NEW_SHA ; archive web $WEB_SHA ; script testé $(sha "$OP") (original du dépôt : $(sha "$ORIG_OP"))"
 
 # ---- A. nominal deployment ---------------------------------------------------------------------------
 reset_state; stage; before_pid="$(svc_pid)"; run_operator
@@ -141,7 +156,5 @@ stage "$WORK/hostile.tar"; before_pid="$(svc_pid)"; run_operator "$BASE" "$(sha 
 expect "H  archive avec lien symbolique : refus (2)" "$RC" 2
 expect "H  service intact" "$(svc_pid)" "$before_pid"
 
-# ---- teardown ---------------------------------------------------------------------------------------------
-stop_service; rm -rf "$WEB" "$RB" /var/lib/chillcenter /usr/lib/chillcenter "$CFG" /etc/chillcenter "$UNIT" /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar "$FAKE" /run/fake-cc "$WORK"
-userdel chillcenter 2>/dev/null; groupdel chillcenter 2>/dev/null
+# ---- teardown (also runs on any early exit) ------------------------------------------------------------
 echo "== résultat : $pass PASS, $fail FAIL"; [[ "$fail" -eq 0 ]]
