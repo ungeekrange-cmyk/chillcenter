@@ -1,6 +1,6 @@
 # État réel du Raspberry Pi et règles de coordination entre agents
 
-> **⚠ Le Pi est injoignable depuis environ 17 h le 15 octobre 2026 (ping 100 % de pertes, connexion SSH tombée). Son état n'est PAS vérifié depuis. Ne rien déployer, ne rien modifier avant un préflight en lecture seule réussi.** La section 1 décrit l'état observé *avant* cette coupure.
+> **État revérifié le 15 octobre 2026 à 20:18–20:23 UTC** (le Pi avait été injoignable d'environ 16 h à 20 h UTC, puis a redémarré : service relancé à 21:03 IST, redirection 443 et configuration conservées). Les valeurs ci-dessous sont celles **observées après** le déploiement du 20:21 UTC. Refaire un préflight en lecture seule avant toute intervention.
 
 Document à lire **avant toute intervention sur le Pi** (livraison, script de déploiement, changement de configuration ou de pare-feu). Mis à jour le 15 octobre 2026 par l'instance qui a développé le client web (branche `codex/web-pwa`). Il sert aussi à prévenir l'agent qui développe le client Mac (branche `codex/player-streaming`) : le Pi **n'est plus dans l'état que ses scripts attendent**.
 
@@ -10,17 +10,19 @@ Règle générale : ce fichier distingue ce qui a été **exécuté et observé*
 
 | Élément | Valeur observée |
 | --- | --- |
-| Binaire serveur `/usr/lib/chillcenter/chill-server` | SHA-256 `a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527` (build de `codex/web-pwa` : merge de `codex/player-streaming` `a59f5e6` **plus** client web et garde d'origine). Avant : `cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3` (build `c610ea9`) |
-| Copie de rollback du précédent binaire | `/root/chillcenter-rollback/chill-server-cef54cd0e8ba` (root, `0700`) ; les anciennes copies (`07358f7…`, `9277ac4…`, `cfc87de…`, `r7…`) sont conservées |
+| Binaire serveur `/usr/lib/chillcenter/chill-server` | SHA-256 `ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7` (build de `codex/web-pwa` : merge de `codex/player-streaming` `a59f5e6` **plus** client web, garde d'origine, listener HTTP clair). Précédents : `a7ab7b07…` (client web, 443), `cef54cd0…` (build `c610ea9`) |
+| Copie de rollback du précédent binaire | `/root/chillcenter-rollback/chill-server-a7ab7b07633c` et `chill-server-cef54cd0e8ba` (root, `0700`) ; les anciennes copies (`07358f7…`, `9277ac4…`, `cfc87de…`, `r7…`) sont conservées |
 | Dossier du client web | `/usr/lib/chillcenter/web` (root:root, `0755`, lecture seule pour le service) ; le serveur le lit à côté de son binaire : **`<dossier du binaire>/web`** |
 | Sauvegarde privée prise avant le déploiement | `/var/lib/chillcenter/data/backups/93f3dee3-6297-4319-a455-a0ece8a98437` |
-| Configuration `/etc/chillcenter/server.json` | **inchangée** (sha256 `ea24f2f0a98db2b0a080ab70113a2fbe8eb1006a20e2eae646d115448f3783f9`) : `listen` `192.168.1.42:8443` |
+| Configuration `/etc/chillcenter/server.json` | **modifiée le 15 octobre 20:22 UTC** : sha256 `d6167cb1624b6d5888473af76d5470102afedce25b2e29ddbaa032730cd0ceb1` (une ligne ajoutée : `http_listen` `192.168.1.42:8080`) ; `listen` `192.168.1.42:8443` ; ancienne version (`ea24f2f0a98d…`) sauvegardée dans `/root/chillcenter-rollback/server.json.ea24f2f0a98d`. Propriétaire/droits conservés (`root:chillcenter`, `0640`) |
 | Unité `chillcenter.service` | **inchangée** (sha256 `76f7d34921ff344e344ba2bffa51263248ec6118dad9e15a39ef7078877d72e2`) |
 | Certificat | **inchangé** (SPKI `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`, auto-signé, `server_id` `885f7713-b8c6-4891-a8d1-c1410d5f1537`) |
 | Redirection du port 443 | table nftables **`ip chillcenter_web`** (hook prerouting, `ip daddr 192.168.1.42 tcp dport 443 redirect to :8443`), chargée par l'unité **`chillcenter-redirect.service`** (activée), fichiers `/etc/chillcenter/redirect-443.nft` et `/etc/systemd/system/chillcenter-redirect.service` |
 | Pare-feu | nftables installé mais **`nftables.service` désactivé**, aucun autre jeu de règles ; `/etc/nftables.conf` est celui par défaut (commence par `flush ruleset`) et **n'a pas été modifié** |
 
-Accès : `https://192.168.1.42:8443` (client Mac, client web) et `https://192.168.1.42` (client web ; 443 redirigé vers 8443). Preuves : `docs/deployment/WEB-CLIENT-PI.md`, section « Exécution du 15 octobre 2026 ».
+| Écoute HTTP non chiffrée (ADR-0018) | `192.168.1.42:8080` (HTTP/1, web et API ; `/admin/tmdb*`, `/admin/exports*`, `/admin/imports*` refusés en clair) ; table nftables **`ip chillcenter_http`** (`ip daddr 192.168.1.42 tcp dport 80 redirect to :8080`), unité **`chillcenter-redirect-http.service`** (activée), fichiers `/etc/chillcenter/redirect-80.nft` et `/etc/systemd/system/chillcenter-redirect-http.service` |
+
+Accès : `http://192.168.1.42` (client web, sans chiffrement, réseau local seulement), `https://192.168.1.42` et `https://192.168.1.42:8443` (client Mac, client web) et `https://192.168.1.42` (client web ; 443 redirigé vers 8443). Preuves : `docs/deployment/WEB-CLIENT-PI.md`, section « Exécution du 15 octobre 2026 ».
 
 ## 2. Conséquences pour tout autre déploiement sur le Pi
 
@@ -32,9 +34,8 @@ Accès : `https://192.168.1.42:8443` (client Mac, client web) et `https://192.16
 6. **Ne pas réutiliser les noms** `chillcenter-redirect*.service`, `/etc/chillcenter/redirect-*.nft`, table `chillcenter_web` (et, une fois déployés, `chillcenter_http`).
 7. **Compatibilité de l'API** : aucune route ni aucun contrat du client Mac n'a été modifié ; les clients natifs (sans `Origin` ni `Sec-Fetch-Site`) sont acceptés comme avant. Les navigateurs doivent être *same-origin* (voir `docs/architecture/WEB-CLIENT.md`).
 
-## 3. Codé et testé, **pas encore déployé** sur le Pi (15 octobre 2026)
+## 3. L'écoute HTTP non chiffrée : déployée le 15 octobre 2026 (voir §1)
 
-*Mise à jour : le Pi est devenu injoignable vers 17 h le 15 octobre ; son état n'a pas pu être revérifié depuis. Refaire le préflight avant toute chose.*
 
 Décision de l'utilisateur : le client web doit être joignable par les autres membres de la maison sans installer d'autorité de certification ; à défaut de domaine, **HTTP non chiffré sur le réseau local** pour le client web (ADR-0018). Côté code (branche `codex/web-pwa`, tests Rust et essai Linux verts) :
 

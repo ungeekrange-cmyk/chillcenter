@@ -96,6 +96,22 @@ Décision de l'utilisateur après refus de l'autorité privée et sans domaine :
 | Revue indépendante n° 7 (contrôle, commit `2f26896`) | **REFUSED** pour `pi-enable-http-operator.sh` `fb88ceff…` : [rapport verbatim](../reviews/web-pi-http-listener-review-7.md). Défaut HIGH reproduit : dans `revert_now`, un `echo >&2` vers un stderr cassé (session SSH tombée) fait sortir le script sous `set -e` avant la restauration, ce qui laisse la configuration neuve et le service arrêté. Corrigé (`set +e` en tête de la récupération) ; le même motif existait dans `failed()` du script de redirection 80, corrigé aussi ; scénarios E5d et R7b ajoutés, et vérifié que E5d détecte le défaut sur un mutant (2 FAIL). **Le script du port 443, déjà exécuté une fois le 15 octobre, avait le même motif** dans `failed()` : corrigé aussi (`170f41a7…`, simulation 46/46 avec le nouveau scénario R7b) ; l'exécution du 15 octobre a utilisé les octets de la revue n° 5 (`3e7f6d4f…`), qui n'ont pas échoué. APPROVED : binaire `ffcc6349…`, archive, `pi-redirect-80` (diff de commentaire seul) |
 | Après la revue n° 6 | 110 tests Rust, clippy propre ; essai Linux **40/40** (dont « 16 connexions muettes fermées, service disponible », TMDB/exports refusés en HTTP) ; simulation d'activation **46/46** (récupération : propriétaire/droits restaurés, signal TERM dans la fenêtre, insertion doublée refusée) ; simulations de redirection 42/42 (port 80) et 43/43 (port 443). **Une revue de contrôle (n° 7) sur ces octets reste requise** avant déploiement |
 
+## Exécution du 15 octobre 2026, soir : binaire à écoute HTTP, activation, redirection du port 80
+
+Après les revues n° 6 à 8 (n° 8 : APPROVED sur les octets déployés) et le retour du Pi (injoignable d'environ 16 h à 20 h UTC, redémarré). Connexion maître `/private/tmp/chillcenter-ssh.bETCib/control`. Observé :
+
+| Étape | Résultat |
+| --- | --- |
+| Préflight lecture seule (20:18 UTC) | binaire `a7ab7b07…`, service actif (redémarré à 21:03 IST), configuration `ea24f2f0…`, unité `76f7d349…`, certificat `3018fb4d…` inchangés, aucune connexion cliente ; la redirection 443 avait survécu au redémarrage (vérifié depuis le Mac) |
+| Copie + V8 (`dcf18661…`) | hashes identiques sur le Pi ; **code 0** à 20:21:47 UTC ; `installed_hash=ffcc6349…`, `rollback_hash=a7ab7b07…`, `web_previous=/root/chillcenter-rollback/web-20261015T202141Z`, sauvegarde `/var/lib/chillcenter/data/backups/4a43cede-1c75-4125-b406-6385b87c8e40` ; fichiers entrants supprimés |
+| Activation (`pi-enable-http-operator.sh` `26a8df58…`, auto-test PASS sur le Pi) | **code 0** à 20:22:11 UTC ; configuration `d6167cb1…`, sauvegarde `server.json.ea24f2f0a98d`, service actif |
+| Redirection 80 (`pi-redirect-80-operator.sh` `9577ad88…`, auto-test PASS, `wlan0` n'a que `192.168.1.42/24`) | **code 0** à 20:22:34 UTC ; `unit_state=enabled/active` |
+| Vérifications depuis le Mac | `http://192.168.1.42/` 200 (19 604 o), API 200, `:8080` 200, `Origin` propre 200 / étrangère 403, `/admin/tmdb` et `/admin/exports/x` **403 en HTTP** et TMDB **200 en HTTPS**, `.wasm` 200 `application/wasm` (652 895 o), `https://192.168.1.42` 200, `:8443` 200 |
+| Navigateur réel (intégré à l'application), `http://192.168.1.42/` | page chargée, `isSecureContext` faux, pas de Service Worker, `crypto.randomUUID` absent (repli utilisé), profil réel lu par l'API ; **aucune lecture lancée** dans l'interface (elle écrirait la progression du vrai profil) |
+| Sonde de lecture réelle, port 80 puis 8443 (bail volatil libéré sans progression) | **21 fichiers réels ouverts, 0 échec** sur les deux ports (MKV 12, MP4 4, AVI 5 ; débit identique) |
+
+**Non vérifié** : lecture complète d'un film dans un navigateur sur le Pi (PWA, téléphones, autres navigateurs) ; comportement après un redémarrage **provoqué** par nous (celui-ci était subi : la redirection 443 a survécu, la redirection 80 et `http_listen` n'ont pas été éprouvées au redémarrage) ; la cause de la coupure de 4 heures (aucune action de notre part sur le Pi à ce moment).
+
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 
 **Constat initial (avant exécution).** La modification Rust (garde d'origine + service des fichiers statiques + leurs tests) n'avait jamais été compilée : `cargo` n'était pas sur le PATH de la session. Il existait (`~/.cargo/bin`), mais :
