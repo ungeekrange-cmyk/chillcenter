@@ -627,7 +627,7 @@ fn main() {
                 std::env::var("CHILL_UI_QA_ROOT"),
             ) {
                 let mode = std::env::var("CHILL_UI_QA_MODE").unwrap_or_default();
-                if matches!(mode.as_str(),"player"|"next_series") && native_player::qa_prepare_visible_player(webview).is_err() {
+                if matches!(mode.as_str(),"player"|"next_series"|"detail_manual") && native_player::qa_prepare_visible_player(webview).is_err() {
                     let _ = webview.eval("window.__TAURI__.core.invoke('qa_result',{success:false,detail:'qa visible preparation failed'});");
                     return;
                 }
@@ -641,7 +641,8 @@ fn main() {
                     include_str!("../../../ui/connected/deadline-qa.js"),
                     include_str!("../../../ui/connected/formats-qa.js"),
                     include_str!("../../../ui/connected/identity-qa.js"),
-                    include_str!("../../../ui/connected/shell-qa.js")].join("\n"),
+                    include_str!("../../../ui/connected/shell-qa.js"),
+                    include_str!("../../../ui/connected/detail-manual-qa.js")].join("\n"),
                     if mode == "player" || mode == "next_series" || mode.starts_with("transfer_") {
                         "window.chillPlayerQa"
                     } else {
@@ -655,6 +656,8 @@ fn main() {
                             "window.chillAiQa"
                         } else if mode == "admin_archive" {
                             "window.chillArchiveQa"
+                        } else if mode == "detail_manual" {
+                            "window.chillManualDetailQa"
                         } else if mode == "shell" {
                             "window.chillShellQa"
                         } else if mode == "catalog" {

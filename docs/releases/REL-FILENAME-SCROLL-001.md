@@ -1,5 +1,9 @@
 # Livraison noms de fichiers / fiche — suspendue avant déploiement
 
+## Reprise après validation humaine
+
+L'utilisateur a demandé l'ouverture d'une fenêtre isolée puis confirmé : « test concluant sur le scrolling de mon côté ». Manuel Tauri sur le correctif71bd7a0 avec100blocs de résumé/160cartes fictives, trace `MANUAL_SCROLL_READY`, aucun appel Pi/lecture ; confirmation humaine, pas PASS automatique du harnais. L'autorisation de terminer le bundle et la mise à jour Pi est explicite et maintenue. Les essais expérimentaux28b1c64 restent exclus. Préparation d'une livraison ciblée réversible DEV_FAST ; pile/dépendances, API2026-10-14, schéma, NAS, identités et TLS inchangés. Les paragraphes de suspension ci-dessous restent historiques.
+
 2026-10-15, candidat `71bd7a0`, branche `codex/release-filename-scroll`, base utilisateur `5bebf10`. Reprise ciblée de `f74aa09` ; chantier série/saison incomplet exclu et préservé sur ses branches. Auteur/opérateur `/root`.
 
 Autorisation utilisateur explicite : intégrer au bundle, vérifier Tauri, déployer surPi avec sauvegarde. La vérification native ne passe pas ; aucun déploiement, aucune promotion dans le dépôt utilisateur et aucun nouveau bundle remis. Les versions utilisables restent Mac7a0f480 et serveurCFC87de. Pi contrôlé par SSH approuvé : actifPID6808/NRestarts0/hashf85375ad4ac33fd0993151b547e8ca731d0ffa49441beb8b85756f0433f842cd ; aucun arrêt, backup nouveau, changement de NAS/configuration/TLS ni tâche fournisseur.

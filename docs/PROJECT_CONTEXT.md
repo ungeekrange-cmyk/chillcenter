@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Défilement validé humainement — livraison autorisée
+
+15octobre : fenêtre Tauri isolée ouverte via mode debug `detail_manual`, avec données fictives et réglages privés, correctif71bd7a0 sans variantes expérimentales. Retour utilisateur exact : « test concluant sur le scrolling de mon côté ». Bundle Mac et déploiement Pi autorisés après ce retour ; en préparation, pas encore revendiqués livrés. Voir [release](releases/REL-FILENAME-SCROLL-001.md) et BUG0063. Ne pas relancer un parcours lecteur ni les hypothèses du simulateur natif non concluant.
+
 ## Livraison noms de fichiers / fiche du15octobre — suspendue, Pi inchangé
 
 [Rapport](releases/REL-FILENAME-SCROLL-001.md) : candidat isolé71bd7a0 depuis la base livrée5bebf10, séries incomplètes exclues. Builds/tests ciblés effectués, mais test de molette interne Tauri non concluant après cinq hypothèses ; pas de bundle livré ni de déploiement. Essais expérimentaux préservés à28b1c64 sur `codex/diagnostic-modal-scroll`, hors candidat. Nouvel accord utilisateur/essai manuel requis avant nouvelle investigation. Pi toujoursCFC87de actifPID6808, Mac livré7a0f480 ; données/NAS/configuration/TLS intacts.
