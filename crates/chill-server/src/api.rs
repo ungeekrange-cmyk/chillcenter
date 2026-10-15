@@ -203,6 +203,20 @@ async fn same_origin(
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, ApiError> {
+    // Synchronous checks live in their own function: no borrow of the request may stay alive across
+    // the `.await` below, otherwise the middleware future stops being `Send`.
+    check_browser_origin_and_host(&state, &request)?;
+    // Current routes are JSON only. Future media routes need per-read deadlines,
+    // not a total playback deadline.
+    tokio::time::timeout(std::time::Duration::from_secs(30), next.run(request))
+        .await
+        .map_err(|_| ApiError(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"))
+}
+
+fn check_browser_origin_and_host(
+    state: &AppState,
+    request: &Request<Body>,
+) -> Result<(), ApiError> {
     let host = request
         .headers()
         .get("host")
@@ -242,11 +256,7 @@ async fn same_origin(
     {
         return Err(ApiError(StatusCode::FORBIDDEN, "HOST_REFUSED"));
     }
-    // Current routes are JSON only. Future media routes need per-read deadlines,
-    // not a total playback deadline.
-    tokio::time::timeout(std::time::Duration::from_secs(30), next.run(request))
-        .await
-        .map_err(|_| ApiError(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"))
+    Ok(())
 }
 
 async fn server(
@@ -764,7 +774,7 @@ mod tests {
             }
             r
         };
-        let status = |r| {
+        let status = |r: Request<Body>| {
             let app = app.clone();
             async move { app.oneshot(r).await.unwrap().status() }
         };
