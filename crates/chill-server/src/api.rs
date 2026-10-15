@@ -796,6 +796,7 @@ mod tests {
         );
         std::fs::create_dir(dir.path().join("web")).unwrap();
         std::fs::write(dir.path().join("web/index.html"), b"<!doctype html>").unwrap();
+        crate::web_static::set_test_root(Some(dir.path().join("web")));
         assert_eq!(status(with("none", None, "/")).await, StatusCode::OK);
         assert_eq!(
             status(with("none", None, "/.env")).await,

@@ -44,7 +44,7 @@ Base `/api/2026-10-14`. `GET /server` est lu au démarrage et le client refuse u
 
 ## Build et déploiement
 
-`node scripts/build-web.mjs` copie `ui/connected` dans `web/dist`, retire les modules `*-qa.js` et tests, injecte le pont, le Service Worker et le manifest. `web/dist` est destiné au dossier `<data_dir>/web` du Pi (lecture seule pour le compte de service). **Aucun déploiement effectué** : il exige une autorisation explicite.
+`node scripts/build-web.mjs` copie `ui/connected` dans `web/dist`, retire les modules `*-qa.js` et tests, injecte le pont, le Service Worker et le manifest. `web/dist` est destiné au dossier `/usr/lib/chillcenter/web` du Pi (à côté du binaire, root, lecture seule pour le service). Plan de déploiement préparé, non exécuté : [WEB-CLIENT-PI](../deployment/WEB-CLIENT-PI.md). **Aucun déploiement effectué** : il exige une autorisation explicite.
 
 ## Risques ouverts
 
@@ -52,7 +52,7 @@ Base `/api/2026-10-14`. `GET /server` est lu au démarrage et le client refuse u
 2. Certificat autogénéré : Service Worker et installation PWA souvent refusés sans approbation système.
 3. Safari/iOS : MSE limité ; non évalué.
 4. Garde d'origine fondée sur `Sec-Fetch-Site` ; à valider sur les navigateurs cibles.
-5. Build Rust non exécuté ici (`cargo` absent) : le delta serveur est NOT_RUN.
+5. Le delta Rust (garde d'origine, service statique) **n'a pas encore été compilé ni testé** : `cargo` existe mais le cache des crates est incomplet ; téléchargements à approuver, voir [WEB-CLIENT-PI](../deployment/WEB-CLIENT-PI.md) §3.
 
 ## Vérifications exécutées (14 octobre 2026, branche `codex/web-pwa`)
 

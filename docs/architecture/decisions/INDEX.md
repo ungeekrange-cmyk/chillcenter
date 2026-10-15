@@ -24,7 +24,7 @@ Complément d'implémentation, distinct des sept décisions approuvées en G-02 
 
 [ADR-0011](ADR-0011-date-versioned-api.md), ACCEPTED, CC-API-2026-10-14,2026-10-14, auteur/propriétaire/root : base HTTPS `/api/2026-10-14`, alias v1 commun et OpenAPI/guide tiers. Supersedes/superseded_by:NONE/NONE ; revue indépendante APPROVED, proposition0a confirmée inchangée à9277ac4, [gate](../../gates/G-DEV-CC-UX-API-001.md). Demande utilisateur explicite, aucune modification des garanties TLS ou de l'absence d'authentification LAN.
 
-[ADR-0012](ADR-0012-web-client-pwa.md), PROPOSED, CC-WEB-001, 2026-10-14, auteur/propriétaire/root, branche `codex/web-pwa` : client web PWA servi par le serveur (même origine), calcul vidéo côté navigateur, delta serveur minimal (dossier `<data_dir>/web`, garde `Sec-Fetch-Site: same-origin`). Supersedes/superseded_by:NONE/NONE ; revue indépendante et validation utilisateur à obtenir, rien déployé. Voir [WEB-CLIENT](../WEB-CLIENT.md).
+[ADR-0012](ADR-0012-web-client-pwa.md), PROPOSED, CC-WEB-001, 2026-10-14, auteur/propriétaire/root, branche `codex/web-pwa` : client web PWA servi par le serveur (même origine), calcul vidéo côté navigateur, delta serveur minimal (dossier `web/` à côté du binaire, garde `Sec-Fetch-Site: same-origin`). Supersedes/superseded_by:NONE/NONE ; revue indépendante et validation utilisateur à obtenir, rien déployé. Voir [WEB-CLIENT](../WEB-CLIENT.md).
 
 [ADR-0013](ADR-0013-web-playback-engine.md), PROPOSED, 2026-10-14, branche `codex/web-pwa` : moteur de lecture web sans dépendance (fetch/MediaSource, démux MP4 puis MKV en JS pur, le navigateur décode), à la demande « technologies stables et légères ». Complète ADR-0012, supersedes/superseded_by:NONE/NONE ; revue indépendante à obtenir.
 

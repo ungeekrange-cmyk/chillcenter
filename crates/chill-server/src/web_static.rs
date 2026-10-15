@@ -1,8 +1,10 @@
 //! Read-only static files for the same-origin web client (ADR-0012).
 //!
-//! Files live under `<data_dir>/web`. No directory means no web client: every path
-//! answers 404 and the service behaves exactly as before. No listing, no traversal,
-//! no symbolic links, closed MIME table, bounded size.
+//! Files live in `web/` next to the server binary (`/usr/lib/chillcenter/web` once installed):
+//! root-owned, read-only for the service, untouched by data backups and restores, replaced
+//! together with the binary. No directory means no web client: every path answers 404 and the
+//! service behaves exactly as before. No listing, no traversal, no symbolic links, closed MIME
+//! table, bounded size.
 use crate::api::{ApiError, AppState};
 use axum::{
     body::Body,
@@ -10,7 +12,28 @@ use axum::{
     http::{Method, Request, StatusCode},
     response::Response,
 };
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[cfg(test)]
+thread_local! {
+    static TEST_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+/// Tests point the handler at a temporary directory (runs on the test's own thread).
+#[cfg(test)]
+pub(crate) fn set_test_root(root: Option<PathBuf>) {
+    TEST_ROOT.with(|r| *r.borrow_mut() = root);
+}
+
+fn web_root() -> PathBuf {
+    #[cfg(test)]
+    if let Some(root) = TEST_ROOT.with(|r| r.borrow().clone()) {
+        return root;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("web")))
+        .unwrap_or_else(|| PathBuf::from("/nonexistent/chillcenter-web"))
+}
 
 const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 const PAGE_POLICY: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
@@ -65,7 +88,7 @@ fn read_file(root: &Path, name: &str) -> Option<Vec<u8>> {
 }
 
 pub async fn serve(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     request: Request<Body>,
 ) -> Result<Response, ApiError> {
     let not_found = || ApiError(StatusCode::NOT_FOUND, "NOT_FOUND");
@@ -78,7 +101,7 @@ pub async fn serve(
     let head = request.method() == Method::HEAD;
     let name = relative_name(request.uri().path()).ok_or_else(not_found)?;
     let kind = content_type(&name).ok_or_else(not_found)?;
-    let root = state.config.data_dir.join("web");
+    let root = web_root();
     let lookup = name.clone();
     let bytes = tokio::task::spawn_blocking(move || read_file(&root, &lookup))
         .await
