@@ -190,6 +190,16 @@ Exécution du script opérateur sur le vrai Pi (`NOT_RUN` ; seule la simulation 
 
 Rejouer l'essai de bout en bout : `colima start` puis `colima ssh -- <repo>/scripts/web-e2e-linux.sh <repo>` (le binaire et `artifacts/web-pi/chillcenter-web.tar` doivent exister), puis `colima stop`.
 
+## Tentative d'exécution du 15 octobre 2026 : arrêtée au préflight, rien déployé
+
+À 13:49 UTC, après ton « exécute toi » et l'ouverture de la connexion maître (socket privé `0700`/`0600`, master actif), le préflight en **lecture seule** (étape 3 du runbook) a montré que **le binaire installé sur le Pi n'est plus `1eb24e97…`** : il vaut **`cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3`**, identique au binaire de l'archive locale `chillcenter-server-c610ea9-pi64.tar.gz` (livraison de la branche `codex/player-streaming`, service redémarré à 13:43 IST, soit environ 6 minutes avant le préflight). Le répertoire de rollback contient aussi des copies des livraisons `07358f7`, `9277ac4` et `cfc87de`. Une autre session a donc mis à jour le serveur pendant ce travail (cohérent avec l'avertissement « opération en cours sur le serveur »).
+
+Conséquences, constatées et non contournées :
+
+- Conformément au runbook (« hash inattendu = stop »), **aucun fichier n'a été copié, aucun script exécuté** ; le seul accès au Pi a été `sudo -n env true` et le préflight, tous deux en lecture seule. Le script V7 aurait de toute façon refusé (sortie 2 avant tout arrêt : binaire installé ≠ `1eb24e97…`).
+- **Déployer mon binaire aurait été une régression** : ma branche part de `0d0da0e`, et la branche Mac a depuis reçu 13 commits dont **2 396 lignes de modifications dans `crates/`** (dont `chill-server` : `api.rs`, `catalog_api.rs`, `store.rs`, `database.rs`, scanner) que mon binaire n'a pas. Le remplacer par le mien retirerait ces correctifs de la production et, comme `store.rs`/`database.rs` ont changé, un retour à un binaire plus ancien n'est sûr que si le schéma SQLite reste compatible (non établi).
+- Avant tout déploiement : **intégrer** les commits de `codex/player-streaming` dans ma branche (conflits probables dans `api.rs`), recompiler et retester, reconstruire le binaire ARM64, repaqueter l'archive, mettre à jour les hashes, et faire porter une **nouvelle revue indépendante** sur le script (son hash change : l'ancien hash attendu `1eb24e97…` est écrit en dur dans le script V7). État du Pi à ce moment : service actif (`NRestarts=0`), 5 sauvegardes privées présentes, `web/` absent, configuration `ea24f2f0…`, unité `76f7d349…`, empreinte TLS inchangée `3018fb4d…`.
+
 ## Revue indépendante n° 3 (15 octobre 2026)
 
 Verdict **APPROVED_WITH_CONDITIONS** sur le script **V7** (`b61b9fd6…`, 17 609 octets, 218 lignes lues) : aucun défaut critique, majeur ni moyen ; Rust et artefacts inchangés APPROVED ; bancs d'essai APPROVED ; rapport verbatim : [web-pi-deploy-v7-review-3.md](../reviews/web-pi-deploy-v7-review-3.md). Le reviewer (nouvel agent) a rejoué la simulation (45/45), l'essai de bout en bout (20/20), la preuve par mutation, `cargo test` (102), et 19 scénarios adverses de son cru (récupération interrompue par des signaux de groupe, `systemctl start` ou `stop` qui échouent, `ss` trompeur, proxy et `~/.curlrc` hostiles, ancien `web/` non vide, outil absent…). **Toute modification du script annule cette revue.**
