@@ -79,6 +79,21 @@ Tout ce qui suit a réellement été exécuté, via la connexion maître de l'ut
 
 **Non vérifié** : ouverture dans un vrai navigateur (le navigateur intégré à l'application a refusé la navigation vers `https://192.168.1.42/` ; installation en PWA et Service Worker sur certificat auto-signé non testés) ; lecture réelle d'un média depuis un navigateur ; comportement de la règle après un **redémarrage réel** du Pi (l'unité est activée ; la persistance n'a été prouvée qu'en VM) ; test de bascule/retour arrière sur le Pi (non nécessaire, non exécuté).
 
+## Écoute HTTP non chiffrée (15 octobre 2026) : ADR-0018
+
+Décision de l'utilisateur après refus de l'autorité privée et sans domaine : « fais du HTTP non chiffré sinon ». Détails, risques acceptés et rollback : [ADR-0018](../architecture/decisions/ADR-0018-web-client-plain-http-listener.md). **Rien de ceci n'est déployé** ; le Pi était d'ailleurs injoignable (ping 100 % de pertes, connexion maître SSH tombée) à partir d'environ 17 h le 15 octobre, sans action de ma part sur lui depuis la vérification de la redirection 443.
+
+| Élément | Résultat réellement obtenu |
+| --- | --- |
+| Rust | `http_listen` optionnel, second listener, garde d'origine selon le schéma ; **108 tests** de la bibliothèque, clippy `-D warnings` propre |
+| Web | repli `getRandomValues` à la place de `crypto.randomUUID` (absent hors contexte sécurisé) ; **51 tests Node** |
+| Nouveau binaire ARM64 / archive web | `92917152b3a954fe682c0a788011bfa389aa72d3f4ca5824609bfcb3ede379a0` (14 884 936 o) / `f8a051ae9fc36f0393acf5c6a36a83e40865ea1ada9d50c1791f8bea38f09518` : **à remplacer** par ceux du §2 si ce chantier est déployé |
+| Essai Linux aarch64 (`web-e2e-linux.sh`) | **36 PASS, 0 FAIL** (13 contrôles HTTP ajoutés) |
+| Test en navigateur réel, **contexte non sécurisé** (navigateur intégré, `http://192.168.1.14:18080`, vrai serveur sur le Mac) | `isSecureContext` faux, pas de Service Worker, `crypto.randomUUID` absent : création de profil (POST 201), réglage de bibliothèque (PUT 200), scan, catalogue ; **lecture MP4** (image à 5,8 s) et **AVI** (décodeur WebAssembly, image à 4,8 s) ; bail acquis, flux d'événements, heartbeat et progression en 200 |
+| `pi-enable-http-operator.sh` (`e5f687d90e84c72507d4e0171aa5ec8c3aafd8237600fbe91c643abaf12ddd14`) | simulation VM (systemd réel) **39 PASS, 0 FAIL** ; la simulation a révélé 2 défauts réels corrigés avant revue : contrôle des connexions établies sans `-p`, mode `--revert` sans hash distinct de la sauvegarde |
+| `pi-redirect-80-operator.sh` (`c0f8e000fc6518797bd96c89c172913b0e4e9fc7eea48cf7312210ffaf837e9e`) | dérivé mécaniquement du script du 443 relu par la revue n° 5 ; simulation VM **42 PASS, 0 FAIL** |
+| Revue indépendante n° 6 | à faire (octets ci-dessus) |
+
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 
 **Constat initial (avant exécution).** La modification Rust (garde d'origine + service des fichiers statiques + leurs tests) n'avait jamais été compilée : `cargo` n'était pas sur le PATH de la session. Il existait (`~/.cargo/bin`), mais :

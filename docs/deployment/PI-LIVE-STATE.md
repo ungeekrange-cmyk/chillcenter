@@ -32,11 +32,15 @@ Accès : `https://192.168.1.42:8443` (client Mac, client web) et `https://192.16
 
 ## 3. Codé et testé, **pas encore déployé** sur le Pi (15 octobre 2026)
 
+*Mise à jour : le Pi est devenu injoignable vers 17 h le 15 octobre ; son état n'a pas pu être revérifié depuis. Refaire le préflight avant toute chose.*
+
 Décision de l'utilisateur : le client web doit être joignable par les autres membres de la maison sans installer d'autorité de certification ; à défaut de domaine, **HTTP non chiffré sur le réseau local** pour le client web (ADR-0018). Côté code (branche `codex/web-pwa`, tests Rust et essai Linux verts) :
 
 - `ServerConfig.http_listen` (optionnel, adresse LAN, port différent du HTTPS) ; sans lui, comportement strictement inchangé ;
 - second listener HTTP clair servant le même client web et la même API ; sur ce listener la garde accepte `Origin` = `http://<Host>` (les navigateurs n'envoient pas `Sec-Fetch-*` aux origines HTTP non fiables) ;
 - côté web, `crypto.randomUUID` (indisponible hors contexte sécurisé) remplacé par un repli.
+
+Nouveaux fichiers de livraison (hashes dans le runbook, étapes 9 à 12) : `scripts/pi-enable-http-operator.sh`, `scripts/pi-redirect-80-operator.sh`, noms réservés `chillcenter-redirect-http.service`, `/etc/chillcenter/redirect-80.nft`, table `chillcenter_http`, sauvegarde de configuration `/root/chillcenter-rollback/server.json.<12 premiers hex>`.
 
 Ce qui reste à faire sur le Pi, **chaque étape après revue indépendante et feu vert explicite de l'utilisateur** : nouveau binaire, ajout de `"http_listen": "192.168.1.42:8080"` à `/etc/chillcenter/server.json` (avec sauvegarde de l'ancien fichier), redirection du port 80 vers 8080 dans une table distincte. **Après cette étape, un retour vers un binaire sans `http_listen` exige de restaurer l'ancienne configuration.**
 

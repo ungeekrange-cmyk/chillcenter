@@ -194,3 +194,23 @@ Succès : `redirect=192.168.1.42:443->8443`, `unit_state=enabled/active`, `servi
 - Un échec entre la pose du fichier de règles et celle de l'unité laisse `/etc/chillcenter/redirect-443.nft` ; `--remove` règle le cas.
 - Le script ne contrôle pas les droits de `/etc/chillcenter` avant que root n'y charge un fichier de règles : le dossier doit être `root:root` non inscriptible (à vérifier avec `pi 'stat -c %a:%u:%g /etc/chillcenter'`).
 - Un retour arrière **du binaire** (étape 7) vers l'ancien build refuserait `Host` sans port : retirer d'abord la redirection (`--remove`), sinon le client web sur 443 répondrait `HOST_REFUSED`.
+
+## Étapes 9 à 12 — écoute HTTP non chiffrée pour le client web (ADR-0018) — **codées et simulées, pas encore déployées**
+
+Chaque étape exige : la revue indépendante n° 6 des octets exacts, puis ton feu vert. Même convention SSH (étape 1). Rien de tout cela n'a été exécuté sur le Pi.
+
+| Fichier | SHA-256 |
+| --- | --- |
+| Binaire ARM64 (avec `http_listen`) | `92917152b3a954fe682c0a788011bfa389aa72d3f4ca5824609bfcb3ede379a0` (14 884 936 octets) |
+| Archive web (repli `randomUUID`) | `f8a051ae9fc36f0393acf5c6a36a83e40865ea1ada9d50c1791f8bea38f09518` |
+| `scripts/pi-update-web-operator.sh` (V8, **inchangé**) | `dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29` |
+| `scripts/pi-enable-http-operator.sh` | `e5f687d90e84c72507d4e0171aa5ec8c3aafd8237600fbe91c643abaf12ddd14` |
+| `scripts/pi-redirect-80-operator.sh` | `c0f8e000fc6518797bd96c89c172913b0e4e9fc7eea48cf7312210ffaf837e9e` |
+
+9. **Nouveau binaire et archive** : étapes 2 à 6 avec le script V8, `OLD_BINARY_SHA256=a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527` (binaire actuellement installé), `NEW_BINARY_SHA256=92917152b3a954fe682c0a788011bfa389aa72d3f4ca5824609bfcb3ede379a0`, `WEB_ARCHIVE_SHA256=f8a051ae9fc36f0393acf5c6a36a83e40865ea1ada9d50c1791f8bea38f09518`. Le nouveau binaire sans `http_listen` se comporte comme l'actuel.
+10. **Activer le listener** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 NEW_BINARY_SHA256=92917152b3a954fe682c0a788011bfa389aa72d3f4ca5824609bfcb3ede379a0 CONFIG_SHA256=ea24f2f0a98db2b0a080ab70113a2fbe8eb1006a20e2eae646d115448f3783f9 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem /bin/bash -s --' < scripts/pi-enable-http-operator.sh`. Refuse (42) si un client est connecté. Sauvegarde privée : `/root/chillcenter-rollback/server.json.ea24f2f0a98d`. Récupération automatique en cas d'échec. **Retour arrière** : même commande avec `CONFIG_SHA256=<hash affiché après activation> PREVIOUS_CONFIG_SHA256=ea24f2f0…3783f9` et `-s -- --revert`.
+11. **Rediriger le port 80** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s --' < scripts/pi-redirect-80-operator.sh` (table `chillcenter_http`, unité `chillcenter-redirect-http.service`) ; retrait : `-s -- --remove`.
+12. **Tests Mac → Pi** : `http://192.168.1.42/` depuis le Mac et un téléphone du Wi-Fi ; lecture d'un film MP4, MKV et AVI ; `https://192.168.1.42:8443` pour le client Mac inchangé.
+
+**Ordre impératif** : 9, 10, 11 (le script de redirection exige que le service écoute déjà sur `192.168.1.42:8080`). Un retour du binaire (étape 7) vers un build sans `http_listen` exige d'abord le `--revert` de l'étape 10.
+
