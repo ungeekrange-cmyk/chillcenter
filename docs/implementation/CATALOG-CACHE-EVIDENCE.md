@@ -23,7 +23,7 @@
 
 ## Déploiement Pi du15octobre
 
-Après report initial conservé dans la release, confirmation utilisateur « Non déploie la nouvelle version ». Opérateur inchangé/revu exit0 à02:06:48UTC : sauvegarde offline privée c8897485… vérifiée, rollback1eb24… conservé, binaire11cb… actifPID6451, HTTPS strict daté PASS. NAS/configuration/unité/SPKI inchangés. Vérification indépendante connexion/cache en cours, pas encore un résultat prétendu. Fenêtres/appdata/bases de tests séparées du foyer ; clés privées et sauvegardes restent sur le Pi.
+Après confirmation « Non déploie la nouvelle version », premier073 déployé02:06:48UTC puis vérification indépendante CHANGES_REQUESTED : sagas/snapshot422 et sidecars vides dansbackup (BUG0059/0060). Révisions lazy corrigées dansCFC, RED/GREEN/catalogmirror/clippy/revuescode+sécurité PASS ; quarantaine backup réversible revue/exécutée. Second déploiement02:31:51UTC : binairef853… actifPID6808/NRestarts0, nouvelle sauvegarde exacte8bbb… et rollback073 contrôlés, NAS/configuration/unité/SPKI inchangés. Vérification indépendante finale APPROVED_SCOPED : UiClient réel exit0/9,16s,2496fiches/local_browse4426ms, fiche/sagas/listes/unchanged/réouverturechaude PASS, RSS29652Kio après sonde et warning+0. Rapport initial défavorable conservé, pas requalifié. Aucun player/GUI/vidéo/scan/fournisseur lancé ; caches temporaires privés, clés et sauvegardes restent surPi. Les deux fichiers temporaires initiaux sont conservés horsbackup en quarantaine privée, pas supprimés.
 
 ## Limites
 

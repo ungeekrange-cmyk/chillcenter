@@ -86,3 +86,57 @@ La sonde a établi la confiance TLS et créé une base de cache locale, mais n'a
 ## Limites
 
 Aucun player/GUI, vidéo, Range NAS, bail, lecture, son, HDR/HEVC, veille, multi-écran, benchmark Dune/trois flux, scan, TMDB ou IA n'a été lancé, conformément à la restriction utilisateur. Aucun secret, clé privée, configuration en clair, titre, identifiant de profil ou contenu du catalogue n'a été affiché. La validation visuelle humaine et les NFR matériels historiques restent `NOT_RUN` ici.
+
+## Addendum — déploiement correctif et vérification finale
+
+### Correction de gouvernance
+
+Le coordinateur avait sélectionné la lane **DEV_FAST** pour cette livraison familiale locale, ciblée et hors production cloud. La mention `DEV_STANDARD` de l'en-tête initial est une qualification incorrecte conservée avec la preuve initiale ; elle ne décrit ni le gate effectivement utilisé ni une triple revue revendiquée. Le delta correctif a reçu les revues code et sécurité ciblées consignées par le coordinateur, puis a été livré par le script opérateur exact approuvé SHA-256 `fd162e9920b0d9c3f0ca55c97cf132cb96f8909d4f8660da64709855c7f2cedc`.
+
+### Correctif exact et seconde bascule
+
+- **Source corrective** : `cfc87dec21aee553d72f5016f6c9dfe600a6e1f3`.
+- **Binaire attendu** : SHA-256 `f85375ad4ac33fd0993151b547e8ca731d0ffa49441beb8b85756f0433f842cd`.
+- **Déploiement terminé UTC** : `2026-10-15T02:31:51Z`.
+- **Vérification finale UTC** : `2026-10-15T02:33Z`–`02:34Z`.
+- **Verdict final** : **APPROVED** pour ce périmètre borné, soit `APPROVED_SCOPED` dans la terminologie du projet.
+
+Le correctif initialise paresseusement à `1`, dans la transaction existante et avec `INSERT OR IGNORE`, uniquement les lignes de révision absentes des sagas héritées. Les révisions CAS existantes, médias, membres et métadonnées ne sont pas réinitialisés. Cette conclusion de comportement provient des revues ciblées du candidat exact ; la preuve live ci-dessous démontre que le parcours auparavant bloqué fonctionne désormais.
+
+| Contrôle delta | Attendu | Observé | Résultat |
+| :--- | :--- | :--- | :--- |
+| Service correctif | actif, sans restart | `active/running`, PID `6808` avant/après, `NRestarts=0` | PASS |
+| Artefact installé/exécuté | `f85375ad…842cd` | fichier installé et `/proc/6808/exe` exacts | PASS |
+| TLS | SPKI inchangé | `3018fb4d…740df` | PASS |
+| Ressources/journal après sonde | stable, aucun warning+ | RSS `14 136` → `29 652` Kio ; compteur warning+ depuis bascule `0` | PASS borné |
+| Rollback serveur précédent | binaire `07358f7` conservé | `/root/chillcenter-rollback/chill-server-07358f7-11cb14459c0f1339`, SHA `11cb1445…22424` | PASS |
+| Sauvegarde corrective | privée, ensemble exact | `8bbb9079-37f5-4c0f-8a8d-cbab15974a22`, `0700`, format1/schéma3, 1 710 fichiers déclarés/réels, zéro symlink | PASS |
+
+L'opérateur a produit `PRIVATE_BACKUP_VERIFIED_EXACT` pour cette nouvelle sauvegarde, incluant hashes et SQLite immutable `quick_check`. Le vérificateur a indépendamment contrôlé la racine privée et l'égalité de l'ensemble déclaré/réel sans recalculer tous les posters. Le rollback `9277ac4` antérieur est également préservé.
+
+Les deux sidecars de la première sauvegarde ont été **déplacés**, jamais supprimés, par l'opérateur revu vers `/var/lib/chillcenter/backup-validation-quarantine-c8897485-a1b3-4a44-8afa-8711a32ec7f7`, racine root `0700`. La preuve opérateur confirme la base et le manifeste initiaux inchangés et l'ensemble exact après quarantaine. Cette réparation récupérable clôt le finding de readiness de la première tentative ; la sauvegarde corrective exacte fournit en plus le point de retour de la seconde bascule.
+
+### Sonde critique finale
+
+Le même binaire `UiClient` Mac7a déjà identifié a été exécuté une seule fois contre le serveur correctif, dans un nouveau dossier local privé `/private/tmp/chillcenter-cache-pi-check.ZPteiT`.
+
+```text
+CLIENT_CACHE_OK total=2496 local_browse_ms=4426 elapsed_ms=9123 \
+pinned_tls=true server_unchanged=true warm_reopen=true household_writes=false
+```
+
+- Exit `0`, durée murale `9,16 s`, sans retry ni skip.
+- Confiance TLS épinglée, téléchargement cohérent de 2 496 fiches, parcours local complet, fiche, sagas et playlists : PASS.
+- Vérification serveur sur la révision connue : `unchanged=true` ; réouverture du même cache : PASS.
+- Dossier `0700`, 42 fichiers, tous `0600`.
+- Le libellé `household_writes=false` signifie que le harnais n'a envoyé aucune commande de mutation de profil, média, collection ou réglage. La lecture initiale peut exécuter l'initialisation interne et revue des seules lignes de révision manquantes ; elle ne prouve donc pas zéro écriture SQLite interne.
+
+Après la sonde, PID, `NRestarts`, hash exécuté et compteur warning+ sont restés inchangés. Le parcours critique qui avait motivé `CHANGES_REQUESTED` est ainsi fermé sur l'artefact correctif exact.
+
+### Disposition finale et limites maintenues
+
+- **Rollback trigger met après correctif** : non.
+- **Recommandation finale** : ne pas rollback ; ouvrir le gate post-déploiement pour le périmètre catalogue/cache vérifié.
+- Le verdict ne couvre que l'identité du service, la confiance TLS, la compatibilité API, le miroir complet/fiche/sagas/listes, l'absence de changement de révision et la réouverture chaude.
+- `tmdb-jobs.json` contenait zéro tâche au contrôle initial post-redémarrage ; aucune tâche TMDB/IA n'a été relancée pendant les deux tentatives.
+- Toutes les exclusions de la section **Limites** restent en vigueur. Aucun résultat lecteur, vidéo, NAS contenu, GUI, fournisseur réel ou NFR non exécuté n'est transformé en succès.

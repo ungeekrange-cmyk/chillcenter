@@ -1,6 +1,6 @@
 # Journal des bugs, observations et risques
 
-Déploiement15octobre : [BUG0059](BUG-0059-lazy-saga-revisions.md) révisions absentes pour sagas TMDB paresseuses,422sagas/snapshot confirmé37/30 ; [BUG0060](BUG-0060-backup-empty-sidecars.md) deux fichiers auxiliaires SQLite vides rendent la sauvegarde non conforme au validateur strict. Première vérification indépendante défavorable conservée ; ne pas déclarer le client connecté avant correction/revérification ciblées.
+Déploiement15octobre : [BUG0059](BUG-0059-lazy-saga-revisions.md) révisions absentes pour sagas TMDB paresseuses,422sagas/snapshot confirmé37/30 puis correctifCFC et sonde réelle2496médias PASS ; [BUG0060](BUG-0060-backup-empty-sidecars.md) deux fichiers auxiliaires SQLite vides mis en quarantaine réversible, sauvegardes exactes/rollback vérifiés. Première vérification indépendante défavorable conservée, addendum final APPROVED_SCOPED. Aucun nouveau test lecteur/GUI/vidéo dans ce lot de livraison.
 
 [BUG0058](BUG-0058-replay-at-eof.md) : reprise à EOF lors d'une relecture, confirmée par vraie fixture native et RED unitaire ; correction locale au FileLoaded, preuve GREEN dans le lot cache.
 
