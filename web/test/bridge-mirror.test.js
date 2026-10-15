@@ -49,7 +49,7 @@ test("first visit: the server answers until the first sync ends, then everything
   await select(c);
   await page(c); assert.equal(w.catalogCalls, 1, "no mirror yet: the server serves the first page");
   await c.flush();
-  assert.deepEqual(c.events, [{ type: "catalog-updated", changed: 5, removed: 0, firstSync: true }]);
+  assert.deepEqual(c.events, [{ type: "catalog-updated", changed: 5, removed: 0, firstSync: true, collections: false }]);
   const local = await page(c); assert.equal(w.catalogCalls, 1, "now served locally"); assert.equal(local.items.length, 5); assert.equal(local.items[0].title, "Film 01");
 });
 
@@ -70,7 +70,7 @@ test("a change on the server is detected by the check and only the difference is
   const c = client(w, store); await select(c); await c.flush(); c.events.length = 0;
   w.items = [film(1), film(2, { watched: true }), film(4)]; w.revision = "rev-2";
   await c.ui({ action: "refresh" }); await c.flush();
-  assert.deepEqual(c.events, [{ type: "catalog-updated", changed: 2, removed: 1, firstSync: false }]);
+  assert.deepEqual(c.events, [{ type: "catalog-updated", changed: 2, removed: 1, firstSync: false, collections: false }]);
   const r = await page(c, { sort: "title_asc" }); assert.deepEqual(r.items.map(m => m.title), ["Film 01", "Film 02", "Film 04"]);
   assert.equal((await page(c, { watched: true })).items.length, 1);
 });
@@ -135,4 +135,68 @@ test("a server without the snapshot routes (older API) is never retried, and kee
   const n = w.calls.length; c.bridge.wake(); await c.ui({ action: "refresh" }); assert.equal(c.timers.length, 0, "nothing is scheduled any more");
   await page(c); assert.equal(w.catalogCalls, 1, "the server answers");
   assert.ok(w.calls.length > n);
+});
+
+// ---- review 9: staleness after writes (C-1), writes during a sync (C-2), profile switch during a sync (C-3) ---------------------------------
+test("C-1: after a playlist/saga/sheet write, reads go to the server until the mirror has caught up; the UI is told about collection-only changes", async () => {
+  const w = world([film(1), film(2)]); w.playlistsCalls = 0; w.playlists = [];
+  const orig = w.fetch; w.fetch = async (url, init = {}) => {
+    const path = url.replace(BASE, "").split("?")[0], method = init.method || "GET";
+    if (path === `/profiles/${P}/playlists` && method === "POST") { w.playlists = [{ id: uid(900), name: "Liste", media_ids: [uid(1)], poster: null, revision: 1 }]; w.revision = "rev-2"; return { ok: true, status: 201, text: async () => JSON.stringify(w.playlists[0]), blob: async () => ({}) }; }
+    if (path === `/profiles/${P}/playlists` && method === "GET") { w.playlistsCalls += 1; return { ok: true, status: 200, text: async () => JSON.stringify({ items: w.playlists }), blob: async () => ({}) }; }
+    const r = await orig(url, init);
+    if (path === `/profiles/${P}/catalog/snapshot` && method === "POST" && w.revision === "rev-2" && JSON.parse(init.body).known_revision !== "rev-2") { const body = JSON.parse(await r.text()); body.playlists = w.playlists; return { ...r, text: async () => JSON.stringify(body) }; }
+    return r;
+  };
+  const c = client(w, Store.createMemoryBackend()); await select(c); await c.flush(); c.events.length = 0;
+  assert.deepEqual((await c.ui({ action: "playlists" })).items, [], "local, before any write");
+  await c.ui({ action: "create_playlist", name: "Liste", media_id: uid(1) });
+  const fresh = await c.ui({ action: "playlists" });
+  assert.equal(fresh.items.length, 1, "the SERVER answers right after the write: never the old list"); assert.equal(w.playlistsCalls, 1);
+  assert.equal(c.bridge._mirror().dirty, true);
+  await c.flush();
+  assert.equal(c.bridge._mirror().dirty, false, "the mirror caught up");
+  assert.deepEqual(c.events.map(e => [e.changed, e.collections]), [[0, true]], "a change that touches only collections is announced");
+  assert.equal((await c.ui({ action: "playlists" })).items.length, 1); assert.equal(w.playlistsCalls, 1, "local again");
+});
+
+test("C-2: a write made while a snapshot is downloading is not overwritten by that older snapshot, and one more pass follows", async () => {
+  const w = world([film(1), film(2)]), c = client(w, Store.createMemoryBackend()); await select(c); await c.flush();
+  w.revision = "rev-2"; w.items = [film(1), film(2), film(3)];
+  const orig = w.fetch; let release; const gate = new Promise(r => { release = r; });
+  w.fetch = async (url, init = {}) => { if (url.includes("/catalog/snapshot") && (init.method || "GET") === "POST") await gate; return orig(url, init); };
+  const syncing = c.bridge._sync();                       // downloading the snapshot that does NOT contain the write below
+  await new Promise(r => setTimeout(r, 0));
+  await c.ui({ action: "set_watched", media_id: uid(1), watched: true });
+  release(); await syncing;
+  assert.equal((await page(c, { watched: true })).items.length, 1, "the write survived the older snapshot");
+  assert.ok(c.timers.length >= 1 || c.bridge._mirror().resync === false, "a follow-up pass is scheduled");
+  w.fetch = orig; await c.flush();
+  assert.equal((await page(c)).items.length, 3, "the follow-up pass brought the new item");
+});
+
+test("C-3: switching profile during a sync neither drops the new profile's first sync nor lets the old one clear it", async () => {
+  const P2 = "44444444-4444-4444-8444-444444444444";
+  const w = world([film(1)]); const orig = w.fetch; let release; const gate = new Promise(r => { release = r; });
+  w.fetch = async (url, init = {}) => {
+    const path = url.replace(BASE, "").split("?")[0];
+    if (path === "/profiles") return { ok: true, status: 200, text: async () => JSON.stringify([{ id: P, name: "A", revision: 1 }, { id: P2, name: "B", revision: 1 }]), blob: async () => ({}) };
+    if (path === `/profiles/${P2}/preferences`) return orig(url.replace(P2, P), init);
+    if (path.startsWith(`/profiles/${P2}/catalog/snapshot`)) return orig(url.replace(P2, P), init);
+    if (path === `/profiles/${P}/catalog/snapshot` && (init.method || "GET") === "POST") await gate;
+    return orig(url, init);
+  };
+  const c = client(w, Store.createMemoryBackend()); await c.ui({ action: "boot" }); await c.ui({ action: "select_profile", id: P });
+  const first = c.bridge._sync();                          // profile A is downloading
+  await new Promise(r => setTimeout(r, 0));
+  await c.ui({ action: "select_profile", id: P2 });        // the user switches to B meanwhile
+  release(); await first; await c.flush();
+  const m = c.bridge._mirror();
+  assert.equal(m.profile, P2); assert.equal(m.ready, true, "profile B got its own first synchronisation");
+});
+
+test("series names that are prototype keys never read a prototype property", async () => {
+  const w = world([film(1, { category: "serie", series: "constructor", season: 1, episode: 1 })]), c = client(w, Store.createMemoryBackend()); await select(c); await c.flush();
+  const v = await c.ui({ action: "series", name: "constructor" });
+  assert.equal(v.revision, null); assert.equal(v.name, "constructor");
 });

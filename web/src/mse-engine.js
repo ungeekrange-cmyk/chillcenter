@@ -32,12 +32,16 @@
     async open({ mediaId, lease, startAt, speed }) {
       const MS = this.d.MediaSource;
       if (!MS) throw fail("Ce navigateur ne sait pas lire de vidéo par MediaSource.");
+      // The player can leave (stop, another video) while this runs: after every await, check that this engine is still wanted, so that a
+      // slow open never replaces the `<video>` of the engine that took over the shared host element (review 9, C-4).
+      const alive = () => { if (this.closed) throw fail("Ouverture annulée."); };
+      alive();
       this.reader = new RangeReader({ mediaId, lease, fetch: this.d.fetch });
-      await this.reader.open();
+      await this.reader.open(); alive();
       const kind = sniffContainer(this.reader.head);
       if (kind === "unknown") throw fail("Format de fichier non reconnu.");
       this.src = kind === "mp4" ? new Mp4.Mp4Source(this.reader) : kind === "mkv" ? new Mkv.MkvSource(this.reader, { audio: root.ChillAudio || null }) : new Avi.AviSource(this.reader);
-      this.movie = await this.src.open();
+      this.movie = await this.src.open(); alive();
       // MP3 is not accepted inside audio/mp4 everywhere (Chromium builds): fall back to a bare MPEG audio stream.
       for (const t of this.movie.tracks) {
         if (t.kind === "audio" && t.codec === "mp4a.6B" && !MS.isTypeSupported(t.mime) && MS.isTypeSupported("audio/mpeg")) { t.mime = "audio/mpeg"; t.rawStream = true; }
@@ -64,6 +68,7 @@
       if (softTrack && !this.activeAudio) throw fail("Cette vidéo nécessite le décodage logiciel, et son audio n'est pas pris en charge par ce navigateur : lecture impossible pour l'instant.");
 
       // Software video: the audio element is the master clock, frames are painted on a canvas.
+      alive();
       this.video = this.d.document.createElement(softTrack ? "audio" : "video");
       this.video.playsInline = true; this.video.preload = "auto";
       if (softTrack) {
@@ -74,7 +79,7 @@
       this.ms = new MS();
       this.url = this.d.URL.createObjectURL(this.ms);
       this.video.src = this.url;
-      await new Promise((res, rej) => { this.ms.addEventListener("sourceopen", res, { once: true }); setTimeout(() => rej(fail("MediaSource indisponible.")), 5000); });
+      await new Promise((res, rej) => { this.ms.addEventListener("sourceopen", res, { once: true }); setTimeout(() => rej(fail("MediaSource indisponible.")), 5000); }); alive();
       if (this.movie.duration) this.ms.duration = this.movie.duration;
       for (const t of [video, this.activeAudio].filter(Boolean)) {
         const sb = this.ms.addSourceBuffer(t.mime);
@@ -83,11 +88,11 @@
       }
       this.src.setActive?.(this.streams.map(x => x.track.id));
       this.cache = this.cacheSeconds();
-      for (const s of this.streams) if (!s.track.rawStream) await this.append(s.sb, Mp4.initSegment(s.track));
+      for (const s of this.streams) if (!s.track.rawStream) { await this.append(s.sb, Mp4.initSegment(s.track)); alive(); }
       this.video.playbackRate = speed || 1; this.rate = speed || 1;
-      await this.rewind(startAt || 0);
+      await this.rewind(startAt || 0); alive();
       this.video.currentTime = startAt || 0;
-      if (softTrack) await this.initSoft(softTrack, softEntry, startAt || 0);
+      if (softTrack) { await this.initSoft(softTrack, softEntry, startAt || 0); alive(); }
       else this.probeHardware(video);
       await this.pump();
       this.started = true;

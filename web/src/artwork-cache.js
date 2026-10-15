@@ -20,14 +20,14 @@
     const pump = () => {
       while (running < concurrency && waiting.length) {
         const task = waiting.pop(); running += 1;
-        task().finally(() => { running -= 1; pump(); });
+        task.run().finally(() => { running -= 1; pump(); });
       }
     };
     async function load(key, rev, url) {
       const rec = await store.getBlob(key).catch(() => null);
       if (rec && rec.rev === rev) return remember(key, rev, objectUrl(rec.blob));
       return new Promise((resolve, reject) => {
-        waiting.push(async () => {
+        waiting.push({ fail: reject, run: async () => {
           if (closed) { reject(Object.assign(new Error("Cache fermé."), { code: "CLOSED" })); return; }
           try {
             const blob = await fetchBlob(url);
@@ -36,7 +36,7 @@
             try { await store.putBlob(key, { blob, rev, bytes: blob.size }); if (++stored % trimEvery === 0) await store.trimBlobs(diskLimit); } catch { /* quota: the poster still displays */ }
             resolve(remember(key, rev, objectUrl(blob)));
           } catch (e) { reject(e); }
-        });
+        } });
         pump();
       });
     }
@@ -50,7 +50,8 @@
         inflight.set(key + "\u0000" + rev, p);
         return p;
       },
-      clear() { for (const v of memory.values()) revoke(v.url); memory.clear(); waiting.length = 0; },
+      // Requests still waiting are rejected, never left pending forever (a caller awaiting one would hang): they can simply ask again.
+      clear() { for (const v of memory.values()) revoke(v.url); memory.clear(); for (const t of waiting.splice(0)) t.fail(Object.assign(new Error("Cache vidé."), { code: "CLOSED" })); },
       close() { closed = true; this.clear(); },
       stats: () => ({ memory: memory.size, running, waiting: waiting.length }),
     };

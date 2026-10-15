@@ -115,9 +115,9 @@ test("poster cache trims the least recently used blobs down to the cap", async (
   await store.putBlob("a", { blob: { size: 40 }, rev: 1, bytes: 40 }); await new Promise(r => setTimeout(r, 3));
   await store.putBlob("b", { blob: { size: 40 }, rev: 1, bytes: 40 }); await new Promise(r => setTimeout(r, 3));
   await store.putBlob("c", { blob: { size: 40 }, rev: 1, bytes: 40 }); await new Promise(r => setTimeout(r, 3));
-  await store.getBlob("a");   // a is now the most recently used
+  await store.getBlob("a");   // reads refresh recency at most once an hour (no rewrite of the blob at every display): the oldest write goes first
   assert.equal(await store.trimBlobs(80), 1);
-  assert.notEqual(await store.getBlob("a"), null); assert.equal(await store.getBlob("b"), null); assert.notEqual(await store.getBlob("c"), null);
+  assert.equal(await store.getBlob("a"), null); assert.notEqual(await store.getBlob("b"), null); assert.notEqual(await store.getBlob("c"), null);
 });
 
 test("openBestBackend falls back to memory when IndexedDB is missing or refuses to open", async () => {

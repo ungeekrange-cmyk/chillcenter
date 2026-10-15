@@ -119,16 +119,18 @@
       }
       if (opening.cancelled) { try { engine.close(); } catch { /* already closed */ } return; }
       this.engine = engine; this.opening = null;
-      const prefs = this.info.preferences || {};
-      const tracks = engine.snapshot().tracks || [];
-      const audio = pickTrack(tracks, prefs.audio_language, "Audio"), sub = pickTrack(tracks, prefs.subtitle_language, "Subtitle");
-      if (audio.id !== null) engine.selectAudio(audio.id);
-      engine.selectSubtitle(sub.id);
-      if (audio.fallback) this.note = FALLBACK_NOTE;
-      engine.play();
-      this.timers.push(this.d.setInterval(() => this.heartbeat(), HEARTBEAT_MS));
-      this.timers.push(this.d.setInterval(() => this.report(false, false), HEARTBEAT_MS));
-      this.openEvents();
+      try {
+        const prefs = this.info.preferences || {};
+        const tracks = engine.snapshot().tracks || [];
+        const audio = pickTrack(tracks, prefs.audio_language, "Audio"), sub = pickTrack(tracks, prefs.subtitle_language, "Subtitle");
+        if (audio.id !== null) engine.selectAudio(audio.id);
+        engine.selectSubtitle(sub.id);
+        if (audio.fallback) this.note = FALLBACK_NOTE;
+        engine.play();
+        this.timers.push(this.d.setInterval(() => this.heartbeat(), HEARTBEAT_MS));
+        this.timers.push(this.d.setInterval(() => this.report(false, false), HEARTBEAT_MS));
+        this.openEvents();
+      } catch (e) { this.openError = e.message || "Lecture impossible."; await this.stop(true); }
     }
 
     openEvents() {

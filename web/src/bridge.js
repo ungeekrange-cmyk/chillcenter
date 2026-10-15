@@ -90,7 +90,7 @@
     // ---- local mirror of the catalogue (ADR-0019) --------------------------------------------------------------------
     // Reads (catalogue pages, series, sagas, playlists, media sheets) are answered from memory, loaded from IndexedDB at start; the
     // server is only asked, in the background, whether anything changed. Without `env.store` (tests) everything goes to the server.
-    const mirror = { key: null, profile: null, entries: null, index: null, doc: null, manifest: null, ready: false, loading: null, syncing: null, timer: null, lastCheck: 0, scanning: false, unsupported: false };
+    const mirror = { key: null, profile: null, entries: null, index: null, doc: null, manifest: null, ready: false, loading: null, syncing: null, timer: null, lastCheck: 0, scanning: false, unsupported: false, writes: 0, dirty: false, resync: false };
     const now = () => (env.now ? env.now() : Date.now());
     const setTimer = env.setTimer || ((f, ms) => setTimeout(f, ms)), clearTimer = env.clearTimer || (t => clearTimeout(t));
     let artCache = null;
@@ -98,7 +98,7 @@
     function mirrorApply(entries, doc, manifest) { mirror.entries = entries; mirror.index = Query.prepare(entries); mirror.doc = doc; mirror.manifest = manifest; mirror.ready = Boolean(doc); }
     function mirrorClose() {
       if (mirror.timer) clearTimer(mirror.timer);
-      Object.assign(mirror, { key: null, profile: null, entries: null, index: null, doc: null, manifest: null, ready: false, loading: null, timer: null, scanning: false, unsupported: false });
+      Object.assign(mirror, { key: null, profile: null, entries: null, index: null, doc: null, manifest: null, ready: false, loading: null, syncing: null, timer: null, scanning: false, unsupported: false, writes: 0, dirty: false, resync: false });
       if (artCache) artCache.clear();
     }
     function scheduleSync(delay) {
@@ -119,30 +119,43 @@
     }
     async function runSync() {
       if (!env.store || !mirror.key) return null;
-      if (mirror.syncing) return mirror.syncing;
-      const key = mirror.key, profile = mirror.profile;
-      mirror.syncing = (async () => {
+      if (mirror.syncing) { mirror.resync = true; return mirror.syncing; }   // a trigger during a sync is not lost: one more pass follows (review 9, C-2)
+      const key = mirror.key, profile = mirror.profile, startWrites = mirror.writes;
+      const run = (async () => {
         try {
           await mirror.loading;
           if (mirror.key !== key) return;
           const local = mirror.ready ? { manifest: mirror.manifest, entries: mirror.entries } : null;
+          const previousDoc = mirror.doc;
           const result = await Sync.sync({ request, store: await backend(), key, profile, local, now });
           if (mirror.key !== key) return;                       // the profile changed while we were downloading: drop the result
           mirror.lastCheck = now();
+          // A write made while the snapshot was downloading is not in it: applying it would show the old state again. Keep what we have
+          // (the stored copy is reconciled by the next pass, which the write already scheduled).
+          if (mirror.writes !== startWrites) { mirror.resync = true; return; }
+          mirror.dirty = false;
           if (result.unchanged) { mirror.manifest = { ...(mirror.manifest || {}), checked_at: mirror.lastCheck }; return; }
           mirrorApply(result.entries, result.doc, { revision: result.revision, total: result.entries.length, synced_at: mirror.lastCheck, checked_at: mirror.lastCheck });
-          if (env.notify && (result.changed || result.removed || result.firstSync)) env.notify({ type: "catalog-updated", changed: result.changed, removed: result.removed, firstSync: result.firstSync });
+          // Sagas, playlists and series revisions live outside the media list: their changes must reach the UI too (review 9, C-1).
+          const docChanged = previousDoc !== null && JSON.stringify(previousDoc) !== JSON.stringify(result.doc);
+          if (env.notify && (result.changed || result.removed || result.firstSync || docChanged)) env.notify({ type: "catalog-updated", changed: result.changed, removed: result.removed, firstSync: result.firstSync, collections: docChanged });
         } catch (e) {
           // A server without the snapshot routes (older API) is not retried for this connection: everything keeps going to the server.
           if (e && (e.code === "ROUTE_NOT_FOUND" || e.status === 405)) mirror.unsupported = true;   // else: keep the last good mirror, the next trigger retries
         }
-        finally { mirror.syncing = null; }
+        finally {
+          if (mirror.syncing === run) mirror.syncing = null;    // never clear the sync of ANOTHER profile (review 9, C-3)
+          if (mirror.resync && mirror.key === key) { mirror.resync = false; scheduleSync(0); }
+        }
       })();
-      return mirror.syncing;
+      mirror.syncing = run;
+      return run;
     }
     // Called when the page becomes visible again and by a slow timer: a no-change check costs one small request.
     function wake() { if (mirror.key && !mirror.syncing && now() - mirror.lastCheck > 20000) scheduleSync(0); }
-    async function localReady() { if (!env.store || !mirror.key) return false; await mirror.loading; return mirror.ready; }
+    // Local answers only while the mirror reflects every write made here: after an edit of a sheet, a series, a saga or a playlist the server
+    // answers (fresh, with the right revision for the next edit) until the next synchronisation has caught up (review 9, C-1).
+    async function localReady() { if (!env.store || !mirror.key) return false; await mirror.loading; return mirror.ready && !mirror.dirty; }
     function patchMedia(id, change) {
       if (!mirror.ready) return;
       let touched = false;
@@ -221,8 +234,10 @@
     async function ui(c) {
       const result = await uiRaw(c);
       if (WRITES.has(c.action)) {
+        mirror.writes += 1;
         if (c.action === "set_watched") patchMedia(c.media_id, m => { m.watched = c.watched; });
-        if (c.action === "set_rating") patchMedia(c.media_id, m => { m.rating = c.rating ?? null; });
+        else if (c.action === "set_rating") patchMedia(c.media_id, m => { m.rating = c.rating ?? null; });
+        else mirror.dirty = true;                           // anything else: the mirror is stale until the next synchronisation
         scheduleSync(800);                                  // reconcile with the server's own view shortly after any write
       }
       return result;
@@ -268,7 +283,7 @@
           return request("PUT", personal(`/media/${c.media_id}`), { body: { ...c.patch, expected_revision: c.expected_revision } });
         }
         case "series": {
-          if (await localReady()) { const view = Query.series(mirror.index, c.name, mirror.doc.series_revisions ? mirror.doc.series_revisions[c.name] : null); if (view) return view; }
+          if (await localReady()) { const view = Query.series(mirror.index, c.name, (mirror.doc.series_revisions && Object.prototype.hasOwnProperty.call(mirror.doc.series_revisions, c.name)) ? mirror.doc.series_revisions[c.name] : null); if (view) return view; }
           return get(personal(`/series/${segment(c.name)}`));
         }
         case "edit_series":

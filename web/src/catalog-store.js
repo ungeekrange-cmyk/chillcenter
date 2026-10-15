@@ -10,7 +10,7 @@
 //   drop(key)                                                                  mirror + posters of that key
 //   getBlob(k) / putBlob(k, { blob, rev, bytes }) / trimBlobs(maxBytes)       poster cache
 (function (root) {
-  const DB_NAME = "chill-center-web", DB_VERSION = 1;
+  const DB_NAME = "chill-center-web", DB_VERSION = 1, TOUCH_MS = 3600 * 1000;
 
   function createMemoryBackend() {
     const mirrors = new Map(), blobs = new Map();
@@ -32,7 +32,7 @@
         mirrors.delete(key);
         for (const k of [...blobs.keys()]) if (k.startsWith(key + "|")) blobs.delete(k);
       },
-      async getBlob(k) { const r = blobs.get(k); if (!r) return null; r.at = Date.now(); return { blob: r.blob, rev: r.rev }; },
+      async getBlob(k) { const r = blobs.get(k); if (!r) return null; if (Date.now() - r.at > TOUCH_MS) r.at = Date.now(); return { blob: r.blob, rev: r.rev }; },
       async putBlob(k, { blob, rev, bytes }) { blobs.set(k, { blob, rev, bytes: bytes ?? blob.size ?? 0, at: Date.now() }); },
       async trimBlobs(maxBytes) {
         let total = 0; for (const r of blobs.values()) total += r.bytes;
@@ -94,7 +94,7 @@
         const tx = db.transaction("art", "readwrite"), store = tx.objectStore("art");
         const rec = await req(store.get(k));
         if (!rec) return null;
-        rec.at = Date.now(); store.put(rec);
+        if (Date.now() - rec.at > TOUCH_MS) { rec.at = Date.now(); store.put(rec); }   // recency is kept to the hour: no rewrite of the blob at every display
         return { blob: rec.blob, rev: rec.rev };
       },
       async putBlob(k, { blob, rev, bytes }) {
