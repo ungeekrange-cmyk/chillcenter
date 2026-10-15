@@ -27,7 +27,14 @@ function harness({ acquire, tracks = [], context } = {}) {
   };
   const player = new WebPlayer({ request, engineFactory: () => engine, storage: { getItem: () => "dev", setItem() {} }, now: () => t, setInterval: (f, ms) => { intervals.push(f); return intervals.length; }, clearInterval() {}, EventSource: null, uuid: () => "dev" });
   const ctx = { profile: P };
-  return { player, calls, engine, ctx, tick: ms => { t += ms; }, intervals, cmd: c => player.command(c, ctx) };
+  // `start` answers before the file is open (BUG-0070). Existing tests want the settled state: wait for the open to end,
+  // then answer like the UI would on its next `status` poll (a failed open surfaces there).
+  const cmd = async c => {
+    const answer = await player.command(c, ctx);
+    if ((c.action === "start" || c.action === "next") && answer.stage === "player") { await player.lastOpen; return player.openError ? player.command({ action: "status" }, ctx) : player.view(); }
+    return answer;
+  };
+  return { player, calls, engine, ctx, tick: ms => { t += ms; }, intervals, cmd, raw: c => player.command(c, ctx) };
 }
 
 test("start acquires a lease with device and context, resumes at the saved position", async () => {
@@ -107,4 +114,56 @@ test("device ids work in an insecure context (no crypto.randomUUID), and stay va
   assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.equal(uuidV4({ randomUUID: () => "from-native" }), "from-native");
   assert.match(uuidV4(require("node:crypto").webcrypto), /^[0-9a-f-]{36}$/);
+});
+
+// ---- BUG-0070: the previous video's title stayed on screen while the next file was being opened -----------------------------
+class SlowEngine extends FakeEngine {
+  constructor() { super([]); this.gate = new Promise((resolve, reject) => { this.release = resolve; this.fail = reject; }); }
+  async open(o) { this.log.push(["open", o.startAt]); await this.gate; }
+}
+test("start answers at once with the NEW title while the file is still opening, then the real state", async () => {
+  const h = harness();
+  const slow = new SlowEngine(); h.player.d.engineFactory = () => slow;
+  h.player.info = { media: { id: "old", title: "Première vidéo" }, preferences: {} };   // left over from the previous video
+  const view = await h.raw({ action: "start", media_id: M, context: { kind: "standalone", id: null } });
+  assert.equal(view.stage, "player"); assert.equal(view.title, "Film", "the new title, never the previous one");
+  assert.equal(view.native.loaded, false); assert.equal(view.active, true);
+  assert.equal((await h.raw({ action: "status" })).title, "Film");
+  assert.equal(slow.log.length, 1, "opened once, in the background");
+  // controls during the open do nothing and never close the panel
+  assert.equal((await h.raw({ action: "seek", position: 50 })).stage, "player");
+  assert.equal((await h.raw({ action: "pause" })).stage, "player");
+  assert.equal((await h.raw({ action: "speed", speed: 1.5 })).stage, "player");
+  slow.release(); await h.player.opening.promise;
+  const settled = await h.raw({ action: "status" });
+  assert.equal(settled.native.loaded, true); assert.equal(settled.title, "Film");
+  assert.equal(h.intervals.length >= 2, true, "heartbeat and progress timers armed after the open");
+});
+
+test("a failed open is reported by the next status poll, and the lease is released", async () => {
+  const h = harness();
+  const slow = new SlowEngine(); h.player.d.engineFactory = () => slow;
+  await h.raw({ action: "start", media_id: M, context: { kind: "standalone", id: null } });
+  slow.fail(new Error("Fichier illisible.")); await h.player.opening?.promise;
+  const view = await h.raw({ action: "status" });
+  assert.equal(view.stage, "closed"); assert.equal(view.error, "Fichier illisible.");
+  assert.equal(h.calls.some(c => c.path.endsWith("/release")), true);
+  assert.equal((await h.raw({ action: "status" })).error, null, "the error is delivered once");
+});
+
+test("leaving the player (or starting another video) during the open cancels it", async () => {
+  const h = harness();
+  const first = new SlowEngine(); h.player.d.engineFactory = () => first;
+  await h.raw({ action: "start", media_id: M, context: { kind: "standalone", id: null } });
+  const second = new SlowEngine(); h.player.d.engineFactory = () => second;
+  await h.raw({ action: "start", media_id: N, context: { kind: "standalone", id: null } });
+  assert.equal(first.closed, true, "the engine of the abandoned video is closed");
+  first.release(); second.release(); await h.player.opening?.promise;
+  assert.equal(h.player.engine, second, "only the latest video becomes the live engine");
+  assert.equal((await h.raw({ action: "stop" })).stage, "closed");
+  const third = new SlowEngine(); h.player.d.engineFactory = () => third;
+  await h.raw({ action: "start", media_id: M, context: { kind: "standalone", id: null } });
+  assert.equal((await h.raw({ action: "stop" })).stage, "closed"); assert.equal(third.closed, true);
+  third.release(); await Promise.resolve();
+  assert.equal(h.player.engine, null, "a late open never resurrects a stopped player");
 });

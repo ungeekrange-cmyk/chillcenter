@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ui = join(root, "ui/connected");
 const src = join(root, "web/src");
 const out = resolve(process.argv[2] || join(root, "web/dist"));
-const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "bridge.js", "register-sw.js"];
+const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "catalog-query.js", "catalog-store.js", "catalog-sync.js", "artwork-cache.js", "bridge.js", "register-sw.js"];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -19,7 +19,7 @@ cpSync(ui, out, {
   recursive: true,
   filter: path => !/(\/qa\.js|-qa\.js|\.test\.js)$/.test(path) && !path.endsWith("/tests"),
 });
-for (const name of [...webScripts, "web.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name));
+for (const name of [...webScripts, "web-sync-ui.js", "web.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name));
 // MPEG-4 (Xvid/DivX) WebAssembly decoder: built by web/decoder/mpeg4, loaded by a Worker only when needed.
 mkdirSync(join(out, "vendor/mpeg4"), { recursive: true });
 const vendor = join(root, "web/vendor/mpeg4");
@@ -41,7 +41,7 @@ let html = readFileSync(join(out, "index.html"), "utf8");
 const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css">`
   + webScripts.map(name => `<script src="${name}"></script>`).join("");
 if (!html.includes("<title>")) throw new Error("index.html sans <title>");
-html = html.replace("<title>", head + "<title>").replace("Apparence de ce Mac", "Apparence de cet appareil").replace("Le Mac ne monte pas ce chemin.", "Cet appareil ne monte pas ce chemin.");
+html = html.replace("</head>", `<script src="web-sync-ui.js" defer></script></head>`).replace("<title>", head + "<title>").replace("Apparence de ce Mac", "Apparence de cet appareil").replace("Le Mac ne monte pas ce chemin.", "Cet appareil ne monte pas ce chemin.");
 writeFileSync(join(out, "index.html"), html);
 
 const files = [];
