@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+[BUG0067](BUG-0067-ai-button-availability.md) : bouton IA resté désactivé après sélection d’un profil, ordre de restauration/rendu reproduit et corrigé localement.
+
 [BUG0064](BUG-0064-blocking-catalog-sync.md) synchronisation détachée/delta ; [BUG0065](BUG-0065-stale-detail-and-artwork.md) cycle de fiche/images/étoiles ; [BUG0066](BUG-0066-series-season-provider-scope.md) série/saison et homonymes. Candidat local en cours, non livré.
 
 [BUG0062](BUG-0062-release-filename-parsing.md), 15 octobre : titres à séparateurs répétés, VOSTA/VOST/DDP et recherches automatiques corrigés sans réécrire les fiches. [BUG0063](BUG-0063-media-detail-scroll-and-path.md) : chemin relatif affiché et scroll modal, Chromium RED/GREEN puis vrai essai humain Tauri concluant. LIVRÉS c610ea9, bundleMac publié et Pi mis à jour/sauvegardé, vérification indépendante runtime APPROVED_SCOPED. Essais du simulateur natif non concluants préservés sur branche28b1c64, pas requalifiés en PASS.

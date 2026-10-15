@@ -529,6 +529,49 @@ impl Store {
             .map_err(db_error)?
             .unwrap_or(1.0))
     }
+    /// Stable preference identity, independent of the mutable display label.
+    pub fn series_identity(&self, stable: &str) -> Result<String, String> {
+        let raw = self.catalogue.get(&self.legacy_id(stable)?)?;
+        if raw.category != "serie" {
+            return Err("Cette vidéo n’est pas une série.".into());
+        }
+        if let Some(id) = raw.tmdb_id {
+            return Ok(format!("tmdb:tv:{id}"));
+        }
+        let members = self.catalogue.series_members_for(&raw)?;
+        let anchor = members
+            .iter()
+            .min_by(|a, b| a.added_at.cmp(&b.added_at).then_with(|| a.id.cmp(&b.id)))
+            .ok_or("Série introuvable.")?;
+        Ok(format!("media:{}", self.stable_id(&anchor.id)?))
+    }
+    pub fn series_playback_speed(&mut self, profile: &str, stable: &str) -> Result<f64, String> {
+        self.require_profile(profile)?;
+        let media = self.media(profile, stable)?;
+        if media.category != "serie" {
+            return Ok(1.0);
+        }
+        let key = self.series_identity(stable)?;
+        let speed: Option<f64> = self
+            .personal
+            .query_row(
+                "SELECT speed FROM cc_series_speed WHERE profile_id=?1 AND series_key=?2",
+                params![profile, key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        if let Some(speed) = speed {
+            return Ok(speed);
+        }
+        let name = media.series.as_deref().unwrap_or(&media.title);
+        // Legacy name-only preferences are usable only for a unique show.
+        if self.series(profile, name).is_ok() {
+            self.series_speed(profile, name)
+        } else {
+            Ok(1.0)
+        }
+    }
 
     pub fn catalog(&mut self, profile_id: &str) -> Result<Vec<Media>, String> {
         self.require_profile(profile_id)?;
@@ -645,7 +688,12 @@ impl Store {
         if selected_tmdb.is_none() {
             let groups = members
                 .iter()
-                .filter_map(chill_catalog::database::series_source_key)
+                .filter_map(|media| {
+                    media
+                        .tmdb_id
+                        .map(|id| format!("tmdb:tv:{id}"))
+                        .or_else(|| chill_catalog::database::series_source_key(media))
+                })
                 .collect::<std::collections::HashSet<_>>();
             if groups.len() > 1 {
                 return Err("Plusieurs séries portent ce nom. Ouvrez-la depuis sa vignette pour choisir la bonne fiche.".into());
@@ -1435,6 +1483,8 @@ impl Store {
         let captured_revision = self.sync_revision(profile)?;
         let series_revision = captured_revision.0;
         let mut series_revisions = std::collections::BTreeMap::new();
+        let mut legacy_series_groups =
+            std::collections::BTreeMap::<String, std::collections::BTreeSet<String>>::new();
         for item in &items {
             if item.media.category == "serie" {
                 let key = item
@@ -1448,6 +1498,27 @@ impl Store {
                             .unwrap_or_else(|| item.media.title.clone())
                     });
                 series_revisions.insert(key.clone(), series_revision);
+                series_revisions.insert(format!("media:{}", item.media.id), series_revision);
+                let name = item
+                    .media
+                    .series
+                    .clone()
+                    .unwrap_or_else(|| item.media.title.clone());
+                let identity = item
+                    .media
+                    .tmdb_id
+                    .map(|id| format!("tmdb:tv:{id}"))
+                    .or_else(|| chill_catalog::database::series_source_key(&item.media))
+                    .unwrap();
+                legacy_series_groups
+                    .entry(name)
+                    .or_default()
+                    .insert(identity);
+            }
+        }
+        for (name, groups) in legacy_series_groups {
+            if groups.len() == 1 {
+                series_revisions.insert(name, series_revision);
             }
         }
         let known_seasons = items
@@ -2231,7 +2302,16 @@ impl Store {
         }
         let media = self.catalogue.list()?;
         self.ensure_identities(&media)?;
-        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.personal,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(db_error)?;
+        if i64::try_from(self.common_revision()?).map_err(|_| "Révision invalide.")? != revision {
+            return Err(
+                "Le catalogue a changé pendant la préparation des séries. Réessayez.".into(),
+            );
+        }
         tx.execute("DELETE FROM cc_series_group", [])
             .map_err(db_error)?;
         for item in media {

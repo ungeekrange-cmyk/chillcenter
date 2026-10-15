@@ -53,14 +53,29 @@ async fn ui_command(
             return Ok(serde_json::json!({"changed":false,"discarded":true}));
         }
         let client = bridge.client.clone();
+        let publish = tauri::async_runtime::spawn_blocking(move || {
+            client
+                .lock()
+                .map_err(|_| player_bridge::error("Client indisponible."))?
+                .prepare_catalog_publish(task, result)
+        })
+        .await
+        .map_err(|_| player_bridge::error("Préparation locale interrompue."))??;
+        let publish_epoch = bridge.context_epoch.clone();
+        let (publish, local) = tauri::async_runtime::spawn_blocking(move || {
+            publish.publish_owned(publish_epoch, epoch)
+        })
+        .await
+        .map_err(|_| player_bridge::error("Publication locale interrompue."))??;
+        let client = bridge.client.clone();
         return tauri::async_runtime::spawn_blocking(move || {
             client
                 .lock()
                 .map_err(|_| player_bridge::error("Client indisponible."))?
-                .commit_catalog_sync(task, result)
+                .finish_catalog_publish(publish, local)
         })
         .await
-        .map_err(|_| player_bridge::error("Synchronisation interrompue."))?;
+        .map_err(|_| player_bridge::error("Finalisation synchronisation interrompue."))?;
     }
     if matches!(
         &command,

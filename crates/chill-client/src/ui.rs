@@ -10,7 +10,10 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -434,9 +437,19 @@ pub struct CatalogSyncTask {
     profile: String,
     base_revision: Option<String>,
     mutation_generation: u64,
+    mutation_guard: Arc<AtomicU64>,
+    publish_gate: Arc<std::sync::Mutex<()>>,
     task: Option<crate::catalog_cache::SyncTask>,
 }
 pub struct CatalogSyncResult(crate::catalog_cache::SyncResult);
+/// Closed local SQLite publication. It owns no UiClient borrow and is run by
+/// the desktop host on a blocking worker after HTTPS has completed.
+pub struct CatalogPublishTask {
+    task: CatalogSyncTask,
+    result: CatalogSyncResult,
+    directory: PathBuf,
+    artwork_gate: Arc<tokio::sync::Semaphore>,
+}
 fn sync_commit_stale(
     current: Option<&str>,
     base: Option<&str>,
@@ -495,6 +508,8 @@ impl CatalogSyncTask {
                 profile,
                 base_revision,
                 mutation_generation: self.mutation_generation,
+                mutation_guard: self.mutation_guard,
+                publish_gate: self.publish_gate,
                 task: None,
             },
             CatalogSyncResult(result),
@@ -508,6 +523,34 @@ impl CatalogSyncTask {
     }
     pub fn base_revision(&self) -> Option<&str> {
         self.base_revision.as_deref()
+    }
+}
+impl CatalogPublishTask {
+    pub fn publish_owned(
+        self,
+        context_epoch: Arc<AtomicU64>,
+        expected_epoch: u64,
+    ) -> Result<(Self, crate::catalog_cache::CatalogPublication), UiError> {
+        // The overwhelmingly common revision-only check must not reopen a
+        // database, walk cached images, or rewrite a mirror.
+        if !self.result.0.changed {
+            let revision = self.result.0.revision.clone();
+            return Ok((self, Some((Value::Null, false, revision))));
+        }
+        let published = crate::catalog_cache::LocalCatalog::publish_sync_detached(
+            self.directory.clone(),
+            self.task.server.clone(),
+            self.task.profile.clone(),
+            self.artwork_gate.clone(),
+            self.task.mutation_guard.clone(),
+            self.task.publish_gate.clone(),
+            self.task.base_revision.clone(),
+            self.task.mutation_generation,
+            context_epoch,
+            expected_epoch,
+            self.result.0.clone(),
+        )?;
+        Ok((self, published))
     }
 }
 impl UiClient {
@@ -553,6 +596,8 @@ impl UiClient {
                 .and_then(|d| d["revision"].as_str())
                 .map(str::to_owned),
             mutation_generation: cache.mutation_generation,
+            mutation_guard: cache.mutation_guard.clone(),
+            publish_gate: cache.publish_gate.clone(),
             task: Some(cache.sync_task(connection.transport.clone())),
         })
     }
@@ -653,11 +698,11 @@ impl UiClient {
     /// CAS commit: a profile/server switch or a local mutation since prepare
     /// discards the fetched result. In particular, stale transport never clears
     /// a dirty marker created by a personal write.
-    pub fn commit_catalog_sync(
+    pub fn prepare_catalog_publish(
         &mut self,
         task: CatalogSyncTask,
         result: CatalogSyncResult,
-    ) -> Result<Value, UiError> {
+    ) -> Result<CatalogPublishTask, UiError> {
         let connection = self
             .connected
             .as_ref()
@@ -665,7 +710,7 @@ impl UiClient {
         if connection.id != task.server
             || connection.active.as_deref() != Some(task.profile.as_str())
         {
-            return Ok(json!({"changed":false,"discarded":true}));
+            return Err(invalid("Synchronisation obsolète."));
         }
         self.open_catalog_cache()?;
         let cache = self.catalog_cache.as_mut().unwrap();
@@ -676,12 +721,50 @@ impl UiClient {
             cache.mutation_generation,
             task.mutation_generation,
         ) {
+            return Err(invalid("Synchronisation obsolète."));
+        }
+        Ok(CatalogPublishTask {
+            task,
+            result,
+            directory: self.directory.clone(),
+            artwork_gate: self.artwork_gate.clone(),
+        })
+    }
+    pub fn finish_catalog_publish(
+        &mut self,
+        task: CatalogPublishTask,
+        published: Option<(Value, bool, String)>,
+    ) -> Result<Value, UiError> {
+        let connection = self
+            .connected
+            .as_ref()
+            .ok_or_else(|| invalid("Connectez un serveur."))?;
+        if connection.id != task.task.server
+            || connection.active.as_deref() != Some(task.task.profile.as_str())
+        {
             return Ok(json!({"changed":false,"discarded":true}));
         }
-        let changed = result.0.changed;
-        let revision = result.0.revision.clone();
-        cache.commit_sync(result.0)?;
-        Ok(json!({"changed":changed,"revision":revision,"discarded":false}))
+        let Some((document, changed, revision)) = published else {
+            return Ok(json!({"changed":false,"discarded":true}));
+        };
+        let stale_mutation =
+            task.task.mutation_guard.load(Ordering::Acquire) != task.task.mutation_generation;
+        let Some(cache) = self
+            .catalog_cache
+            .as_mut()
+            .filter(|cache| cache.server == task.task.server && cache.profile == task.task.profile)
+        else {
+            return Ok(json!({"changed":false,"discarded":true}));
+        };
+        // Its existing WAL connection already sees the atomic commit. Only
+        // publish the small in-memory manifest; reopening here held the UI
+        // mutex through a directory walk and schema/identity setup.
+        if !document.is_null() {
+            cache.document = Some(document);
+        }
+        cache.dirty = stale_mutation;
+        cache.notice = None;
+        Ok(json!({"changed":changed,"revision":revision,"discarded":false,"dirty":stale_mutation}))
     }
     pub fn invalidate_catalog(&mut self) {
         if let Some(cache) = &mut self.catalog_cache {
@@ -2422,7 +2505,9 @@ mod tests {
         film_b.media.id = b.clone();
         film_b.media.title = "Film B".into();
         film_b.media.year = Some(2000);
-        mirror.commit(&[item,film_a,film_b],json!({"revision":"fixture:1","sagas":[{"id":"1","name":"Saga","revision":5,"media_ids":[a,b],"poster":null}],"playlists":[],"series_revisions":{"Show":9}})).unwrap();
+        let mut document = json!({"revision":"fixture:1","sagas":[{"id":"1","name":"Saga","revision":5,"media_ids":[a,b],"poster":null}],"playlists":[],"series_revisions":{"Show":9}});
+        document["series_revisions"][format!("media:{media_id}")] = json!(7);
+        mirror.commit(&[item, film_a, film_b], document).unwrap();
         drop(mirror);
         let mut client = UiClient::open(dir.path()).unwrap();
         // Port 9 is deliberately unreachable. Any accidental HTTP makes this
@@ -2471,6 +2556,12 @@ mod tests {
             .unwrap();
         assert_eq!(series["revision"], 9);
         assert_eq!(series["episodes"].as_array().unwrap().len(), 1);
+        let media_series = client
+            .dispatch(UiCommand::Series {
+                name: format!("media:{media_id}"),
+            })
+            .unwrap();
+        assert_eq!(media_series["revision"], 7);
         assert_eq!(
             client.dispatch(UiCommand::Sagas).unwrap()["items"]
                 .as_array()

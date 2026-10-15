@@ -29,6 +29,7 @@ type Job = Box<dyn FnOnce(&mut Store) + Send>;
 #[derive(Clone)]
 pub struct DatabaseActor {
     sender: mpsc::Sender<Job>,
+    pub(crate) sync_generation: Arc<str>,
 }
 struct Cancellation(Arc<AtomicBool>);
 impl Drop for Cancellation {
@@ -38,6 +39,7 @@ impl Drop for Cancellation {
 }
 impl DatabaseActor {
     pub fn open(path: PathBuf) -> Result<Self, String> {
+        let sync_generation = crate::sync_api::database_generation(&path)?;
         let (sender, mut receiver) = mpsc::channel::<Job>(16);
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         std::thread::Builder::new()
@@ -66,7 +68,10 @@ impl DatabaseActor {
         ready_rx
             .recv()
             .map_err(|_| "Initialisation de la base interrompue.")??;
-        Ok(Self { sender })
+        Ok(Self {
+            sender,
+            sync_generation: sync_generation.into(),
+        })
     }
     pub async fn call<T: Send + 'static>(
         &self,
@@ -683,11 +688,64 @@ mod tests {
         assert_eq!(delta["total"], 1);
         assert_eq!(delta["deleted_ids"], json!([id]));
         assert_eq!(delta["items"][0]["media"]["title"], "Added");
+        // Completed one-page deltas do not saturate the three active slots.
+        for _ in 0..4 {
+            let (status, _) = json_call(
+                &app,
+                "POST",
+                &endpoint,
+                json!({"known_revision":next_revision}),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        let c = store.create_profile("Delta C").unwrap();
+        let d = store.create_profile("Delta D").unwrap();
+        let mut active = Vec::new();
+        for profile in [a, b, &c.id] {
+            let route = format!("/api/v1/profiles/{profile}/catalog/changes");
+            let (status, body) = json_call(&app, "POST", &route, json!({})).await;
+            assert_eq!(status, StatusCode::OK);
+            active.push((route, body["snapshot_id"].as_str().unwrap().to_owned()));
+        }
+        let (status, _) = json_call(
+            &app,
+            "POST",
+            &format!("/api/v1/profiles/{}/catalog/changes", d.id),
+            json!({}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        let sql = rusqlite::Connection::open(dir.path().join("catalog.sqlite")).unwrap();
+        assert_eq!(
+            sql.query_row(
+                "SELECT COUNT(*) FROM cc_catalog_delta_checkpoint_v2 WHERE profile_id=?1",
+                [&d.id],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0,
+            "Rejected transfer must not persist a checkpoint"
+        );
+        for (route, transfer) in active {
+            assert_eq!(
+                json_call(
+                    &app,
+                    "GET",
+                    &format!("{route}/{transfer}?offset=100"),
+                    Value::Null
+                )
+                .await
+                .0,
+                StatusCode::OK,
+                "Fourth admission must not evict active pages"
+            );
+        }
         store.delete_profile(a).unwrap();
         let sql = rusqlite::Connection::open(dir.path().join("catalog.sqlite")).unwrap();
         let checkpoints: i64 = sql
             .query_row(
-                "SELECT COUNT(*) FROM cc_catalog_delta_checkpoint WHERE profile_id=?1",
+                "SELECT COUNT(*) FROM cc_catalog_delta_checkpoint_v2 WHERE profile_id=?1",
                 [a],
                 |row| row.get(0),
             )

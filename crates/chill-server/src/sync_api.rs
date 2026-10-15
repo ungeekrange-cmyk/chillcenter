@@ -21,6 +21,54 @@ use std::{
 };
 use uuid::Uuid;
 
+/// Deliberately outside SQLite and outside operational backup manifests.
+/// Ordinary restarts reuse this private marker. The supported offline restore
+/// publishes a fresh data tree without it, invalidating even an ABA epoch.
+pub(crate) fn database_generation(database: &std::path::Path) -> Result<String, String> {
+    use std::{
+        fs::OpenOptions,
+        io::{Read, Write},
+        os::unix::fs::{MetadataExt, OpenOptionsExt},
+    };
+    let path = database.with_extension("sync-generation");
+    let mut file = match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&path)
+    {
+        Ok(mut file) => {
+            let generation = Uuid::new_v4().to_string();
+            file.write_all(generation.as_bytes())
+                .and_then(|()| file.sync_all())
+                .map_err(|_| "Génération du catalogue inaccessible.".to_owned())?;
+            return Ok(generation);
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&path)
+            .map_err(|_| "Génération du catalogue inaccessible.".to_owned())?,
+        Err(_) => return Err("Génération du catalogue inaccessible.".into()),
+    };
+    let metadata = file
+        .metadata()
+        .map_err(|_| "Génération du catalogue inaccessible.".to_owned())?;
+    if !metadata.is_file()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o177 != 0
+        || metadata.len() != 36
+    {
+        return Err("Génération du catalogue non sûre.".into());
+    }
+    let mut value = String::new();
+    file.read_to_string(&mut value)
+        .map_err(|_| "Génération du catalogue invalide.".to_owned())?;
+    Uuid::parse_str(&value).map_err(|_| "Génération du catalogue invalide.".to_owned())?;
+    Ok(value)
+}
+
 const TTL: Duration = Duration::from_secs(120);
 const MAX_SNAPSHOTS: usize = 3;
 #[derive(Clone)]
@@ -29,10 +77,9 @@ struct Baseline {
     profile: String,
     revision: String,
     created: Instant,
-    /// Full immutable image used only to compute the next bounded delta.
-    baseline: Arc<SyncSnapshot>,
-    /// The transfer image can be smaller than the baseline after a delta.
+    /// The sole immutable image retained for an active paginated transfer.
     snapshot: Arc<SyncSnapshot>,
+    serialized_bytes: usize,
 }
 #[derive(Default)]
 struct Cache {
@@ -58,14 +105,13 @@ pub fn routes() -> Router<AppState> {
         .route("/profiles/{profile}/catalog/changes", post(changes))
         .route("/profiles/{profile}/catalog/changes/{snapshot}", get(page))
 }
-fn document(
-    snapshot: &SyncSnapshot,
-) -> (
+type SnapshotDocument = (
     Vec<SagaView>,
     Vec<PlaylistView>,
     std::collections::BTreeMap<String, u64>,
     std::collections::BTreeMap<String, chill_catalog::model::SeasonProvider>,
-) {
+);
+fn document(snapshot: &SyncSnapshot) -> SnapshotDocument {
     (
         snapshot.sagas.clone(),
         snapshot.playlists.clone(),
@@ -73,12 +119,10 @@ fn document(
         snapshot.season_metadata.clone(),
     )
 }
-fn changed(old: &SyncSnapshot, now: &SyncSnapshot) -> (Vec<SyncMedia>, Vec<String>) {
-    let old = old
-        .items
-        .iter()
-        .map(|m| (m.media.id.as_str(), m))
-        .collect::<HashMap<_, _>>();
+fn changed(
+    old: &catalog_delta::SignatureCheckpoint,
+    now: &SyncSnapshot,
+) -> Result<(Vec<SyncMedia>, Vec<String>), ApiError> {
     let next = now
         .items
         .iter()
@@ -88,17 +132,18 @@ fn changed(old: &SyncSnapshot, now: &SyncSnapshot) -> (Vec<SyncMedia>, Vec<Strin
         .items
         .iter()
         .filter(|m| {
-            old.get(m.media.id.as_str())
-                .is_none_or(|v| serde_json::to_vec(v).ok() != serde_json::to_vec(m).ok())
+            catalog_delta::item_signature(m).ok().as_deref()
+                != old.items.get(&m.media.id).map(String::as_str)
         })
         .cloned()
         .collect();
     let deleted_ids = old
+        .items
         .keys()
-        .filter(|id| !next.contains_key(**id))
-        .map(|id| (*id).to_owned())
+        .filter(|id| !next.contains_key(id.as_str()))
+        .cloned()
         .collect();
-    (upserts, deleted_ids)
+    Ok((upserts, deleted_ids))
 }
 async fn context(
     state: &AppState,
@@ -119,7 +164,11 @@ async fn context(
             Ok((snapshot.captured_revision, snapshot))
         })
         .await?;
-    let revision = catalog_delta::revision(&server, &profile, epoch);
+    let revision = catalog_delta::revision(
+        &format!("{server}:{}", state.database.sync_generation),
+        &profile,
+        epoch,
+    );
     Ok((server, revision, snapshot))
 }
 async fn current_revision(state: &AppState, profile: &str) -> Result<(String, String), ApiError> {
@@ -137,7 +186,11 @@ async fn current_revision(state: &AppState, profile: &str) -> Result<(String, St
         .await?;
     Ok((
         server.clone(),
-        catalog_delta::revision(&server, &profile, epoch),
+        catalog_delta::revision(
+            &format!("{server}:{}", state.database.sync_generation),
+            &profile,
+            epoch,
+        ),
     ))
 }
 async fn changes(
@@ -163,29 +216,9 @@ async fn changes(
         _ => None,
     };
     let (server, revision, snapshot) = context(&state, profile.clone()).await?;
-    let old = request.known_revision.as_deref().and_then(|revision| {
-        cache()
-            .lock()
-            .ok()?
-            .values
-            .values()
-            .find(|v| v.server == server && v.profile == profile && v.revision == revision)
-            .cloned()
-    });
-    let old = old.map(|value| (*value.baseline).clone()).or(durable_old);
-    // Checkpoint the coherent post-state before returning its cursor.  A
-    // restart can therefore compute the next delta without a process UUID.
-    state
-        .database
-        .call({
-            let profile = profile.clone();
-            let revision = revision.clone();
-            let snapshot = snapshot.clone();
-            move |store| store.save_catalog_delta_checkpoint(&profile, &revision, &snapshot)
-        })
-        .await?;
+    let old = durable_old;
     let (items, deleted_ids, reset) = if let Some(old) = old {
-        let (a, b) = changed(&old, &snapshot);
+        let (a, b) = changed(&old, &snapshot)?;
         (a, b, false)
     } else {
         (snapshot.items.clone(), Vec::new(), true)
@@ -194,7 +227,6 @@ async fn changes(
     let total = items.len();
     let first = items[..total.min(catalog_delta::DELTA_PAGE)].to_vec();
     let (sagas, playlists, series_revisions, season_metadata) = document(&snapshot);
-    let baseline = Arc::new(snapshot.clone());
     let stored = Arc::new(SyncSnapshot {
         items,
         sagas: sagas.clone(),
@@ -204,27 +236,20 @@ async fn changes(
         serialized_bytes: snapshot.serialized_bytes,
         captured_revision: snapshot.captured_revision,
     });
-    {
+    let serialized_bytes = serde_json::to_vec(&*stored)
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "SYNC_INVALID"))?
+        .len();
+    if total > catalog_delta::DELTA_PAGE {
         let mut c = cache()
             .lock()
             .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "SYNC_BUSY"))?;
         c.values.retain(|_, v| v.created.elapsed() < TTL);
-        if c.values.len() >= MAX_SNAPSHOTS {
-            if let Some(k) = c
-                .values
-                .iter()
-                .min_by_key(|(_, v)| v.created)
-                .map(|(k, _)| k.clone())
-            {
-                c.values.remove(&k);
-            }
-        }
         if c.values.len() >= MAX_SNAPSHOTS
             || c.values
                 .values()
-                .map(|value| value.baseline.serialized_bytes)
+                .map(|value| value.serialized_bytes)
                 .sum::<usize>()
-                .saturating_add(baseline.serialized_bytes)
+                .saturating_add(serialized_bytes)
                 > catalog_delta::DELTA_MAX_BYTES
         {
             return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "SYNC_BUSY"));
@@ -233,13 +258,30 @@ async fn changes(
             id.clone(),
             Baseline {
                 server,
-                profile,
+                profile: profile.clone(),
                 revision: revision.clone(),
                 created: Instant::now(),
-                baseline,
                 snapshot: stored,
+                serialized_bytes,
             },
         );
+    }
+    // A rejected transfer must not manufacture a durable cursor.  Once an
+    // active transfer has been admitted, persist its compact signature state.
+    let persisted = state
+        .database
+        .call({
+            let profile = profile.clone();
+            let revision = revision.clone();
+            let snapshot = snapshot.clone();
+            move |store| store.save_catalog_delta_checkpoint(&profile, &revision, &snapshot)
+        })
+        .await;
+    if let Err(error) = persisted {
+        if let Ok(mut c) = cache().lock() {
+            c.values.remove(&id);
+        }
+        return Err(error);
     }
     Ok(Json(
         serde_json::to_value(CatalogChanges {
@@ -299,6 +341,11 @@ async fn page(
     }
     let end = (offset + catalog_delta::DELTA_PAGE).min(value.snapshot.items.len());
     let has_more = end < value.snapshot.items.len();
+    // Completed transfers no longer occupy a concurrent-transfer slot. A lost
+    // last-page response may be restarted with POST, retaining the old mirror.
+    if !has_more && let Ok(mut c) = cache().lock() {
+        c.values.remove(&id);
+    }
     let (sagas, playlists, series_revisions, season_metadata) = document(&value.snapshot);
     Ok(Json(
         serde_json::to_value(CatalogChanges {
@@ -355,7 +402,8 @@ mod tests {
             item("00000000-0000-0000-0000-000000000001", "new", 2),
             item("00000000-0000-0000-0000-000000000003", "added", 1),
         ]);
-        let (upserts, deleted) = changed(&before, &after);
+        let (upserts, deleted) =
+            changed(&catalog_delta::checkpoint(&before).unwrap(), &after).unwrap();
         assert_eq!(upserts.len(), 2);
         assert_eq!(deleted, vec!["00000000-0000-0000-0000-000000000002"]);
     }
@@ -365,5 +413,19 @@ mod tests {
             catalog_delta::revision("server", "profile", (9, 3)),
             catalog_delta::revision("server", "profile", (9, 3))
         );
+    }
+    #[test]
+    fn generation_survives_restart_and_rejects_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let database = temp.path().join("catalog.sqlite");
+        let first = database_generation(&database).unwrap();
+        assert_eq!(first, database_generation(&database).unwrap());
+        let other = temp.path().join("other.sqlite");
+        std::os::unix::fs::symlink(
+            database.with_extension("sync-generation"),
+            other.with_extension("sync-generation"),
+        )
+        .unwrap();
+        assert!(database_generation(&other).is_err());
     }
 }

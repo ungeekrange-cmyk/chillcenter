@@ -1,0 +1,5 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const source=fs.readFileSync(__dirname+'/app.js','utf8');
+function fixture(initial,next){const button={disabled:initial,isConnected:true};const sandbox={busy:false,state:{},document:{body:{setAttribute(){},removeAttribute(){}},querySelectorAll(){return [button];}},invoke:async()=>next,message(){},pager(){},setTimeout,$:()=>({}),render(){button.disabled=!sandbox.state.profile_id;}};vm.createContext(sandbox);vm.runInContext(source.slice(source.indexOf('async function run('),source.indexOf('\nfunction render(')),sandbox);return {button,run:()=>vm.runInContext('run({action:"select_profile"})',sandbox)};}
+test('new connected profile enables organization after transient busy cleanup',async()=>{const f=fixture(true,{profile_id:'profile'});await f.run();assert.equal(f.button.disabled,false);});
+test('losing the active profile keeps semantic controls disabled after cleanup',async()=>{const f=fixture(false,{profile_id:null});await f.run();assert.equal(f.button.disabled,true);});

@@ -1,16 +1,56 @@
 //! Versioned, bounded catalogue-delta vocabulary shared by the HTTP adapter.
 //!
 //! The revision is deliberately derived only from durable common/personal
-//! epochs.  It contains no process boot id, so a client cursor survives a
+//! epochs and a server-side restore generation. It contains no process boot id, so a client cursor survives a
 //! server restart.  The server may still return `reset` when its short-lived
 //! immutable baseline has expired.
-use crate::SyncSnapshot;
+use crate::{SyncMedia, SyncSnapshot};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 pub const DELTA_PAGE: usize = 100;
 pub const DELTA_MAX_ITEMS: usize = 10_000;
 pub const DELTA_MAX_BYTES: usize = 32 * 1024 * 1024;
+/// Checkpoints are deliberately much smaller than a catalogue image.  They
+/// are enough to decide which current records changed, but can never be used
+/// to reconstruct media metadata.
+pub const CHECKPOINT_GLOBAL_MAX_BYTES: usize = 16 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignatureCheckpoint {
+    pub items: BTreeMap<String, String>,
+    pub document: String,
+}
+
+pub fn item_signature(item: &SyncMedia) -> Result<String, String> {
+    // Persist only a fixed signature, never projected metadata/path text.
+    // It covers the revision and every field that SyncMedia can expose.
+    let canonical = serde_json::to_vec(item).map_err(|_| "SYNC_CHECKPOINT_INVALID".to_owned())?;
+    Ok(format!("{:x}", Sha256::digest(canonical)))
+}
+
+pub fn checkpoint(snapshot: &SyncSnapshot) -> Result<SignatureCheckpoint, String> {
+    let mut items = BTreeMap::new();
+    for item in &snapshot.items {
+        if items
+            .insert(item.media.id.clone(), item_signature(item)?)
+            .is_some()
+        {
+            return Err("SYNC_CHECKPOINT_INVALID".into());
+        }
+    }
+    // Auxiliary documents are always transferred atomically with a changed
+    // response; retain a signature for future format evolution without
+    // persisting their full payload.
+    Ok(SignatureCheckpoint {
+        items,
+        // The entire auxiliary document is atomically transferred whenever a
+        // revision changes; this fixed marker deliberately stores no content.
+        document: "current-document".into(),
+    })
+}
 
 pub fn revision(server: &str, profile: &str, epoch: (u64, u64)) -> String {
     format!("{server}:{profile}:{}:{}", epoch.0, epoch.1)
@@ -55,24 +95,24 @@ pub fn bounded(snapshot: &SyncSnapshot) -> Result<(), &'static str> {
 
 impl crate::Store {
     /// Durable, bounded baselines let a client cursor survive a server restart.
-    /// They contain only the already bounded sync representation, never media
-    /// bytes or SQLite files. The newest four revisions per profile are kept.
+    /// They contain only fixed hashes and opaque ids, never media metadata,
+    /// video bytes or SQLite files. Four per profile, 16 MiB globally.
     pub fn catalog_delta_checkpoint(
         &self,
         profile: &str,
         revision: &str,
-    ) -> Result<Option<SyncSnapshot>, String> {
+    ) -> Result<Option<SignatureCheckpoint>, String> {
         self.sync_revision(profile)?; // profile ownership/liveness
         if revision.len() > 255 {
             return Ok(None);
         }
         self.personal
-            .execute_batch("CREATE TABLE IF NOT EXISTS cc_catalog_delta_checkpoint (profile_id TEXT NOT NULL REFERENCES cc_profiles(id) ON DELETE CASCADE, revision TEXT NOT NULL, snapshot TEXT NOT NULL, PRIMARY KEY(profile_id,revision));")
+            .execute_batch("CREATE TABLE IF NOT EXISTS cc_catalog_delta_checkpoint_v2 (profile_id TEXT NOT NULL REFERENCES cc_profiles(id) ON DELETE CASCADE, revision TEXT NOT NULL, signatures TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT(unixepoch()), PRIMARY KEY(profile_id,revision));")
             .map_err(|_| "SYNC_CHECKPOINT_UNAVAILABLE".to_owned())?;
         let raw: Option<String> = self
             .personal
             .query_row(
-                "SELECT snapshot FROM cc_catalog_delta_checkpoint WHERE profile_id=?1 AND revision=?2",
+                "SELECT signatures FROM cc_catalog_delta_checkpoint_v2 WHERE profile_id=?1 AND revision=?2",
                 params![profile, revision],
                 |row| row.get(0),
             )
@@ -92,20 +132,20 @@ impl crate::Store {
         if revision.len() > 255 {
             return Err("SYNC_CHECKPOINT_INVALID".into());
         }
-        let encoded =
-            serde_json::to_string(snapshot).map_err(|_| "SYNC_CHECKPOINT_INVALID".to_owned())?;
-        if encoded.len() > DELTA_MAX_BYTES {
+        let encoded = serde_json::to_string(&checkpoint(snapshot)?)
+            .map_err(|_| "SYNC_CHECKPOINT_INVALID".to_owned())?;
+        if encoded.len() > CHECKPOINT_GLOBAL_MAX_BYTES {
             return Err("SYNC_CATALOG_TOO_LARGE".into());
         }
         let transaction = self
             .personal
             .unchecked_transaction()
             .map_err(|_| "SYNC_CHECKPOINT_UNAVAILABLE".to_owned())?;
-        transaction.execute_batch("CREATE TABLE IF NOT EXISTS cc_catalog_delta_checkpoint (profile_id TEXT NOT NULL REFERENCES cc_profiles(id) ON DELETE CASCADE, revision TEXT NOT NULL, snapshot TEXT NOT NULL, PRIMARY KEY(profile_id,revision));")
+        transaction.execute_batch("CREATE TABLE IF NOT EXISTS cc_catalog_delta_checkpoint_v2 (profile_id TEXT NOT NULL REFERENCES cc_profiles(id) ON DELETE CASCADE, revision TEXT NOT NULL, signatures TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT(unixepoch()), PRIMARY KEY(profile_id,revision));")
             .map_err(|_| "SYNC_CHECKPOINT_UNAVAILABLE".to_owned())?;
-        transaction.execute("INSERT INTO cc_catalog_delta_checkpoint(profile_id,revision,snapshot) VALUES(?1,?2,?3) ON CONFLICT(profile_id,revision) DO UPDATE SET snapshot=excluded.snapshot",params![profile,revision,encoded])
+        transaction.execute("INSERT INTO cc_catalog_delta_checkpoint_v2(profile_id,revision,signatures,created_at) VALUES(?1,?2,?3,unixepoch()) ON CONFLICT(profile_id,revision) DO UPDATE SET signatures=excluded.signatures,created_at=excluded.created_at",params![profile,revision,encoded])
             .map_err(|_| "SYNC_CHECKPOINT_UNAVAILABLE".to_owned())?;
-        transaction.execute("DELETE FROM cc_catalog_delta_checkpoint WHERE profile_id=?1 AND rowid NOT IN (SELECT rowid FROM cc_catalog_delta_checkpoint WHERE profile_id=?1 ORDER BY rowid DESC LIMIT 4)",[profile])
+        transaction.execute("DELETE FROM cc_catalog_delta_checkpoint_v2 WHERE profile_id=?1 AND rowid NOT IN (SELECT rowid FROM cc_catalog_delta_checkpoint_v2 WHERE profile_id=?1 ORDER BY created_at DESC, rowid DESC LIMIT 4)",[profile])
             .map_err(|_| "SYNC_CHECKPOINT_UNAVAILABLE".to_owned())?;
         // Four is a count ceiling; this is the companion byte ceiling. Large
         // snapshots retain only the newest usable baseline instead of turning
@@ -113,17 +153,17 @@ impl crate::Store {
         loop {
             let bytes: i64 = transaction
                 .query_row(
-                    "SELECT COALESCE(SUM(length(snapshot)),0) FROM cc_catalog_delta_checkpoint WHERE profile_id=?1",
-                    [profile],
+                    "SELECT COALESCE(SUM(length(CAST(signatures AS BLOB))),0) FROM cc_catalog_delta_checkpoint_v2",
+                    [],
                     |row| row.get(0),
                 )
                 .map_err(|_| "SYNC_CHECKPOINT_UNAVAILABLE".to_owned())?;
-            if bytes <= DELTA_MAX_BYTES as i64 {
+            if bytes <= CHECKPOINT_GLOBAL_MAX_BYTES as i64 {
                 break;
             }
             let removed = transaction.execute(
-                "DELETE FROM cc_catalog_delta_checkpoint WHERE rowid=(SELECT rowid FROM cc_catalog_delta_checkpoint WHERE profile_id=?1 ORDER BY rowid ASC LIMIT 1)",
-                [profile],
+                "DELETE FROM cc_catalog_delta_checkpoint_v2 WHERE rowid=(SELECT rowid FROM cc_catalog_delta_checkpoint_v2 ORDER BY created_at ASC, rowid ASC LIMIT 1)",
+                [],
             ).map_err(|_| "SYNC_CHECKPOINT_UNAVAILABLE".to_owned())?;
             if removed == 0 {
                 break;
@@ -137,6 +177,46 @@ impl crate::Store {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn checkpoint_budget_is_global_across_profiles() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = crate::Store::open(&directory.path().join("catalog.sqlite")).unwrap();
+        let a = store.create_profile("A").unwrap();
+        let b = store.create_profile("B").unwrap();
+        let c = store.create_profile("C").unwrap();
+        let snapshot = store.sync_snapshot(&c.id).unwrap();
+        store
+            .save_catalog_delta_checkpoint(&c.id, "latest", &snapshot)
+            .unwrap();
+        let payload = "x".repeat(super::CHECKPOINT_GLOBAL_MAX_BYTES / 2 + 1);
+        for profile in [&a.id, &b.id] {
+            store.personal.execute("INSERT INTO cc_catalog_delta_checkpoint_v2(profile_id,revision,signatures,created_at) VALUES(?1,'old',?2,0)",rusqlite::params![profile,payload]).unwrap();
+        }
+        store
+            .save_catalog_delta_checkpoint(&c.id, "latest", &snapshot)
+            .unwrap();
+        let bytes: i64 = store
+            .personal
+            .query_row(
+                "SELECT SUM(length(CAST(signatures AS BLOB))) FROM cc_catalog_delta_checkpoint_v2",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(bytes <= super::CHECKPOINT_GLOBAL_MAX_BYTES as i64);
+        assert!(
+            store
+                .catalog_delta_checkpoint(&a.id, "old")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .catalog_delta_checkpoint(&c.id, "latest")
+                .unwrap()
+                .is_some()
+        );
+    }
     #[test]
     fn checkpoint_survives_reopen_and_keeps_four_revisions() {
         let directory = tempfile::tempdir().unwrap();
@@ -171,6 +251,28 @@ mod tests {
                 .items
                 .len(),
             1
+        );
+        let rows: i64 = store
+            .personal
+            .query_row(
+                "SELECT COUNT(*) FROM cc_catalog_delta_checkpoint_v2 WHERE profile_id=?1",
+                [&profile.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 4);
+        store.delete_profile(&profile.id).unwrap();
+        let rows: i64 = store
+            .personal
+            .query_row(
+                "SELECT COUNT(*) FROM cc_catalog_delta_checkpoint_v2 WHERE profile_id=?1",
+                [&profile.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            rows, 0,
+            "checkpoint signatures cascade with profile deletion"
         );
     }
 }

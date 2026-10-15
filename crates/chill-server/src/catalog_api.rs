@@ -1009,10 +1009,7 @@ async fn playback_info(
             .database
             .call(move |store| {
                 let item = store.media(&profile, &media)?;
-                let speed = match item.series.as_deref() {
-                    Some(series) => store.series_speed(&profile, series)?,
-                    None => 1.0,
-                };
+                let speed = store.series_playback_speed(&profile, &media)?;
                 Ok(chill_domain::PlaybackInfo {
                     media: item,
                     preferences: store.preferences(&profile)?,

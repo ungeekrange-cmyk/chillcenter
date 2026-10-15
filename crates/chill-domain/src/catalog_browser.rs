@@ -127,8 +127,8 @@ impl Store {
                     series_counters.insert(
                         item.id.clone(),
                         SeriesCounters {
-                            series_key: if item.tmdb_id.is_some() {
-                                format!("tmdb:tv:{}", item.tmdb_id.unwrap())
+                            series_key: if let Some(id) = item.tmdb_id {
+                                format!("tmdb:tv:{id}")
                             } else {
                                 format!("media:{}", item.id)
                             },

@@ -977,8 +977,9 @@ async fn save_speed(
                 .entry(&p, &change.lease, Instant::now())
                 .map_err(str::to_owned)?;
             let media = store.media(&p, &change.lease.media_id)?;
-            if let Some(series) = media.series {
-                store.set_series_speed(&p, &series, change.speed)?;
+            if media.category == "serie" {
+                let key = store.series_identity(&media.id)?;
+                store.set_series_speed(&p, &key, change.speed)?;
             }
             Ok(())
         })

@@ -121,7 +121,12 @@ impl Store {
                 .collect();
             let groups = all
                 .iter()
-                .filter_map(chill_catalog::database::series_source_key)
+                .filter_map(|media| {
+                    media
+                        .tmdb_id
+                        .map(|id| format!("tmdb:tv:{id}"))
+                        .or_else(|| chill_catalog::database::series_source_key(media))
+                })
                 .collect::<std::collections::HashSet<_>>();
             if groups.len() != 1 {
                 return Err(
@@ -130,6 +135,22 @@ impl Store {
             }
             all
         };
+        let first = members.first().ok_or("Série introuvable.")?;
+        let identity = self.series_identity(&self.stable_id(&first.id)?)?;
+        let old_name = first.series.as_deref().unwrap_or(&first.title).to_owned();
+        let same_name_groups = self
+            .catalogue
+            .list()?
+            .iter()
+            .filter(|m| {
+                m.category == "serie" && m.series.as_deref().unwrap_or(&m.title) == old_name
+            })
+            .filter_map(|m| {
+                m.tmdb_id
+                    .map(|id| format!("tmdb:tv:{id}"))
+                    .or_else(|| chill_catalog::database::series_source_key(m))
+            })
+            .collect::<std::collections::HashSet<_>>();
         let tx =
             rusqlite::Transaction::new_unchecked(&self.personal, TransactionBehavior::Immediate)
                 .map_err(db)?;
@@ -153,7 +174,13 @@ impl Store {
             .map_err(db)?;
             tx.execute("INSERT INTO cc_media_revision(stable_id,revision) VALUES(?1,1) ON CONFLICT(stable_id) DO UPDATE SET revision=revision+1",[stable]).map_err(db)?;
         }
-        if patch.name.trim() != series {
+        if same_name_groups.len() == 1 {
+            tx.execute("INSERT OR IGNORE INTO cc_series_speed(profile_id,series_key,speed) SELECT profile_id,?1,speed FROM cc_series_speed WHERE series_key=?2",params![identity,old_name]).map_err(db)?;
+        }
+        if !series.starts_with("tmdb:tv:")
+            && !series.starts_with("media:")
+            && patch.name.trim() != series
+        {
             tx.execute("INSERT OR IGNORE INTO cc_series_speed(profile_id,series_key,speed) SELECT profile_id,?1,speed FROM cc_series_speed WHERE series_key=?2",params![patch.name.trim(),series]).map_err(db)?;
             tx.execute("DELETE FROM cc_series_speed WHERE series_key=?1", [series])
                 .map_err(db)?;

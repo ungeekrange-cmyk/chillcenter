@@ -7,9 +7,9 @@ function node(tag,text,cls) { const n=document.createElement(tag); if(text!==und
 async function invoke(command) { return window.__TAURI__.core.invoke("ui_command",{command}); }
 async function run(command, update=true, progress="") {
   if(busy)return null; busy=true;document.body.setAttribute("aria-busy","true");const disabledBefore=new Map();document.querySelectorAll("button,input,select").forEach(n=>{disabledBefore.set(n,n.disabled);n.disabled=true;});message(progress);
-  let result;try { result=await invoke(command);if(update){state=result;render();} }
+  let result;try { result=await invoke(command);if(update)state=result; }
   catch(error){$("profile-switch").value=state.profile_id||"";message(error?.message||String(error));if(error?.status===404)setTimeout(async()=>{if(await run({action:"refresh"})){if(!state.profile_id)$("media").replaceChildren();}},0);return null;}
-  finally{busy=false;document.body.removeAttribute("aria-busy");for(const [n,disabled] of disabledBefore)if(n.isConnected)n.disabled=disabled;pager();}
+  finally{busy=false;document.body.removeAttribute("aria-busy");for(const [n,disabled] of disabledBefore)if(n.isConnected)n.disabled=disabled;if(update&&result)render();pager();}
   if(result&&/^(create_playlist|rename_playlist|delete_playlist|add_playlist|remove_playlist_member|reorder_playlist|create_saga|rename_saga|delete_saga|add_saga|remove_saga_member|reorder_saga|saga_member_artwork|set_watched|set_rating|group_rating|edit_media|edit_series|forget_unavailable)$/.test(command.action))await syncAfterMutation();return result;
 }
 function render(){
@@ -64,12 +64,13 @@ function render(){
   if(window.renderShell)window.renderShell();
 }
 async function connect(address){draftAddress=address;state={stage:"server",address,theme:state.theme,servers:state.servers||[]};render();const r=await run({action:"connect",address});if(r?.profile_id)await loadPage();}
-async function selectProfile(id){if(!id)return;$("media").replaceChildren();offset=0;const r=await run({action:"select_profile",id});if(r)await loadPage();}
+async function selectProfile(id){if(!id)return;clearCatalogContext();offset=0;await run({action:"select_profile",id});await loadPage();void syncCatalog();}
 function pager(){} // API batches remain internal; no page-navigation UI.
 function catalogCommand(filters,at,grouped){return {action:"catalog",offset:at,category:filters.category||null,q:filters.q||null,genre:filters.genre||null,year:filters.year===""?null:Number(filters.year),watched:filters.watched===""?null:filters.watched==="true",sort:filters.sort||null,grouped,available:filters.available===""?null:filters.available==="true"};}
 function catalogFilters(){return {category:$("category").value,q:$("search").value,genre:$("genre").value,year:$("year").value,watched:$("watched").value,sort:$("sort").value,available:$("available").value};}
 if(typeof module!=="undefined")module.exports={catalogCommand};
-let catalogItems=[],catalogCounters={},catalogGeneration=0,catalogWindowKey="",catalogFrame=null;
+let catalogItems=[],catalogCounters={},catalogGeneration=0,catalogWindowKey="",catalogFrame=null,catalogContext="";
+function clearCatalogContext(){catalogGeneration++;catalogItems=[];catalogCounters={};catalogWindowKey="";$("media").replaceChildren();$("media").style.height="";window.resetArtwork?.();}
 function renderCatalogWindow(){
  const target=$("media");if(!target||!catalogItems.length||$("catalog-panel").hidden)return;
  const rect=target.getBoundingClientRect(),list=$("view-mode").value==="list",size=Number($("poster-size").value)||200;
@@ -117,7 +118,7 @@ async function catalogRequest(command,generation,context){
  message("Le serveur est occupé. Rechargez le catalogue depuis Administration.");return null;
 }
 async function loadPage(){
- const generation=++catalogGeneration,context=state.server_id+":"+state.profile_id;
+ const context=state.server_id+":"+state.profile_id;if(context!==catalogContext){clearCatalogContext();catalogContext=context;}const generation=++catalogGeneration;
  if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return;}
  const filters=catalogFilters(),ids=new Set(),staged=[],counters={};let at=0;
  if(!catalogItems.length)$("catalog-count").textContent="Chargement du catalogue…";
@@ -152,21 +153,22 @@ $("scan").onclick=async()=>{if(await run({action:"start_scan"},false))await poll
 async function unavailableAdmin(at=0){
   let panel=$("unavailable-admin");if(!panel){panel=document.createElement("section");panel.id="unavailable-admin";panel.append(node("h2","Vidéos indisponibles"),node("p","Retirer une entrée efface son historique de reprise, vu et notes. Aucun fichier NAS ne sera supprimé.","muted"));$("admin-panel").querySelector(".admin-grid").append(panel);}
   const context=state.server_id+":"+state.profile_id;
-  const page=await run({action:"unavailable",offset:at,limit:48},false);if(!page||context!==state.server_id+":"+state.profile_id)return;
+  const page=await libraryRead({action:"unavailable",offset:at,limit:48},()=>context===state.server_id+":"+state.profile_id);if(!page||context!==state.server_id+":"+state.profile_id)return;
   const selected=new Set(),list=node("div"),remove=node("button","Retirer la sélection","danger");
   remove.onclick=async()=>{if(!selected.size||!confirm("Retirer ces références du catalogue ? Reprises, notes, vus et associations seront perdus pour tous les profils. Aucun fichier NAS ne sera supprimé."))return;const r=await run({action:"forget_unavailable",media_ids:[...selected],expected_epoch:page.epoch,confirmed:true},false);if(r)await unavailableAdmin(at);};
   for(const item of page.items||[]){const label=node("label"),check=node("input");check.type="checkbox";check.onchange=()=>{check.checked?selected.add(item.id):selected.delete(item.id);remove.disabled=!selected.size;};label.append(check,document.createTextNode(" "+item.title+" — "+item.relative_path));list.append(label);}remove.disabled=true;
   const previous=node("button","Précédent","secondary"),next=node("button","Suivant","secondary");previous.disabled=at===0;next.disabled=!page.has_more;previous.onclick=()=>unavailableAdmin(Math.max(0,at-48));next.onclick=()=>unavailableAdmin(at+48);
   panel.replaceChildren(node("h2","Vidéos indisponibles"),node("p","Retirer une référence efface les historiques associés dans tous les profils. Les fichiers NAS ne sont jamais supprimés. Une vidéo redevenue disponible est protégée.","muted"),list,remove,previous,next);
 }
-async function pollScan(){clearTimeout(timer);if(state.stage!=="connected"||$("admin-panel").hidden)return;const s=await run({action:"scan_status"},false);if(!s){timer=setTimeout(pollScan,2000);return;}$("scan-status").textContent=s.running?"Scan en cours…":s.last_error||(s.count!==null?s.count+" vidéos découvertes.":"Aucun scan lancé dans cette session serveur.");if(s.running)timer=setTimeout(pollScan,2000);else if(s.count!==null&&state.profile_id)await loadPage();}
+async function pollScan(){clearTimeout(timer);const context=state.server_id+":"+state.profile_id,current=()=>state.stage==="connected"&&!$("admin-panel").hidden&&context===state.server_id+":"+state.profile_id;if(!current())return;const s=await libraryRead({action:"scan_status"},current);if(!current())return;if(!s){timer=setTimeout(pollScan,2000);return;}$("scan-status").textContent=s.running?"Scan en cours…":s.last_error||(s.count!==null?s.count+" vidéos découvertes.":"Aucun scan lancé dans cette session serveur.");if(s.running)timer=setTimeout(pollScan,2000);else if(s.count!==null&&state.profile_id)await syncAfterMutation();}
 $("cancel-delete").onclick=()=>{$("confirm-delete").close();deleting=null;};
 $("confirm-delete").addEventListener("cancel",()=>{deleting=null;});
 $("confirm-delete-button").onclick=async()=>{if(!deleting)return;const p=deleting;$("confirm-delete").close();deleting=null;if(await run({action:"delete_profile",id:p.id,confirm_id:p.id})){$("media").replaceChildren();if(state.profile_id)await loadPage();}};
 let lastFocusRefresh=0;
-let syncPromise=null;
+let syncPromise=null,syncContext=null;
 async function syncCatalog(){
- if(syncPromise||state.stage!=="connected"||!state.profile_id)return syncPromise;
+ if(state.stage!=="connected"||!state.profile_id)return;
+ const requestedContext=state.server_id+":"+state.profile_id;if(syncPromise)return syncContext===requestedContext?syncPromise:syncPromise.then(()=>syncCatalog());syncContext=requestedContext;
  const context=state.server_id+":"+state.profile_id;let icon=$("sync-indicator");if(!icon){icon=node("span","⟳","sync-indicator");icon.id="sync-indicator";icon.setAttribute("role","status");$("profile-menu").before(icon);}icon.hidden=false;icon.classList.add("syncing");icon.title="Vérification des nouveautés";icon.setAttribute("aria-label",icon.title);
  syncPromise=(async()=>{try{const result=await invoke({action:"sync_catalog"});if(context!==state.server_id+":"+state.profile_id)return;if(result.changed)await loadPage();icon.title=result.discarded?"Mise à jour différée après une modification locale":"Catalogue à jour";}catch(error){if(context===state.server_id+":"+state.profile_id){icon.title="Serveur indisponible — catalogue local conservé";}}finally{icon.classList.remove("syncing");icon.setAttribute("aria-label",icon.title);syncPromise=null;}})();return syncPromise;
 }

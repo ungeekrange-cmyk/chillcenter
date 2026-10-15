@@ -1029,6 +1029,8 @@ mod tests {
     #[test]
     fn valid_restore_preserves_prior_tree_and_exact_operational_bytes() {
         let (_temp, config, config_path) = fixture();
+        let generation =
+            crate::sync_api::database_generation(&config.data_dir.join("catalog.sqlite")).unwrap();
         let backup_dir = backup(&config, &config_path).unwrap();
         let expected_db = fs::read(backup_dir.join("catalog.sqlite")).unwrap();
         let expected_poster = fs::read(backup_dir.join("posters/custom.png")).unwrap();
@@ -1051,6 +1053,17 @@ mod tests {
             b"PRIVATE KEY"
         );
         assert!(!config.data_dir.join("server-config.json").exists());
+        let restored_generation =
+            crate::sync_api::database_generation(&config.data_dir.join("catalog.sqlite")).unwrap();
+        assert_ne!(
+            generation, restored_generation,
+            "Restore must invalidate equal SQLite epochs"
+        );
+        assert_eq!(
+            restored_generation,
+            crate::sync_api::database_generation(&config.data_dir.join("catalog.sqlite")).unwrap(),
+            "Restart must retain the cursor generation"
+        );
     }
 
     #[test]

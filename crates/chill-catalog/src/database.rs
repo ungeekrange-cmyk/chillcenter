@@ -392,6 +392,18 @@ impl Database {
         provider: &SeriesProvider,
         explicit: bool,
     ) -> Result<Vec<Media>, String> {
+        self.apply_series_provider_with(series, originals, provider, explicit, |_, _| Ok(()))
+    }
+    /// The shared catalogue and its caller's revision rows live in the same
+    /// database. Publish both in this transaction, never as two commits.
+    pub fn apply_series_provider_with(
+        &self,
+        series: &str,
+        originals: &[Media],
+        provider: &SeriesProvider,
+        explicit: bool,
+        after_write: impl FnOnce(&rusqlite::Transaction<'_>, &[Media]) -> Result<(), String>,
+    ) -> Result<Vec<Media>, String> {
         let sample = originals.first().ok_or("Série introuvable.")?;
         let metadata = SeriesPatch {
             name: provider.name.clone(),
@@ -465,6 +477,7 @@ impl Database {
             )
             .map_err(db_error)?;
         }
+        after_write(&tx, &members)?;
         tx.commit().map_err(db_error)?;
         Ok(members)
     }

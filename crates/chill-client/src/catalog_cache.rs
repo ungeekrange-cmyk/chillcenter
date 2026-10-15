@@ -5,12 +5,18 @@ use chill_domain::{Store, SyncMedia, catalog_browser::BrowserQuery};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     io::{Read, Write},
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
+
+pub type CatalogPublication = Option<(Value, bool, String)>;
 
 fn error(message: &str) -> UiError {
     UiError {
@@ -161,6 +167,7 @@ pub struct SyncTask {
     profile: String,
     known_revision: Option<String>,
 }
+#[derive(Clone)]
 pub struct SyncResult {
     pub changed: bool,
     pub reset: bool,
@@ -462,6 +469,8 @@ pub(crate) struct LocalCatalog {
     directory: PathBuf,
     pub dirty: bool,
     pub mutation_generation: u64,
+    pub mutation_guard: Arc<AtomicU64>,
+    pub publish_gate: Arc<Mutex<()>>,
     pub notice: Option<String>,
     gate: Arc<tokio::sync::Semaphore>,
     budget: Arc<Mutex<u64>>,
@@ -472,6 +481,23 @@ impl LocalCatalog {
         server: &str,
         profile: &str,
         gate: Arc<tokio::sync::Semaphore>,
+    ) -> Result<Self, UiError> {
+        Self::open_with_sync(
+            root,
+            server,
+            profile,
+            gate,
+            Arc::new(AtomicU64::new(0)),
+            Arc::new(Mutex::new(())),
+        )
+    }
+    pub fn open_with_sync(
+        root: &Path,
+        server: &str,
+        profile: &str,
+        gate: Arc<tokio::sync::Semaphore>,
+        mutation_guard: Arc<AtomicU64>,
+        publish_gate: Arc<Mutex<()>>,
     ) -> Result<Self, UiError> {
         uuid::Uuid::parse_str(server).map_err(|_| error("Serveur invalide."))?;
         uuid::Uuid::parse_str(profile).map_err(|_| error("Profil invalide."))?;
@@ -515,6 +541,8 @@ impl LocalCatalog {
             directory: image_dir,
             dirty: false,
             mutation_generation: 0,
+            mutation_guard,
+            publish_gate,
             notice: None,
             gate,
             budget: Arc::new(Mutex::new(used)),
@@ -545,6 +573,65 @@ impl LocalCatalog {
                 .map(str::to_owned),
         }
     }
+    /// Runs the expensive mirror transaction on an independently opened
+    /// SQLite connection.  The caller owns final in-memory publication; the
+    /// probe vetoes SQLite's commit if a newer local mutation/context wins.
+    #[allow(clippy::too_many_arguments)] // Explicit immutable CAS/context captured by the detached task.
+    pub fn publish_sync_detached(
+        root: PathBuf,
+        server: String,
+        profile: String,
+        gate: Arc<tokio::sync::Semaphore>,
+        mutation_guard: Arc<AtomicU64>,
+        publish_gate: Arc<Mutex<()>>,
+        base_revision: Option<String>,
+        expected_generation: u64,
+        context_epoch: Arc<AtomicU64>,
+        expected_epoch: u64,
+        result: SyncResult,
+    ) -> Result<CatalogPublication, UiError> {
+        let _serial = publish_gate
+            .lock()
+            .map_err(|_| error("Publication catalogue occupée."))?;
+        if mutation_guard.load(Ordering::Acquire) != expected_generation
+            || context_epoch.load(Ordering::Acquire) != expected_epoch
+        {
+            return Ok(None);
+        }
+        let mut cache = Self::open_with_sync(
+            &root,
+            &server,
+            &profile,
+            gate,
+            mutation_guard.clone(),
+            publish_gate.clone(),
+        )?;
+        let current = cache.document.as_ref().and_then(|d| d["revision"].as_str());
+        if current != base_revision.as_deref() {
+            return Ok(None);
+        }
+        let guard = mutation_guard.clone();
+        let epoch = context_epoch.clone();
+        cache
+            .store
+            .cancellation_probe(Some(Arc::new(move || {
+                guard.load(Ordering::Acquire) != expected_generation
+                    || epoch.load(Ordering::Acquire) != expected_epoch
+            })))
+            .map_err(|_| error("Synchronisation locale annulée."))?;
+        let changed = result.changed;
+        let revision = result.revision.clone();
+        let applied = cache.commit_sync(result);
+        let _ = cache.store.cancellation_probe(None);
+        if applied.is_err()
+            && (mutation_guard.load(Ordering::Acquire) != expected_generation
+                || context_epoch.load(Ordering::Acquire) != expected_epoch)
+        {
+            return Ok(None);
+        }
+        applied?;
+        Ok(cache.document.map(|document| (document, changed, revision)))
+    }
     /// Applies a complete immutable transfer in one SQLite transaction. Delta
     /// pages are merged with the old mirror first, so readers never observe a
     /// partial page or a delete-before-upsert state.
@@ -554,25 +641,25 @@ impl LocalCatalog {
             self.notice = None;
             return Ok(());
         }
-        let mut merged = if result.reset {
-            Vec::new()
+        let mut merged: HashMap<String, SyncMedia> = if result.reset {
+            HashMap::new()
         } else {
             self.mirror_items()?
+                .into_iter()
+                .map(|item| (item.media.id.clone(), item))
+                .collect()
         };
         if !result.reset {
-            merged.retain(|m| !result.deleted_ids.iter().any(|id| id == &m.media.id));
+            let deleted: HashSet<&str> = result.deleted_ids.iter().map(String::as_str).collect();
+            merged.retain(|id, _| !deleted.contains(id.as_str()));
         }
         for item in result.items {
-            if let Some(existing) = merged.iter_mut().find(|old| old.media.id == item.media.id) {
-                *existing = item;
-            } else {
-                merged.push(item);
-            }
+            merged.insert(item.media.id.clone(), item);
         }
         if merged.len() > 10_000 {
             return Err(error("Catalogue trop volumineux."));
         }
-        self.commit(&merged, result.document)
+        self.commit(&merged.into_values().collect::<Vec<_>>(), result.document)
     }
     fn mirror_items(&mut self) -> Result<Vec<SyncMedia>, UiError> {
         self.store
@@ -691,6 +778,7 @@ impl LocalCatalog {
     pub fn mark_dirty(&mut self) {
         self.dirty = true;
         self.mutation_generation = self.mutation_generation.wrapping_add(1);
+        self.mutation_guard.fetch_add(1, Ordering::AcqRel);
     }
     pub fn browse(&self, q: &BrowserQuery) -> Result<Value, UiError> {
         let page = self
@@ -795,6 +883,39 @@ impl LocalCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn sync_item(id: &str, title: &str) -> SyncMedia {
+        serde_json::from_value(json!({"media":{"id":id,"path":format!("/{id}"),"title":title,"category":"film","year":null,"series":null,"season":null,"episode":null,"genres":[],"overview":"","poster":null,"saga":null,"watched":false,"rating":null,"available":true,"added_at":1,"tmdb_id":null},"revision":1})).unwrap()
+    }
+    #[test]
+    fn detached_publish_cancels_before_write_when_local_mutation_wins() {
+        let root = tempfile::tempdir().unwrap();
+        let server = uuid::Uuid::new_v4().to_string();
+        let profile = uuid::Uuid::new_v4().to_string();
+        let gate = Arc::new(tokio::sync::Semaphore::new(1));
+        let guard = Arc::new(AtomicU64::new(0));
+        let publish_gate = Arc::new(Mutex::new(()));
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut cache = LocalCatalog::open_with_sync(
+            root.path(),
+            &server,
+            &profile,
+            gate.clone(),
+            guard.clone(),
+            publish_gate.clone(),
+        )
+        .unwrap();
+        cache.commit(&[sync_item(&id, "before")], json!({"revision":"r0","sagas":[],"playlists":[],"series_revisions":{},"season_metadata":{}})).unwrap();
+        // This is the deterministic delayed-publication race: transport has
+        // finished but a personal action invalidates the prepared context.
+        guard.fetch_add(1, Ordering::AcqRel);
+        let published = LocalCatalog::publish_sync_detached(
+            root.path().to_path_buf(), server.clone(), profile.clone(), gate, guard.clone(), publish_gate,
+            Some("r0".into()), 0, Arc::new(AtomicU64::new(1)), 1,
+            SyncResult { changed:true, reset:true, revision:"r1".into(), items:vec![sync_item(&id, "after")], deleted_ids:vec![], document:json!({"revision":"r1","sagas":[],"playlists":[],"series_revisions":{},"season_metadata":{}}) },
+        ).unwrap();
+        assert!(published.is_none());
+        assert_eq!(cache.store.media(&profile, &id).unwrap().title, "before");
+    }
     #[test]
     fn deleted_profile_cache_is_purged_without_touching_siblings_or_symlink_targets() {
         let root = tempfile::tempdir().unwrap();

@@ -64,7 +64,7 @@ impl Store {
         Ok(ProviderSnapshot {
             media: self.catalogue.get(&legacy)?,
             revision,
-            common_revision: self.catalog_revision()?,
+            common_revision: self.common_revision()?,
         })
     }
 
@@ -118,7 +118,7 @@ impl Store {
         expected_common: u64,
     ) -> Result<(), String> {
         if self.media_revision(stable)? != expected_revision
-            || self.catalog_revision()? != expected_common
+            || self.common_revision()? != expected_common
         {
             return Err("La fiche ou la série a changé pendant la requête. Vos corrections sont conservées ; relancez l’opération.".into());
         }
@@ -178,17 +178,14 @@ impl Store {
     ) -> Result<Vec<Media>, String> {
         self.require_profile(profile)?;
         self.assert_provider_cas(stable, snapshot.anchor_revision, snapshot.common_revision)?;
-        let updated = self.catalogue.apply_series_provider(
+        let old_key = self.series_identity(stable)?;
+        let legacy_unique = self.series(profile, &snapshot.series).is_ok();
+        let updated = self.catalogue.apply_series_provider_with(
             &snapshot.series,
             &snapshot.members,
             provider,
             explicit,
-        )?;
-        let tx = self
-            .personal
-            .unchecked_transaction()
-            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
-        for item in &updated {
+            |tx, updated| {for item in updated {
             let stable: Option<String> = tx
                 .query_row(
                     "SELECT stable_id FROM cc_media_identity WHERE legacy_id=?1",
@@ -204,8 +201,9 @@ impl Store {
             )
             .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
         }
-        tx.commit()
-            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        tx.execute("INSERT OR IGNORE INTO cc_series_speed(profile_id,series_key,speed) SELECT profile_id,?1,speed FROM cc_series_speed WHERE series_key=?2",params![format!("tmdb:tv:{}",provider.tmdb_id),old_key]).map_err(|_|"Erreur de base locale.")?;
+        if legacy_unique{tx.execute("INSERT OR IGNORE INTO cc_series_speed(profile_id,series_key,speed) SELECT profile_id,?1,speed FROM cc_series_speed WHERE series_key=?2",params![format!("tmdb:tv:{}",provider.tmdb_id),snapshot.series]).map_err(|_|"Erreur de base locale.")?;}
+        Ok(()) })?;
         updated
             .into_iter()
             .map(|item| self.profile_view(profile, item))
@@ -506,6 +504,28 @@ mod tests {
         let first = &page.items[0];
         let key = page.series_counters[&first.id].series_key.clone();
         let other = page.items[1].id.clone();
+        store.set_series_speed(&profile, "Doctor Who", 2.0).unwrap();
+        assert_eq!(
+            store.series_playback_speed(&profile, &first.id).unwrap(),
+            1.0,
+            "ambiguous legacy speed must not leak across shows"
+        );
+        store
+            .set_series_speed(&profile, &store.series_identity(&first.id).unwrap(), 1.5)
+            .unwrap();
+        store
+            .set_series_speed(&profile, &store.series_identity(&other).unwrap(), 0.75)
+            .unwrap();
+        store
+            .set_rating(&profile, &first.id, Some(4), "series")
+            .unwrap();
+        assert_eq!(store.media(&profile, &other).unwrap().rating, None);
+        let snapshot_document = store.sync_snapshot(&profile).unwrap();
+        assert!(
+            snapshot_document
+                .series_revisions
+                .contains_key(&format!("media:{}", first.id))
+        );
         let epoch = store.common_revision().unwrap();
         store
             .update_shared_series(
@@ -549,6 +569,11 @@ mod tests {
         store
             .provider_apply_series(&profile, &first.id, &snapshot, &provider, true)
             .unwrap();
+        assert_eq!(
+            store.series_playback_speed(&profile, &first.id).unwrap(),
+            1.5
+        );
+        assert_eq!(store.series_playback_speed(&profile, &other).unwrap(), 0.75);
         let identified = store.series(&profile, "tmdb:tv:57243").unwrap();
         assert_eq!(identified.len(), 4);
         store
@@ -566,6 +591,11 @@ mod tests {
                 },
             )
             .unwrap();
+        assert_eq!(
+            store.series_playback_speed(&profile, &first.id).unwrap(),
+            1.5,
+            "renaming/edit must preserve the identity preference"
+        );
         assert_eq!(
             store
                 .browse_catalog(
@@ -588,6 +618,70 @@ mod tests {
             store.browse_catalog(&profile, &query).unwrap().items.len(),
             2
         );
+    }
+    #[test]
+    fn series_provider_revision_failure_rolls_back_metadata_and_revisions_together() {
+        let mut a = media("Show/Season 1/E1.mkv", "Pilot");
+        a.category = "serie".into();
+        a.series = Some("Show".into());
+        a.season = Some(1);
+        a.episode = Some(1);
+        let mut b = a.clone();
+        b.id = "Show/Season 1/E2.mkv".into();
+        b.path = format!("/nas/{}", b.id);
+        b.episode = Some(2);
+        let (mut store, profile) = store(vec![a, b]);
+        let members = store.catalog(&profile).unwrap();
+        let id = members[0].id.clone();
+        let before = store.common_revision().unwrap();
+        let snapshot = store.provider_series_snapshot(&profile, &id, 1).unwrap();
+        let metadata = SeriesPatch {
+            name: "Show".into(),
+            year: 2026,
+            genres: vec![],
+            overview: "Downloaded".into(),
+            cast: vec![],
+            directors: vec![],
+        }
+        .validate(&snapshot.members[0])
+        .unwrap();
+        let provider = SeriesProvider {
+            tmdb_id: 42,
+            name: "Show".into(),
+            metadata,
+            poster: Some("/fixture/fresh-owned.jpg".into()),
+        };
+        store.personal.execute_batch("CREATE TRIGGER reject_series_revision BEFORE UPDATE ON cc_media_revision BEGIN SELECT RAISE(ABORT,'simulated revision failure');END;").unwrap();
+        assert!(
+            store
+                .provider_apply_series(&profile, &id, &snapshot, &provider, true)
+                .is_err()
+        );
+        assert_eq!(store.common_revision().unwrap(), before);
+        for member in members {
+            let now = store.media(&profile, &member.id).unwrap();
+            assert_eq!(now.tmdb_id, None);
+            assert_eq!(now.poster, None);
+            assert_eq!(store.media_revision(&member.id).unwrap(), 1);
+        }
+    }
+    #[test]
+    fn personal_activity_does_not_cancel_a_provider_match() {
+        let item = media("film.mkv", "Film");
+        let (mut store, profile) = store(vec![item]);
+        let id = store.catalog(&profile).unwrap()[0].id.clone();
+        let snapshot = store.provider_snapshot(&profile, &id, 1).unwrap();
+        store.set_watched(&profile, &id, true).unwrap();
+        store.set_rating(&profile, &id, Some(5), "video").unwrap();
+        let mut downloaded = snapshot.media.clone();
+        downloaded.title = "Matched".into();
+        downloaded.tmdb_id = Some(42);
+        let (result, _) = store
+            .provider_apply_media(&profile, &id, &snapshot, downloaded, true)
+            .unwrap();
+        assert!(result.watched);
+        assert_eq!(result.rating, Some(5));
+        assert_eq!(result.title, "Matched");
     }
     #[test]
     fn failed_custom_series_and_season_imports_remove_only_the_new_owned_image() {

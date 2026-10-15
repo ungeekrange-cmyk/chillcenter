@@ -223,4 +223,24 @@ mod tests {
             .contains("/sagas/7/poster")
         );
     }
+    #[test]
+    fn series_and_season_artwork_targets_use_only_fixed_scoped_routes() {
+        let id = "00000000-0000-0000-0000-000000000001";
+        for (kind, suffix) in [("series", "series/poster"), ("season", "season/poster")] {
+            let target = serde_json::from_value::<ArtworkTarget>(
+                serde_json::json!({"kind":kind,"media_id":id,"expected_revision":7}),
+            )
+            .unwrap();
+            assert_eq!(
+                target_path("profile", target).unwrap(),
+                (format!("/api/v1/profiles/profile/media/{id}/{suffix}"), 7)
+            );
+            assert!(serde_json::from_value::<ArtworkTarget>(serde_json::json!({"kind":kind,"media_id":id,"expected_revision":7,"path":"/nas/private.png"})).is_err());
+            let invalid = serde_json::from_value::<ArtworkTarget>(
+                serde_json::json!({"kind":kind,"media_id":"../escape","expected_revision":7}),
+            )
+            .unwrap();
+            assert!(target_path("profile", invalid).is_err());
+        }
+    }
 }

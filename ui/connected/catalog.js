@@ -99,6 +99,7 @@ $("metadata-form").onsubmit=async e=>{
 };
 async function openSeries(name){
   if(!await stopPlayerForNavigation())return;
+  const previous=shellSection==="collection"&&collectionKind==="series"?seriesView:null,previousScroll=globalThis.scrollY||0,openSeasons=new Set(Array.from($("collection-members").querySelectorAll?.(".series-season[open]")||[],section=>section.dataset.season));
   const epoch=++collectionEpoch,context=collectionScope();
   const result=await libraryRead({action:"series",name},()=>collectionCurrent(epoch,context));if(!result)return;
   seriesView=result;collectionKind="series";collectionView={id:name,name:result.metadata?.name||result.episodes[0]?.series||result.name||name,media_ids:result.episodes.map(m=>m.id),episodes:result.episodes};
@@ -107,10 +108,22 @@ async function openSeries(name){
   $("collection-admin").hidden=true;$("collection-add").hidden=true;$("collection-members").replaceChildren();
   renderSeriesCommon(result);
   const ordered=[...result.episodes].sort((a,b)=>(a.season===null?Infinity:a.season)-(b.season===null?Infinity:b.season)||(a.episode===null?Infinity:a.episode)-(b.episode===null?Infinity:b.episode)||a.title.localeCompare(b.title,"fr"));
-  let season=undefined,section=null;for(const m of ordered){if(m.season!==season){season=m.season;section=document.createElement("details");section.className="series-season";const episodes=ordered.filter(e=>e.season===season),watched=episodes.filter(e=>e.watched).length;section.append(node("summary",(season===null?"Saison inconnue":"Saison "+season)+" · "+episodes.length+" épisodes · "+(episodes.length-watched)+" non vus"));const provider=node("section",undefined,"season-provider"),metadata=result.season_metadata?.[season];if(metadata)section.append(node("p",metadata.overview||"","muted"));renderTmdbPanel(provider,m,"season",()=>collectionCurrent(epoch,context),async()=>{if(collectionCurrent(epoch,context)){const detail=await libraryRead({action:"media_detail",media_id:m.id},()=>collectionCurrent(epoch,context));if(detail)await openSeries(detail.media.tmdb_id?"tmdb:tv:"+detail.media.tmdb_id:name);await loadPage();}});section.append(provider);appendGroupRating(section,episodes,"season");$("collection-members").append(section);}appendCollectionMember(m,undefined,section);}
+  const same=previous?.episodes?.some(old=>result.episodes.some(item=>item.id===old.id));
+  let season=undefined,section=null;
+  for(const m of ordered){
+   if(m.season!==season){
+    season=m.season;section=document.createElement("details");section.className="series-season";section.dataset.season=String(season);section.open=Boolean(same&&openSeasons.has(String(season)));
+    const episodes=ordered.filter(e=>e.season===season),watched=episodes.filter(e=>e.watched).length;
+    section.append(node("summary",(season===null?"Saison inconnue":"Saison "+season)+" · "+episodes.length+" épisodes · "+(episodes.length-watched)+" non vus"));
+    const provider=node("section",undefined,"season-provider"),metadata=result.season_metadata?.[season];if(metadata)section.append(node("p",metadata.overview||"","muted"));
+    renderTmdbPanel(provider,m,"season",()=>collectionCurrent(epoch,context),async()=>{if(collectionCurrent(epoch,context)){const detail=await libraryRead({action:"media_detail",media_id:m.id},()=>collectionCurrent(epoch,context));if(detail)await openSeries(detail.media.tmdb_id?"tmdb:tv:"+detail.media.tmdb_id:name);await loadPage();}});
+    section.append(provider);appendGroupRating(section,episodes,"season");$("collection-members").append(section);
+   }
+   appendCollectionMember(m,undefined,section);
+  }
   $("collection-members").classList.add("series-members");$("collection-members").style.height="";
   if(result.tmdb_id){const sections=$("collection-members").querySelectorAll(".series-season");[...new Set(ordered.map(m=>m.season))].forEach((season,index)=>{if(!result.season_metadata?.[season]?.poster)return;const poster=node("div","", "poster series-poster");sections[index].append(poster);observeArtwork(poster,result.tmdb_id+":"+season,"season");});}
-  showCollectionPage("collection");
+  if(same){shellShow("collection");scrollTo({top:previousScroll,behavior:"instant"});}else showCollectionPage("collection");
 }
 function ratingSummary(items){const ratings=[...new Set(items.map(item=>item.rating??null))];return ratings.length===1?(ratings[0]===null?"Sans note":"Ma note : "+"★".repeat(ratings[0])):"Notes différentes";}
 function appendGroupRating(target,items,scope){
@@ -118,7 +131,7 @@ function appendGroupRating(target,items,scope){
 }
 function renderSeriesCommon(result){
   let section=$("series-common");if(!section){section=document.createElement("section");section.id="series-common";$("collection-members").before(section);}section.replaceChildren();const m=result.metadata||{};
-  const illustrated=result.episodes.find(e=>e.poster&&!e.poster_custom);if(illustrated){const poster=node("div",undefined,"poster series-poster");poster.setAttribute("aria-label","Affiche fournisseur de la série");section.append(poster);observeArtwork(poster,illustrated.id);}
+  const illustrated=result.episodes.find(e=>e.poster);if(illustrated){const poster=node("div",undefined,"poster series-poster");poster.setAttribute("aria-label","Affiche de la série");section.append(poster);observeArtwork(poster,illustrated.id);}
   section.append(node("p",[m.year===0?"Année inconnue":m.year,m.genres?.join(", "),m.overview||"Informations communes à compléter"].filter(Boolean).join(" · ")||"Informations communes à compléter"));appendGroupRating(section,result.episodes,"series");
   if(result.episodes.length){const provider=node("section"),epoch=collectionEpoch,context=collectionScope(),anchor=result.episodes[0];renderTmdbPanel(provider,anchor,"series",()=>collectionCurrent(epoch,context),async()=>{if(!collectionCurrent(epoch,context))return;const detail=await libraryRead({action:"media_detail",media_id:anchor.id},()=>collectionCurrent(epoch,context));if(detail)await openSeries(detail.media.tmdb_id?"tmdb:tv:"+detail.media.tmdb_id:result.name);await loadPage();});section.append(provider);}
   const form=document.createElement("form"),edit=button("Modifier les informations communes",()=>form.hidden=!form.hidden);form.className="series-form";form.hidden=true;
@@ -176,10 +189,14 @@ async function pickPlaylist(media){
   };
   $("playlist-target-dialog").showModal();
 }
+let targetGeneration=0;
+$("playlist-target-dialog").addEventListener("close",()=>{if(!$("playlist-target-dialog").open)targetGeneration++;});
 window.catalogPickCollection=async(media,category)=>{
- const context=collectionScope(),current=()=>context===collectionScope();const [lists,sagas]=await Promise.all([libraryRead({action:"playlists"},current),category==="film"?libraryRead({action:"sagas"},current):Promise.resolve({items:[]})]);if(!lists||!sagas||!current())return;
- $("playlist-targets").replaceChildren();for(const [kind,title,result] of [["playlist","Listes de lecture",lists],["saga","Sagas",sagas]]){if(kind==="saga"&&category!=="film")continue;$("playlist-targets").append(node("h3",title));for(const c of result.items||[])$("playlist-targets").append(button(c.name,async()=>{if(await libraryRead({action:kind==="saga"?"add_saga":"add_playlist",id:c.id,expected_revision:c.revision,media_ids:[media]},current))$("playlist-target-dialog").close();}));}
- $("playlist-target-create").onsubmit=async e=>{e.preventDefault();if(await libraryRead({action:"create_playlist",name:e.currentTarget.elements.name.value,media_id:media},current)){$("playlist-target-create").reset();$("playlist-target-dialog").close();}};if(!$("playlist-target-dialog").open)$("playlist-target-dialog").showModal();
+ const generation=++targetGeneration,context=collectionScope(),current=()=>context===collectionScope()&&generation===targetGeneration;
+ const [lists,sagas]=await Promise.all([libraryRead({action:"playlists"},current),category==="film"?libraryRead({action:"sagas"},current):Promise.resolve({items:[]})]);if(!lists||!sagas||!current())return;
+ async function save(command){if(!current())return;const result=await libraryRead(command,current);if(result&&!result.discarded){await syncAfterMutation();if(current())$("playlist-target-dialog").close();}return result;}
+ $("playlist-targets").replaceChildren();for(const [kind,title,result] of [["playlist","Listes de lecture",lists],["saga","Sagas",sagas]]){if(kind==="saga"&&category!=="film")continue;$("playlist-targets").append(node("h3",title));for(const c of result.items||[])$("playlist-targets").append(button(c.name,()=>save({action:kind==="saga"?"add_saga":"add_playlist",id:c.id,expected_revision:c.revision,media_ids:[media]})));}
+ $("playlist-target-create").onsubmit=async e=>{e.preventDefault();if(await save({action:"create_playlist",name:e.currentTarget.elements.name.value,media_id:media}))$("playlist-target-create").reset();};if(!$("playlist-target-dialog").open)$("playlist-target-dialog").showModal();
 };
 async function openCollection(id,kind="playlist"){
   if(!await stopPlayerForNavigation())return;

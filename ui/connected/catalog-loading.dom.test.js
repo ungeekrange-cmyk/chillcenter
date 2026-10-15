@@ -36,6 +36,12 @@ test("background catalogue reload preserves old cards until all batches commit",
  pending({items:media(3,"new-"),has_more:false});await task;
  assert.deepEqual(f.ids(),["new-0","new-1","new-2"]);
 });
+test("profile switch clears old cards and scroll cannot repaint them while the new mirror loads",async()=>{
+ let finish;const f=fixture(()=>f.sandbox.state.profile_id==="profile"?Promise.resolve({items:media(2,"old-"),has_more:false}):new Promise(resolve=>finish=resolve));
+ await f.load();f.sandbox.state.profile_id="new-profile";const pending=f.load();vm.runInContext("renderCatalogWindow()",f.sandbox);
+ assert.deepEqual(f.ids(),[]);assert.equal(f.get("media").children.length,0);
+ finish({items:media(1,"new-"),has_more:false});await pending;assert.deepEqual(f.ids(),["new-0"]);
+});
 test("catalogue overlapping batches do not duplicate cards or lose later items",async()=>{
  const items=media(63),offsets=[];
  const f=fixture(async c=>{offsets.push(c.offset);return c.offset===0?{items:items.slice(0,48),has_more:true}:{items:items.slice(47),has_more:false};});
