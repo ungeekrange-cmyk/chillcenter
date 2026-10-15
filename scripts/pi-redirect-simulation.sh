@@ -101,6 +101,13 @@ expect "R7 service chillcenter toujours actif" "$(systemctl is-active chillcente
 expect "R7 :8443 intact" "$(code "https://$LAN:8443/api/2026-10-14/server")" 200
 expect "R7 aucun temporaire résiduel" "$(ls -A /etc/chillcenter /etc/systemd/system | grep -c '^\.\(redirect-443\|chillcenter-redirect\)')" 0
 
+# ---- R7b same failure with a dead stderr: the failure path must still remove everything (review 7) -----------------------------------------
+sed 's/^trap failed ERR$/trap failed ERR\nexec 2>\/dev\/full/' "$W/broken-render.sh" > "$W/broken-render-stderr.sh"; cmp -s "$W/broken-render.sh" "$W/broken-render-stderr.sh" && ko "R7b préparation du mutant" "sed sans effet"
+SCRIPT="$W/broken-render-stderr.sh" run; unset SCRIPT
+[[ "$RC" != 0 ]] && ok "R7b stderr cassé : sortie non nulle ($RC)" || ko "R7b code" "0"
+[[ ! -e /etc/chillcenter/redirect-443.nft && ! -e /etc/systemd/system/chillcenter-redirect.service && "$(nft list tables | grep -c chillcenter_web)" == 0 ]] && ok "R7b tout retiré malgré stderr cassé" || ko "R7b résidus" "présents"
+expect "R7b service chillcenter toujours actif" "$(systemctl is-active chillcenter)" active
+
 # ---- R8 dry-run failure (kernel/syntax) before anything is installed ---------------------------------------------------------------------
 sed 's/ip daddr %s tcp dport 443/ip daddr %s tcp dport 443 bogus_keyword/' "$OP" > "$W/broken-syntax.sh"
 SCRIPT="$W/broken-syntax.sh" run; unset SCRIPT

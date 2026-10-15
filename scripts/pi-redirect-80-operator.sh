@@ -84,7 +84,7 @@ render_rules "$lan_ip" > "$tmp_rules"; render_unit > "$tmp_unit"
 "$nft_bin" -c -f "$tmp_rules"                      # syntax and kernel-support dry run: changes nothing
 install -o root -g root -m 0644 "$tmp_rules" "$rules"; install -o root -g root -m 0644 "$tmp_unit" "$unit"
 cleanup_tmp
-failed() { trap - ERR; echo 'FAILURE: removing everything this script created' >&2; remove_all; [[ "$(systemctl is-active chillcenter || true)" == 'active' ]] && echo 'RECOVERY: chillcenter is still active' >&2; exit 1; }
+failed() { set +e; trap - ERR; echo 'FAILURE: removing everything this script created' >&2; remove_all; [[ "$(systemctl is-active chillcenter || true)" == 'active' ]] && echo 'RECOVERY: chillcenter is still active' >&2; exit 1; }
 trap failed ERR
 systemctl daemon-reload
 systemctl enable --now "$unit_name"

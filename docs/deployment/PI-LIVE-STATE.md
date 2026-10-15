@@ -1,5 +1,7 @@
 # État réel du Raspberry Pi et règles de coordination entre agents
 
+> **⚠ Le Pi est injoignable depuis environ 17 h le 15 octobre 2026 (ping 100 % de pertes, connexion SSH tombée). Son état n'est PAS vérifié depuis. Ne rien déployer, ne rien modifier avant un préflight en lecture seule réussi.** La section 1 décrit l'état observé *avant* cette coupure.
+
 Document à lire **avant toute intervention sur le Pi** (livraison, script de déploiement, changement de configuration ou de pare-feu). Mis à jour le 15 octobre 2026 par l'instance qui a développé le client web (branche `codex/web-pwa`). Il sert aussi à prévenir l'agent qui développe le client Mac (branche `codex/player-streaming`) : le Pi **n'est plus dans l'état que ses scripts attendent**.
 
 Règle générale : ce fichier distingue ce qui a été **exécuté et observé** de ce qui est **codé mais pas encore déployé**. Ne pas supposer le Pi tel qu'il est décrit ici sans refaire un préflight en lecture seule (`scripts/pi-preflight-readonly.sh`).

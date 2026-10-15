@@ -97,6 +97,7 @@ install -o "$owner_uid" -g "$owner_gid" -m "$file_mode" "$candidate" "$candidate
 install -o "$owner_uid" -g "$owner_gid" -m "$file_mode" "$backup" "$candidate.restore"
 [[ "$(sha256sum "$candidate.restore" | awk '{print $1}')" == "$previous_sha" ]]
 revert_now() {
+  set +e   # recovery must never be cut short: a broken stderr (dropped SSH session) makes `echo >&2` fail (review 7)
   trap - ERR HUP INT TERM; echo 'FAILURE: restoring the previous configuration' >&2
   mv -f -- "$candidate.restore" "$config"
   systemctl restart "$service" || true; wait_listening "$https_port" || true

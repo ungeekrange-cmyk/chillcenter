@@ -179,7 +179,7 @@ pi 'ip -4 -o addr show dev wlan0'     # doit montrer 192.168.1.42/24 SANS le mot
 
 ```bash
 cd "$R"
-[ "$(shasum -a 256 scripts/pi-redirect-443-operator.sh | cut -d' ' -f1)" = 3e7f6d4f8b0bdfa33af09f7031f7862ddca992426507dbf0cd498a63fe1f4ef4 ] && echo "script redirection conforme" || echo "SCRIPT MODIFIÉ : STOP"
+[ "$(shasum -a 256 scripts/pi-redirect-443-operator.sh | cut -d' ' -f1)" = 170f41a787167c882973f45eef8d374fb530143b3aaa38cfb04041d1a585f821 ] && echo "script redirection conforme" || echo "SCRIPT MODIFIÉ : STOP"
 pi 'sudo -n /bin/bash -s -- --self-test' < scripts/pi-redirect-443-operator.sh          # redirect_self_test=PASS
 pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s --' < scripts/pi-redirect-443-operator.sh
 ```
@@ -197,15 +197,15 @@ Succès : `redirect=192.168.1.42:443->8443`, `unit_state=enabled/active`, `servi
 
 ## Étapes 9 à 12 — écoute HTTP non chiffrée pour le client web (ADR-0018) — **codées et simulées, pas encore déployées**
 
-Chaque étape exige : la revue indépendante n° 6 des octets exacts, puis ton feu vert. Même convention SSH (étape 1). Rien de tout cela n'a été exécuté sur le Pi.
+Chaque étape exige : une revue indépendante **des octets exacts** (les revues n° 6 et n° 7 ont porté sur des octets antérieurs ; la revue de contrôle n° 8 doit porter sur ceux-ci), puis ton feu vert. Même convention SSH (étape 1). Rien de tout cela n'a été exécuté sur le Pi.
 
 | Fichier | SHA-256 |
 | --- | --- |
 | Binaire ARM64 (avec `http_listen`) | `ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7` (14 890 920 octets) |
 | Archive web (repli `randomUUID`) | `24839b3d81f21632818903c5c097471a98086748303ac304477f23e480d00df2` |
 | `scripts/pi-update-web-operator.sh` (V8, **inchangé**) | `dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29` |
-| `scripts/pi-enable-http-operator.sh` | `fb88ceffb9558a7b4988f0a929e3696760952b6102f5fb3e83decabb616c748b` |
-| `scripts/pi-redirect-80-operator.sh` | `07d49c26e46e307f0f06841c452a0a11c8609e540b110fb5c288e038da30f3a0` |
+| `scripts/pi-enable-http-operator.sh` | `26a8df5832c83a2fbc659ddc8ab08ff41a55a59395e2e2fb43348ca82d938e57` |
+| `scripts/pi-redirect-80-operator.sh` | `9577ad88bdbe1c0b668db5d0344e19d91676a2de5a999f48bec410fb66f51dd7` |
 
 9. **Nouveau binaire et archive** : étapes 2 à 6 avec le script V8, `OLD_BINARY_SHA256=a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527` (binaire actuellement installé), `NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7`, `WEB_ARCHIVE_SHA256=24839b3d81f21632818903c5c097471a98086748303ac304477f23e480d00df2`. Le nouveau binaire sans `http_listen` se comporte comme l'actuel.
 10. **Activer le listener** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7 CONFIG_SHA256=ea24f2f0a98db2b0a080ab70113a2fbe8eb1006a20e2eae646d115448f3783f9 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem /bin/bash -s --' < scripts/pi-enable-http-operator.sh`. Refuse (42) si un client est connecté. Sauvegarde privée : `/root/chillcenter-rollback/server.json.ea24f2f0a98d`. Récupération automatique en cas d'échec. **Retour arrière** : même commande avec `CONFIG_SHA256=<hash affiché après activation> PREVIOUS_CONFIG_SHA256=ea24f2f0…3783f9` et `-s -- --revert`.

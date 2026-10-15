@@ -96,6 +96,15 @@ expect "E5 configuration d'origine restaurée" "$(sha "$CFG")" "$ORIG_SHA"
 expect "E5 propriétaire et droits restaurés (récupération automatique)" "$(stat -c '%U:%G:%a' "$CFG")" "root:nogroup:640"
 rm -f "$RB"/server.json.*
 
+# ---- E5d same failure, but stderr is dead (dropped SSH session): recovery must still restore the file (review 7, finding 1) --------------------
+reset_cfg
+sed 's/^trap revert_now ERR HUP INT TERM.*$/&\nexec 2>\/dev\/full/' "$W/broken-config.sh" > "$W/broken-config-stderr.sh"; cmp -s "$W/broken-config.sh" "$W/broken-config-stderr.sh" && ko "E5d préparation du mutant" "sed sans effet"
+SCRIPT="$W/broken-config-stderr.sh" run; unset SCRIPT
+[[ "$RC" != 0 ]] && ok "E5d stderr cassé + échec de démarrage : sortie non nulle ($RC)" || ko "E5d code" "0"
+expect "E5d configuration d'origine restaurée malgré stderr cassé" "$(sha "$CFG")" "$ORIG_SHA"
+[[ "$(systemctl is-active chillcenter)" == active && "$(https)" == 200 ]] && ok "E5d service actif avec l'ancienne configuration" || ko "E5d service" "arrêté"
+rm -f "$RB"/server.json.*
+
 # ---- E5b the guard "exactly one added line" refuses a doubled insertion before anything is touched (review 6, mutant M6) --------------------
 reset_cfg; before_pid="$(pid)"
 sed 's/{ print line; done=1 }/{ print line; print line; done=1 }/' "$OP" > "$W/broken-guard.sh"; cmp -s "$OP" "$W/broken-guard.sh" && ko "E5b préparation du mutant" "sed sans effet"
