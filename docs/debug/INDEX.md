@@ -72,3 +72,5 @@ LOW ouverts, propriétaire /root : UISEC-002 (fsync du parent des réglages clie
 Créer `BUG-NNNN-titre.md` : date, environnement/matériel/réseau, branche/commit exacts, attendu/réel, reproduction, hypothèses numérotées avec une seule expérience falsifiable à la fois, résultat, cause confirmée ou inconnue, correction et commit, tests de régression, rollback, exigences/ADR concernés. Limite : cinq hypothèses non confirmées puis retour à l'utilisateur. Ne pas appliquer une correction spéculative à une dépendance externe indisponible.
 
 Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. « Non reproduit » n'est pas « corrigé ». Les preuves originales ne sont pas effacées ; une correction ajoute un lien. Ajouter ici le résumé consultable, sans enregistrer secrets ou contenu des profils.
+- [BUG-0070](BUG-0070-web-player-stale-title-while-opening.md) — client web : titre de la vidéo précédente pendant l'ouverture de la suivante ; FIXED (branche `codex/web-pwa`).
+- [BUG-0071](BUG-0071-web-audio-missing-ac3-eac3.md) — client web : pas de son sur les films AC-3/E-AC-3 ; FIXED (branche `codex/web-pwa`), à vérifier sur le Pi.
