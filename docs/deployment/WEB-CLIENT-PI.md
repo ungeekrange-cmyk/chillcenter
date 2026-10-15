@@ -26,7 +26,7 @@ Interruption du service : arrêt, sauvegarde hors ligne, copies et redémarrage 
 | Script opérateur candidat **V8** `scripts/pi-update-web-operator.sh` (= V7 `b61b9fd6…` approuvé par la revue n° 3, dont le hash de l'ancien binaire, auparavant codé en dur, devient le paramètre obligatoire `OLD_BINARY_SHA256` ; **V8 n'a pas encore été relu** : revue n° 4 requise) | 17 916 octets, SHA-256 **`dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29`** — **toute modification, même un commentaire, annule la revue** |
 | **Archive web finale** (`scripts/package-web-pi.sh`, sans métadonnées macOS) | `artifacts/web-pi/chillcenter-web.tar`, **1 125 376 octets**, 60 membres : 56 fichiers dont `SHA256SUMS`, 4 répertoires, SHA-256 **`894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118`**. Le tar n'est pas reproductible octet pour octet (horodatages) : **ce fichier exact** est celui à copier ; contenu : build web `1556174bd809` |
 | Décodeur MPEG-4 embarqué | `mpeg4-decoder.wasm` SHA-256 `453fb7b171fde50d1306a57793ebac571459a7c324d28bd8b4f6c3db6b7bda53` (652 895 o), `mpeg4-decoder.js` `64d97f891594c386652cf3f783dfbdaf65d358ddb0bf1be96f1fbe3b2d3be827` ; FFmpeg 9.0.2 `8c385028…002e`, emsdk 6.0.12 `sha256:a7883da4…8c98` |
-| **Nouveau binaire serveur** (`cargo zigbuild --release --locked --offline -p chill-server --target aarch64-unknown-linux-gnu.2.28`) | `target/aarch64-unknown-linux-gnu/release/chill-server`, **14 765 736 octets**, ELF 64-bit ARM aarch64 dynamique, strippé, SHA-256 **`b80408da05e9f013c897c4599805494282a63afb3630f8e305faa90e0939c89f`** → `NEW_BINARY_SHA256` |
+| **Nouveau binaire serveur** (`cargo zigbuild --release --locked --offline -p chill-server --target aarch64-unknown-linux-gnu.2.28`) | `target/aarch64-unknown-linux-gnu/release/chill-server`, **14 765 736 octets**, ELF 64-bit ARM aarch64 dynamique, strippé, SHA-256 **`a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527`** → `NEW_BINARY_SHA256` |
 | Source | binaire construit à partir du merge `7204e19` (codex/player-streaming `a59f5e6` dans codex/web-pwa) ; le code Rust ne change plus après ce commit |
 
 ## Reprise après intégration de `codex/player-streaming` (15 octobre 2026)
@@ -48,6 +48,20 @@ Interruption du service : arrêt, sauvegarde hors ligne, copies et redémarrage 
 **Changements du script V8 par rapport à V7** : suppression de `old_expected='1eb24e97…'` et des noms `chill-server-1eb24e97bcdf` codés en dur ; `OLD_BINARY_SHA256` est obligatoire (64 hex, différent de `NEW_BINARY_SHA256`), le nom du rollback et le préfixe des temporaires en sont dérivés (12 premiers hex). Aucune autre ligne modifiée. Le préflight lecture seule affiche désormais l'attendu `cef54cd0…`.
 
 **Statut.** La revue indépendante n° 4 (octets V8 `dcf18661…`) conclut **APPROVED_WITH_CONDITIONS** : [rapport verbatim](../reviews/web-pi-deploy-v8-review-4.md). Conditions documentaires traitées : MEDIUM-1 (hashes périmés du runbook, étapes 5 et 6), LOW-1 (retour arrière du plan §7), LOW-2 (mentions V7 du runbook), LOW-3 (décompte du tar). **Non traités, acceptés** : MEDIUM-2 (la simulation ne détecte pas la casse du nettoyage du temporaire de rollback, impact faible), LOW-4 (cache ≤ 1 h des fichiers statiques non `no-cache`, lecture intégrale en mémoire) et les résiduels hérités LOW-2/LOW-3 de la revue 3. Aucune exécution sur le Pi sans nouveau feu vert explicite et connexion maître.
+
+## Ajout du port 443 (15 octobre 2026) : ADR-0017
+
+Demande de l'utilisateur : joindre le client web sur le port normal. Décision : redirection réseau 443 → 8443 sur le Pi, le serveur acceptant le port par défaut dans `Host` ([ADR-0017](../architecture/decisions/ADR-0017-web-client-standard-https-port.md)). Le service ne gagne ni port ni capacité ; sa configuration et son unité ne changent pas.
+
+| Élément | Résultat réellement obtenu |
+| --- | --- |
+| Rust | `check_browser_origin_and_host` accepte le port de `listen` **ou** 443 ; nom toujours exigé dans `tls_names` ; nouveau test (105 + 2 tests, 0 échec), clippy `-D warnings` propre |
+| Nouveau binaire ARM64 | **14 765 736 octets**, SHA-256 `a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527` : voir §2 (valeur de référence) ; **remplace** `b80408da…` relu par la revue n° 4 |
+| Essai Linux aarch64 | 23 PASS, 0 FAIL (3 contrôles ajoutés : `Host` sans port, `:443`, autre port refusé) |
+| Simulation V8 | 52 PASS, 0 FAIL avec le nouveau binaire ; script V8 inchangé (`dcf18661…`) |
+| Relevé du pare-feu du Pi | `scripts/pi-firewall-probe-readonly.sh` (19 lignes, SHA-256 `7116d03bab4b6117c9202ca784eb0560566678e08680ecb56cabcfa5acb2f2ce`) : **écrit, pas encore exécuté** (aucune connexion maître ouverte) |
+| Script d'installation de la règle 443 → 8443 | **pas écrit** : sa forme (nftables, iptables, persistance) dépend du relevé |
+| Revue | le delta Rust (une condition + test) et le script de règle n'ont **pas** encore été relus : revue n° 5 requise sur ce delta ; la revue n° 4 reste valable pour le script V8 |
 
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 

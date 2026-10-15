@@ -55,7 +55,7 @@ Un seul bloc ; il doit afficher quatre `OK`. **Un seul `MISMATCH` = on s'arrête
 cd "$R"
 chk() { [ "$(shasum -a 256 "$1" | cut -d' ' -f1)" = "$2" ] && echo "OK       $1" || echo "MISMATCH $1"; }
 chk scripts/pi-update-web-operator.sh                                   dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29
-chk target/aarch64-unknown-linux-gnu/release/chill-server               b80408da05e9f013c897c4599805494282a63afb3630f8e305faa90e0939c89f
+chk target/aarch64-unknown-linux-gnu/release/chill-server               a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527
 chk artifacts/web-pi/chillcenter-web.tar                                894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118
 chk scripts/pi-preflight-readonly.sh                                    2ee4a5a9d93a882d738d0f11e256f6aad702c25555a0c788d6f5b73196d50d44
 wc -c < scripts/pi-update-web-operator.sh                               # 17916
@@ -98,7 +98,7 @@ pi_scp artifacts/web-pi/chillcenter-web.tar                   admin@192.168.1.42
 pi 'chmod 600 /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar; sha256sum /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar'
 ```
 
-Les deux hashes affichés par le Pi doivent être **exactement** `b80408da05e9f013…c89f` (binaire) et `894fbe952a58bdae…7118` (archive). Sinon : `pi 'rm -f /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar'` et stop.
+Les deux hashes affichés par le Pi doivent être **exactement** `a7ab7b07633c916c…d527` (binaire) et `894fbe952a58bdae…7118` (archive). Sinon : `pi 'rm -f /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar'` et stop.
 
 ## Étape 5 — exécution du script V8, **par stdin** (le déploiement)
 
@@ -107,11 +107,11 @@ Relire à voix haute avant de coller : l'URL est `https://192.168.1.42:8443` (le
 ```bash
 cd "$R"
 [ "$(shasum -a 256 scripts/pi-update-web-operator.sh | cut -d' ' -f1)" = dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29 ] && echo "script V8 conforme" || echo "SCRIPT MODIFIÉ : STOP"
-pi "sudo -n env OLD_BINARY_SHA256=cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3 NEW_BINARY_SHA256=b80408da05e9f013c897c4599805494282a63afb3630f8e305faa90e0939c89f WEB_ARCHIVE_SHA256=894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://192.168.1.42:8443 /bin/bash -s --" < scripts/pi-update-web-operator.sh
+pi "sudo -n env OLD_BINARY_SHA256=cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3 NEW_BINARY_SHA256=a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527 WEB_ARCHIVE_SHA256=894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://192.168.1.42:8443 /bin/bash -s --" < scripts/pi-update-web-operator.sh
 echo "code de sortie : $?"
 ```
 
-**Succès** (code 0) : 7 lignes `deployed_utc`, `service_pid`, `installed_hash=b804…c89f`, `rollback_hash=cef5…b3c3`, `web_archive_hash=894f…7118`, `web_previous=none`, `backup_path=/var/lib/chillcenter/data/backups/<uuid>`.
+**Succès** (code 0) : 7 lignes `deployed_utc`, `service_pid`, `installed_hash=a7ab…d527`, `rollback_hash=cef5…b3c3`, `web_archive_hash=894f…7118`, `web_previous=none`, `backup_path=/var/lib/chillcenter/data/backups/<uuid>`.
 
 | Code de sortie / signe | Signification | À faire |
 | --- | --- | --- |
@@ -137,7 +137,7 @@ openssl s_client -connect 192.168.1.42:8443 </dev/null 2>/dev/null | openssl x50
 pi 'rm -f /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar; ls /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar 2>&1 | head -2'
 ```
 
-Attendu : hash binaire `b80408da…`, `active`, un dossier `web` root, empreinte `3018fb4d…`, deux fichiers absents. Je peux ensuite refaire la sonde Node en lecture seule (catalogue, Range MKV/MP4/AVI, décodeur) contre le serveur réel.
+Attendu : hash binaire `a7ab7b07…`, `active`, un dossier `web` root, empreinte `3018fb4d…`, deux fichiers absents. Je peux ensuite refaire la sonde Node en lecture seule (catalogue, Range MKV/MP4/AVI, décodeur) contre le serveur réel.
 
 **Voir l'interface** : ouvre `https://192.168.1.42:8443/` dans le navigateur. Le certificat est auto-signé : une page d'avertissement apparaît. Deux options, à ton choix :
 - **Exception ponctuelle** pour cette adresse : la page se charge ; **Service Worker et installation PWA seront probablement refusés**.

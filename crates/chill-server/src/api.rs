@@ -250,12 +250,15 @@ fn check_browser_origin_and_host(
         .host()
         .trim_start_matches('[')
         .trim_end_matches(']');
+    // The default HTTPS port is also accepted: a network-level redirect 443 -> listen port (ADR-0017) makes
+    // browsers send `Host: <name>` without a port. The name is still checked against the certificate names.
+    let port = authority.port_u16().unwrap_or(443);
     if !state
         .config
         .tls_names
         .iter()
         .any(|n| n.eq_ignore_ascii_case(raw_host))
-        || authority.port_u16().unwrap_or(443) != state.config.listen.port()
+        || (port != state.config.listen.port() && port != 443)
     {
         return Err(ApiError(StatusCode::FORBIDDEN, "HOST_REFUSED"));
     }
@@ -938,6 +941,39 @@ mod tests {
             app.oneshot(rebound).await.unwrap().status(),
             StatusCode::FORBIDDEN
         );
+    }
+
+    #[tokio::test]
+    async fn default_https_port_is_accepted_for_a_redirected_443_but_names_and_other_ports_are_not() {
+        let (_dir, app) = setup();
+        let with_host = |host: &str, origin: Option<&str>| {
+            let mut r = request("GET", "/api/v1/server", Value::Null);
+            r.headers_mut().insert("host", host.parse().unwrap());
+            if let Some(origin) = origin {
+                r.headers_mut().insert("sec-fetch-site", "same-origin".parse().unwrap());
+                r.headers_mut().insert("origin", origin.parse().unwrap());
+            }
+            r
+        };
+        let status = |r: Request<Body>| {
+            let app = app.clone();
+            async move { app.oneshot(r).await.unwrap().status() }
+        };
+        assert_eq!(status(with_host("localhost:8443", None)).await, StatusCode::OK);
+        assert_eq!(status(with_host("localhost", None)).await, StatusCode::OK);
+        assert_eq!(status(with_host("localhost:443", None)).await, StatusCode::OK);
+        assert_eq!(
+            status(with_host("localhost", Some("https://localhost"))).await,
+            StatusCode::OK
+        );
+        // An Origin without the port does not match a Host that carries one, and vice versa.
+        assert_eq!(
+            status(with_host("localhost:8443", Some("https://localhost"))).await,
+            StatusCode::FORBIDDEN
+        );
+        for refused in ["localhost:9443", "localhost:80", "attacker.example", "attacker.example:443"] {
+            assert_eq!(status(with_host(refused, None)).await, StatusCode::FORBIDDEN, "{refused}");
+        }
     }
 
     #[tokio::test]
