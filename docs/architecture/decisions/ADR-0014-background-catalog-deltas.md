@@ -1,6 +1,6 @@
 # ADR-0014 — Synchronisation détachée et deltas de catalogue
 
-- Statut PROPOSED ; auteur/propriétaire `/root`, 2026-10-15 ; revue indépendante PENDING.
+- Statut ACCEPTED ; auteur/propriétaire `/root`, 2026-10-15 ; revue indépendante `/root/review_detached_sync` APPROVED sur11aa529, [rapport](../../reviews/LIBRARY-UX-sync-review.md). Pas preuve de déploiement Pi.
 - Branche `codex/library-ux-sync-matching`, base `a59f5e6`.
 - Supersedes ADR-0013 uniquement sur transfert complet et contrôle synchrone ; cache privé et isolation conservés. Superseded by NONE. Liens BUG-0064/0065 ; API 2026-10-14 additive.
 

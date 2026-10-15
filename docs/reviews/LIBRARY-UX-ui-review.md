@@ -71,3 +71,22 @@ Résultat hors sandbox macOS : **PASS**. Le premier lancement dans le bac à sab
 Cette approbation est limitée à l'interface et aux contrats simulés. Elle ne constitue pas une validation avec un catalogue réel, un fournisseur TMDB/IA réel, le sélecteur de fichiers natif, le réseau, le Pi/NAS, ni le bundle Tauri signé. L'acceptation visuelle et gestuelle finale par l'utilisateur dans ce bundle reste nécessaire. Les tests du lecteur ont volontairement été exclus de cette révision, conformément au périmètre demandé ; aucun jugement nouveau n'est porté ici sur le lecteur.
 
 Les preuves Rust globales annoncées dans le dossier d'implémentation n'ont pas été réexécutées dans cette revue UI. Le rapport est un artefact de revue ajouté après le gel ; il ne fait pas partie du SHA source examiné.
+
+## Addendum — connexion manuelle et approbation du certificat
+
+- Base approuvée : `3bbb87db5a3331f8f07d12ab1404afd8a5d86ee7`
+- Source figée réexaminée : `11aa529f2eced060156a3017456bf1d9634f8a56`
+- Périmètre du delta UI : `ui/connected/app.js` et `ui/connected/sync.dom.test.js`
+- Verdict du delta : **APPROVED**
+
+La connexion manuelle et l'approbation initiale du certificat chargent maintenant d'abord le miroir local avec `await loadPage()`, puis lancent la vérification réseau avec `void syncCatalog()`. Le catalogue utilisable n'attend donc pas la fin du réseau, tandis que le cache est tout de même réchauffé après ces deux parcours d'entrée. Les parcours sans profil actif restent inchangés.
+
+Preuves exécutées indépendamment sur le nouveau SHA :
+
+```text
+/usr/local/bin/node --test ui/connected/sync.dom.test.js
+```
+
+Résultat : **3 PASS, 0 échec, 0 ignoré**. Le nouveau test exerce séparément `connect` et `approve`, laisse leur promesse de synchronisation volontairement non résolue, puis vérifie que chaque gestionnaire a déjà terminé après un chargement local et a déclenché exactement une vérification. Une régression réintroduisant `await syncCatalog()` suspendrait ce test.
+
+`/usr/local/bin/node --check ui/connected/app.js` et `git diff --check 3bbb87d..11aa529` : **PASS**. Aucun test navigateur ou lecteur n'a été répété : le delta ne modifie ni le DOM rendu, ni le lecteur, ni les parcours visuels précédemment approuvés. Les limites d'acceptation réelles énoncées plus haut restent applicables.

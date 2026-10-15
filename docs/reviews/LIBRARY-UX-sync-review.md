@@ -69,3 +69,24 @@ Ces preuves sont ciblées ; les 38/62/103 tests, clippy et la suite Node annonc�
 ### ADR-0014 r2
 
 La décision est techniquement cohérente pour les nouveaux enregistrements et pour la restauration officielle, mais `Rétention disque bornée` (`ADR-0014:23`) est faux lors d'une mise à niveau tant que la table legacy reste dans SQLite. L'ADR ne borne pas non plus les octets cumulés d'un transfert paginé et son parcours de déclenchement ne couvre pas la reconnexion manuelle. Ces trois points doivent être intégrés à la décision, aux conséquences et aux tests avant acceptation.
+
+---
+
+## Revue r3 finale — candidat `11aa529f2eced060156a3017456bf1d9634f8a56`
+
+- Base r3 : `3bbb87db5a3331f8f07d12ab1404afd8a5d86ee7`
+- Verdict code, périmètre synchronisation : **APPROVED_SCOPED**
+- Verdict ADR-0014 : **APPROVED**
+- Constats P1/P2 ouverts dans ce périmètre : **aucun**
+
+Les trois constats r2 sont résolus : le contenu de la table de cache prototype legacy est supprimé sans toucher au catalogue, aux profils ni aux historiques ; les pages GET ne répètent plus les documents auxiliaires et le client compte le JSON complet de chaque page dans la borne cumulée, y compris pour le repli legacy ; connexion manuelle et acceptation du certificat affichent d'abord le cache puis lancent la vérification sans attendre son réseau. L'ADR-0014, le guide tiers et le contrat OpenAPI décrivent désormais ces garanties ainsi que l'expiration/libération de la dernière page.
+
+Preuves ciblées rejouées sur l'archive exacte :
+
+- `cargo test --locked --offline -p chill-domain legacy_generated_snapshots_are_not_retained_outside_signature_budget` : 1 PASS.
+- `cargo test --locked --offline -p chill-client cumulative_budget_counts_auxiliary_documents_and_first_page_items` : 1 PASS.
+- `cargo test --locked --offline -p chill-server catalog_changes_contract_paging_profile_isolation_and_real_delta` : 1 PASS.
+- `node --test ui/connected/sync.dom.test.js` : 3 PASS.
+- `git diff --check 3bbb87db5a3331f8f07d12ab1404afd8a5d86ee7..11aa529f2eced060156a3017456bf1d9634f8a56` : PASS.
+
+Les suites complètes annoncées par l'intégrateur n'ont pas été répétées. Cette approbation reste limitée au code et aux contrats examinés : aucun bundle Mac, Pi, NAS, réseau réel, RSS ou latence réelle n'a été vérifié par cette revue.

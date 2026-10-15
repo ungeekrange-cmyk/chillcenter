@@ -1,6 +1,6 @@
 # ADR-0015 — Identité de série distincte du titre, métadonnées de saison
 
-- PROPOSED, 2026-10-15 ; auteur/propriétaire `/root`, implémentation `/root/build_series_season_tmdb` puis `/root` ; revue `/root/review_series_sync` initiale CHANGES_REQUESTED, nouvelle revue PENDING.
+- ACCEPTED_SCOPED, 2026-10-15 ; auteur/propriétaire `/root`, implémentation `/root/build_series_season_tmdb` puis `/root` ; revue initiale CHANGES_REQUESTED conservée, finale `/root/review_series_sync` APPROVED_SCOPED sur11aa529, [rapport](../../reviews/LIBRARY-UX-series-review.md). Pas preuve de déploiement Pi.
 - Branche `codex/library-ux-sync-matching`, base `a59f5e6`. Supersedes/Superseded by NONE ; BUG-0066, API 2026-10-14 additive.
 
 ## Contexte, options et décision

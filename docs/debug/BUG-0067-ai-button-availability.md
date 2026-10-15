@@ -7,3 +7,5 @@ Cause reproductible : `run` mémorise l’état désactivé des contrôles avant
 Deux tests RED dans `ui/connected/run-availability.dom.test.js` reproduisent les deux transitions. Correction : rendre les disponibilités sémantiques après restauration des désactivations transitoires, jamais avant. La synchro détachée (BUG-0064) ne passe pas par cette désactivation globale.
 
 Diagnostic sans requête IA réelle, clé ou NAS. Les tests mockés IA existants vérifient les propositions/confirmations, mais ne prouvent ni la présence d’un CLI sur le Mac utilisateur ni son authentification. Disponibilité du fournisseur réel : à vérifier séparément si le lancement de « Proposer » retourne ensuite une erreur.
+
+FIXED dans le bundle Mac `Chill Center-11aa529.app`. Deux régressions RED/GREEN ; navigateur synthétique ouvre les réglages via le bouton IA sans lancer le fournisseur. Revue UI indépendante APPROVED sur11aa529. Pas de prétention de test du CLI réel ni de déploiement serveur associé.

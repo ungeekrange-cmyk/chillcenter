@@ -1,6 +1,6 @@
 # Lot catalogue/fiches/série/saison — candidat local
 
-Coordinateur `/root`, 2026-10-15 ; base `a59f5e6`, branche `codex/library-ux-sync-matching`. Aucun nouveau déploiement à ce stade. Le Pi et le bundle livré restent c610ea9.
+Coordinateur `/root`, 2026-10-15 ; base `a59f5e6`, branche `codex/library-ux-sync-matching`, candidat final11aa529. Mac publié ; déploiement Pi suspendu pour binaire courant non attribué (BUG0068), pas de smoke réel du nouveau protocole revendiqué. Voir REL-LIBRARY-UX-SYNC-001.
 
 ## Régressions et preuves
 
@@ -16,4 +16,4 @@ BUG-0064/0065/0066 et ADR-0014 documentent les causes et limites. Première revu
 
 ## Limites / restant
 
-Revue finale, mesures réelles durée/RSS du delta Pi et vérification du bundle Tauri restent distinctes des preuves ci-dessus. Le matching automatique des titres français/originaux n’est pas couvert par ce lot. Le regroupement inconnu s’appuie sur l’arborescence source ; les médias indistinguables dans une même arborescence ne peuvent pas être désambiguïsés par leur seul nom. Ne pas annoncer toutes les US achevées sur cette base.
+Revues source finales favorables sur11aa529, conservées avec leurs refus historiques. Mesures réelles durée/RSS du delta Pi et vérification GUI du bundle Tauri restent distinctes des preuves ci-dessus. Le matching automatique des titres français/originaux n’est pas couvert par ce lot. Le regroupement inconnu s’appuie sur l’arborescence source ; les médias indistinguables dans une même arborescence ne peuvent pas être désambiguïsés par leur seul nom. Ne pas annoncer toutes les US achevées sur cette base.

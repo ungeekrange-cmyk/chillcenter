@@ -77,3 +77,19 @@ Commande indépendante :
 Résultat : `chill-catalog` **73 PASS / 2 FAIL**. Outre le test de groupe périmé ci-dessus, `database::tests::series_provider_rejects_collision_and_rolls_back_sql_failure` échoue sur son ancienne attente qu'un libellé homonyme soit rejeté (`crates/chill-catalog/src/database.rs:2531-2536`). Autoriser deux séries portant le même nom mais ayant des identités TMDB distinctes est la nouvelle décision correcte ; ce test doit donc être réécrit pour vérifier la séparation par identité tout en conservant ses assertions d'identifiant invalide et de rollback SQL. La commande combinée s'arrête avant `chill-domain`; exécuté séparément, `chill-domain` est vert à **62 PASS**.
 
 ADR-0015 reste `PENDING` sur ce candidat : son contrat « groupe figé complet » et son exigence de CAS ne sont pas encore garantis au point de commit. Une nouvelle révision source rendra cette réévaluation historique et nécessitera un nouveau verdict exact-SHA.
+
+---
+
+## Réévaluation finale — candidat `11aa529f2eced060156a3017456bf1d9634f8a56`
+
+- Delta revu : `3bbb87db5a3331f8f07d12ab1404afd8a5d86ee7..11aa529f2eced060156a3017456bf1d9634f8a56`
+- Verdict code : `APPROVED_SCOPED`
+- Verdict ADR-0015 : `APPROVED_SCOPED`
+
+Les deux blocages de la réévaluation précédente sont levés. La transaction `IMMEDIATE` relit maintenant la révision commune et celle de l’ancre, puis recalcule le groupe complet depuis l’ancre avant toute écriture. Cette vérification est appliquée à l’association fournisseur série, aux métadonnées de saison et aux affiches série/saison. Les métadonnées, révisions et migrations de vitesse restent dans le même commit SQLite. Le test à deux connexions prouve qu’un scan committé après le premier CAS est refusé sans association partielle. Les tests catalogue distinguent désormais correctement collision de libellé et collision d’identité tout en conservant les contrôles d’identifiant invalide et de rollback SQL.
+
+Exécution indépendante sur le SHA exact :
+
+`cargo test --locked --offline -p chill-catalog -p chill-domain -p chill-client -p chill-server --lib`
+
+Résultat : `75 + 64 + 39 + 103 = 281` tests PASS, aucun échec. `git diff --check` du delta ciblé PASS. Aucun P1/P2 nouveau dans le périmètre série/saison. ADR-0015 décrit désormais fidèlement le CAS au point de commit, la séparation des homonymes, les métadonnées saison distinctes et les limites assumées de l’identité pré-TMDB ; son acceptation reste bornée à ce périmètre et ne constitue pas une validation TMDB/NAS réelle ni un feu vert de déploiement.
