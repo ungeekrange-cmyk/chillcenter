@@ -1,6 +1,6 @@
 # Déploiement du client web sur le Pi — artefacts construits et testés, déploiement NON exécuté
 
-Révision `CC-WEB-DEPLOY-001` r2, 15 octobre 2026, branche `codex/web-pwa`, source `05e637dec0b721300925be14e46c94c26d331789`. **Rien n'a été exécuté sur le Pi ni copié vers lui.** Ce document est une proposition soumise à revue indépendante puis à ton feu vert explicite (AGENTS : pas de déploiement sur un matériel ou un réseau supposé ; un seul auteur par chemin, le reviewer n'édite pas).
+Révision `CC-WEB-DEPLOY-001` r3, 15 octobre 2026, branche `codex/web-pwa`, source du binaire `3a0d53a4d88c1ae903cc83194e4430af56a246a3` (le script et le banc d'essai sont au commit `e2e1c8bdd07d12102184e727790a67e241e2ef90`, qui ne modifie pas `crates/`). **Rien n'a été exécuté sur le Pi ni copié vers lui.** Ce document est une proposition soumise à revue indépendante puis à ton feu vert explicite (AGENTS : pas de déploiement sur un matériel ou un réseau supposé ; un seul auteur par chemin, le reviewer n'édite pas).
 
 ## 1. Ce qui change sur le Pi, et ce qui ne change pas
 
@@ -23,11 +23,11 @@ Interruption du service : arrêt, sauvegarde hors ligne, copies et redémarrage 
 | Binaire actuellement installé (V4, 14 oct. 19:12 UTC) | `1eb24e97bcdf8f66440c1681af92d6202c151ebe336c2890ea42a7f8179ac181` |
 | Ancien rollback R7 (déjà sur le Pi) | `/root/chillcenter-rollback/chill-server-r7-9a17ffe55e3d`, `9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6` |
 | Certificat public du Pi (lu le 15 oct.) | SPKI SHA-256 `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`, valide du 14/10/2026 au 14/04/2028 ; `server_id` `885f7713-b8c6-4891-a8d1-c1410d5f1537` |
-| Script opérateur candidat V5 `scripts/pi-update-web-operator.sh` | 13 078 octets, SHA-256 `8d47e9df8feba5c234552ff61517fd04e29a8612c2a3e14cabfc3b420fbb9d14` — **toute modification, même un commentaire, annule la revue** |
-| **Archive web finale** (`scripts/package-web-pi.sh`, sans métadonnées macOS) | `artifacts/web-pi/chillcenter-web.tar`, **1 099 264 octets**, 54 fichiers, SHA-256 `1aaf79a6c476904b191a0e3fe02a64c5535df82b0753448d5f9884a18f6cc669`. Le tar n'est pas reproductible octet pour octet (horodatages) : **ce fichier exact** est celui à copier ; le contenu (build web `387b98d9b0ad`) est reproductible |
+| Script opérateur candidat **V6** `scripts/pi-update-web-operator.sh` (remplace V5 `8d47e9df…`, refusé par la revue n° 1) | 16 118 octets, SHA-256 **`ba9777cdf3491d5093f4288e113d4efcb03ae136a17dca6c47c7d4e8b1713e95`** — **toute modification, même un commentaire, annule la revue** |
+| **Archive web finale** (`scripts/package-web-pi.sh`, sans métadonnées macOS) | `artifacts/web-pi/chillcenter-web.tar`, **1 099 264 octets**, 54 fichiers, SHA-256 **`486e8eb248ab74169af953ef5e6a125d26adde7b157e67c600c93713513b0756`**. Le tar n'est pas reproductible octet pour octet (horodatages) : **ce fichier exact** est celui à copier ; le contenu (build web `387b98d9b0ad`) est reproductible |
 | Décodeur MPEG-4 embarqué | `mpeg4-decoder.wasm` SHA-256 `453fb7b171fde50d1306a57793ebac571459a7c324d28bd8b4f6c3db6b7bda53` (652 895 o), `mpeg4-decoder.js` `64d97f891594c386652cf3f783dfbdaf65d358ddb0bf1be96f1fbe3b2d3be827` ; FFmpeg 9.0.2 `8c385028…002e`, emsdk 6.0.12 `sha256:a7883da4…8c98` |
-| **Nouveau binaire serveur** (`cargo zigbuild --release --locked -p chill-server --target aarch64-unknown-linux-gnu.2.28`) | `target/aarch64-unknown-linux-gnu/release/chill-server`, **14 601 224 octets**, ELF 64-bit ARM aarch64 dynamique, strippé, SHA-256 **`c3681a47f7dc7b39730e3e11024306ab754b4142aef44eb026edb7e0372d2c47`** → `NEW_BINARY_SHA256` |
-| Source | commit `05e637dec0b721300925be14e46c94c26d331789` (les commits suivants ne touchent que la documentation et le paquetage) |
+| **Nouveau binaire serveur** (`cargo zigbuild --release --locked -p chill-server --target aarch64-unknown-linux-gnu.2.28`) | `target/aarch64-unknown-linux-gnu/release/chill-server`, **14 601 992 octets**, ELF 64-bit ARM aarch64 dynamique, strippé, SHA-256 **`241205689e656b949d0a9a6058d74408f1a6b70ac2446f0daf3c014b1b30ac29`** → `NEW_BINARY_SHA256` |
+| Source | binaire construit à partir de `3a0d53a4d88c1ae903cc83194e4430af56a246a3` ; `git diff 3a0d53a HEAD -- crates` est vide |
 
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 
@@ -83,9 +83,42 @@ Le **diff Rust** à revoir est petit : `crates/chill-server/src/web_static.rs` (
 
 Ce que cet essai **ne** prouve **pas** : l'exécution sur le vrai Pi (Debian 13, glibc 2.41, 905 Mio de RAM), les chemins `/usr/lib/chillcenter`, systemd, la durée d'interruption, ni la revue indépendante.
 
-## 4. Revue indépendante (obligatoire avant exécution)
+### Reprise après la revue n° 1 (15 octobre 2026)
 
-Un reviewer distinct de l'auteur (et sans droit d'édition sur le contenu revu) approuve **les octets exacts** de : `pi-update-web-operator.sh` (hash §2), le diff Rust, l'archive web finale et le hash du binaire. Points à contrôler : arrêt refusé si connexion établie ; sauvegarde hors ligne sous l'UID 997 ; copie de rollback sans écrasement ; remplacement atomique du binaire ; refus des liens symboliques/membres spéciaux dans l'archive ; `SHA256SUMS` couvrant tout l'arbre ; vérifications en TLS strict (jamais `-k`) ; **restauration automatique** (ancien binaire + ancien dossier web) à tout échec avant `completed=1` ; invariants config/unité/SPKI. Auto-test local déjà passé : `bash scripts/pi-update-web-operator.sh --self-test` → `parser_self_test=PASS`, `bash -n` OK ; `shellcheck` non disponible.
+La [revue n° 1](../reviews/web-pi-deploy-v5-review-1.md) a rendu CHANGES_REQUESTED sur le script V5. Traitement, finding par finding :
+
+| Finding | Traitement dans V6 / Rust |
+| --- | --- |
+| S1 `curl \| grep -q` sous `pipefail` | page capturée dans une variable puis comparée ; cas ajouté à l'auto-test (page de 40 Ko) |
+| S2 récupération fragile | `set +e`, signaux **interceptés** (`trap : …`, pas ignorés : un signal ignoré serait hérité par `systemctl`, défaut trouvé par la simulation), chaque étape protégée, messages `RECOVERY:`, ancien binaire non restaurable ⇒ le dossier web n'est pas retiré (état cohérent) et le service est redémarré |
+| S3 pas de sonde avant l'arrêt | sonde TLS stricte du service actuel **avant** tout arrêt : un SAN, un port ou un CA erroné échoue sans interruption (scénario B) |
+| S4 contrôle de rollback tardif | vérifié en préflight ; une copie existante est réutilisée **seulement** si elle est identique (scénarios E et F) |
+| S5 `web_swapped` tardif | drapeau `web_moved` posé juste après le déplacement de l'ancien dossier (scénario D) |
+| S6 TOCTOU de l'archive | **risque accepté, documenté** dans l'en-tête du script (le seul écrivain possible est déjà équivalent à root) |
+| S7 `--strict`, exemption exacte | `sha256sum -c --quiet --strict` ; seul `./SHA256SUMS` de la racine est exempté |
+| S8 `ss` fail-open | `ss` requis en préflight ; un échec de `ss` interdit l'arrêt |
+| S9 espace disque, `sudo env` | contrôle de 64 Mio libres sur trois emplacements ; `sudo -n env true` ajouté au préflight §5a |
+| R1 routes API inconnues | `404` nu conservé pour tout chemin `/api/…`, donc `ROUTE_NOT_FOUND` JSON inchangé pour toute méthode (test ajouté) |
+| R2 CSP | `form-action 'self'` ajouté |
+| R3 plafond mémoire | fichiers statiques limités à 8 Mio |
+| R6 tests | Origin `null`, non UTF-8, étranger, casse ; `cross-site` et `none`+POST sur `/` ; HEAD sans corps ; POST statique 405 ; lien symbolique de **répertoire** ; routes API inconnues pour 4 méthodes |
+
+Résultats après corrections :
+
+| Vérification | Résultat |
+| --- | --- |
+| `cargo test --locked -p chill-server` | **102 passés**, 0 échec ; 2 tests d'intégration passés |
+| `cargo clippy --locked -p chill-server --all-targets -- -D warnings` | propre |
+| Build ARM64 (`cargo zigbuild … .2.28`) | OK en 1 min 9 s ; `file` : ELF aarch64 strippé |
+| `node --test web/test/*.test.js` | 49 passés |
+| Essai binaire + archive sous Linux aarch64 (`scripts/web-e2e-linux.sh`) | **20 sur 20** |
+| **Simulation du déploiement** (`scripts/pi-operator-simulation.sh`, VM Ubuntu 24.04 aarch64, GNU tar 1.35, coreutils 9.4, curl 8.5.0, root, vrai ancien binaire `1eb24e97…` comme service via un `systemctl` factice, script envoyé par stdin comme en production) | **34 PASS, 0 FAIL** : A déploiement nominal (binaire, web, rollback, sauvegarde, invariants, aucun résidu) ; B mauvaise URL refusée **avant** l'arrêt ; C échec de vérification ⇒ ancien binaire restauré, `web/` retiré, service actif ; D idem avec un ancien `web/` qui revient ; E redéploiement avec copie de rollback réutilisée et ancien web conservé ; F copie de rollback douteuse refusée ; G connexion cliente établie ⇒ refus (42) ; H archive avec lien symbolique refusée |
+
+Limites honnêtes de cette simulation : l'UID de service 997 était pris dans la VM ; la copie testée du script ne diffère de l'original **que** par ce nombre (2 lignes, substitution mécanique `sed`). Le « service » est piloté par un `systemctl` factice, pas par systemd ; l'environnement est Ubuntu 24.04, pas Debian 13 ; mémoire et CPU du Pi 3B+ non représentatifs. Un premier essai de simulation a échoué sur le défaut de signaux ci-dessus et sur des artefacts du banc (arrêt factice trop court, processus d'un essai interrompu) : corrigés, rien n'a été caché.
+
+## 4. Revue indépendante (obligatoire avant exécution) — la revue n° 2 porte sur les octets V6 ci-dessus
+
+Un reviewer distinct de l'auteur (et sans droit d'édition sur le contenu revu) approuve **les octets exacts** de : `pi-update-web-operator.sh` (hash §2), le diff Rust, l'archive web finale et le hash du binaire. Points à contrôler : arrêt refusé si connexion établie ; sauvegarde hors ligne sous l'UID 997 ; copie de rollback sans écrasement ; remplacement atomique du binaire ; refus des liens symboliques/membres spéciaux dans l'archive ; `SHA256SUMS` couvrant tout l'arbre ; vérifications en TLS strict (jamais `-k`) ; **restauration automatique** (ancien binaire + ancien dossier web) à tout échec avant `completed=1` ; invariants config/unité/SPKI. Auto-test local : `bash scripts/pi-update-web-operator.sh --self-test` → `parser_self_test=PASS`, `bash -n` OK ; `shellcheck` non disponible. Preuve d'exécution réelle sous Linux : simulation 34/34 (§3).
 
 Enseignement conservé de l'échec V1–V3 (BUG-0051) : le script est envoyé par **stdin** (`bash -s`), sans citation imbriquée ni `eval`/`sed` sur des données distantes.
 
@@ -95,9 +128,9 @@ Prérequis : une **connexion maître SSH stricte/batch** ouverte par toi (les an
 
 ```bash
 CP=<chemin du ControlPath que tu as ouvert>;  HOST=<hôte Pi>
-# a) Préflight en LECTURE SEULE (aucune écriture) : service actif, hash binaire installé, absence de connexions établies,
-#    espace disque, curl présent, chemin du certificat public
-ssh -S "$CP" "$HOST" 'sudo -n sha256sum /usr/lib/chillcenter/chill-server; systemctl is-active chillcenter; df -h /usr /var/tmp | tail -2; command -v curl; ls -l /var/lib/chillcenter/data/tls/certificate.pem'
+# a) Préflight en LECTURE SEULE (aucune écriture) : sudoers autorise `env`, service actif, hash binaire installé,
+#    espace disque, curl et ss présents, chemin du certificat public
+ssh -S "$CP" "$HOST" 'sudo -n env true && echo sudo_env_ok; sudo -n sha256sum /usr/lib/chillcenter/chill-server; systemctl is-active chillcenter; df -h /usr /var/tmp | tail -2; command -v curl ss; ls -l /var/lib/chillcenter/data/tls/certificate.pem'
 # b) Copie des deux fichiers vers /var/tmp du Pi (écriture déclarée : 2 fichiers, ≈ 8 Mio)
 scp -o ControlPath="$CP" target/aarch64-unknown-linux-gnu/release/chill-server "$HOST":/var/tmp/chill-server-web.new
 scp -o ControlPath="$CP" artifacts/web-pi/chillcenter-web.tar "$HOST":/var/tmp/chillcenter-web.tar
@@ -134,7 +167,7 @@ Aucune migration SQLite n'est introduite par ce lot : l'ancien binaire reste com
 
 ## 8. Ce qui n'est pas prouvé
 
-Exécution du script opérateur sur un vrai Pi (`NOT_RUN`), durée réelle d'interruption, revue indépendante du script et du diff (`NOT_DONE`), lecture réelle depuis un navigateur sur le Pi, performances sur appareils faibles, Service Worker sur certificat auto-signé. Compilation, tests Rust, build ARM64 et essai de bout en bout Linux : faits (§3).
+Exécution du script opérateur sur le vrai Pi (`NOT_RUN` ; seule la simulation Linux/VM a eu lieu), durée réelle d'interruption, revue indépendante n° 2 des octets V6 (`EN COURS`), lecture réelle depuis un navigateur sur le Pi, performances sur appareils faibles, Service Worker sur certificat auto-signé. Compilation, tests Rust, build ARM64 et essai de bout en bout Linux : faits (§3).
 
 Rejouer l'essai de bout en bout : `colima start` puis `colima ssh -- <repo>/scripts/web-e2e-linux.sh <repo>` (le binaire et `artifacts/web-pi/chillcenter-web.tar` doivent exister), puis `colima stop`.
 
