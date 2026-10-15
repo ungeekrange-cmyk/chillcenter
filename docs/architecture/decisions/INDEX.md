@@ -1,5 +1,9 @@
 # Index des décisions techniques
 
+[ADR-0014](ADR-0014-background-catalog-deltas.md), PROPOSED, 2026-10-15, `/root` : remplace le transfert complet/contrôle synchrone de l’ADR-0013 ; curseurs persistants, deltas et transfert détaché. Revue PENDING.
+
+[ADR-0015](ADR-0015-series-season-identity.md), PROPOSED, 2026-10-15, `/root` : identité de série indépendante du titre, sources homonymes, métadonnées/affiches de saison séparées. Revue finale PENDING.
+
 [ADR-0013](ADR-0013-client-catalog-mirror.md), ACCEPTED,14octobre2026 : miroir SQLite et affiches persistées, API additive, opérations lecteur séparées ; revues indépendantes exactes APPROVED sur07358f7/7a0f480, réserve P2 nettoyage serveur documentée.
 
 [ADR-0012](ADR-0012-client-player-and-collection-pages.md), IMPLEMENTED_DETAIL,14octobre2026 : plein écran initial réglable parMac, panneau droit intégral, collections et sélection par vignettes en pages. Correction utilisateur directe ; aucun changement moteur/serveur/API. Voir la release REL-MAC-UI-PANELS-001 pour les preuves, pas une validation visuelle humaine supposée.

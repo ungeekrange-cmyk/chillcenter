@@ -153,6 +153,257 @@ pub struct ArtworkTask {
     gate: Arc<tokio::sync::Semaphore>,
     budget: Arc<Mutex<u64>>,
 }
+
+/// Closed transport work prepared while the native host holds its short context
+/// lock. `fetch` owns everything it needs and never borrows the SQLite cache.
+pub struct SyncTask {
+    transport: Transport,
+    profile: String,
+    known_revision: Option<String>,
+}
+pub struct SyncResult {
+    pub changed: bool,
+    pub reset: bool,
+    pub revision: String,
+    pub items: Vec<SyncMedia>,
+    pub deleted_ids: Vec<String>,
+    pub document: Value,
+}
+impl SyncTask {
+    pub async fn fetch(self) -> Result<SyncResult, UiError> {
+        match self.fetch_changes().await {
+            Err(error) if error.status == Some(404) && error.code == "ROUTE_NOT_FOUND" => {
+                self.fetch_legacy_snapshot().await
+            }
+            result => result,
+        }
+    }
+    async fn fetch_changes(&self) -> Result<SyncResult, UiError> {
+        let path = format!("/api/v1/profiles/{}/catalog/changes", self.profile);
+        let mut first: Value = self
+            .transport
+            .json_with_options(
+                HttpMethod::POST,
+                &path,
+                Some(&json!({"known_revision":self.known_revision})),
+                &[],
+                &[],
+            )
+            .await?;
+        if first["unchanged"] == true {
+            let revision = first["revision"]
+                .as_str()
+                .filter(|r| r.len() < 256)
+                .ok_or_else(|| error("Révision de catalogue invalide."))?
+                .to_owned();
+            if Some(revision.as_str()) != self.known_revision.as_deref() {
+                return Err(error("Révision de catalogue incohérente."));
+            }
+            return Ok(SyncResult {
+                changed: false,
+                reset: false,
+                revision,
+                items: Vec::new(),
+                deleted_ids: Vec::new(),
+                document: Value::Null,
+            });
+        }
+        let revision = first["revision"]
+            .as_str()
+            .filter(|r| r.len() < 256)
+            .ok_or_else(|| error("Révision de catalogue invalide."))?
+            .to_owned();
+        let reset = first["reset"] == true;
+        let snapshot = first["snapshot_id"]
+            .as_str()
+            .ok_or_else(|| error("Instantané de catalogue absent."))?
+            .to_owned();
+        uuid::Uuid::parse_str(&snapshot).map_err(|_| error("Instantané de catalogue invalide."))?;
+        let total = first["total"]
+            .as_u64()
+            .filter(|n| *n <= 10_000)
+            .ok_or_else(|| error("Catalogue trop volumineux."))? as usize;
+        let deleted_ids: Vec<String> = serde_json::from_value(first["deleted_ids"].clone())
+            .map_err(|_| error("Suppressions de catalogue invalides."))?;
+        if deleted_ids.len() > 10_000
+            || deleted_ids
+                .iter()
+                .any(|id| uuid::Uuid::parse_str(id).is_err())
+        {
+            return Err(error("Suppressions de catalogue invalides."));
+        }
+        let mut items: Vec<SyncMedia> = serde_json::from_value(first["items"].take())
+            .map_err(|_| error("Catalogue invalide."))?;
+        if items.len() > 100 {
+            return Err(error("Page de catalogue trop volumineuse."));
+        }
+        let mut bytes = serde_json::to_vec(&first)
+            .map_err(|_| error("Catalogue invalide."))?
+            .len();
+        let mut page = first.clone();
+        while page["has_more"] == true {
+            let offset = page["next_offset"]
+                .as_u64()
+                .ok_or_else(|| error("Page de catalogue invalide."))?
+                as usize;
+            if offset != items.len() || offset >= total {
+                return Err(error("Page de catalogue incohérente."));
+            }
+            page = self
+                .transport
+                .json_with_options(
+                    HttpMethod::GET,
+                    &format!("{path}/{snapshot}"),
+                    None::<&Value>,
+                    &[("offset", offset.to_string())],
+                    &[],
+                )
+                .await?;
+            if page["revision"] != revision {
+                return Err(error("Le catalogue a changé pendant la copie."));
+            }
+            let part: Vec<SyncMedia> = serde_json::from_value(page["items"].take())
+                .map_err(|_| error("Page catalogue invalide."))?;
+            if part.is_empty() || part.len() > 100 {
+                return Err(error("Page de catalogue invalide."));
+            }
+            bytes = bytes.saturating_add(
+                serde_json::to_vec(&part)
+                    .map_err(|_| error("Catalogue invalide."))?
+                    .len(),
+            );
+            if bytes > 32 * 1024 * 1024 {
+                return Err(error("Catalogue trop volumineux."));
+            }
+            items.extend(part);
+        }
+        if items.len() != total {
+            return Err(error("Copie du catalogue incomplète."));
+        }
+        first
+            .as_object_mut()
+            .ok_or_else(|| error("Catalogue invalide."))?
+            .remove("items");
+        first.as_object_mut().unwrap().remove("deleted_ids");
+        first["revision"] = Value::String(revision.clone());
+        Ok(SyncResult {
+            changed: true,
+            reset,
+            revision,
+            items,
+            deleted_ids,
+            document: first,
+        })
+    }
+    /// Compatibility only: an old server has no additive changes route. This
+    /// still runs as a detached SyncTask, never under UiClient's mutex.
+    async fn fetch_legacy_snapshot(&self) -> Result<SyncResult, UiError> {
+        let path = format!("/api/v1/profiles/{}/catalog/snapshot", self.profile);
+        let mut first: Value = self
+            .transport
+            .json_with_options(
+                HttpMethod::POST,
+                &path,
+                Some(&json!({"known_revision":self.known_revision})),
+                &[],
+                &[],
+            )
+            .await?;
+        if first["unchanged"] == true {
+            let revision = first["revision"]
+                .as_str()
+                .filter(|r| r.len() < 256)
+                .ok_or_else(|| error("Révision de catalogue invalide."))?
+                .to_owned();
+            if Some(revision.as_str()) != self.known_revision.as_deref() {
+                return Err(error("Révision de catalogue incohérente."));
+            }
+            return Ok(SyncResult {
+                changed: false,
+                reset: false,
+                revision,
+                items: Vec::new(),
+                deleted_ids: Vec::new(),
+                document: Value::Null,
+            });
+        }
+        let revision = first["revision"]
+            .as_str()
+            .filter(|r| r.len() < 256)
+            .ok_or_else(|| error("Révision de catalogue invalide."))?
+            .to_owned();
+        let snapshot = first["snapshot_id"]
+            .as_str()
+            .ok_or_else(|| error("Instantané de catalogue absent."))?
+            .to_owned();
+        uuid::Uuid::parse_str(&snapshot).map_err(|_| error("Instantané de catalogue invalide."))?;
+        let total = first["total"]
+            .as_u64()
+            .filter(|n| *n <= 10_000)
+            .ok_or_else(|| error("Catalogue trop volumineux."))? as usize;
+        let mut items: Vec<SyncMedia> = serde_json::from_value(first["items"].take())
+            .map_err(|_| error("Catalogue invalide."))?;
+        if items.len() > 100 {
+            return Err(error("Page de catalogue trop volumineuse."));
+        }
+        let mut page = first.clone();
+        let mut bytes = serde_json::to_vec(&first)
+            .map_err(|_| error("Catalogue invalide."))?
+            .len();
+        while page["has_more"] == true {
+            let offset = page["next_offset"]
+                .as_u64()
+                .ok_or_else(|| error("Page de catalogue invalide."))?
+                as usize;
+            if offset != items.len() || offset >= total {
+                return Err(error("Page de catalogue incohérente."));
+            }
+            page = self
+                .transport
+                .json_with_options(
+                    HttpMethod::GET,
+                    &format!("{path}/{snapshot}"),
+                    None::<&Value>,
+                    &[("offset", offset.to_string())],
+                    &[],
+                )
+                .await?;
+            if page["revision"] != revision {
+                return Err(error("Le catalogue a changé pendant la copie."));
+            }
+            let part: Vec<SyncMedia> = serde_json::from_value(page["items"].take())
+                .map_err(|_| error("Page catalogue invalide."))?;
+            if part.is_empty() || part.len() > 100 {
+                return Err(error("Page de catalogue invalide."));
+            }
+            bytes = bytes.saturating_add(
+                serde_json::to_vec(&part)
+                    .map_err(|_| error("Catalogue invalide."))?
+                    .len(),
+            );
+            if bytes > 32 * 1024 * 1024 {
+                return Err(error("Catalogue trop volumineux."));
+            }
+            items.extend(part);
+        }
+        if items.len() != total {
+            return Err(error("Copie du catalogue incomplète."));
+        }
+        first
+            .as_object_mut()
+            .ok_or_else(|| error("Catalogue invalide."))?
+            .remove("items");
+        first["revision"] = Value::String(revision.clone());
+        Ok(SyncResult {
+            changed: true,
+            reset: true,
+            revision,
+            items,
+            deleted_ids: Vec::new(),
+            document: first,
+        })
+    }
+}
 impl ArtworkTask {
     pub async fn fetch(self) -> Result<Value, UiError> {
         // Separate from navigation/player lock; one decoder/download at a time.
@@ -210,6 +461,7 @@ pub(crate) struct LocalCatalog {
     pub document: Option<Value>,
     directory: PathBuf,
     pub dirty: bool,
+    pub mutation_generation: u64,
     pub notice: Option<String>,
     gate: Arc<tokio::sync::Semaphore>,
     budget: Arc<Mutex<u64>>,
@@ -262,6 +514,7 @@ impl LocalCatalog {
             document,
             directory: image_dir,
             dirty: false,
+            mutation_generation: 0,
             notice: None,
             gate,
             budget: Arc::new(Mutex::new(used)),
@@ -280,6 +533,60 @@ impl LocalCatalog {
             }
         }
         unreachable!()
+    }
+    pub fn sync_task(&self, transport: Transport) -> SyncTask {
+        SyncTask {
+            transport,
+            profile: self.profile.clone(),
+            known_revision: self
+                .document
+                .as_ref()
+                .and_then(|d| d["revision"].as_str())
+                .map(str::to_owned),
+        }
+    }
+    /// Applies a complete immutable transfer in one SQLite transaction. Delta
+    /// pages are merged with the old mirror first, so readers never observe a
+    /// partial page or a delete-before-upsert state.
+    pub fn commit_sync(&mut self, result: SyncResult) -> Result<(), UiError> {
+        if !result.changed {
+            self.dirty = false;
+            self.notice = None;
+            return Ok(());
+        }
+        let mut merged = if result.reset {
+            Vec::new()
+        } else {
+            self.mirror_items()?
+        };
+        if !result.reset {
+            merged.retain(|m| !result.deleted_ids.iter().any(|id| id == &m.media.id));
+        }
+        for item in result.items {
+            if let Some(existing) = merged.iter_mut().find(|old| old.media.id == item.media.id) {
+                *existing = item;
+            } else {
+                merged.push(item);
+            }
+        }
+        if merged.len() > 10_000 {
+            return Err(error("Catalogue trop volumineux."));
+        }
+        self.commit(&merged, result.document)
+    }
+    fn mirror_items(&mut self) -> Result<Vec<SyncMedia>, UiError> {
+        self.store
+            .catalog(&self.profile)
+            .map_err(|_| error("Cache catalogue illisible."))?
+            .into_iter()
+            .map(|media| {
+                let revision = self
+                    .store
+                    .media_revision(&media.id)
+                    .map_err(|_| error("Cache catalogue illisible."))?;
+                Ok(SyncMedia { media, revision })
+            })
+            .collect()
     }
     async fn download_once(
         &self,
@@ -381,6 +688,10 @@ impl LocalCatalog {
         self.notice = None;
         Ok(())
     }
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+        self.mutation_generation = self.mutation_generation.wrapping_add(1);
+    }
     pub fn browse(&self, q: &BrowserQuery) -> Result<Value, UiError> {
         let page = self
             .store
@@ -412,7 +723,22 @@ impl LocalCatalog {
         kind: &str,
         id: &str,
     ) -> Result<ArtworkTask, UiError> {
-        let version = if kind == "media" {
+        let version = if kind == "season" {
+            let (tv, season) = id
+                .split_once(':')
+                .ok_or_else(|| error("Saison invalide."))?;
+            let document = self
+                .document
+                .as_ref()
+                .ok_or_else(|| error("Catalogue absent."))?;
+            if !document["season_metadata"][format!("tmdb:tv:{tv}:season:{season}")]["poster"]
+                .is_string()
+            {
+                return Err(error("Pas d’affiche de saison."));
+            }
+            let hash = Sha256::digest(document["revision"].as_str().unwrap_or_default().as_bytes());
+            u64::from_be_bytes(hash[..8].try_into().unwrap())
+        } else if kind == "media" {
             let m = self
                 .store
                 .media(&self.profile, id)
@@ -440,7 +766,15 @@ impl LocalCatalog {
             transport,
             directory: self.directory.clone(),
             key,
-            endpoint: format!("/api/v1/profiles/{}/{kind}/{id}/artwork", self.profile),
+            endpoint: if kind == "season" {
+                let (tv, season) = id.split_once(':').unwrap();
+                format!(
+                    "/api/v1/profiles/{}/series/{tv}/seasons/{season}/artwork",
+                    self.profile
+                )
+            } else {
+                format!("/api/v1/profiles/{}/{kind}/{id}/artwork", self.profile)
+            },
             gate: self.gate.clone(),
             budget: self.budget.clone(),
         })

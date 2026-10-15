@@ -4,8 +4,23 @@
 //! compare-and-swap guarded.  This module never serializes storage paths: the
 //! normal `profile_view` projection is used for every returned media item.
 use crate::Store;
-use chill_catalog::model::{Media, SeriesProvider};
+use chill_catalog::model::{Media, SeasonProvider, SeriesProvider};
 use rusqlite::{OptionalExtension, params};
+
+/// Own only a freshly created immutable poster until its database commit.
+struct PendingPoster(Option<String>);
+impl PendingPoster {
+    fn committed(&mut self) {
+        self.0 = None;
+    }
+}
+impl Drop for PendingPoster {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct ProviderSnapshot {
@@ -19,6 +34,14 @@ pub struct SeriesProviderSnapshot {
     pub series: String,
     pub members: Vec<Media>,
     pub anchor_revision: u64,
+    pub common_revision: u64,
+}
+
+#[derive(Clone)]
+pub struct SeasonProviderSnapshot {
+    pub media: Media,
+    pub members: Vec<Media>,
+    pub revision: u64,
     pub common_revision: u64,
 }
 
@@ -61,9 +84,29 @@ impl Store {
             .clone()
             .unwrap_or_else(|| anchor.media.title.clone());
         Ok(SeriesProviderSnapshot {
-            members: self.catalogue.series_members(&series)?,
+            members: self.catalogue.series_members_for(&anchor.media)?,
             series,
             anchor_revision: anchor.revision,
+            common_revision: anchor.common_revision,
+        })
+    }
+
+    /// Capture a concrete season.  A season cannot be searched independently:
+    /// it is meaningful only below the selected parent TV id.
+    pub fn provider_season_snapshot(
+        &mut self,
+        profile: &str,
+        stable: &str,
+        expected_revision: u64,
+    ) -> Result<SeasonProviderSnapshot, String> {
+        let anchor = self.provider_snapshot(profile, stable, expected_revision)?;
+        if anchor.media.category != "serie" || anchor.media.season.is_none() {
+            return Err("Cette fiche n’appartient pas à une saison de série.".into());
+        }
+        Ok(SeasonProviderSnapshot {
+            members: self.catalogue.series_members_for(&anchor.media)?,
+            media: anchor.media,
+            revision: anchor.revision,
             common_revision: anchor.common_revision,
         })
     }
@@ -168,6 +211,228 @@ impl Store {
             .map(|item| self.profile_view(profile, item))
             .collect()
     }
+
+    /// Persist selected season information as a distinct provider record and
+    /// return the refreshed profile-facing members.  Episode-specific fields
+    /// remain untouched; the UI can display season synopsis/artwork from the
+    /// returned `SeasonProvider` DTO.
+    pub fn provider_apply_season(
+        &mut self,
+        profile: &str,
+        stable: &str,
+        snapshot: &SeasonProviderSnapshot,
+        provider: &SeasonProvider,
+    ) -> Result<(SeasonProvider, Vec<Media>), String> {
+        self.require_profile(profile)?;
+        self.assert_provider_cas(stable, snapshot.revision, snapshot.common_revision)?;
+        let season = snapshot.media.season.ok_or("Saison introuvable.")?;
+        if provider.tv_id != snapshot.media.tmdb_id.unwrap_or_default() || provider.season != season
+        {
+            return Err("La saison ne correspond pas à la série sélectionnée.".into());
+        }
+        let data =
+            serde_json::to_string(provider).map_err(|_| "Métadonnées de saison invalides.")?;
+        let tx = self
+            .personal
+            .unchecked_transaction()
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        tx.execute(
+            "INSERT INTO cc_season_provider(tv_id,season,data,updated_at) VALUES(?1,?2,?3,strftime('%s','now')) ON CONFLICT(tv_id,season) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at",
+            params![provider.tv_id, provider.season, data],
+        ).map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        for item in &snapshot.members {
+            if item.season != Some(season) {
+                continue;
+            }
+            let stable_id: String = tx
+                .query_row(
+                    "SELECT stable_id FROM cc_media_identity WHERE legacy_id=?1",
+                    [&item.id],
+                    |r| r.get(0),
+                )
+                .map_err(|_| "Vidéo introuvable dans le catalogue.")?;
+            tx.execute(
+                "UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",
+                [stable_id],
+            )
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        }
+        tx.commit()
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        let items = snapshot
+            .members
+            .clone()
+            .into_iter()
+            .filter(|item| item.season == Some(season))
+            .map(|item| self.profile_view(profile, item))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((provider.clone(), items))
+    }
+
+    pub fn season_provider(
+        &self,
+        tv_id: i64,
+        season: i32,
+    ) -> Result<Option<SeasonProvider>, String> {
+        self.personal
+            .query_row(
+                "SELECT data FROM cc_season_provider WHERE tv_id=?1 AND season=?2",
+                params![tv_id, season],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?
+            .map(|data| {
+                serde_json::from_str(&data).map_err(|_| "Métadonnées de saison invalides.".into())
+            })
+            .transpose()
+    }
+
+    pub fn season_artwork_path(
+        &self,
+        profile: &str,
+        tv_id: i64,
+        season: i32,
+    ) -> Result<std::path::PathBuf, String> {
+        self.require_profile(profile)?;
+        let provider = self
+            .season_provider(tv_id, season)?
+            .ok_or("Affiche introuvable.")?;
+        let poster = provider.poster.ok_or("Affiche introuvable.")?;
+        if !std::path::Path::new(&poster).is_absolute() || poster.starts_with("file:") {
+            return Err("Affiche introuvable.".into());
+        }
+        Ok(std::path::PathBuf::from(poster))
+    }
+
+    /// Apply a local image to the frozen series member set.  A series artwork
+    /// import is common data, so it is deliberately not a one-episode edit.
+    pub fn set_custom_series_poster(
+        &mut self,
+        profile: &str,
+        stable: &str,
+        expected: u64,
+        bytes: &[u8],
+        cache: &std::path::Path,
+    ) -> Result<Vec<Media>, String> {
+        let snapshot = self.provider_series_snapshot(profile, stable, expected)?;
+        self.assert_provider_cas(stable, snapshot.anchor_revision, snapshot.common_revision)?;
+        let poster = chill_catalog::poster::store(bytes, cache)?;
+        let mut pending = PendingPoster(Some(poster.clone()));
+        let tx = self
+            .personal
+            .unchecked_transaction()
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        for item in &snapshot.members {
+            let data: String = tx
+                .query_row("SELECT data FROM media WHERE id=?1", [&item.id], |r| {
+                    r.get(0)
+                })
+                .map_err(|_| "Vidéo introuvable dans le catalogue.")?;
+            let mut updated: Media = serde_json::from_str(&data)
+                .map_err(|_| "Catalogue local endommagé : aucune donnée remplacée.")?;
+            if updated.tmdb_id != item.tmdb_id || updated.series != item.series {
+                return Err(
+                    "La série a changé pendant l’import. Votre image est conservée.".into(),
+                );
+            }
+            updated.poster = Some(poster.clone());
+            updated.poster_custom = true;
+            tx.execute(
+                "UPDATE media SET data=?1 WHERE id=?2",
+                params![
+                    serde_json::to_string(&updated).map_err(|_| "Métadonnées invalides.")?,
+                    updated.id
+                ],
+            )
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+            let stable_id: String = tx
+                .query_row(
+                    "SELECT stable_id FROM cc_media_identity WHERE legacy_id=?1",
+                    [&item.id],
+                    |r| r.get(0),
+                )
+                .map_err(|_| "Vidéo introuvable dans le catalogue.")?;
+            tx.execute(
+                "UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",
+                [stable_id],
+            )
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        }
+        tx.commit()
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        pending.committed();
+        snapshot
+            .members
+            .into_iter()
+            .map(|item| {
+                let mut updated = item;
+                updated.poster = Some(poster.clone());
+                updated.poster_custom = true;
+                self.profile_view(profile, updated)
+            })
+            .collect()
+    }
+
+    /// Store a manual season artwork independently of the show/episodes.
+    pub fn set_custom_season_poster(
+        &mut self,
+        profile: &str,
+        stable: &str,
+        expected: u64,
+        bytes: &[u8],
+        cache: &std::path::Path,
+    ) -> Result<SeasonProvider, String> {
+        let snapshot = self.provider_season_snapshot(profile, stable, expected)?;
+        self.assert_provider_cas(stable, snapshot.revision, snapshot.common_revision)?;
+        let tv_id = snapshot
+            .media
+            .tmdb_id
+            .ok_or("Sélectionnez d’abord la série TMDB.")?;
+        let season = snapshot.media.season.ok_or("Saison introuvable.")?;
+        let poster = chill_catalog::poster::store(bytes, cache)?;
+        let mut pending = PendingPoster(Some(poster.clone()));
+        let mut provider = self
+            .season_provider(tv_id, season)?
+            .unwrap_or(SeasonProvider {
+                tv_id,
+                season,
+                name: format!("Saison {season}"),
+                overview: String::new(),
+                poster: None,
+            });
+        provider.poster = Some(poster);
+        let tx = self
+            .personal
+            .unchecked_transaction()
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        tx.execute(
+            "INSERT INTO cc_season_provider(tv_id,season,data,updated_at) VALUES(?1,?2,?3,strftime('%s','now')) ON CONFLICT(tv_id,season) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at",
+            params![tv_id, season, serde_json::to_string(&provider).map_err(|_| "Métadonnées de saison invalides.")?],
+        ).map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        for item in snapshot
+            .members
+            .iter()
+            .filter(|item| item.season == Some(season))
+        {
+            let stable_id: String = tx
+                .query_row(
+                    "SELECT stable_id FROM cc_media_identity WHERE legacy_id=?1",
+                    [&item.id],
+                    |r| r.get(0),
+                )
+                .map_err(|_| "Vidéo introuvable dans le catalogue.")?;
+            tx.execute(
+                "UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",
+                [stable_id],
+            )
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        }
+        tx.commit()
+            .map_err(|_| "Erreur de base locale. Vos données n’ont pas été remplacées.")?;
+        pending.committed();
+        Ok(provider)
+    }
 }
 
 #[cfg(test)]
@@ -203,6 +468,162 @@ mod tests {
             added_at: 0,
             tmdb_id: None,
         }
+    }
+    #[test]
+    fn unknown_homonyms_keep_two_complete_source_groups_and_scoped_edits() {
+        let mut items = Vec::new();
+        for year in [2005, 2023] {
+            for season in 1..=2 {
+                for episode in 1..=2 {
+                    let mut item = media(
+                        &format!("Doctor Who ({year})/Season {season}/E{episode}.mkv"),
+                        &format!("Episode {episode}"),
+                    );
+                    item.category = "serie".into();
+                    item.series = Some("Doctor Who".into());
+                    item.season = Some(season);
+                    item.episode = Some(episode);
+                    items.push(item);
+                }
+            }
+        }
+        let (mut store, profile) = store(items);
+        let query = crate::catalog_browser::BrowserQuery {
+            grouped: true,
+            ..Default::default()
+        };
+        let page = store.browse_catalog(&profile, &query).unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert!(store.series(&profile, "Doctor Who").is_err());
+        for counter in page.series_counters.values() {
+            assert_eq!(counter.episodes, 4);
+            assert_eq!(counter.seasons, 2);
+            assert_eq!(
+                store.series(&profile, &counter.series_key).unwrap().len(),
+                4
+            );
+        }
+        let first = &page.items[0];
+        let key = page.series_counters[&first.id].series_key.clone();
+        let other = page.items[1].id.clone();
+        let epoch = store.common_revision().unwrap();
+        store
+            .update_shared_series(
+                &profile,
+                &key,
+                epoch,
+                &SeriesPatch {
+                    name: "Doctor Who".into(),
+                    year: 2005,
+                    genres: vec![],
+                    overview: "Selected only".into(),
+                    cast: vec![],
+                    directors: vec![],
+                },
+            )
+            .unwrap();
+        assert!(
+            store
+                .series(&profile, &key)
+                .unwrap()
+                .iter()
+                .all(|m| m.series_overview == "Selected only")
+        );
+        assert!(
+            store
+                .media(&profile, &other)
+                .unwrap()
+                .series_overview
+                .is_empty()
+        );
+        let revision = store.media_revision(&first.id).unwrap();
+        let snapshot = store
+            .provider_series_snapshot(&profile, &first.id, revision)
+            .unwrap();
+        let provider = SeriesProvider {
+            tmdb_id: 57243,
+            name: "Doctor Who".into(),
+            metadata: snapshot.members[0].series_metadata.clone().unwrap(),
+            poster: None,
+        };
+        store
+            .provider_apply_series(&profile, &first.id, &snapshot, &provider, true)
+            .unwrap();
+        let identified = store.series(&profile, "tmdb:tv:57243").unwrap();
+        assert_eq!(identified.len(), 4);
+        store
+            .update_shared_series(
+                &profile,
+                "tmdb:tv:57243",
+                store.common_revision().unwrap(),
+                &SeriesPatch {
+                    name: "Doctor Who".into(),
+                    year: 2005,
+                    genres: vec![],
+                    overview: "Identified edit".into(),
+                    cast: vec![],
+                    directors: vec![],
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .browse_catalog(
+                    &profile,
+                    &crate::catalog_browser::BrowserQuery {
+                        grouped: true,
+                        q: Some("Doctor Who".into()),
+                        sort: Some("title_asc".into()),
+                        ..Default::default()
+                    }
+                )
+                .unwrap()
+                .items
+                .len(),
+            2
+        );
+        // A second unchanged page must not rewrite/reparse the grouping table.
+        store.personal.execute_batch("CREATE TEMP TRIGGER no_group_rebuild BEFORE DELETE ON cc_series_group BEGIN SELECT RAISE(ABORT,'unnecessary rebuild');END;").unwrap();
+        assert_eq!(
+            store.browse_catalog(&profile, &query).unwrap().items.len(),
+            2
+        );
+    }
+    #[test]
+    fn failed_custom_series_and_season_imports_remove_only_the_new_owned_image() {
+        let mut item = media("Show/Season 1/E1.mkv", "Pilot");
+        item.category = "serie".into();
+        item.series = Some("Show".into());
+        item.season = Some(1);
+        item.episode = Some(1);
+        item.tmdb_id = Some(42);
+        let (mut store, profile) = store(vec![item]);
+        let id = store.catalog(&profile).unwrap()[0].id.clone();
+        let cache = tempdir().unwrap();
+        let bytes = include_bytes!("../../../icons/branding/vector/default.png");
+        store.personal.execute_batch("CREATE TEMP TRIGGER reject_custom_series BEFORE UPDATE ON media BEGIN SELECT RAISE(ABORT,'simulated DB failure');END;").unwrap();
+        assert!(
+            store
+                .set_custom_series_poster(&profile, &id, 1, bytes, cache.path())
+                .is_err()
+        );
+        assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 0);
+        store.personal.execute_batch("DROP TRIGGER reject_custom_series;CREATE TEMP TRIGGER reject_custom_season BEFORE INSERT ON cc_season_provider BEGIN SELECT RAISE(ABORT,'simulated DB failure');END;").unwrap();
+        assert!(
+            store
+                .set_custom_season_poster(&profile, &id, 1, bytes, cache.path())
+                .is_err()
+        );
+        assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 0);
+        store
+            .personal
+            .execute_batch("DROP TRIGGER reject_custom_season;")
+            .unwrap();
+        store
+            .set_custom_season_poster(&profile, &id, 1, bytes, cache.path())
+            .unwrap();
+        assert_eq!(store.media_revision(&id).unwrap(), 2);
+        assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 1);
     }
     fn store(items: Vec<Media>) -> (Store, String) {
         let path = tempdir().unwrap().keep().join("catalog.sqlite");
@@ -328,6 +749,37 @@ mod tests {
         assert_eq!(
             store.media(&profile, &ids[1]).unwrap().overview,
             "Corrected episode"
+        );
+    }
+
+    #[test]
+    fn season_provider_is_keyed_by_tv_id_and_does_not_touch_episode_details() {
+        let mut episode = media("doctor/s01/e01.mkv", "Pilot");
+        episode.category = "serie".into();
+        episode.series = Some("Doctor Who".into());
+        episode.season = Some(1);
+        episode.episode = Some(1);
+        episode.tmdb_id = Some(57243);
+        episode.overview = "Episode synopsis".into();
+        let (mut store, profile) = store(vec![episode]);
+        let id = store.catalog(&profile).unwrap()[0].id.clone();
+        let snapshot = store.provider_season_snapshot(&profile, &id, 1).unwrap();
+        let season = SeasonProvider {
+            tv_id: 57243,
+            season: 1,
+            name: "Season 1".into(),
+            overview: "Season synopsis".into(),
+            poster: Some("/cache/season.jpg".into()),
+        };
+        let (saved, episodes) = store
+            .provider_apply_season(&profile, &id, &snapshot, &season)
+            .unwrap();
+        assert_eq!(saved.overview, "Season synopsis");
+        assert_eq!(episodes.len(), 1);
+        assert_eq!(episodes[0].overview, "Episode synopsis");
+        assert_eq!(
+            store.season_provider(57243, 1).unwrap().unwrap().poster,
+            Some("/cache/season.jpg".into())
         );
     }
 }

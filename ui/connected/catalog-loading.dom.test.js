@@ -22,11 +22,19 @@ test("shipped catalogue loadPage fetches 0/48/96 without gaps and keeps rendered
  await f.load();
  assert.deepEqual(offsets,[0,48,96]);assert.deepEqual(f.ids(),items.map(m=>m.id));
  assert.equal(new Set(f.ids()).size,103);assert.equal(f.get("catalog-count").textContent,"103 titres");
- assert.ok(f.cardCounts.length>=3&&f.cardCounts.every(n=>n>0&&n<48));
+ assert.ok(f.cardCounts.length===1&&f.cardCounts.every(n=>n>0&&n<48));
  f.get("media").rect.top=-(Number.parseFloat(f.get("media").style.height)-800);
  vm.runInContext('catalogWindowKey="";renderCatalogWindow()',f.sandbox);
  assert.ok(f.get("media").children[0].children.some(n=>n.dataset.mediaId==="id-102"));
  assert.ok(f.get("media").children[0].children.length<48);assert.deepEqual(f.messages,[]);
+});
+test("background catalogue reload preserves old cards until all batches commit",async()=>{
+ let pending,refresh=false;const original=media(2,"old-");
+ const f=fixture(c=>refresh?new Promise(resolve=>pending=resolve):Promise.resolve({items:original,has_more:false}));
+ await f.load();const grid=f.get("media").children[0];refresh=true;const task=f.load();
+ assert.equal(f.get("media").children[0],grid);assert.deepEqual(f.ids(),original.map(m=>m.id));
+ pending({items:media(3,"new-"),has_more:false});await task;
+ assert.deepEqual(f.ids(),["new-0","new-1","new-2"]);
 });
 test("catalogue overlapping batches do not duplicate cards or lose later items",async()=>{
  const items=media(63),offsets=[];

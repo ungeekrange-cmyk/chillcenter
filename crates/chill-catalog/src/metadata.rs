@@ -1,4 +1,4 @@
-use crate::model::{Media, SeriesPatch, SeriesProvider};
+use crate::model::{Media, SeasonProvider, SeriesPatch, SeriesProvider};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{path::Path, time::Duration};
@@ -555,6 +555,43 @@ impl Tmdb {
         series.poster = None;
         let enriched = self.enrich(series, id, "tv", cache).await?;
         series_provider(&enriched)
+    }
+
+    /// Fetch a season only after the user has selected the parent TV show.
+    /// TMDB has no standalone season search endpoint; accepting arbitrary text
+    /// here would silently associate a season of a homonymous show.
+    pub async fn season_metadata(
+        &self,
+        tv_id: i64,
+        season: i32,
+        cache: &Path,
+    ) -> Result<SeasonProvider, String> {
+        if tv_id <= 0 || !(0..=500).contains(&season) {
+            return Err("Identifiant de saison TMDB invalide.".into());
+        }
+        let details = self
+            .get_checked(&format!("tv/{tv_id}/season/{season}"), &[])
+            .await
+            .map_err(String::from)?;
+        let name = text(&details, "name").trim();
+        if name.is_empty() {
+            return Err("Saison TMDB sans titre.".into());
+        }
+        let poster = match details["poster_path"].as_str() {
+            Some(path) => Some(
+                self.download_artwork_checked(path, cache)
+                    .await
+                    .map_err(String::from)?,
+            ),
+            None => None,
+        };
+        Ok(SeasonProvider {
+            tv_id,
+            season,
+            name: name.into(),
+            overview: text(&details, "overview").into(),
+            poster,
+        })
     }
 }
 

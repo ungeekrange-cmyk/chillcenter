@@ -4,6 +4,7 @@ class Element{
  constructor(tag='div',text='',cls=''){this.tagName=tag.toUpperCase();this.textContent=text||'';this.className=cls;this.children=[];this.dataset={};this.style={};this.attributes={};this.value='';this.hidden=false;this.disabled=false;this.isConnected=true;this.scrollTop=0;this.clientHeight=600;this.events={};this.elements={name:new NameInput()};const classes=new Set();this.classList={add:(...a)=>a.forEach(x=>classes.add(x)),remove:(...a)=>a.forEach(x=>classes.delete(x)),contains:x=>classes.has(x),toggle:(x,on)=>on?classes.add(x):classes.delete(x)};}
  append(...children){this.children.push(...children);children.forEach(c=>{c.parentElement=this;});}prepend(...c){this.children.unshift(...c);}replaceChildren(...c){this.children=[];this.append(...c);}setAttribute(k,v){this.attributes[k]=v;}addEventListener(k,v){this.events[k]=v;}getBoundingClientRect(){return {width:1000,top:0,x:0,y:0,height:this.clientHeight};}querySelector(){return new Element();}before(){}remove(){this.isConnected=false;}showModal(){this.open=true;}close(){this.open=false;}focus(){}reset(){this.elements.name.value='';}contains(n){return this.children.includes(n);}closest(){return null;}
  get firstChild(){return this.children[0];}
+ get lastChild(){return this.children[this.children.length-1];}
 }
 class NameInput{constructor(){this.value='';}focus(){}}
 function fixture(read){

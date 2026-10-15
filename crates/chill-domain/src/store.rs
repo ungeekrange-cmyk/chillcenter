@@ -9,7 +9,7 @@ use crate::{
 };
 use chill_catalog::{
     database::Database,
-    model::{Collection, Media, MediaPatch},
+    model::{Collection, Media, MediaPatch, SeasonProvider},
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde_json::{Value, json};
@@ -51,6 +51,7 @@ pub struct CatalogPage {
 }
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SeriesCounters {
+    pub series_key: String,
     pub seasons: u64,
     pub episodes: u64,
     pub unwatched: u64,
@@ -89,6 +90,10 @@ pub struct SyncSnapshot {
     pub sagas: Vec<SagaView>,
     pub playlists: Vec<PlaylistView>,
     pub series_revisions: std::collections::BTreeMap<String, u64>,
+    /// Season data is part of the cache document, not duplicated on every
+    /// episode. Keys are `tmdb:tv:<id>:season:<number>`.
+    #[serde(default)]
+    pub season_metadata: std::collections::BTreeMap<String, SeasonProvider>,
     #[serde(skip)]
     pub serialized_bytes: usize,
     #[serde(skip)]
@@ -134,9 +139,23 @@ impl Store {
                 stable_id TEXT PRIMARY KEY, legacy_id TEXT NOT NULL UNIQUE,
                 relative_path TEXT NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS cc_series_group (
+                legacy_id TEXT PRIMARY KEY,
+                source_key TEXT NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS cc_media_revision (
                 stable_id TEXT PRIMARY KEY REFERENCES cc_media_identity(stable_id) ON DELETE CASCADE,
                 revision INTEGER NOT NULL DEFAULT 1
+             );
+             -- Provider data shared by every episode of a selected TV season.
+             -- It is keyed by TMDB id, not title, so homonymous series cannot
+             -- overwrite each other.
+             CREATE TABLE IF NOT EXISTS cc_season_provider (
+                tv_id INTEGER NOT NULL CHECK(tv_id>0),
+                season INTEGER NOT NULL CHECK(season>=0),
+                data TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY(tv_id,season)
              );
              CREATE TABLE IF NOT EXISTS cc_media_fingerprint (
                 stable_id TEXT PRIMARY KEY REFERENCES cc_media_identity(stable_id) ON DELETE CASCADE,
@@ -320,6 +339,7 @@ impl Store {
             "cc_media_revision",
             "cc_preferences",
             "cc_series_speed",
+            "cc_season_provider",
             "collection_members",
             "collection_positions",
             "collection_artwork",
@@ -588,11 +608,49 @@ impl Store {
         if name.is_empty() || name.len() > 500 {
             return Err("Série invalide.".into());
         }
+        if let Some(anchor) = name.strip_prefix("media:") {
+            let raw = self.catalogue.get(&self.legacy_id(anchor)?)?;
+            let mut members = self
+                .catalogue
+                .series_members_for(&raw)?
+                .into_iter()
+                .map(|m| self.profile_view(profile_id, m))
+                .collect::<Result<Vec<_>, _>>()?;
+            members.sort_by_key(|m| {
+                (
+                    m.season.unwrap_or(i32::MAX),
+                    m.episode.unwrap_or(i32::MAX),
+                    m.title.clone(),
+                )
+            });
+            return Ok(members);
+        }
+        let selected_tmdb = name
+            .strip_prefix("tmdb:tv:")
+            .and_then(|raw| raw.parse::<i64>().ok());
+        if name.starts_with("tmdb:tv:") && selected_tmdb.is_none() {
+            return Err("Identifiant de série invalide.".into());
+        }
         let mut members: Vec<_> = self
             .catalog(profile_id)?
             .into_iter()
-            .filter(|m| m.category == "serie" && m.series.as_deref().unwrap_or(&m.title) == name)
+            .filter(|m| {
+                m.category == "serie"
+                    && match selected_tmdb {
+                        Some(id) => m.tmdb_id == Some(id),
+                        None => m.series.as_deref().unwrap_or(&m.title) == name,
+                    }
+            })
             .collect();
+        if selected_tmdb.is_none() {
+            let groups = members
+                .iter()
+                .filter_map(chill_catalog::database::series_source_key)
+                .collect::<std::collections::HashSet<_>>();
+            if groups.len() > 1 {
+                return Err("Plusieurs séries portent ce nom. Ouvrez-la depuis sa vignette pour choisir la bonne fiche.".into());
+            }
+        }
         members.sort_by_key(|m| {
             (
                 m.season.unwrap_or(i32::MAX),
@@ -633,11 +691,16 @@ impl Store {
         let item = self.media(profile, media)?;
         match (context.kind.as_str(), context.id.as_deref()) {
             ("standalone", None) => Ok(()),
-            ("series", Some(name))
-                if item.category == "serie"
-                    && item.series.as_deref().unwrap_or(&item.title) == name =>
-            {
-                Ok(())
+            ("series", Some(name)) if item.category == "serie" => {
+                if self
+                    .series(profile, name)?
+                    .iter()
+                    .any(|member| member.id == media)
+                {
+                    Ok(())
+                } else {
+                    Err("Cette vidéo n’appartient pas à cette série.".into())
+                }
             }
             ("playlist", Some(id)) => {
                 let list = self.playlist(profile, id)?;
@@ -698,7 +761,7 @@ impl Store {
                 {
                     None
                 } else {
-                    self.series(profile, current.series.as_deref().unwrap_or(&current.title))?
+                    self.series(profile, &format!("media:{}", current.id))?
                         .into_iter()
                         .find(|m| (m.season, m.episode) > (current.season, current.episode))
                         .map(|m| m.id)
@@ -935,14 +998,9 @@ impl Store {
             if target.category != "serie" {
                 return Err("Cette portée est réservée aux séries.".into());
             }
-            self.catalog(profile_id)?
+            self.series(profile_id, &format!("media:{}", target.id))?
                 .into_iter()
-                .filter(|m| {
-                    m.category == "serie"
-                        && m.series.as_deref().unwrap_or(&m.title)
-                            == target.series.as_deref().unwrap_or(&target.title)
-                        && (scope == "series" || m.season == target.season)
-                })
+                .filter(|m| scope == "series" || m.season == target.season)
                 .map(|m| m.id)
                 .collect()
         };
@@ -1379,8 +1437,42 @@ impl Store {
         let mut series_revisions = std::collections::BTreeMap::new();
         for item in &items {
             if item.media.category == "serie" {
-                let key = item.media.series.as_ref().unwrap_or(&item.media.title);
+                let key = item
+                    .media
+                    .tmdb_id
+                    .map(|id| format!("tmdb:tv:{id}"))
+                    .unwrap_or_else(|| {
+                        item.media
+                            .series
+                            .clone()
+                            .unwrap_or_else(|| item.media.title.clone())
+                    });
                 series_revisions.insert(key.clone(), series_revision);
+            }
+        }
+        let known_seasons = items
+            .iter()
+            .filter_map(|item| {
+                Some((
+                    item.media.tmdb_id?,
+                    item.media.season?,
+                    item.media.category == "serie",
+                ))
+            })
+            .filter(|(_, _, series)| *series)
+            .map(|(tv_id, season, _)| (tv_id, season))
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut season_metadata = std::collections::BTreeMap::new();
+        for (tv_id, season) in known_seasons {
+            if let Some(mut metadata) = self.season_provider(tv_id, season)? {
+                // The record stores a server-local cached path.  Sync DTOs,
+                // including durable delta checkpoints, must never contain it.
+                if metadata.poster.is_some() {
+                    metadata.poster = Some(format!(
+                        "/api/v1/profiles/{profile}/series/{tv_id}/seasons/{season}/artwork"
+                    ));
+                }
+                season_metadata.insert(format!("tmdb:tv:{tv_id}:season:{season}"), metadata);
             }
         }
         let mut snapshot = SyncSnapshot {
@@ -1388,6 +1480,7 @@ impl Store {
             sagas: self.sagas()?,
             playlists: self.playlists(profile)?,
             series_revisions,
+            season_metadata,
             serialized_bytes: 0,
             captured_revision,
         };
@@ -2121,6 +2214,38 @@ impl Store {
         tx.execute("INSERT OR IGNORE INTO cc_media_revision(stable_id,revision) SELECT stable_id,1 FROM cc_media_identity", []).map_err(db_error)?;
         tx.commit().map_err(db_error)
     }
+    pub(crate) fn refresh_series_groups(&self) -> Result<(), String> {
+        let revision = i64::try_from(self.common_revision()?).map_err(|_| "Révision invalide.")?;
+        self.personal.execute_batch("CREATE TABLE IF NOT EXISTS cc_series_group_state(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL);").map_err(db_error)?;
+        let cached: Option<i64> = self
+            .personal
+            .query_row(
+                "SELECT revision FROM cc_series_group_state WHERE id=1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        if cached == Some(revision) {
+            return Ok(());
+        }
+        let media = self.catalogue.list()?;
+        self.ensure_identities(&media)?;
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        tx.execute("DELETE FROM cc_series_group", [])
+            .map_err(db_error)?;
+        for item in media {
+            if let Some(key) = chill_catalog::database::series_source_key(&item) {
+                tx.execute(
+                    "INSERT INTO cc_series_group(legacy_id,source_key) VALUES(?1,?2)",
+                    params![item.id, key],
+                )
+                .map_err(db_error)?;
+            }
+        }
+        tx.execute("INSERT INTO cc_series_group_state(id,revision) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision",[revision]).map_err(db_error)?;
+        tx.commit().map_err(db_error)
+    }
     pub(crate) fn stable_id(&self, legacy: &str) -> Result<String, String> {
         self.personal
             .query_row(
@@ -2431,6 +2556,44 @@ mod tests {
             retry.captured_revision,
             reader.sync_revision(&profile.id).unwrap()
         );
+    }
+    #[test]
+    fn sync_snapshot_carries_season_metadata_without_server_path() {
+        let dir = tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("season.sqlite")).unwrap();
+        let profile = store.create_profile("Viewer").unwrap();
+        let mut episode = media("Doctor/S01/E01.mkv", "/fixture/Doctor/Season 01/E01.mkv");
+        episode.category = "serie".into();
+        episode.series = Some("Doctor Who".into());
+        episode.season = Some(1);
+        episode.episode = Some(1);
+        episode.tmdb_id = Some(57243);
+        store.snapshot(vec![episode]).unwrap();
+        let provider = SeasonProvider {
+            tv_id: 57243,
+            season: 1,
+            name: "Season 1".into(),
+            overview: "Shared season synopsis".into(),
+            poster: Some("/private/posters/season.jpg".into()),
+        };
+        store
+            .personal
+            .execute(
+                "INSERT INTO cc_season_provider(tv_id,season,data,updated_at) VALUES(?1,?2,?3,1)",
+                params![57243, 1, serde_json::to_string(&provider).unwrap()],
+            )
+            .unwrap();
+        let snapshot = store.sync_snapshot(&profile.id).unwrap();
+        let season = snapshot
+            .season_metadata
+            .get("tmdb:tv:57243:season:1")
+            .unwrap();
+        assert_eq!(season.overview, "Shared season synopsis");
+        let expected = format!(
+            "/api/v1/profiles/{}/series/57243/seasons/1/artwork",
+            profile.id
+        );
+        assert_eq!(season.poster.as_deref(), Some(expected.as_str()));
     }
     #[test]
     fn scan_publishes_new_media_revision_without_legacy_catalog_warmup() {

@@ -28,6 +28,7 @@ fn db(_: rusqlite::Error) -> String {
 impl Store {
     pub fn browse_catalog(&self, profile: &str, q: &BrowserQuery) -> Result<CatalogPage, String> {
         self.require_profile(profile)?;
+        self.refresh_series_groups()?;
         let limit = if q.limit == 0 { 48 } else { q.limit };
         if limit > MAX_CATALOG_PAGE
             || q.offset > i64::MAX as usize
@@ -63,17 +64,21 @@ impl Store {
             r#"WITH base AS (
    SELECT m.id AS legacy,m.data,i.stable_id,
     json_extract(m.data,'$.category') category,
-    CASE WHEN json_extract(m.data,'$.category')='serie' THEN COALESCE(json_extract(m.data,'$.series'),json_extract(m.data,'$.title')) END series_key,
+    CASE WHEN json_extract(m.data,'$.category')='serie' THEN CASE
+       WHEN json_extract(m.data,'$.tmdb_id') IS NOT NULL THEN 'tmdb:tv:'||json_extract(m.data,'$.tmdb_id')
+       ELSE COALESCE(g.source_key,'media:'||i.stable_id)
+    END END series_key,
+    CASE WHEN json_extract(m.data,'$.category')='serie' THEN COALESCE(json_extract(m.data,'$.series'),json_extract(m.data,'$.title')) END series_label,
     COALESCE(json_extract(m.data,'$.series_metadata.year'),json_extract(m.data,'$.year')) sort_year,
     COALESCE(json_extract(m.data,'$.series_metadata.genres'),json_extract(m.data,'$.genres'),'[]') genres,
     COALESCE(s.watched,0) seen,s.rating rating,json_extract(m.data,'$.added_at') added
-   FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id LEFT JOIN cc_profile_state s ON s.stable_media_id=i.stable_id AND s.profile_id=?1
+   FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id LEFT JOIN cc_series_group g ON g.legacy_id=m.id LEFT JOIN cc_profile_state s ON s.stable_media_id=i.stable_id AND s.profile_id=?1
   ), full_series AS (SELECT series_key,MIN(seen) all_seen,COUNT(DISTINCT COALESCE(json_extract(data,'$.season'),-1)) seasons,COUNT(*) episodes,SUM(1-seen) unwatched FROM base WHERE category='serie' GROUP BY series_key),
   eligible AS (
-   SELECT b.*,CASE WHEN ?2 AND category='serie' THEN series_key ELSE json_extract(data,'$.title') END label,
+   SELECT b.*,CASE WHEN ?2 AND category='serie' THEN series_label ELSE json_extract(data,'$.title') END label,
     CASE WHEN ?2 AND category='serie' THEN (SELECT all_seen FROM full_series f WHERE f.series_key=b.series_key) ELSE seen END visible_seen
    FROM base b WHERE (?3 IS NULL OR category=?3)
-    AND (?4='' OR json_extract(data,'$.title') LIKE '%'||?4||'%' ESCAPE '\' OR series_key LIKE '%'||?4||'%' ESCAPE '\')
+    AND (?4='' OR json_extract(data,'$.title') LIKE '%'||?4||'%' ESCAPE '\' OR series_label LIKE '%'||?4||'%' ESCAPE '\')
     AND (?5 IS NULL OR EXISTS(SELECT 1 FROM json_each(genres) WHERE value=?5))
     AND (?6 IS NULL OR sort_year=?6 OR (?6=0 AND sort_year IS NULL))
     AND (?7 IS NULL OR json_extract(data,'$.available')=?7)
@@ -122,6 +127,11 @@ impl Store {
                     series_counters.insert(
                         item.id.clone(),
                         SeriesCounters {
+                            series_key: if item.tmdb_id.is_some() {
+                                format!("tmdb:tv:{}", item.tmdb_id.unwrap())
+                            } else {
+                                format!("media:{}", item.id)
+                            },
                             seasons: checked(seasons)?,
                             episodes: checked(episodes)?,
                             unwatched: checked(unwatched)?,
@@ -219,5 +229,35 @@ mod tests {
             )
             .unwrap();
         assert!(literal.items.is_empty());
+    }
+
+    #[test]
+    fn identified_homonymous_series_are_not_collapsed_into_one_card() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("db.sqlite")).unwrap();
+        let profile = store.create_profile("A").unwrap().id;
+        let root = std::path::Path::new("/fixture");
+        let mut old =
+            chill_catalog::scanner::parse_file(root, &root.join("Doctor.Who.2005.S01E01.mkv"));
+        let mut new =
+            chill_catalog::scanner::parse_file(root, &root.join("Doctor.Who.2023.S01E01.mkv"));
+        for item in [&mut old, &mut new] {
+            item.category = "serie".into();
+            item.series = Some("Doctor Who".into());
+        }
+        old.tmdb_id = Some(57243);
+        new.tmdb_id = Some(239770);
+        store.snapshot(vec![old, new]).unwrap();
+        let page = store
+            .browse_catalog(
+                &profile,
+                &BrowserQuery {
+                    category: Some("serie".into()),
+                    grouped: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(page.items.len(), 2);
     }
 }

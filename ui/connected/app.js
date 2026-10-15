@@ -7,9 +7,10 @@ function node(tag,text,cls) { const n=document.createElement(tag); if(text!==und
 async function invoke(command) { return window.__TAURI__.core.invoke("ui_command",{command}); }
 async function run(command, update=true, progress="") {
   if(busy)return null; busy=true;document.body.setAttribute("aria-busy","true");const disabledBefore=new Map();document.querySelectorAll("button,input,select").forEach(n=>{disabledBefore.set(n,n.disabled);n.disabled=true;});message(progress);
-  try { const result=await invoke(command);if(update){state=result;render();}return result; }
+  let result;try { result=await invoke(command);if(update){state=result;render();} }
   catch(error){$("profile-switch").value=state.profile_id||"";message(error?.message||String(error));if(error?.status===404)setTimeout(async()=>{if(await run({action:"refresh"})){if(!state.profile_id)$("media").replaceChildren();}},0);return null;}
   finally{busy=false;document.body.removeAttribute("aria-busy");for(const [n,disabled] of disabledBefore)if(n.isConnected)n.disabled=disabled;pager();}
+  if(result&&/^(create_playlist|rename_playlist|delete_playlist|add_playlist|remove_playlist_member|reorder_playlist|create_saga|rename_saga|delete_saga|add_saga|remove_saga_member|reorder_saga|saga_member_artwork|set_watched|set_rating|group_rating|edit_media|edit_series|forget_unavailable)$/.test(command.action))await syncAfterMutation();return result;
 }
 function render(){
   if(window.adminContextChanged)window.adminContextChanged();
@@ -81,22 +82,22 @@ function renderCatalogWindow(){
  const grid=node("div",undefined,"virtual-window"+(list?" list":""));grid.style.top=windowInfo.top+"px";grid.style.gridTemplateColumns="repeat("+windowInfo.columns+",minmax(0,1fr))";
  for(let index=windowInfo.start;index<windowInfo.end;index++){
   const m=catalogItems[index],card=node("article",undefined,"media-card catalog-open"),poster=node("div",m.title.slice(0,1).toUpperCase(),"poster"),info=node("div",undefined,"info");
-  card.dataset.mediaId=m.id;card.tabIndex=0;
-  info.append(node("h2",m.title),node("p",[m.year,(m.genres||[]).slice(0,2).join(", "),m.rating?"★".repeat(m.rating):null].filter(Boolean).join(" · ")));
-  const actions=node("div",undefined,"actions"),watched=node("button",m.watched?"Vu ✓":"Non vu","secondary watched-toggle"),rating=node("select");
-  rating.setAttribute("aria-label","Note de "+m.title);
-  for(const [value,text]of[["","Sans note"],["1","★"],["2","★★"],["3","★★★"],["4","★★★★"],["5","★★★★★"]]){const o=node("option",text);o.value=value;rating.append(o);}rating.value=m.rating?String(m.rating):"";
+  card.dataset.mediaId=m.id;card.tabIndex=0;const visual=node("div",m.title.slice(0,1).toUpperCase(),"poster-image");poster.replaceChildren(visual);
+  info.append(node("h2",m.title),node("p",[m.year,(m.genres||[]).slice(0,2).join(", ")].filter(Boolean).join(" · ")));
+  if(m.rating){const stars=node("p","★".repeat(m.rating),"poster-rating");stars.setAttribute("aria-label","Ma note : "+m.rating+" sur 5");info.append(stars);}
+  const actions=node("div",undefined,"poster-actions"),watched=node("button",m.watched?"✓":"○","poster-watched");
+  watched.setAttribute("aria-label",m.watched?"Marquer non vu":"Marquer vu");watched.setAttribute("aria-pressed",String(m.watched));
   if(m.category!=="serie"){
    watched.onclick=async()=>{if(await run({action:"set_watched",media_id:m.id,watched:!m.watched},false))await loadPage();};
-   rating.onchange=async()=>{if(await run({action:"set_rating",media_id:m.id,rating:rating.value?Number(rating.value):null},false))await loadPage();};
    const play=node("button","▶","play-video");play.setAttribute("aria-label","Lire "+m.title);play.disabled=!m.available;play.onclick=()=>window.chillPlay(m.id);
-   actions.append(play,watched,rating);
+   const add=node("button","+","poster-add");add.setAttribute("aria-label","Ajouter à une liste de lecture ou une saga");add.onclick=()=>window.catalogPickCollection?.(m.id,m.category);
+   actions.append(play,watched,add);
   }else{
    const counters=catalogCounters[m.id];
    info.append(node("p",counters?counters.seasons+" saisons · "+counters.episodes+" épisodes · "+counters.unwatched+" non vus":m.watched?"Tous les épisodes sont vus":"Des épisodes restent à voir","series-counts"));
   }
-  info.append(actions);if(!m.available)info.append(node("p","Indisponible","unavailable-badge"));
-  card.append(poster,info);const open=()=>m.category==="serie"?window.catalogOpenSeries?.(m.series||m.title):window.catalogOpenMedia?.(m.id);
+  poster.append(actions);if(!m.available)info.append(node("p","Indisponible","unavailable-badge"));
+  card.append(poster,info);const open=()=>m.category==="serie"?window.catalogOpenSeries?.(catalogCounters[m.id]?.series_key||(m.tmdb_id?"tmdb:tv:"+m.tmdb_id:"media:"+m.id)):window.catalogOpenMedia?.(m.id);
   card.onclick=event=>{if(!event.target.closest("button,select,summary,details"))open();};
   card.onkeydown=event=>{if((event.key==="Enter"||event.key===" ")&&!event.target.closest("button,select,summary,details")){event.preventDefault();open();}};
   window.catalogEnhanceCard?.(card,m);grid.append(card);
@@ -117,22 +118,21 @@ async function catalogRequest(command,generation,context){
 }
 async function loadPage(){
  const generation=++catalogGeneration,context=state.server_id+":"+state.profile_id;
- catalogItems=[];catalogCounters={};catalogWindowKey="";$("media").replaceChildren();$("media").style.height="";window.resetArtwork?.();
- if(!state.profile_id)return;
- const filters=catalogFilters(),ids=new Set();let at=0;
- $("catalog-count").textContent="Chargement du catalogue…";
+ if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return;}
+ const filters=catalogFilters(),ids=new Set(),staged=[],counters={};let at=0;
+ if(!catalogItems.length)$("catalog-count").textContent="Chargement du catalogue…";
  for(;;){
   const page=await catalogRequest(catalogCommand(filters,at,true),generation,context);
   if(!page||generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return;
   if(!Array.isArray(page.items)||page.items.length>CATALOG_PAGE_SIZE||page.has_more&&page.items.length===0){message("Réponse catalogue incohérente.");return;}
-  let added=0;for(const item of page.items){if(!ids.has(item.id)){ids.add(item.id);catalogItems.push(item);added++;}}
-  Object.assign(catalogCounters,page.series_counters||{});
-  $("catalog-count").textContent=catalogItems.length+" titres"+(page.has_more?" · chargement…":"");catalogWindowKey="";renderCatalogWindow();
+  let added=0;for(const item of page.items){if(!ids.has(item.id)){ids.add(item.id);staged.push(item);added++;}}
+  Object.assign(counters,page.series_counters||{});
   if(!page.has_more)break;
-  if(!added||catalogItems.length>=30000){message("Catalogue trop volumineux ou modifié pendant le chargement. Rechargez depuis Administration.");return;}
+  if(!added||staged.length>=30000){message("Catalogue trop volumineux ou modifié pendant le chargement. Rechargez depuis Administration.");return;}
   at+=page.items.length;
  }
- if(!catalogItems.length){$("media").append(node("p","Aucun titre ne correspond. Configurez puis scannez la bibliothèque dans Administration.","muted"));}
+ catalogItems=staged;catalogCounters=counters;catalogWindowKey="";$("catalog-count").textContent=catalogItems.length+" titres";
+ if(catalogItems.length)renderCatalogWindow();else{$("media").style.height="";$("media").replaceChildren(node("p","Aucun titre ne correspond. Configurez puis scannez la bibliothèque dans Administration.","muted"));}
 }
 $("connect-form").onsubmit=e=>{e.preventDefault();connect($("address").value);};
 $("approve-trust").onclick=async()=>{const r=await run({action:"approve",token:state.token});if(r?.profile_id)await loadPage();};
@@ -140,12 +140,12 @@ $("reject-trust").onclick=()=>run({action:"disconnect"});
 $("server-switch").onclick=()=>run({action:"disconnect"});
 $("profile-switch").onchange=()=>selectProfile($("profile-switch").value);
 for(const id of ["create-first","create-admin","create-profile-menu"])$(id).onsubmit=async e=>{e.preventDefault();const name=e.currentTarget.elements.name.value;const r=await run({action:"create_profile",name});if(r){$(id).reset();$("profile-menu").open=false;}};
-$("admin-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("admin");const context=state.server_id+":"+state.profile_id,current=()=>context===state.server_id+":"+state.profile_id&&shellSection==="admin";if(await run({action:"refresh"})){if(!current())return;$("admin-panel").hidden=false;await pollScan();if(!current())return;await unavailableAdmin();if(current())await window.refreshTmdbStatus?.();}};
+$("admin-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("admin");const context=state.server_id+":"+state.profile_id,current=()=>context===state.server_id+":"+state.profile_id&&shellSection==="admin";$("admin-panel").hidden=false;void syncCatalog();await pollScan();if(!current())return;await unavailableAdmin();if(current())await window.refreshTmdbStatus?.();};
 $("admin-close").onclick=()=>{$("admin-panel").hidden=true;clearTimeout(timer);};
 $("library-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_library",video_root:$("video-root").value.trim()||null,expected_revision:state.library.revision}))message("Chemin enregistré sur le serveur.");};
 $("preferences-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_preferences",audio_language:$("audio-language").value,subtitle_language:$("subtitle-language").value,autoplay_seconds:$("autoplay").value==="off"?null:Number($("autoplay").value)}))message("Préférences du profil enregistrées.");};
 $("theme").onchange=()=>run({action:"theme",theme:$("theme").value});
-$("filter-form").onsubmit=e=>{e.preventDefault();offset=0;loadPage();};$("refresh-catalog").onclick=async()=>{const control=$("refresh-catalog");control.disabled=true;try{const refreshed=await run({action:"refresh"},true,"Vérification des nouveautés sur le serveur…");if(refreshed){await loadPage();message(state.catalog_cache?.offline?state.catalog_cache.notice:"Catalogue actualisé.");}}finally{control.disabled=false;}};
+$("filter-form").onsubmit=e=>{e.preventDefault();offset=0;loadPage();};$("refresh-catalog").onclick=()=>syncCatalog();
 $("view-mode").onchange=()=>{catalogWindowKey="";renderCatalogWindow();};
 $("poster-size").oninput=()=>{document.documentElement.style.setProperty("--poster-size",$("poster-size").value+"px");catalogWindowKey="";renderCatalogWindow();};
 $("scan").onclick=async()=>{if(await run({action:"start_scan"},false))await pollScan();};
@@ -164,5 +164,12 @@ $("cancel-delete").onclick=()=>{$("confirm-delete").close();deleting=null;};
 $("confirm-delete").addEventListener("cancel",()=>{deleting=null;});
 $("confirm-delete-button").onclick=async()=>{if(!deleting)return;const p=deleting;$("confirm-delete").close();deleting=null;if(await run({action:"delete_profile",id:p.id,confirm_id:p.id})){$("media").replaceChildren();if(state.profile_id)await loadPage();}};
 let lastFocusRefresh=0;
-window.addEventListener("focus",async()=>{if(state.stage!=="connected"||!state.profile_id||busy||playerState?.stage==="player")return;const now=Date.now();if(now-lastFocusRefresh<5000)return;lastFocusRefresh=now;const refreshed=await run({action:"refresh"},true,"Vérification des nouveautés sur le serveur…");if(refreshed&&state.profile_id)await loadPage();});
-window.chillReady=(async()=>{if(!window.__TAURI__){message("Ouvrez cette interface depuis l'application Chill Center, pas directement dans un navigateur.");return;}const r=await run({action:"boot"});if(r?.profile_id)await loadPage();})();
+let syncPromise=null;
+async function syncCatalog(){
+ if(syncPromise||state.stage!=="connected"||!state.profile_id)return syncPromise;
+ const context=state.server_id+":"+state.profile_id;let icon=$("sync-indicator");if(!icon){icon=node("span","⟳","sync-indicator");icon.id="sync-indicator";icon.setAttribute("role","status");$("profile-menu").before(icon);}icon.hidden=false;icon.classList.add("syncing");icon.title="Vérification des nouveautés";icon.setAttribute("aria-label",icon.title);
+ syncPromise=(async()=>{try{const result=await invoke({action:"sync_catalog"});if(context!==state.server_id+":"+state.profile_id)return;if(result.changed)await loadPage();icon.title=result.discarded?"Mise à jour différée après une modification locale":"Catalogue à jour";}catch(error){if(context===state.server_id+":"+state.profile_id){icon.title="Serveur indisponible — catalogue local conservé";}}finally{icon.classList.remove("syncing");icon.setAttribute("aria-label",icon.title);syncPromise=null;}})();return syncPromise;
+}
+async function syncAfterMutation(){if(syncPromise)await syncPromise;await syncCatalog();}
+window.addEventListener("focus",()=>{if(state.stage!=="connected"||!state.profile_id||busy)return;const now=Date.now();if(now-lastFocusRefresh<5000)return;lastFocusRefresh=now;void syncCatalog();});
+window.chillReady=(async()=>{if(!window.__TAURI__){message("Ouvrez cette interface depuis l'application Chill Center, pas directement dans un navigateur.");return;}const r=await run({action:"boot"});if(r?.profile_id){await loadPage();void syncCatalog();}})();

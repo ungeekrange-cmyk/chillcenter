@@ -1,6 +1,7 @@
 pub mod administration;
 pub mod ai;
 pub mod catalog_browser;
+pub mod catalog_delta;
 pub mod fingerprint;
 pub mod import;
 pub mod legacy;

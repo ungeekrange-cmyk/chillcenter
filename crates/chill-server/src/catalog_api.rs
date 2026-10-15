@@ -84,6 +84,14 @@ pub fn routes() -> Router<AppState> {
             put(upload_poster).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
         )
         .route(
+            "/profiles/{profile}/media/{media}/series/poster",
+            put(upload_series_poster).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
+        .route(
+            "/profiles/{profile}/media/{media}/season/poster",
+            put(upload_season_poster).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
+        .route(
             "/profiles/{profile}/media/{media}/subtitles",
             get(crate::media_stream::subtitles),
         )
@@ -94,6 +102,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/profiles/{profile}/series/{series}",
             get(series).put(edit_series),
+        )
+        .route(
+            "/profiles/{profile}/series/{tv}/seasons/{season}/artwork",
+            get(season_artwork),
         )
         .route(
             "/profiles/{profile}/sagas/{saga}/artwork",
@@ -206,6 +218,7 @@ async fn create_snapshot(
     let sagas = snapshot.sagas.clone();
     let playlists = snapshot.playlists.clone();
     let series_revisions = snapshot.series_revisions.clone();
+    let season_metadata = snapshot.season_metadata.clone();
     let has_more = total > first.len();
     {
         let mut cache = snapshot_cache()
@@ -257,7 +270,7 @@ async fn create_snapshot(
         }
     });
     Ok(Json(
-        json!({"revision":revision,"snapshot_id":id,"total":total,"items":first,"sagas":sagas,"playlists":playlists,"series_revisions":series_revisions,"has_more":has_more,"next_offset":if has_more { Some(SYNC_PAGE) } else { None::<usize> }}),
+        json!({"revision":revision,"snapshot_id":id,"total":total,"items":first,"sagas":sagas,"playlists":playlists,"series_revisions":series_revisions,"season_metadata":season_metadata,"has_more":has_more,"next_offset":if has_more { Some(SYNC_PAGE) } else { None::<usize> }}),
     ))
 }
 async fn snapshot_page(
@@ -327,6 +340,53 @@ async fn upload_poster(
     Ok(Json(json!({"media":media,"revision":revision})))
 }
 
+async fn upload_series_poster(
+    State(state): State<AppState>,
+    Path((profile, media)): Path<(String, String)>,
+    Query(query): Query<PosterRevision>,
+    bytes: Bytes,
+) -> Result<Json<Value>, ApiError> {
+    let cache = state.config.data_dir.join("posters");
+    let current = media.clone();
+    let expected = query.expected_revision;
+    let members = state
+        .database
+        .call(move |s| s.set_custom_series_poster(&profile, &media, expected, &bytes, &cache))
+        .await?;
+    let media = members
+        .iter()
+        .find(|item| item.id == current)
+        .ok_or(ApiError(StatusCode::CONFLICT, "TMDB_SCOPE_INVALID"))?;
+    Ok(Json(
+        json!({"media":media,"members":members,"revision":expected + 1}),
+    ))
+}
+
+async fn upload_season_poster(
+    State(state): State<AppState>,
+    Path((profile, media)): Path<(String, String)>,
+    Query(query): Query<PosterRevision>,
+    bytes: Bytes,
+) -> Result<Json<Value>, ApiError> {
+    let cache = state.config.data_dir.join("posters");
+    let response_profile = profile.clone();
+    let expected = query.expected_revision;
+    let season = state
+        .database
+        .call(move |s| s.set_custom_season_poster(&profile, &media, expected, &bytes, &cache))
+        .await?;
+    let mut season = serde_json::to_value(season)
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "TMDB_SCOPE_INVALID"))?;
+    let tv = season["tv_id"].as_i64().unwrap_or_default();
+    let number = season["season"].as_i64().unwrap_or_default();
+    if season["poster"].is_string() {
+        season["poster"] = json!(format!(
+            "/api/v1/profiles/{response_profile}/series/{tv}/seasons/{number}/artwork"
+        ));
+    }
+    Ok(Json(json!({"season":season,"revision":expected + 1})))
+}
+
 /// Resolves only a catalogue-owned cached artwork path.  The reference exposed
 /// by DTOs is this endpoint, never a local path or third-party URL.
 async fn artwork(
@@ -336,6 +396,19 @@ async fn artwork(
     let path = state
         .database
         .call(move |s| s.artwork_path(&profile, &media))
+        .await?;
+    let cache = state.config.data_dir.join("posters");
+    tokio::task::spawn_blocking(move || cached_artwork(&cache, &path))
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "ARTWORK_UNAVAILABLE"))?
+}
+async fn season_artwork(
+    State(state): State<AppState>,
+    Path((profile, tv, season)): Path<(String, i64, i32)>,
+) -> Result<Response, ApiError> {
+    let path = state
+        .database
+        .call(move |s| s.season_artwork_path(&profile, tv, season))
         .await?;
     let cache = state.config.data_dir.join("posters");
     tokio::task::spawn_blocking(move || cached_artwork(&cache, &path))
@@ -415,14 +488,37 @@ async fn series(
     Path((profile, series)): Path<(String, String)>,
 ) -> Result<Json<Value>, ApiError> {
     let key = series.clone();
-    let (members, revision) = state
+    let (members, revision, seasons) = state
         .database
-        .call(move |store| Ok((store.series(&profile, &key)?, store.common_revision()?)))
+        .call(move |store| {
+            let members = store.series(&profile, &key)?;
+            let tv_id = members.first().and_then(|m| m.tmdb_id);
+            let mut seasons = serde_json::Map::new();
+            if let Some(tv_id) = tv_id {
+                for number in members
+                    .iter()
+                    .filter_map(|m| m.season)
+                    .collect::<std::collections::BTreeSet<_>>()
+                {
+                    if let Some(metadata) = store.season_provider(tv_id, number)? {
+                        let mut metadata = serde_json::to_value(metadata)
+                            .map_err(|_| "Métadonnées de saison invalides.")?;
+                        if metadata["poster"].is_string() {
+                            metadata["poster"] = json!(format!(
+                                "/api/v1/profiles/{profile}/series/{tv_id}/seasons/{number}/artwork"
+                            ));
+                        }
+                        seasons.insert(number.to_string(), metadata);
+                    }
+                }
+            }
+            Ok((members, store.common_revision()?, seasons))
+        })
         .await?;
     let total = members.len();
     let watched = members.iter().filter(|m| m.watched).count();
     Ok(Json(
-        json!({"name":series,"revision":revision,"metadata":members.first().and_then(|m|m.series_metadata.clone()),"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}}),
+        json!({"name":series,"revision":revision,"metadata":members.first().and_then(|m|m.series_metadata.clone()),"tmdb_id":members.first().and_then(|m|m.tmdb_id),"season_metadata":seasons,"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}}),
     ))
 }
 #[derive(Deserialize)]
@@ -436,15 +532,23 @@ async fn edit_series(
     Path((profile, series)): Path<(String, String)>,
     Json(body): Json<SharedSeriesEdit>,
 ) -> Result<Json<Value>, ApiError> {
-    let next = body.patch.name.trim().to_string();
     let result = state
         .database
         .call(move |s| {
+            let anchor = s
+                .series(&profile, &series)?
+                .first()
+                .ok_or("Série introuvable.")?
+                .id
+                .clone();
+            let key = format!("media:{anchor}");
             s.update_shared_series(&profile, &series, body.expected_revision, &body.patch)?;
-            Ok((s.series(&profile, &next)?, s.common_revision()?))
+            Ok((s.series(&profile, &key)?, s.common_revision()?, key))
         })
         .await?;
-    Ok(Json(json!({"episodes":result.0,"revision":result.1})))
+    Ok(Json(
+        json!({"episodes":result.0,"revision":result.1,"key":result.2}),
+    ))
 }
 #[derive(Deserialize)]
 #[serde(default, deny_unknown_fields)]

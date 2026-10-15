@@ -1078,6 +1078,7 @@ async fn candidates(
 enum Scope {
     Media,
     Series,
+    Season,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1156,6 +1157,59 @@ async fn apply(
         };
         Ok(Json(
             json!({"media": updated, "revision": expected_revision + 1}),
+        ))
+    } else if scope == Scope::Season {
+        if kind != "tv" {
+            return Err(ApiError(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "TMDB_SCOPE_INVALID",
+            ));
+        }
+        let snapshot = state
+            .database
+            .call({
+                let profile = profile.clone();
+                let media = media.clone();
+                move |s| s.provider_season_snapshot(&profile, &media, expected_revision)
+            })
+            .await?;
+        // A caller may explicitly select the parent series here, but cannot
+        // replace a season below a different selected show by accident.
+        if snapshot.media.tmdb_id != Some(id) {
+            return Err(ApiError(StatusCode::CONFLICT, "TMDB_SEASON_PARENT_CHANGED"));
+        }
+        let season_number = snapshot.media.season.ok_or(ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "TMDB_SCOPE_INVALID",
+        ))?;
+        let provider = provider(&state)?
+            .season_metadata(id, season_number, &cache)
+            .await
+            .map_err(unavailable)?;
+        let owned = provider.poster.clone();
+        let response_profile = profile.clone();
+        let applied = state
+            .database
+            .call(move |s| s.provider_apply_season(&profile, &media, &snapshot, &provider))
+            .await;
+        let (season, episodes) = match applied {
+            Ok(result) => result,
+            Err(error) => {
+                if let Some(path) = owned {
+                    let _ = std::fs::remove_file(path);
+                }
+                return Err(error);
+            }
+        };
+        let mut season_json = serde_json::to_value(season)
+            .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "TMDB_SCOPE_INVALID"))?;
+        if season_json["poster"].is_string() {
+            season_json["poster"] = json!(format!(
+                "/api/v1/profiles/{response_profile}/series/{id}/seasons/{season_number}/artwork"
+            ));
+        }
+        Ok(Json(
+            json!({"season":season_json,"episodes":episodes,"revision":expected_revision + 1}),
         ))
     } else {
         let snapshot = state

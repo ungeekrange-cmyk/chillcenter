@@ -2,6 +2,52 @@ use crate::model::{
     Collection, Media, MediaPatch, SeriesPatch, SeriesProvider, Settings, merge_association,
     merge_enrichment, now,
 };
+
+/// A pre-identification series is grouped by its source folder rather than by
+/// title alone.  This is intentionally conservative: two "Doctor Who" trees
+/// must never become one just because their display name is identical.  The
+/// usual `Season 01` leaf is ignored so episodes of separate seasons remain
+/// in the same source group.
+fn legacy_series_root(media: &Media) -> String {
+    let path = Path::new(&media.path);
+    let mut parent = path.parent().unwrap_or(path);
+    let leaf = parent.file_name().and_then(|v| v.to_str()).unwrap_or("");
+    let normalized = leaf.to_ascii_lowercase().replace(['_', '.'], " ");
+    if normalized.starts_with("season ")
+        || normalized.starts_with("saison ")
+        || normalized.starts_with('s') && normalized[1..].chars().all(|c| c.is_ascii_digit())
+    {
+        parent = parent.parent().unwrap_or(parent);
+    }
+    parent.to_string_lossy().to_string()
+}
+
+fn same_series_group(anchor: &Media, candidate: &Media) -> bool {
+    if anchor.category != "serie" || candidate.category != "serie" {
+        return false;
+    }
+    match anchor.tmdb_id {
+        Some(id) => candidate.tmdb_id == Some(id),
+        None => {
+            candidate.tmdb_id.is_none()
+                && anchor.series.as_deref().unwrap_or(&anchor.title)
+                    == candidate.series.as_deref().unwrap_or(&candidate.title)
+                && legacy_series_root(anchor) == legacy_series_root(candidate)
+        }
+    }
+}
+
+/// Internal, persisted grouping key for an unrecognised show. It is never
+/// serialized to a client; callers expose an opaque stable anchor instead.
+pub fn series_source_key(media: &Media) -> Option<String> {
+    (media.category == "serie").then(|| {
+        format!(
+            "{}\u{1f}{}",
+            media.series.as_deref().unwrap_or(&media.title),
+            legacy_series_root(media)
+        )
+    })
+}
 use rusqlite::{Connection, OptionalExtension, params};
 use std::{
     collections::{HashMap, HashSet},
@@ -21,8 +67,7 @@ fn inherit_series_metadata(original: &Media, media: &mut Media, all: &[Media]) {
         && let Some(target) = all.iter().find(|m| {
             m.id != media.id
                 && m.category == "serie"
-                && m.series.as_deref().unwrap_or(&m.title)
-                    == media.series.as_deref().unwrap_or(&media.title)
+                && same_series_group(media, m)
                 && m.series_metadata.is_some()
         })
     {
@@ -324,6 +369,20 @@ impl Database {
         Ok(members)
     }
 
+    /// Resolve a group from a concrete episode.  Public endpoints should use
+    /// this rather than a display name whenever a stable media id is available.
+    pub fn series_members_for(&self, anchor: &Media) -> Result<Vec<Media>, String> {
+        let members: Vec<_> = self
+            .list()?
+            .into_iter()
+            .filter(|candidate| same_series_group(anchor, candidate))
+            .collect();
+        if members.is_empty() {
+            return Err("Série introuvable dans le catalogue.".into());
+        }
+        Ok(members)
+    }
+
     /// Commit shared provider fields after download, only if the series association
     /// and its shared fields have not changed meanwhile. Episode edits stay intact.
     pub fn apply_series_provider(
@@ -352,9 +411,12 @@ impl Database {
         )
         .map_err(db_error)?;
         let all = self.list()?;
+        // The captured ids, rather than the (mutable and non-unique) display
+        // name, define the group being changed.  This is the important guard
+        // for same-title shows such as Doctor Who (2005)/(2023).
         let mut members: Vec<_> = all
             .iter()
-            .filter(|m| m.category == "serie" && m.series.as_deref().unwrap_or(&m.title) == series)
+            .filter(|m| originals.iter().any(|original| original.id == m.id))
             .cloned()
             .collect();
         if members.len() != originals.len()
@@ -380,13 +442,10 @@ impl Database {
         } else {
             provider.name.trim()
         };
-        if name != series
-            && all
-                .iter()
-                .any(|m| m.category == "serie" && m.series.as_deref().unwrap_or(&m.title) == name)
-        {
-            return Err("Une série porte déjà ce nom. Réassociez les épisodes individuellement pour éviter une fusion involontaire.".into());
-        }
+        // A title collision is not an identity collision: the selected TMDB id
+        // is persisted on only this frozen member set and is used for later
+        // grouping.  Refusing it made correctly selected homonymous shows
+        // impossible to catalogue.
         for member in &mut members {
             let association_changed = member.tmdb_id != Some(provider.tmdb_id);
             member.series = Some(name.into());
@@ -1604,6 +1663,22 @@ mod tests {
     }
     fn db() -> Database {
         Database::open(Path::new(":memory:")).unwrap()
+    }
+    #[test]
+    fn source_root_keeps_unidentified_homonymous_series_apart() {
+        let mut old = movie("Doctor Who (2005)/Season 01/Doctor.Who.S01E01.mkv");
+        let mut new = movie("Doctor Who (2023)/Season 01/Doctor.Who.S01E01.mkv");
+        for media in [&mut old, &mut new] {
+            media.category = "serie".into();
+            media.series = Some("Doctor Who".into());
+        }
+        assert_ne!(legacy_series_root(&old), legacy_series_root(&new));
+        assert!(!same_series_group(&old, &new));
+        let db = db();
+        db.put(&old).unwrap();
+        db.put(&new).unwrap();
+        assert_eq!(db.series_members_for(&old).unwrap().len(), 1);
+        assert_eq!(db.series_members_for(&new).unwrap().len(), 1);
     }
     #[test]
     fn forget_unavailable_is_atomic_cleans_memberships_and_keeps_files_and_collections() {

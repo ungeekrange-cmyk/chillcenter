@@ -4,7 +4,7 @@ function harness(invoke){
  class Element{constructor(tag,text){this.tag=tag;this.textContent=text||'';this.children=[];this.value='';this.hidden=false;this.disabled=false;nodes.push(this);}append(...items){this.children.push(...items);}setAttribute(){}addEventListener(){}querySelector(){return grid;}}
  const grid=new Element('div');const byId=id=>{if(!ids.has(id))ids.set(id,new Element('div'));return ids.get(id);};
  const state={stage:'connected',server_id:'s',profile_id:'p'},window={},messages=[];
- vm.runInNewContext(fs.readFileSync(__dirname+'/tmdb.js','utf8'),{window,document:{},state,$:byId,message:value=>messages.push(value),node:(tag,text)=>new Element(tag,text),invoke,confirm:()=>true,loadPage:()=>{},setTimeout:fn=>{const id=++counter;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id)});
+ vm.runInNewContext(fs.readFileSync(__dirname+'/tmdb.js','utf8'),{window,document:{},state,$:byId,message:value=>messages.push(value),node:(tag,text)=>new Element(tag,text),button:(text,fn)=>{const b=new Element('button',text);b.onclick=fn;return b;},invoke,confirm:()=>true,loadPage:()=>{},setTimeout:fn=>{const id=++counter;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id)});
  return {nodes,byId,state,window,timers,messages,async tick(){const [id,fn]=timers.entries().next().value;timers.delete(id);await fn();}};
 }
 test('enrichment immediately reports progress above the administration fold and then real counters',async()=>{

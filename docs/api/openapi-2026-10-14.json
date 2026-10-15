@@ -1006,7 +1006,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SeriesResponse"
+                  "$ref": "#/components/schemas/SeriesPutResponse"
                 }
               }
             }
@@ -1118,6 +1118,69 @@
           "schema": { "type": "integer", "minimum": 0, "maximum": 10000, "default": 0 }
         }
       ]
+    },
+    "/profiles/{profile}/catalog/changes": {
+      "post": {
+        "tags": ["Catalog"],
+        "operationId": "catalogChanges_post",
+        "description": "Retourne une révision inchangée ou un delta calculé côté serveur depuis known_revision. Le curseur est durable pour ce serveur et ce profil; reset=true indique qu'un instantané complet est nécessaire (première connexion ou curseur élagué). Les pages sont immuables pendant 120 secondes.",
+        "responses": {
+          "200": { "description": "Révision inchangée ou première page du delta.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogChangesResponse" } } } },
+          "413": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" },
+          "default": { "$ref": "#/components/responses/Error" }
+        },
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogChangesRequest" } } }
+        }
+      },
+      "parameters": [{ "name": "profile", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }]
+    },
+    "/profiles/{profile}/catalog/changes/{snapshot}": {
+      "get": {
+        "tags": ["Catalog"],
+        "operationId": "catalogChangesPage_get",
+        "description": "Lit une page immuable du delta. Le snapshot est lié au profil et expire après 120 secondes; 404 signifie que le curseur est inconnu ou expiré et impose de relancer POST changes.",
+        "responses": {
+          "200": { "description": "Page d'au plus 100 éléments.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogChangesPage" } } } },
+          "404": { "$ref": "#/components/responses/Error" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "parameters": [
+        { "name": "profile", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } },
+        { "name": "snapshot", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } },
+        { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 0, "maximum": 10000, "default": 0 } }
+      ]
+    },
+    "/profiles/{profile}/media/{media}/series/poster": {
+      "put": {
+        "tags": ["TMDB"], "operationId": "seriesPoster_put",
+        "description": "Remplace l'affiche personnalisée de la série identifiée par ce média.",
+        "parameters": [{ "name": "expected_revision", "in": "query", "required": true, "schema": { "type": "integer", "minimum": 0 } }],
+        "requestBody": { "required": true, "content": { "image/jpeg": { "schema": { "type": "string", "format": "binary" } }, "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/webp": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": { "200": { "description": "Série mise à jour.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SeriesResponse" } } } }, "default": { "$ref": "#/components/responses/Error" } }
+      },
+      "parameters": [{ "name": "profile", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }, { "name": "media", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }]
+    },
+    "/profiles/{profile}/media/{media}/season/poster": {
+      "put": {
+        "tags": ["TMDB"], "operationId": "seasonPoster_put",
+        "description": "Remplace l'affiche personnalisée de la saison contenant ce média.",
+        "parameters": [{ "name": "expected_revision", "in": "query", "required": true, "schema": { "type": "integer", "minimum": 0 } }],
+        "requestBody": { "required": true, "content": { "image/jpeg": { "schema": { "type": "string", "format": "binary" } }, "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/webp": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": { "200": { "description": "Saison mise à jour.", "content": { "application/json": { "schema": { "type": "object", "properties": { "season": { "type": "object", "properties": { "season": { "type": "integer" }, "poster": { "type": ["string", "null"] }, "overview": { "type": "string" } }, "additionalProperties": true }, "revision": { "type": "integer" } }, "additionalProperties": true } } } }, "default": { "$ref": "#/components/responses/Error" } }
+      },
+      "parameters": [{ "name": "profile", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }, { "name": "media", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }]
+    },
+    "/profiles/{profile}/series/{tv}/seasons/{season}/artwork": {
+      "get": {
+        "tags": ["TMDB"], "operationId": "seasonArtwork_get",
+        "description": "Récupère l'affiche de la saison; tv et season sont les identifiants TMDB.",
+        "responses": { "200": { "description": "Affiche de saison.", "content": { "image/jpeg": { "schema": { "type": "string", "format": "binary" } }, "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/webp": { "schema": { "type": "string", "format": "binary" } } } }, "default": { "$ref": "#/components/responses/Error" } }
+      },
+      "parameters": [{ "name": "profile", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }, { "name": "tv", "in": "path", "required": true, "schema": { "type": "integer" } }, { "name": "season", "in": "path", "required": true, "schema": { "type": "integer" } }]
     },
     "/sagas/{saga}/artwork": {
       "get": {
@@ -4035,6 +4098,10 @@
                 "unwatched"
               ],
               "properties": {
+                "series_key": {
+                  "type": "string",
+                  "description": "Clé opaque de groupe: tmdb:tv:<id>, media:<stable_uuid>, ou nom uniquement lorsqu'il n'existe qu'un groupe correspondant."
+                },
                 "seasons": {
                   "type": "integer"
                 },
@@ -4515,6 +4582,15 @@
               }
             ]
           },
+          "tmdb_id": {
+            "type": ["integer", "null"],
+            "description": "Identifiant TMDB de la série, lorsqu'elle est identifiée; permet de distinguer deux séries homonymes."
+          },
+          "season_metadata": {
+            "type": "object",
+            "description": "Métadonnées de saison indexées par numéro; champ optionnel.",
+            "additionalProperties": { "type": "object", "properties": { "poster": { "type": ["string", "null"] }, "name": { "type": "string" }, "overview": { "type": "string" } }, "additionalProperties": true }
+          },
           "episodes": {
             "type": "array",
             "items": {
@@ -4548,6 +4624,16 @@
             "type": "integer",
             "minimum": 0
           }
+        },
+        "additionalProperties": true
+      },
+      "SeriesPutResponse": {
+        "type": "object",
+        "required": ["episodes", "revision", "key"],
+        "properties": {
+          "episodes": { "type": "array", "items": { "$ref": "#/components/schemas/Media" } },
+          "revision": { "type": "integer", "minimum": 0 },
+          "key": { "type": "string", "description": "Clé opaque de série à réutiliser après renommage." }
         },
         "additionalProperties": true
       },
@@ -4711,6 +4797,48 @@
           }
         },
         "additionalProperties": true
+      },
+      "CatalogChangesRequest": {
+        "type": "object",
+        "properties": {
+          "known_revision": { "type": ["string", "null"], "description": "Curseur opaque durable retourné par le même serveur et profil." }
+        },
+        "additionalProperties": false
+      },
+      "CatalogChangesUnchanged": {
+        "type": "object",
+        "required": ["revision", "unchanged"],
+        "properties": {
+          "revision": { "type": "string", "minLength": 1 },
+          "unchanged": { "const": true }
+        },
+        "additionalProperties": true
+      },
+      "CatalogChangesPage": {
+        "type": "object",
+        "required": ["revision", "unchanged", "reset", "snapshot_id", "total", "items", "deleted_ids", "sagas", "playlists", "series_revisions", "season_metadata", "has_more", "next_offset"],
+        "properties": {
+          "revision": { "type": "string", "minLength": 1 },
+          "unchanged": { "const": false },
+          "reset": { "type": "boolean", "description": "true si aucun checkpoint utilisable n'existe; items représente alors le catalogue complet." },
+          "snapshot_id": { "$ref": "#/components/schemas/UuidResponse" },
+          "total": { "type": "integer", "minimum": 0, "maximum": 10000 },
+          "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/components/schemas/SyncMedia" } },
+          "deleted_ids": { "type": "array", "items": { "type": "string" } },
+          "sagas": { "type": "array", "items": { "$ref": "#/components/schemas/Saga" } },
+          "playlists": { "type": "array", "items": { "$ref": "#/components/schemas/Playlist" } },
+          "series_revisions": { "type": "object", "additionalProperties": { "type": "integer", "format": "uint64", "minimum": 0 } },
+          "season_metadata": { "type": "object", "additionalProperties": { "type": "object", "properties": { "poster": { "type": ["string", "null"] }, "name": { "type": "string" }, "overview": { "type": "string" } }, "additionalProperties": true } },
+          "has_more": { "type": "boolean" },
+          "next_offset": { "type": ["integer", "null"], "minimum": 0, "maximum": 10000 }
+        },
+        "additionalProperties": true
+      },
+      "CatalogChangesResponse": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/CatalogChangesUnchanged" },
+          { "$ref": "#/components/schemas/CatalogChangesPage" }
+        ]
       },
       "SyncSnapshotRequest": {
         "type": "object",
@@ -5746,7 +5874,8 @@
           "scope": {
             "enum": [
               "media",
-              "series"
+              "series",
+              "season"
             ]
           }
         },
@@ -5766,7 +5895,8 @@
           "scope": {
             "enum": [
               "media",
-              "series"
+              "series",
+              "season"
             ]
           }
         },

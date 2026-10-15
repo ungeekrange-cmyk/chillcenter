@@ -153,6 +153,18 @@ pub struct SeriesProvider {
     pub poster: Option<String>,
 }
 
+/// Provider-owned information for one TV season.  It deliberately lives apart
+/// from `Media`: an episode is not the season, and storing this on every
+/// episode made a later correction of a homonymous show overwrite siblings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SeasonProvider {
+    pub tv_id: i64,
+    pub season: i32,
+    pub name: String,
+    pub overview: String,
+    pub poster: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SeriesPatch {

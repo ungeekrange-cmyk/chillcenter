@@ -50,6 +50,7 @@ const routerFiles = [
   'crates/chill-server/src/ai_api.rs',
   'crates/chill-server/src/archive_api.rs',
   'crates/chill-server/src/export_jobs.rs'
+  , 'crates/chill-server/src/sync_api.rs'
 ];
 const routerRoutes = new Map();
 for (const file of routerFiles) {
@@ -152,6 +153,8 @@ if (operation('/profiles', 'get')?.responses?.[200]?.content?.['application/json
 if (!hasParam('/profiles/{profile}', 'delete', 'x-chill-confirm-delete', 'header')) fail('confirmation de suppression de profil manquante');
 for (const path of ['/admin/unavailable', '/admin/reassociations']) for (const name of ['offset', 'limit']) if (!hasParam(path, 'get', name)) fail(`${path}: query ${name} manquante`);
 if (!same(schema('Media').properties?.category?.enum, ['film', 'serie', 'spectacle', 'documentaire'])) fail('catégories Media divergentes');
+if (schema('CatalogPage').properties?.series_counters?.additionalProperties?.properties?.series_key?.type !== 'string') fail('series_counters.series_key manquant');
+if (schema('SeriesPutResponse').properties?.key?.type !== 'string') fail('SeriesPutResponse.key manquant');
 if (!same(schema('RevisionPatch').properties?.category?.enum, ['film', 'serie', 'spectacle', 'documentaire'])) fail('catégories RevisionPatch divergentes');
 const aiFields = ['id', 'title', 'category', 'year', 'series', 'season', 'episode', 'genres', 'saga', 'watched', 'rating', 'revision'];
 if (!same(schema('AiContext').properties?.media?.items?.required, aiFields)) fail('AiMedia diverge du DTO serveur');
@@ -169,6 +172,17 @@ if (!schema('Saga').required?.includes('poster')) fail('Saga.poster doit être d
 const syncPost = operation('/profiles/{profile}/catalog/snapshot', 'post');
 const syncPage = operation('/profiles/{profile}/catalog/snapshot/{snapshot}', 'get');
 if (!syncPost || !syncPage) fail('routes de synchronisation locale manquantes');
+const changesPost = operation('/profiles/{profile}/catalog/changes', 'post');
+const changesPage = operation('/profiles/{profile}/catalog/changes/{snapshot}', 'get');
+if (!changesPost || !changesPage) fail('routes de delta de synchronisation manquantes');
+if (schema('CatalogChangesRequest').additionalProperties !== false) fail('CatalogChangesRequest doit refuser les champs inconnus');
+for (const name of ['CatalogChangesPage']) {
+  const changes = schema(name);
+  if (changes.properties?.items?.maxItems !== 100) fail(`${name}: borne de page divergente`);
+  if (changes.properties?.total?.maximum !== 10000) fail(`${name}: borne total divergente`);
+}
+if (!same(schema('CatalogChangesResponse').oneOf?.map((entry) => entry.$ref), ['#/components/schemas/CatalogChangesUnchanged', '#/components/schemas/CatalogChangesPage'])) fail('CatalogChangesResponse doit être l’union inchangé/delta');
+if (!hasParam('/profiles/{profile}/catalog/changes/{snapshot}', 'get', 'offset')) fail('pagination delta incomplète');
 if (schema('SyncSnapshotRequest').additionalProperties !== false) fail('SyncSnapshotRequest doit refuser les champs inconnus');
 if (!same(schema('SyncSnapshotResponse').oneOf?.map((entry) => entry.$ref), [
   '#/components/schemas/SyncSnapshotUnchanged', '#/components/schemas/SyncSnapshotFirstPage'

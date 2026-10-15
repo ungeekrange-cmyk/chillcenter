@@ -157,9 +157,9 @@ impl PlayerHost {
                     kind: "series".into(),
                     id: Some(
                         info.media
-                            .series
-                            .clone()
-                            .unwrap_or_else(|| info.media.title.clone()),
+                            .tmdb_id
+                            .map(|id| format!("tmdb:tv:{id}"))
+                            .unwrap_or_else(|| format!("media:{}", info.media.id)),
                     ),
                 }
             } else {

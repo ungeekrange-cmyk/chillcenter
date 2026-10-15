@@ -100,6 +100,36 @@ impl Store {
         patch: &SeriesPatch,
     ) -> Result<(), String> {
         self.require_profile(profile)?;
+        let members = if let Some(anchor) = series.strip_prefix("media:") {
+            let raw = self.catalogue.get(&self.legacy_id(anchor)?)?;
+            self.catalogue.series_members_for(&raw)?
+        } else if let Some(raw) = series.strip_prefix("tmdb:tv:") {
+            let id: i64 = raw.parse().map_err(|_| "Série invalide.")?;
+            self.catalogue
+                .list()?
+                .into_iter()
+                .filter(|m| m.category == "serie" && m.tmdb_id == Some(id))
+                .collect()
+        } else {
+            let all: Vec<_> = self
+                .catalogue
+                .list()?
+                .into_iter()
+                .filter(|m| {
+                    m.category == "serie" && m.series.as_deref().unwrap_or(&m.title) == series
+                })
+                .collect();
+            let groups = all
+                .iter()
+                .filter_map(chill_catalog::database::series_source_key)
+                .collect::<std::collections::HashSet<_>>();
+            if groups.len() != 1 {
+                return Err(
+                    "Plusieurs séries portent ce nom. Ouvrez-la depuis sa vignette.".into(),
+                );
+            }
+            all
+        };
         let tx =
             rusqlite::Transaction::new_unchecked(&self.personal, TransactionBehavior::Immediate)
                 .map_err(db)?;
@@ -109,17 +139,6 @@ impl Store {
         if series.is_empty() || series.len() > 500 {
             return Err("Série invalide.".into());
         }
-        let collision:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM media WHERE json_extract(data,'$.category')='serie' AND COALESCE(json_extract(data,'$.series'),json_extract(data,'$.title'))=?1)",[patch.name.trim()],|r|r.get(0)).map_err(db)?;
-        if patch.name.trim() != series && collision {
-            return Err("Une série porte déjà ce nom.".into());
-        }
-        let members = {
-            let mut stmt=tx.prepare("SELECT data FROM media WHERE json_extract(data,'$.category')='serie' AND COALESCE(json_extract(data,'$.series'),json_extract(data,'$.title'))=?1 ORDER BY id").map_err(db)?;
-            stmt.query_map([series], |r| r.get::<_, String>(0))
-                .map_err(db)?
-                .map(|r| decode(r.map_err(db)?))
-                .collect::<Result<Vec<_>, _>>()?
-        };
         let metadata = patch.validate(members.first().ok_or("Série introuvable.")?)?;
         for mut media in members {
             let stable = self.stable_id(&media.id)?;

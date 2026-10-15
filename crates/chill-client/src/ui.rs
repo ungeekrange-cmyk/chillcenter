@@ -58,6 +58,8 @@ pub enum UiCommand {
         confirm_id: String,
     },
     Refresh,
+    /// Host-intercepted: transport runs after the UI client mutex is released.
+    SyncCatalog,
     SaveLibrary {
         video_root: Option<String>,
         expected_revision: u64,
@@ -96,6 +98,10 @@ pub enum UiCommand {
     },
     Series {
         name: String,
+    },
+    SeasonArtwork {
+        tv_id: i64,
+        season: i32,
     },
     EditSeries {
         series: String,
@@ -420,10 +426,266 @@ pub struct UiClient {
     prefetch: Option<tokio::task::JoinHandle<()>>,
     background_markers: BTreeMap<String, String>,
 }
+/// A closed catalogue transfer. It is intentionally independent of UiClient so
+/// the desktop host can await it without holding its UI mutex or single-flight
+/// slot.
+pub struct CatalogSyncTask {
+    server: String,
+    profile: String,
+    base_revision: Option<String>,
+    mutation_generation: u64,
+    task: Option<crate::catalog_cache::SyncTask>,
+}
+pub struct CatalogSyncResult(crate::catalog_cache::SyncResult);
+fn sync_commit_stale(
+    current: Option<&str>,
+    base: Option<&str>,
+    generation: u64,
+    prepared: u64,
+) -> bool {
+    current != base || generation != prepared
+}
+/// Closed allowlisted TMDB work. It owns only a pinned transport and a fixed
+/// path/body prepared from a typed UI command.
+pub struct ProviderTask {
+    server: String,
+    profile: String,
+    transport: Transport,
+    method: HttpMethod,
+    path: String,
+    body: Option<Value>,
+    query: Option<String>,
+    mutation: bool,
+}
+impl ProviderTask {
+    pub async fn fetch(self) -> Result<(Self, Value), UiError> {
+        let query = self
+            .query
+            .as_ref()
+            .map(|value| vec![("query", value.clone())])
+            .unwrap_or_default();
+        let value = self
+            .transport
+            .json_with_options(
+                self.method.clone(),
+                &self.path,
+                self.body.as_ref(),
+                &query,
+                &[],
+            )
+            .await?;
+        Ok((self, value))
+    }
+}
+impl CatalogSyncTask {
+    pub async fn fetch(mut self) -> Result<(Self, CatalogSyncResult), UiError> {
+        // Keep the context fingerprint alongside the result for a CAS commit.
+        let server = self.server.clone();
+        let profile = self.profile.clone();
+        let base_revision = self.base_revision.clone();
+        let result = self
+            .task
+            .take()
+            .ok_or_else(|| invalid("Synchronisation déjà consommée."))?
+            .fetch()
+            .await?;
+        Ok((
+            Self {
+                server,
+                profile,
+                base_revision,
+                mutation_generation: self.mutation_generation,
+                task: None,
+            },
+            CatalogSyncResult(result),
+        ))
+    }
+    pub fn server(&self) -> &str {
+        &self.server
+    }
+    pub fn profile(&self) -> &str {
+        &self.profile
+    }
+    pub fn base_revision(&self) -> Option<&str> {
+        self.base_revision.as_deref()
+    }
+}
 impl UiClient {
+    fn open_catalog_cache(&mut self) -> Result<(), UiError> {
+        let profile = self.profile()?;
+        let connection = self
+            .connected
+            .as_ref()
+            .ok_or_else(|| invalid("Connectez un serveur."))?;
+        let server = connection.id.clone();
+        if self
+            .catalog_cache
+            .as_ref()
+            .is_none_or(|c| c.server != server || c.profile != profile)
+        {
+            if let Some(task) = self.prefetch.take() {
+                task.abort();
+            }
+            self.catalog_cache = Some(crate::catalog_cache::LocalCatalog::open(
+                &self.directory,
+                &server,
+                &profile,
+                self.artwork_gate.clone(),
+            )?);
+        }
+        Ok(())
+    }
+    /// Prepare only immutable transport state. The caller must invoke `fetch`
+    /// outside this client's Mutex, then use `commit_catalog_sync`.
+    pub fn prepare_catalog_sync(&mut self) -> Result<CatalogSyncTask, UiError> {
+        self.open_catalog_cache()?;
+        let connection = self
+            .connected
+            .as_ref()
+            .ok_or_else(|| invalid("Connectez un serveur."))?;
+        let cache = self.catalog_cache.as_ref().unwrap();
+        Ok(CatalogSyncTask {
+            server: connection.id.clone(),
+            profile: cache.profile.clone(),
+            base_revision: cache
+                .document
+                .as_ref()
+                .and_then(|d| d["revision"].as_str())
+                .map(str::to_owned),
+            mutation_generation: cache.mutation_generation,
+            task: Some(cache.sync_task(connection.transport.clone())),
+        })
+    }
+    pub fn prepare_provider_task(&mut self, command: UiCommand) -> Result<ProviderTask, UiError> {
+        let profile = self.profile()?;
+        let connection = self
+            .connected
+            .as_ref()
+            .ok_or_else(|| invalid("Connectez un serveur."))?;
+        let (method, path, body, query, mutation) = match command {
+            UiCommand::TmdbCandidates { media_id, query } => {
+                valid_id(&media_id)?;
+                let query = query.unwrap_or_default();
+                valid_tmdb_query(&query)?;
+                (
+                    HttpMethod::GET,
+                    format!("/api/v1/admin/profiles/{profile}/media/{media_id}/tmdb/candidates"),
+                    None,
+                    Some(query),
+                    false,
+                )
+            }
+            UiCommand::TmdbSelect {
+                media_id,
+                expected_revision,
+                tmdb_id,
+                kind,
+                scope,
+            } => {
+                valid_id(&media_id)?;
+                if tmdb_id <= 0
+                    || !["movie", "tv"].contains(&kind.as_str())
+                    || !["media", "series", "season"].contains(&scope.as_str())
+                {
+                    return Err(invalid("Choix TMDB invalide."));
+                }
+                (
+                    HttpMethod::POST,
+                    format!("/api/v1/admin/profiles/{profile}/media/{media_id}/tmdb"),
+                    Some(
+                        json!({"expected_revision":expected_revision,"tmdb_id":tmdb_id,"kind":kind,"scope":scope}),
+                    ),
+                    None,
+                    true,
+                )
+            }
+            UiCommand::TmdbRefresh {
+                media_id,
+                expected_revision,
+                scope,
+            } => {
+                valid_id(&media_id)?;
+                if !["media", "series", "season"].contains(&scope.as_str()) {
+                    return Err(invalid("Portée TMDB invalide."));
+                }
+                (
+                    HttpMethod::POST,
+                    format!("/api/v1/admin/profiles/{profile}/media/{media_id}/tmdb/refresh"),
+                    Some(json!({"expected_revision":expected_revision,"scope":scope})),
+                    None,
+                    true,
+                )
+            }
+            _ => return Err(invalid("Opération fournisseur invalide.")),
+        };
+        Ok(ProviderTask {
+            server: connection.id.clone(),
+            profile,
+            transport: connection.transport.clone(),
+            method,
+            path,
+            body,
+            query,
+            mutation,
+        })
+    }
+    pub fn commit_provider_task(
+        &mut self,
+        task: ProviderTask,
+        value: Value,
+    ) -> Result<Value, UiError> {
+        let connection = self
+            .connected
+            .as_ref()
+            .ok_or_else(|| invalid("Connectez un serveur."))?;
+        if connection.id != task.server
+            || connection.active.as_deref() != Some(task.profile.as_str())
+        {
+            return Ok(json!({"discarded":true}));
+        }
+        if task.mutation
+            && let Some(cache) = &mut self.catalog_cache
+        {
+            cache.mark_dirty();
+        }
+        Ok(value)
+    }
+    /// CAS commit: a profile/server switch or a local mutation since prepare
+    /// discards the fetched result. In particular, stale transport never clears
+    /// a dirty marker created by a personal write.
+    pub fn commit_catalog_sync(
+        &mut self,
+        task: CatalogSyncTask,
+        result: CatalogSyncResult,
+    ) -> Result<Value, UiError> {
+        let connection = self
+            .connected
+            .as_ref()
+            .ok_or_else(|| invalid("Connectez un serveur."))?;
+        if connection.id != task.server
+            || connection.active.as_deref() != Some(task.profile.as_str())
+        {
+            return Ok(json!({"changed":false,"discarded":true}));
+        }
+        self.open_catalog_cache()?;
+        let cache = self.catalog_cache.as_mut().unwrap();
+        let current = cache.document.as_ref().and_then(|d| d["revision"].as_str());
+        if sync_commit_stale(
+            current,
+            task.base_revision.as_deref(),
+            cache.mutation_generation,
+            task.mutation_generation,
+        ) {
+            return Ok(json!({"changed":false,"discarded":true}));
+        }
+        let changed = result.0.changed;
+        let revision = result.0.revision.clone();
+        cache.commit_sync(result.0)?;
+        Ok(json!({"changed":changed,"revision":revision,"discarded":false}))
+    }
     pub fn invalidate_catalog(&mut self) {
         if let Some(cache) = &mut self.catalog_cache {
-            cache.dirty = true;
+            cache.mark_dirty();
         }
     }
     pub fn upload_artwork(
@@ -446,7 +708,7 @@ impl UiClient {
         if result.is_ok()
             && let Some(cache) = &mut self.catalog_cache
         {
-            cache.dirty = true;
+            cache.mark_dirty();
         }
         result
     }
@@ -606,7 +868,7 @@ impl UiClient {
             .runtime
             .block_on(transport.json_with_options(method, path, body, query, headers))?;
         if mutation && let Some(cache) = &mut self.catalog_cache {
-            cache.dirty = true;
+            cache.mark_dirty();
         }
         if !mutation
             && (path == "/api/v1/admin/scan" || path.starts_with("/api/v1/admin/tmdb/jobs/"))
@@ -629,7 +891,7 @@ impl UiClient {
                 && changed
                 && let Some(cache) = &mut self.catalog_cache
             {
-                cache.dirty = true;
+                cache.mark_dirty();
             }
         }
         if self.persist_requests
@@ -920,31 +1182,17 @@ impl UiClient {
         }
         Ok(view)
     }
-    fn ensure_catalog(&mut self, check_server: bool) -> Result<(), UiError> {
-        let profile = self.profile()?;
+    fn ensure_catalog(&mut self, _check_server: bool) -> Result<(), UiError> {
         let connection = self
             .connected
             .as_ref()
             .ok_or_else(|| invalid("Connectez un serveur."))?;
-        let server = connection.id.clone();
         let transport = connection.transport.clone();
-        if self
-            .catalog_cache
-            .as_ref()
-            .is_none_or(|c| c.server != server || c.profile != profile)
-        {
-            if let Some(task) = self.prefetch.take() {
-                task.abort();
-            }
-            self.catalog_cache = Some(crate::catalog_cache::LocalCatalog::open(
-                &self.directory,
-                &server,
-                &profile,
-                self.artwork_gate.clone(),
-            )?);
-        }
+        self.open_catalog_cache()?;
         let cache = self.catalog_cache.as_mut().unwrap();
-        if check_server || cache.dirty || cache.document.is_none() {
+        // A warm mirror is always navigable locally. Refresh/focus no longer
+        // performs HTTP under the UiClient mutex; SyncCatalog owns that work.
+        if cache.document.is_none() {
             match self.runtime.block_on(cache.download(&transport)) {
                 Ok(Some((items, document))) => {
                     cache.commit(&items, document)?;
@@ -1004,6 +1252,16 @@ impl UiClient {
         match kind {
             "media" | "playlists" => valid_id(id)?,
             "sagas" => valid_collection_id(id)?,
+            "season" => {
+                let (tv, season) = id
+                    .split_once(':')
+                    .ok_or_else(|| invalid("Saison invalide."))?;
+                if tv.parse::<i64>().ok().is_none_or(|v| v <= 0)
+                    || season.parse::<i32>().ok().is_none_or(|v| v < 0)
+                {
+                    return Err(invalid("Saison invalide."));
+                }
+            }
             _ => return Err(invalid("Type d’affiche invalide.")),
         }
         self.ensure_catalog(false)?;
@@ -1015,6 +1273,10 @@ impl UiClient {
     }
     fn cached_command(&mut self, command: &UiCommand) -> Result<Option<Value>, UiError> {
         use UiCommand::*;
+        if let SeasonArtwork { tv_id, season } = command {
+            let task = self.artwork_task("season", &format!("{tv_id}:{season}"))?;
+            return self.runtime.block_on(task.fetch()).map(Some);
+        }
         if !matches!(
             command,
             Catalog { .. }
@@ -1107,7 +1369,23 @@ impl UiClient {
                     .document
                     .as_ref()
                     .map(|d| &d["series_revisions"][name]);
-                json!({"name":name,"revision":revision,"metadata":members.first().and_then(|m|m.series_metadata.clone()),"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}})
+                let tv_id = members.first().and_then(|m| m.tmdb_id);
+                let mut seasons = serde_json::Map::new();
+                if let Some(tv_id) = tv_id {
+                    let prefix = format!("tmdb:tv:{tv_id}:season:");
+                    if let Some(values) = cache
+                        .document
+                        .as_ref()
+                        .and_then(|document| document["season_metadata"].as_object())
+                    {
+                        for (key, value) in values {
+                            if let Some(number) = key.strip_prefix(&prefix) {
+                                seasons.insert(number.into(), value.clone());
+                            }
+                        }
+                    }
+                }
+                json!({"name":name,"revision":revision,"metadata":members.first().and_then(|m|m.series_metadata.clone()),"tmdb_id":tv_id,"season_metadata":seasons,"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}})
             }
             Sagas => cache.collection("sagas", None)?,
             Playlists => cache.collection("playlists", None)?,
@@ -1220,7 +1498,7 @@ impl UiClient {
                 valid_id(&media_id)?;
                 if tmdb_id <= 0
                     || !["movie", "tv"].contains(&kind.as_str())
-                    || !["media", "series"].contains(&scope.as_str())
+                    || !["media", "series", "season"].contains(&scope.as_str())
                 {
                     return Err(invalid("Choix TMDB invalide."));
                 }
@@ -1233,7 +1511,7 @@ impl UiClient {
                 scope,
             } => {
                 valid_id(&media_id)?;
-                if !["media", "series"].contains(&scope.as_str()) {
+                if !["media", "series", "season"].contains(&scope.as_str()) {
                     return Err(invalid("Portée TMDB invalide."));
                 }
                 let p = self.profile()?;
@@ -1806,6 +2084,8 @@ impl UiClient {
                 self.view()
             }
             UiCommand::Refresh => self.view(),
+            UiCommand::SyncCatalog => Err(invalid("Synchronisation gérée par l’hôte.")),
+            UiCommand::SeasonArtwork { .. } => Err(invalid("Affiche gérée par le cache.")),
             UiCommand::SelectProfile { id } => {
                 valid_id(&id)?;
                 let conn = self
@@ -2113,6 +2393,13 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 mod tests {
     use super::*;
     #[test]
+    fn sync_generation_accepts_dirty_base_but_rejects_late_mutation() {
+        // Dirty is a hint, not a CAS conflict: an explicit sync begun after a
+        // mutation must be allowed to clear it. A second mutation is stale.
+        assert!(!sync_commit_stale(Some("r1"), Some("r1"), 7, 7));
+        assert!(sync_commit_stale(Some("r1"), Some("r1"), 8, 7));
+    }
+    #[test]
     fn persisted_catalog_navigation_never_needs_a_reachable_server() {
         let dir = tempfile::tempdir().unwrap();
         let server = uuid::Uuid::new_v4().to_string();
@@ -2202,10 +2489,10 @@ mod tests {
         );
         client.invalidate_catalog();
         client.ensure_catalog(false).unwrap();
-        assert!(client.catalog_cache.as_ref().unwrap().notice.is_some());
+        assert!(client.catalog_cache.as_ref().unwrap().notice.is_none());
         assert!(
-            !client.catalog_cache.as_ref().unwrap().dirty,
-            "failed refresh must not retry on every local read"
+            client.catalog_cache.as_ref().unwrap().dirty,
+            "local reads preserve a pending mutation until explicit sync"
         );
         assert_eq!(
             client

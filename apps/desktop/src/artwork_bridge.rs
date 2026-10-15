@@ -16,6 +16,14 @@ pub enum ArtworkTarget {
         media_id: String,
         expected_revision: u64,
     },
+    Series {
+        media_id: String,
+        expected_revision: u64,
+    },
+    Season {
+        media_id: String,
+        expected_revision: u64,
+    },
     Saga {
         id: String,
         expected_revision: u64,
@@ -98,6 +106,26 @@ pub fn upload(
 }
 fn target_path(profile: &str, target: ArtworkTarget) -> Result<(String, u64), UiError> {
     match target {
+        ArtworkTarget::Series {
+            media_id,
+            expected_revision,
+        } => {
+            uuid::Uuid::parse_str(&media_id).map_err(|_| err("Média invalide."))?;
+            Ok((
+                format!("/api/v1/profiles/{profile}/media/{media_id}/series/poster"),
+                expected_revision,
+            ))
+        }
+        ArtworkTarget::Season {
+            media_id,
+            expected_revision,
+        } => {
+            uuid::Uuid::parse_str(&media_id).map_err(|_| err("Média invalide."))?;
+            Ok((
+                format!("/api/v1/profiles/{profile}/media/{media_id}/season/poster"),
+                expected_revision,
+            ))
+        }
         ArtworkTarget::Playlist {
             id,
             expected_revision,

@@ -31,10 +31,77 @@ async fn ui_command(
     let epoch = bridge
         .context_epoch
         .load(std::sync::atomic::Ordering::Acquire);
+    if matches!(&command, UiCommand::SyncCatalog) {
+        // This is deliberately before `slot`: a potentially slow HTTPS fetch
+        // must not freeze controls, player status, or a subsequent context
+        // switch. UiClient returns a closed task with no borrowed mutex state.
+        let client = bridge.client.clone();
+        let task = tauri::async_runtime::spawn_blocking(move || {
+            client
+                .lock()
+                .map_err(|_| player_bridge::error("Client indisponible."))?
+                .prepare_catalog_sync()
+        })
+        .await
+        .map_err(|_| player_bridge::error("Préparation synchronisation interrompue."))??;
+        let (task, result) = task.fetch().await?;
+        if epoch
+            != bridge
+                .context_epoch
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Ok(serde_json::json!({"changed":false,"discarded":true}));
+        }
+        let client = bridge.client.clone();
+        return tauri::async_runtime::spawn_blocking(move || {
+            client
+                .lock()
+                .map_err(|_| player_bridge::error("Client indisponible."))?
+                .commit_catalog_sync(task, result)
+        })
+        .await
+        .map_err(|_| player_bridge::error("Synchronisation interrompue."))?;
+    }
+    if matches!(
+        &command,
+        UiCommand::TmdbCandidates { .. }
+            | UiCommand::TmdbSelect { .. }
+            | UiCommand::TmdbRefresh { .. }
+    ) {
+        // Provider HTTP can be slow; prepare its allowlisted immutable request
+        // under the lock, then release both UI gates for the network wait.
+        let client = bridge.client.clone();
+        let task = tauri::async_runtime::spawn_blocking(move || {
+            client
+                .lock()
+                .map_err(|_| player_bridge::error("Client indisponible."))?
+                .prepare_provider_task(command)
+        })
+        .await
+        .map_err(|_| player_bridge::error("Préparation fournisseur interrompue."))??;
+        let (task, value) = task.fetch().await?;
+        if epoch
+            != bridge
+                .context_epoch
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Ok(serde_json::json!({"discarded":true}));
+        }
+        let client = bridge.client.clone();
+        return tauri::async_runtime::spawn_blocking(move || {
+            client
+                .lock()
+                .map_err(|_| player_bridge::error("Client indisponible."))?
+                .commit_provider_task(task, value)
+        })
+        .await
+        .map_err(|_| player_bridge::error("Fournisseur interrompu."))?;
+    }
     let artwork = match &command {
         UiCommand::Artwork { media_id } => Some(("media", media_id.clone())),
         UiCommand::SagaArtwork { id } => Some(("sagas", id.clone())),
         UiCommand::PlaylistArtwork { id } => Some(("playlists", id.clone())),
+        UiCommand::SeasonArtwork { tv_id, season } => Some(("season", format!("{tv_id}:{season}"))),
         _ => None,
     };
     if let Some((kind, id)) = artwork {

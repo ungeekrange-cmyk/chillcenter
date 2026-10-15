@@ -581,7 +581,9 @@ impl Transport {
         // manifest. Keep all other JSON endpoints at the established 4 MiB cap.
         let snapshot =
             path.starts_with("/api/v1/profiles/") || path.starts_with("/api/2026-10-14/profiles/");
-        let max_json = if snapshot && path.contains("/catalog/snapshot") {
+        let max_json = if snapshot
+            && (path.contains("/catalog/snapshot") || path.contains("/catalog/changes"))
+        {
             34 * 1024 * 1024
         } else {
             4 * 1024 * 1024

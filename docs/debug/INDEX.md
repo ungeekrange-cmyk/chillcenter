@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+[BUG0064](BUG-0064-blocking-catalog-sync.md) synchronisation détachée/delta ; [BUG0065](BUG-0065-stale-detail-and-artwork.md) cycle de fiche/images/étoiles ; [BUG0066](BUG-0066-series-season-provider-scope.md) série/saison et homonymes. Candidat local en cours, non livré.
+
 [BUG0062](BUG-0062-release-filename-parsing.md), 15 octobre : titres à séparateurs répétés, VOSTA/VOST/DDP et recherches automatiques corrigés sans réécrire les fiches. [BUG0063](BUG-0063-media-detail-scroll-and-path.md) : chemin relatif affiché et scroll modal, Chromium RED/GREEN puis vrai essai humain Tauri concluant. LIVRÉS c610ea9, bundleMac publié et Pi mis à jour/sauvegardé, vérification indépendante runtime APPROVED_SCOPED. Essais du simulateur natif non concluants préservés sur branche28b1c64, pas requalifiés en PASS.
 
 Déploiement15octobre : [BUG0059](BUG-0059-lazy-saga-revisions.md) révisions absentes pour sagas TMDB paresseuses,422sagas/snapshot confirmé37/30 puis correctifCFC et sonde réelle2496médias PASS ; [BUG0060](BUG-0060-backup-empty-sidecars.md) deux fichiers auxiliaires SQLite vides mis en quarantaine réversible, sauvegardes exactes/rollback vérifiés. Première vérification indépendante défavorable conservée, addendum final APPROVED_SCOPED. Aucun nouveau test lecteur/GUI/vidéo dans ce lot de livraison.

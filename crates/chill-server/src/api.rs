@@ -168,6 +168,7 @@ fn api_routes() -> Router<AppState> {
         .merge(crate::archive_api::routes())
         .merge(crate::export_jobs::routes())
         .merge(crate::catalog_api::routes())
+        .merge(crate::sync_api::routes())
         .merge(crate::identity_api::routes())
         .merge(crate::tmdb_api::routes())
         .merge(crate::playback::routes())
@@ -595,6 +596,103 @@ mod tests {
             certificate: Arc::new(Mutex::new(certificates.schedule)),
         };
         (dir, router(state))
+    }
+    #[tokio::test]
+    async fn catalog_changes_contract_paging_profile_isolation_and_real_delta() {
+        let (dir, app) = setup();
+        let (_, a) = json_call(&app, "POST", "/api/v1/profiles", json!({"name":"Delta A"})).await;
+        let (_, b) = json_call(&app, "POST", "/api/v1/profiles", json!({"name":"Delta B"})).await;
+        let a = a["id"].as_str().unwrap();
+        let b = b["id"].as_str().unwrap();
+        let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let items: Vec<chill_catalog::model::Media> = (0..103)
+            .map(|i| {
+                chill_catalog::scanner::parse_file(
+                    std::path::Path::new("/fixture"),
+                    &std::path::Path::new("/fixture").join(format!("Film {i:03}.mkv")),
+                )
+            })
+            .collect();
+        store.snapshot(items.clone()).unwrap();
+        let endpoint = format!("/api/2026-10-14/profiles/{a}/catalog/changes");
+        let (status, first) = json_call(&app, "POST", &endpoint, json!({})).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(first["reset"], true);
+        assert_eq!(first["total"], 103);
+        assert_eq!(first["items"].as_array().unwrap().len(), 100);
+        assert!(!first.to_string().contains("/fixture"));
+        let snapshot = first["snapshot_id"].as_str().unwrap();
+        let revision = first["revision"].as_str().unwrap();
+        let id = first["items"][0]["media"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let page = json_call(
+            &app,
+            "GET",
+            &format!("{endpoint}/{snapshot}?offset=100"),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(page.0, StatusCode::OK);
+        assert_eq!(page.1["items"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            json_call(
+                &app,
+                "GET",
+                &format!("/api/v1/profiles/{b}/catalog/changes/{snapshot}?offset=100"),
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+        store.set_watched(b, &id, true).unwrap();
+        let unchanged = json_call(&app, "POST", &endpoint, json!({"known_revision":revision}))
+            .await
+            .1;
+        assert_eq!(unchanged["unchanged"], true);
+        assert!(unchanged.get("items").is_none());
+        assert!(unchanged.to_string().len() < 256);
+        store.set_rating(a, &id, Some(4), "video").unwrap();
+        let updated = json_call(&app, "POST", &endpoint, json!({"known_revision":revision}))
+            .await
+            .1;
+        assert_eq!(updated["reset"], false);
+        assert_eq!(updated["total"], 1);
+        assert_eq!(updated["items"][0]["media"]["rating"], 4);
+        let next_revision = updated["revision"].as_str().unwrap();
+        let mut discovered = items[1..].to_vec();
+        discovered.push(chill_catalog::scanner::parse_file(
+            std::path::Path::new("/fixture"),
+            std::path::Path::new("/fixture/Added.mkv"),
+        ));
+        store.snapshot(discovered).unwrap();
+        store
+            .forget_unavailable(std::slice::from_ref(&id), store.catalog_revision().unwrap())
+            .unwrap();
+        let delta = json_call(
+            &app,
+            "POST",
+            &endpoint,
+            json!({"known_revision":next_revision}),
+        )
+        .await
+        .1;
+        assert_eq!(delta["reset"], false);
+        assert_eq!(delta["total"], 1);
+        assert_eq!(delta["deleted_ids"], json!([id]));
+        assert_eq!(delta["items"][0]["media"]["title"], "Added");
+        store.delete_profile(a).unwrap();
+        let sql = rusqlite::Connection::open(dir.path().join("catalog.sqlite")).unwrap();
+        let checkpoints: i64 = sql
+            .query_row(
+                "SELECT COUNT(*) FROM cc_catalog_delta_checkpoint WHERE profile_id=?1",
+                [a],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(checkpoints, 0);
     }
     fn request(method: &str, path: &str, body: Value) -> Request<Body> {
         Request::builder()

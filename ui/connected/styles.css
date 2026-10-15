@@ -13,3 +13,21 @@
 html:has(dialog[open]), body:has(dialog[open]) { overflow: hidden; overscroll-behavior: none; }
 dialog[open] { overflow-y: auto; overscroll-behavior: contain; }
 .detail-path { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; padding: 10px 12px; }
+/* Poster-first hierarchy, inspired by Plex; Chill Center palettes remain intact. */
+.media-card .poster{position:relative;overflow:hidden;isolation:isolate}
+.poster-image{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.poster-image img{width:100%;height:100%;object-fit:cover}
+.poster-actions{position:absolute;inset:0;background:linear-gradient(transparent 45%,#0009);opacity:0;transition:opacity .2s ease;pointer-events:none}
+.media-card:hover .poster-actions,.media-card:focus-within .poster-actions{opacity:1}
+.media-card .poster-actions button{pointer-events:auto;position:absolute;border-radius:50%;width:36px;height:36px;padding:0;background:#111b;color:#fff;border:1px solid #fff8;font-size:23px;display:grid;place-items:center}
+.media-card .poster-actions .play-video{left:50%;top:50%;transform:translate(-50%,-50%);width:58px;height:58px;font-size:27px;background:var(--accent);color:var(--button);border:0}
+.poster-watched{bottom:12px;left:12px}.poster-add{bottom:12px;right:12px}
+.media-card .poster-rating{color:var(--accent);letter-spacing:2px;margin:4px 0}
+.rating-stars{display:flex;gap:4px;margin:16px 0;align-items:center}
+.rating-stars .rating-star{font-size:28px;padding:2px 4px;border:0;background:transparent;color:var(--accent);line-height:1.2}
+.tmdb-candidates{display:flex;flex-direction:column;gap:8px;margin:12px 0}.tmdb-candidates button{text-align:left}
+.sync-indicator{width:24px;height:24px;flex:none;color:var(--muted);font-size:20px;text-align:center}.sync-indicator.syncing{animation:sync-spin 1s linear infinite;color:var(--accent)}
+@keyframes sync-spin{to{transform:rotate(360deg)}}
+.matching-row{display:grid;grid-template-columns:minmax(160px,1fr) minmax(220px,2fr);gap:24px;padding:20px 0;border-bottom:1px solid var(--line)}
+@media(hover:none){.poster-actions{opacity:1}}
+@media(prefers-reduced-motion:reduce){.poster-actions{transition:none}.sync-indicator.syncing{animation:none}}
