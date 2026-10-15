@@ -1,6 +1,12 @@
 # Livraison noms de fichiers / fiche — c610ea9
 
-## État courant : serveur déployé, vérification indépendante en cours
+## État courant : DELIVERED / VERIFIED_SCOPED
+
+Le bundle `artifacts/macos/Chill Center-c610ea9.app` et l'archive Linuxc610 sont publiés dans le dépôt utilisateur, anciens artefacts conservés. Promotion Git fast-forward de5bebf10 vers le candidat puis ses seuls documents d'évidence, aucun fichier utilisateur écrasé ; `.claude/` non suivi préservé. Hash de la copie Mac identique, signature stricte et `--verify-bundle` API2.5 PASS après copie. Fenêtre de test isolée fermée par l'utilisateur ; aucune autre application fermée et aucun lancement vidéo.
+
+[Vérification indépendante APPROVED_SCOPED](REL-FILENAME-SCROLL-001-verification.md), instance `/root/verify_filename_release`, rapport copié à l'identique (cmp PASS) : Pi actif/runningPID8460/NRestarts0, hash exécutécef54… exact, zéro warning+ depuis bascule, TLS/API datée/v1 PASS. Sauvegarde0700/1713entrées+manifest=1714fichiers exactement, hashes/tailles/SQLiteimmutable PASS ; rollbackCFC et invariants configuration/unité/SPKI/montage identiques. Une seule sonde réelle UiClient, exit0,2496éléments, connexion/fiche/sagas/listes/snapshotinchangé/réouverturechaude PASS,9933ms, parcours local5002ms, household_writes=false. Cela ne prouve pas une revue source→binaire indépendante, un test GUI surPi, une lecture NAS ni la performance par carte. Gate [G-POST](../gates/G-POST-FILENAME-SCROLL-001.md) ouvert dans ce seul périmètre.
+
+Au SHA figé, six régressions uniques scanner/recherche automatique/matching serveur réexécutées PASS ; pas de tests lecteur supplémentaires. Les anciens titres enregistrés ne sont pas réécrits : leurs requêtes automatiques sont nettoyées sans toucher aux corrections manuelles. Aucun enrichissement TMDB réel lancé, les limites de matching français/original, synchronisation bloquante/diff et séries/saisons restent hors de cette livraison.
 
 Source figée `c610ea9a542f289902ebd6c356bcb1f369b7f150`, branche `codex/release-filename-scroll`. Même catalogue/API/CSS que71bd7a0, ajout de l'entrée de test manuel debug uniquement. L'utilisateur a validé le défilement dans la vraie fenêtre Tauri (« test concluant sur le scrolling de mon côté »). Variantes expérimentales28b1c64 et chantier série/saison eb73711 exclus.
 

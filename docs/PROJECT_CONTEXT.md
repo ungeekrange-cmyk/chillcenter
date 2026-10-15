@@ -1,10 +1,10 @@
 # Contexte du projet
 
-## Défilement validé humainement — livraison autorisée
+## Livraison c610ea9 — Mac publié, Pi déployé et vérifié
 
-15octobre : fenêtre Tauri isolée ouverte via mode debug `detail_manual`, avec données fictives et réglages privés, correctif71bd7a0 sans variantes expérimentales. Retour utilisateur exact : « test concluant sur le scrolling de mon côté ». Bundle Mac et déploiement Pi autorisés après ce retour ; en préparation, pas encore revendiqués livrés. Voir [release](releases/REL-FILENAME-SCROLL-001.md) et BUG0063. Ne pas relancer un parcours lecteur ni les hypothèses du simulateur natif non concluant.
+15octobre : sourcec610ea9, bundle utilisateur `artifacts/macos/Chill Center-c610ea9.app` (77Mio, signature/48dylibs/API2.5 PASS), archiveLinuxc610 publiée ; anciennes versions préservées et promotion localeff-only, aucunpush. Pi mis à jour à12:43:07UTC, SHAcef54cd0…/PID8460/NRestarts0 ; backupprivé2cbaefcf… vérifié, rollbackCFCf853… conservé, NAS/config/unité/TLS inchangés. Vérification indépendante `/root/verify_filename_release` APPROVED_SCOPED : vraiUiClient TLS/cache/catalogue2496/fiche/sagas/listes/snapshot/réouverturechaude PASS, aucun warning+ ; [rapport](releases/REL-FILENAME-SCROLL-001-verification.md) et [release](releases/REL-FILENAME-SCROLL-001.md). Test humain Tauri isolé sur le correctif : « test concluant sur le scrolling de mon côté ». Pas de nouveau lecteur/vidéo/scan/TMDB réel ni de pilote installé. Variantes expérimentales28b1c64 et chantier série/saison eb73711 exclus et préservés. Matching français/original, fiche périmée et synchronisation bloquante/diff restent distincts/non corrigés dans ce lot. Ne pas relancer les hypothèses du simulateur non concluant.
 
-## Livraison noms de fichiers / fiche du15octobre — suspendue, Pi inchangé
+## Historique : livraison suspendue avant l'essai humain
 
 [Rapport](releases/REL-FILENAME-SCROLL-001.md) : candidat isolé71bd7a0 depuis la base livrée5bebf10, séries incomplètes exclues. Builds/tests ciblés effectués, mais test de molette interne Tauri non concluant après cinq hypothèses ; pas de bundle livré ni de déploiement. Essais expérimentaux préservés à28b1c64 sur `codex/diagnostic-modal-scroll`, hors candidat. Nouvel accord utilisateur/essai manuel requis avant nouvelle investigation. Pi toujoursCFC87de actifPID6808, Mac livré7a0f480 ; données/NAS/configuration/TLS intacts.
 

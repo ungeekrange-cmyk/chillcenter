@@ -1,6 +1,6 @@
 # BUG-0062 — séparateurs et suffixes audio/vidéo conservés dans les titres
 
-2026-10-15, base `eb73711`, branche `codex/filename-parsing`. État : FIXED_LOCAL, NON_LIVRÉ.
+2026-10-15, base initiale `eb73711`, branche `codex/filename-parsing`. État courant : FIXED / DELIVERED c610ea9, reprise ciblée depuis la base livrée5bebf10 sans le chantier séries incomplet. [Release et vérification](../releases/REL-FILENAME-SCROLL-001.md). Anciennes fiches conservées ; aucun scan/enrichissement réel ajouté au déploiement.
 
 ## Symptômes et cause
 
