@@ -52,7 +52,7 @@ Base `/api/2026-10-14`. `GET /server` est lu au démarrage et le client refuse u
 2. Certificat autogénéré : Service Worker et installation PWA souvent refusés sans approbation système.
 3. Safari/iOS : MSE limité ; non évalué.
 4. Garde d'origine fondée sur `Sec-Fetch-Site` ; à valider sur les navigateurs cibles.
-5. Le delta Rust (garde d'origine, service statique) **n'a pas encore été compilé ni testé** : `cargo` existe mais le cache des crates est incomplet ; téléchargements à approuver, voir [WEB-CLIENT-PI](../deployment/WEB-CLIENT-PI.md) §3.
+5. Le delta Rust (garde d'origine, service statique) est compilé et testé (101 tests, clippy propre, binaire ARM64, essai de bout en bout 20/20 sous Linux aarch64 via scripts/web-e2e-linux.sh, voir [WEB-CLIENT-PI](../deployment/WEB-CLIENT-PI.md) §3) ; **pas encore exécuté sur le vrai Pi**.
 
 ## Vérifications exécutées (14 octobre 2026, branche `codex/web-pwa`)
 

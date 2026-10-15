@@ -1,6 +1,6 @@
-# Déploiement du client web sur le Pi — plan préparé, NON exécuté
+# Déploiement du client web sur le Pi — artefacts construits et testés, déploiement NON exécuté
 
-Révision `CC-WEB-DEPLOY-001`, 15 octobre 2026, branche `codex/web-pwa`. **Rien n'a été exécuté sur le Pi ni copié vers lui.** Ce document est une proposition soumise à revue indépendante puis à ton feu vert explicite (AGENTS : pas de déploiement sur un matériel ou un réseau supposé ; un seul auteur par chemin, le reviewer n'édite pas).
+Révision `CC-WEB-DEPLOY-001` r2, 15 octobre 2026, branche `codex/web-pwa`, source `05e637dec0b721300925be14e46c94c26d331789`. **Rien n'a été exécuté sur le Pi ni copié vers lui.** Ce document est une proposition soumise à revue indépendante puis à ton feu vert explicite (AGENTS : pas de déploiement sur un matériel ou un réseau supposé ; un seul auteur par chemin, le reviewer n'édite pas).
 
 ## 1. Ce qui change sur le Pi, et ce qui ne change pas
 
@@ -24,20 +24,20 @@ Interruption du service : arrêt, sauvegarde hors ligne, copies et redémarrage 
 | Ancien rollback R7 (déjà sur le Pi) | `/root/chillcenter-rollback/chill-server-r7-9a17ffe55e3d`, `9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6` |
 | Certificat public du Pi (lu le 15 oct.) | SPKI SHA-256 `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`, valide du 14/10/2026 au 14/04/2028 ; `server_id` `885f7713-b8c6-4891-a8d1-c1410d5f1537` |
 | Script opérateur candidat V5 `scripts/pi-update-web-operator.sh` | 13 078 octets, SHA-256 `8d47e9df8feba5c234552ff61517fd04e29a8612c2a3e14cabfc3b420fbb9d14` — **toute modification, même un commentaire, annule la revue** |
-| Archive web de démonstration (`scripts/package-web-pi.sh`) | `chillcenter-web.tar`, 1 158 656 octets, 54 fichiers, SHA-256 `ea9158d209ac212a22e51be3387eafac5a66e8c00f4612ff5eca8d4aef0ddba1` — **provisoire** : recalculée sur le commit final |
+| **Archive web finale** (`scripts/package-web-pi.sh`, sans métadonnées macOS) | `artifacts/web-pi/chillcenter-web.tar`, **1 099 264 octets**, 54 fichiers, SHA-256 `1aaf79a6c476904b191a0e3fe02a64c5535df82b0753448d5f9884a18f6cc669`. Le tar n'est pas reproductible octet pour octet (horodatages) : **ce fichier exact** est celui à copier ; le contenu (build web `387b98d9b0ad`) est reproductible |
 | Décodeur MPEG-4 embarqué | `mpeg4-decoder.wasm` SHA-256 `453fb7b171fde50d1306a57793ebac571459a7c324d28bd8b4f6c3db6b7bda53` (652 895 o), `mpeg4-decoder.js` `64d97f891594c386652cf3f783dfbdaf65d358ddb0bf1be96f1fbe3b2d3be827` ; FFmpeg 9.0.2 `8c385028…002e`, emsdk 6.0.12 `sha256:a7883da4…8c98` |
-| **Nouveau binaire serveur** | **à produire** (voir §3) ; son SHA-256 sera passé au script par `NEW_BINARY_SHA256` |
-| Source | commit exact de la branche `codex/web-pwa` au moment du build (à figer) |
+| **Nouveau binaire serveur** (`cargo zigbuild --release --locked -p chill-server --target aarch64-unknown-linux-gnu.2.28`) | `target/aarch64-unknown-linux-gnu/release/chill-server`, **14 601 224 octets**, ELF 64-bit ARM aarch64 dynamique, strippé, SHA-256 **`c3681a47f7dc7b39730e3e11024306ab754b4142aef44eb026edb7e0372d2c47`** → `NEW_BINARY_SHA256` |
+| Source | commit `05e637dec0b721300925be14e46c94c26d331789` (les commits suivants ne touchent que la documentation et le paquetage) |
 
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 
-**Constat.** La modification Rust (garde d'origine + service des fichiers statiques + leurs tests) **n'a jamais été compilée ni exécutée** : `cargo` n'était pas sur le PATH de la session. Il existe (`~/.cargo/bin`), mais :
+**Constat initial (avant exécution).** La modification Rust (garde d'origine + service des fichiers statiques + leurs tests) n'avait jamais été compilée : `cargo` n'était pas sur le PATH de la session. Il existait (`~/.cargo/bin`), mais :
 
 1. **Effet de bord déjà subi, à signaler** : lancer `cargo` dans le dépôt a déclenché `rust-toolchain.toml` et `rustup` a **installé automatiquement la chaîne 1.99.0 (≈ 470 Mo sur disque)** sans que je l'aie demandé ni annoncé. C'est la chaîne épinglée par le projet ; à garder (nécessaire au build) ou à retirer (`rustup toolchain uninstall 1.99.0`) selon ton choix.
 2. Le cache des crates est **incomplet** (index et 123 crates manquants pour le serveur seul) : `--offline` échoue.
 3. Les outils de compilation croisée utilisés pour la livraison précédente (**Zig 0.17.0**, **cargo-zigbuild 0.23.4**, cible Rust `aarch64-unknown-linux-gnu`) ne sont plus installés.
 
-**Téléchargements nécessaires pour compiler et tester (tailles exactes, métadonnées lues sans téléchargement) — *à approuver* :**
+**Téléchargements nécessaires pour compiler et tester (tailles exactes, métadonnées lues sans téléchargement) — *approuvés par l'utilisateur le 15 octobre 2026, exécutés* :**
 
 | Élément | Taille exacte | Vérification |
 | --- | ---: | --- |
@@ -65,6 +65,23 @@ node --test web/test/*.test.js
 ```
 
 Le **diff Rust** à revoir est petit : `crates/chill-server/src/web_static.rs` (nouveau), la garde `same_origin` dans `api.rs`, `lib.rs`, et leurs tests.
+
+### Exécution du §3 (15 octobre 2026, après ton approbation)
+
+| Étape | Résultat |
+| --- | --- |
+| Zig 0.17.0 | 53 985 220 octets, SHA-256 **identique** à l'index officiel (`b607e9b9…536a`) ; `zig version` = 0.17.0 |
+| cargo-zigbuild 0.23.4 | 1 035 284 octets, SHA-256 **identique** (`ca2369ae…cea3`) |
+| `rust-std` aarch64-linux | installé par `rustup` (hash du manifeste officiel vérifié par `rustup`) ; 31 757 040 octets annoncés |
+| Crates du serveur | **109 crates, ≈ 24,2 Mo** mesurés par la croissance du cache (24 816 → 48 416 Kio, arrondi par blocs) ; `Cargo.lock` imposé par `--locked` (sommes `checksum` vérifiées par cargo) |
+| **Total réellement téléchargé** | **≈ 110,9 Mo**, sous le plafond annoncé de 120 547 493 octets |
+| Premier `cargo test` | **ÉCHEC de compilation** : le futur du middleware `same_origin` n'était plus `Send` (emprunts de la requête vivants à travers l'`await`) et une fermeture de test sans annotation de type. Corrigé en sortant les contrôles dans une fonction synchrone (`check_browser_origin_and_host`), commit `05e637d` |
+| `cargo test --locked -p chill-server` | **101 passés, 0 échec** (dont `same_origin_browser_is_accepted_and_cross_site_is_refused`, les 3 tests de `web_static`, et l'ancien test de refus d'origine) ; 2 tests d'intégration passés |
+| `cargo clippy --locked -p chill-server --all-targets -- -D warnings` | propre |
+| Build ARM64 release | OK en 2 min 19 s ; un avertissement de l'éditeur de liens (déjà présent lors des livraisons précédentes) |
+| **Essai de bout en bout du binaire livrable** : vrai binaire ARM64 + vraie archive web, lancés dans une VM Linux aarch64 (Ubuntu 24.04, glibc 2.39, boucle locale, données temporaires), mêmes vérifications que le script du Pi | **20 sur 20** : API sans en-tête 200 ; `same-origin` 200 ; `cross-site`, `same-site`, `Origin` étranger, `none` sur l'API : 403 ; page d'accueil 200 avec `<title>` et CSP ; `.wasm` en `application/wasm` (652 895 octets) ; `sw.js` en `no-cache` ; `.env`, `../`, `%2e%2e`, `SHA256SUMS` : 404 ; POST statique 405 ; hôte inattendu 403 |
+
+Ce que cet essai **ne** prouve **pas** : l'exécution sur le vrai Pi (Debian 13, glibc 2.41, 905 Mio de RAM), les chemins `/usr/lib/chillcenter`, systemd, la durée d'interruption, ni la revue indépendante.
 
 ## 4. Revue indépendante (obligatoire avant exécution)
 
@@ -117,4 +134,6 @@ Aucune migration SQLite n'est introduite par ce lot : l'ancien binaire reste com
 
 ## 8. Ce qui n'est pas prouvé
 
-Compilation et tests Rust du delta (`NOT_RUN`), binaire ARM64 (`NOT_BUILT`), exécution du script sur un vrai Pi (`NOT_RUN`), durée réelle d'interruption, lecture réelle depuis un navigateur sur le Pi, performances sur appareils faibles, Service Worker sur certificat auto-signé.
+Exécution du script opérateur sur un vrai Pi (`NOT_RUN`), durée réelle d'interruption, revue indépendante du script et du diff (`NOT_DONE`), lecture réelle depuis un navigateur sur le Pi, performances sur appareils faibles, Service Worker sur certificat auto-signé. Compilation, tests Rust, build ARM64 et essai de bout en bout Linux : faits (§3).
+
+Rejouer l'essai de bout en bout : `colima start` puis `colima ssh -- <repo>/scripts/web-e2e-linux.sh <repo>` (le binaire et `artifacts/web-pi/chillcenter-web.tar` doivent exister), puis `colima stop`.

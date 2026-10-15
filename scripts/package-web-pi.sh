@@ -9,7 +9,7 @@ rm -rf "$OUT"; mkdir -p "$OUT/stage"
 node scripts/build-web.mjs "$OUT/stage/web"
 ( cd "$OUT/stage/web" && find . -type f ! -name SHA256SUMS -print | sed 's|^\./||' | LC_ALL=C sort | xargs shasum -a 256 > SHA256SUMS )
 ( cd "$OUT/stage/web" && shasum -a 256 -c --quiet SHA256SUMS )
-COPYFILE_DISABLE=1 tar -C "$OUT/stage" -cf "$OUT/chillcenter-web.tar" web
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C "$OUT/stage" -cf "$OUT/chillcenter-web.tar" web
 tar -tf "$OUT/chillcenter-web.tar" | grep -v '^web/' && { echo "entrée hors web/" >&2; exit 1; } || true
 ARCHIVE_SHA="$(shasum -a 256 "$OUT/chillcenter-web.tar" | cut -d' ' -f1)"
 printf 'web_archive=%s\nweb_archive_sha256=%s\nweb_archive_bytes=%s\nfiles=%s\ngit_head=%s\n' \
