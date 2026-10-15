@@ -1,4 +1,20 @@
-# Livraison noms de fichiers / fiche — suspendue avant déploiement
+# Livraison noms de fichiers / fiche — c610ea9
+
+## État courant : serveur déployé, vérification indépendante en cours
+
+Source figée `c610ea9a542f289902ebd6c356bcb1f369b7f150`, branche `codex/release-filename-scroll`. Même catalogue/API/CSS que71bd7a0, ajout de l'entrée de test manuel debug uniquement. L'utilisateur a validé le défilement dans la vraie fenêtre Tauri (« test concluant sur le scrolling de mon côté »). Variantes expérimentales28b1c64 et chantier série/saison eb73711 exclus.
+
+Paquet Mac construit hors réseau, source propre/Cargo.lock/Rust1.99,77Mio,48dylibsARM64/signature ad-hoc stricte/APIlibmpv2.5 PASS ; non notarisé. Chemin de remise prévu `artifacts/macos/Chill Center-c610ea9.app`, exécutable SHA256 `ecde360fea63c2e8c85693a2dee657cb288bf6146d5a33c3a956706b77007c0e`. Pas de lancement du bundle livré sur les réglages réels ; le test humain a utilisé son hôte debug avec les mêmes assets produit. Deux warnings release de helpers natifs préexistants, pas supprimés artificiellement. Clippy desktop/all-targets `-D warnings` PASS,16Node catalogue/contrat70routes PASS. Preuves Rust74catalogue+53domaine+2serveur réutilisées après preuve d'absence de delta crates depuis71bd7a0 ; aucune lecture vidéo supplémentaire.
+
+Serveur ARM64/glibc2.28 reconstruit au SHA exact via cargo-zigbuild0.23.4/Zig0.17 horsligne, validationELF PASS ; seul warning linker préexistant. Archive `artifacts/linux/chillcenter-server-c610ea9-pi64.tar.gz`, SHA256 `4072d89bf077b566a0dab26fe9f0df243590654db498bbaf27ae934351c0546a`, binaire `cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3`. OpenAPI/API2026-10-14 et aliasv1 inchangés, hash01423e6a… identique. Aucun changement de schéma, runtime/dépendance, identité, secret, TLS ou configuration.
+
+Bascule Pi réussie **2026-10-15T12:43:07Z**, exit0, PID8460. Script opérateur privé `deploy-pi.sh` SHA256 `4e576e06a374548fcdcd952e4b0360862a8ac404e2510c81a1be8129aff4b816` : aucune connexion serveur active avant arrêt, ancienne CLI de sauvegarde offline, manifeste/hashes/tailles/SQLiteimmutable/ensemble exact vérifiés, rollback distinct, remplacement atomique et HTTPS strict après redémarrage. La copie vérifiée précède le remplacement ; trap de restauration de l'ancien binaire en cas d'échec. Pas de restauration de base ou d'effacement de données.
+
+Sauvegarde privée conservée surPi `/var/lib/chillcenter/data/backups/2cbaefcf-58fa-4b12-a9c3-3f03b75105ae`, `PRIVATE_BACKUP_VERIFIED_EXACT`. Rollback `/root/chillcenter-rollback/chill-server-cfc87de-f85375ad4ac33fd0`, hashf85375ad… exact. Éventuels auxiliaires SQLite vides non déclarés sont seulement déplacés en quarantaine privée selon la procédure BUG0060, jamais supprimés. Anciennes sauvegardes préservées. ConfigSHAea24f2f0…/unitéSHA76f7d349…/SPKI3018fb4d… contrôlés identiques avant/après ; montage CIFSro, signature relevée e3711e5a… avant bascule. Pas de scan, TMDB/IA ou mutation de fichiers NAS.
+
+Sécurité ciblée auteur : nom de fichier traité comme texte, chemin relatif rendu par textContent, aucune commande/URL exécutée depuis métadonnées ; regex Rust à compilation unique, pas de dépendance ajoutée ; mode manuel/contrôles QA absents du handler release, réglages privés, aucun secret copié horsPi. Cette vérification n'est pas une revue source indépendante. Contrôle runtime distinct confié à `/root/verify_filename_release`, non impliqué dans construction/bascule. Publication locale après son verdict ; garder les réserves fonctionnelles historiques, ne pas marquer toutes les US terminées.
+
+Rollback binaire autorisé si échec critique du smoke : arrêter le service, vérifier/réinstaller exclusivement le rollbackCFC ci-dessus, redémarrer et contrôler HTTPS/hash. Schéma inchangé ; toute restauration remplaçante de données demanderait une confirmation distincte. Les échecs du simulateur ci-dessous restent historiques, pas requalifiés PASS par la validation humaine.
 
 ## Reprise après validation humaine
 
