@@ -60,6 +60,11 @@ systemctl stop chillcenter-redirect; expect "R3 arrêt de l'unité : 443 coupé"
 expect "R3 arrêt de l'unité : :8443 intact" "$(code "https://$LAN:8443/api/2026-10-14/server")" 200
 systemctl start chillcenter-redirect; expect "R3 redémarrage de l'unité : 443 revient" "$(code "https://$LAN/api/2026-10-14/server")" 200
 
+# ---- R3b only the configured address is redirected (review 5, mutant m1c): another local address keeps refusing 443 -------------------
+ip addr add 10.99.0.9/24 dev vh0
+expect "R3b autre adresse locale : 443 non redirigé" "$(ip netns exec "$NS" curl -sk --max-time 8 -o /dev/null -w '%{http_code}' "https://10.99.0.9/api/2026-10-14/server" 2>/dev/null || true)" 000
+ip addr del 10.99.0.9/24 dev vh0
+
 # ---- R4 refusals before any change ------------------------------------------------------------------------------------------------------
 run; expect "R4 seconde installation : refus (2)" "$RC" 2
 expect "R4 …et la redirection fonctionne toujours" "$(code "https://$LAN/api/2026-10-14/server")" 200
@@ -102,5 +107,10 @@ SCRIPT="$W/broken-syntax.sh" run; unset SCRIPT
 [[ "$RC" != 0 ]] && ok "R8 règle invalide : sortie non nulle ($RC)" || ko "R8 code" "0"
 [[ ! -e /etc/chillcenter/redirect-443.nft && ! -e /etc/systemd/system/chillcenter-redirect.service ]] && ok "R8 aucun fichier installé (essai à blanc)" || ko "R8" "fichiers installés"
 expect "R8 aucun temporaire résiduel" "$(ls -A /etc/chillcenter /etc/systemd/system | grep -c '^\.\(redirect-443\|chillcenter-redirect\)')" 0
+
+# ---- R9 chillcenter stopped: refused before anything (review 5, mutant m16) --------------------------------------------------------------
+systemctl stop chillcenter; run
+expect "R9 service arrêté : refus (2)" "$RC" 2
+[[ ! -e /etc/chillcenter/redirect-443.nft && ! -e /etc/systemd/system/chillcenter-redirect.service ]] && ok "R9 rien créé" || ko "R9" "fichiers créés"
 
 echo "== résultat : $pass PASS, $fail FAIL"; [[ "$fail" -eq 0 ]]

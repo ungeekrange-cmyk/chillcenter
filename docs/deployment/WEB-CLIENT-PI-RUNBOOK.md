@@ -16,6 +16,7 @@ Lire d'abord les conventions : le script est envoyé par **stdin** (`bash -s`), 
 | 5 Exécution du script V8 | toi ou moi | **oui : le déploiement** (arrêt bref du service, sauvegarde privée, binaire, dossier web) |
 | 6 Vérification et nettoyage | toi ou moi | supprime les 2 fichiers de `/var/tmp` |
 | 7 Retour arrière | seulement si nécessaire | oui |
+| 8 Redirection du port 443 (ADR-0017) | toi ou moi, **feu vert séparé**, après les étapes 4 à 6 | **oui : une table nftables et une unité systemd** |
 
 Tu peux coller toi-même chaque bloc. Ou bien tu m'autorises à les exécuter à travers **ta** connexion maître : dans ce cas écris explicitement « **Feu vert déploiement V8** » **et** le chemin du socket (étape 1), et je n'exécute que les étapes 2 à 6, dans l'ordre, en m'arrêtant à la première sortie inattendue.
 
@@ -121,7 +122,7 @@ echo "code de sortie : $?"
 | **1 ou 3** avec des lignes `RECOVERY:` | Échec après l'arrêt ; **restauration automatique** | lire les deux dernières lignes : `service is active` + `answers over strict TLS` = **ancien état rétabli** ; `ERR line N: …` dit ce qui a échoué ; **ne pas relancer** avant d'avoir compris |
 | `RECOVERY: SERVICE IS NOT ACTIVE` ou `could NOT be restored` | La restauration n'a pas pu tout rétablir | **étape 7 (manuelle) immédiatement** |
 | **129 / 130 / 143** | Interrompu (SSH coupé, Ctrl-C) | la récupération s'est exécutée ; refaire le **préflight** (étape 3) pour lire l'état réel |
-| **1 sans aucune ligne `RECOVERY`**, sortie fermée | Probablement LOW-2 : déployé, résumé non imprimé | préflight : si `installed_binary_sha256=b804…` et service actif, c'est déployé ; vérifier l'étape 6 |
+| **1 sans aucune ligne `RECOVERY`**, sortie fermée | Probablement LOW-2 : déployé, résumé non imprimé | préflight : si `installed_binary_sha256=a7ab…` et service actif, c'est déployé ; vérifier l'étape 6 |
 | Sortie vide, SSH tombé | État inconnu | préflight (étape 3) ; **ne pas relancer le script** tant que l'état n'est pas lu |
 
 ## Étape 6 — vérification et nettoyage
@@ -168,6 +169,14 @@ Comportement sur Debian 13 réel avec systemd réel, durée réelle d'interrupti
 
 Ne se fait qu'une fois le déploiement des étapes 4 à 6 réussi (le nouveau binaire accepte `Host` sans port ; l'ancien le refuse). Le script ne touche ni le service, ni sa configuration, ni `/etc/nftables.conf`.
 
+Contrôle préalable **lecture seule** (condition C1 de la [revue n° 5](../reviews/web-pi-redirect-443-review-5.md)) : `redirect to :8443` vise l'adresse **primaire** de l'interface d'entrée ; si `192.168.1.42` était une adresse secondaire de `wlan0`, le script annoncerait un succès faux.
+
+```bash
+pi 'ip -4 -o addr show dev wlan0'     # doit montrer 192.168.1.42/24 SANS le mot « secondary »
+```
+
+(Le relevé du 15 octobre 15:22 UTC montrait une seule adresse globale, `wlan0=192.168.1.42/24`.) Le test de bout en bout ci-dessous est **obligatoire** : s'il échoue, lancer `--remove` aussitôt.
+
 ```bash
 cd "$R"
 [ "$(shasum -a 256 scripts/pi-redirect-443-operator.sh | cut -d' ' -f1)" = 3e7f6d4f8b0bdfa33af09f7031f7862ddca992426507dbf0cd498a63fe1f4ef4 ] && echo "script redirection conforme" || echo "SCRIPT MODIFIÉ : STOP"
@@ -179,3 +188,9 @@ Succès : `redirect=192.168.1.42:443->8443`, `unit_state=enabled/active`, `servi
 
 **Retour arrière** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s -- --remove' < scripts/pi-redirect-443-operator.sh`. Le serveur continue de répondre sur `:8443`. Le trafic émis par le Pi lui-même n'est pas redirigé (sondes locales sur `:8443`).
 
+**Risques résiduels acceptés (revue n° 5)** :
+- Activer plus tard `nftables.service`, ou lancer `nft -f /etc/nftables.conf` / `systemctl restart nftables`, exécute le `flush ruleset` du fichier par défaut : la table `chillcenter_web` disparaît alors que l'unité reste « active » (`RemainAfterExit`). Remède : `systemctl restart chillcenter-redirect`.
+- Si la table a déjà disparu, `systemctl stop chillcenter-redirect` met l'unité en `failed` (ExecStop sort en 1) ; sans conséquence fonctionnelle.
+- Un échec entre la pose du fichier de règles et celle de l'unité laisse `/etc/chillcenter/redirect-443.nft` ; `--remove` règle le cas.
+- Le script ne contrôle pas les droits de `/etc/chillcenter` avant que root n'y charge un fichier de règles : le dossier doit être `root:root` non inscriptible (à vérifier avec `pi 'stat -c %a:%u:%g /etc/chillcenter'`).
+- Un retour arrière **du binaire** (étape 7) vers l'ancien build refuserait `Host` sans port : retirer d'abord la redirection (`--remove`), sinon le client web sur 443 répondrait `HOST_REFUSED`.

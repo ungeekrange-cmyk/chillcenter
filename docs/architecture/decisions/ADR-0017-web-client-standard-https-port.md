@@ -26,7 +26,7 @@ Contraintes lues dans le code : `check_browser_origin_and_host` (`crates/chill-s
 Option **C**.
 
 1. **Rust** : le contrôle `Host` accepte le port de `listen` **ou** 443. Le nom reste obligatoirement l'un de `tls_names` (garde anti-rebinding DNS conservée). Cas couverts par test : `localhost`, `localhost:443`, `localhost:8443` acceptés ; `localhost:9443`, `localhost:80`, `attacker.example`, `attacker.example:443` refusés ; une `Origin` sans port ne correspond pas à un `Host` avec port.
-2. **Réseau (Pi)** : une règle DNAT limitée à l'adresse du Pi, TCP 443 → 8443, dans une table nftables dédiée, installée par un script d'opérateur séparé, relu, après un relevé **en lecture seule** du pare-feu existant. Ce script n'est pas le script V8 de déploiement (dont les octets ont été relus et ne changent pas).
+2. **Réseau (Pi)** : une règle `redirect` (nftables, hook prerouting) limitée à l'adresse du Pi, TCP 443 → 8443, dans une table nftables dédiée, installée par un script d'opérateur séparé, relu, après un relevé **en lecture seule** du pare-feu existant. Ce script n'est pas le script V8 de déploiement (dont les octets ont été relus et ne changent pas).
 3. Le port 80 n'est pas ouvert : pas de redirection HTTP, `http://` ne répond pas.
 
 ## Conséquences
@@ -35,4 +35,5 @@ Option **C**.
 - Le trafic local du Pi vers lui-même (loopback) n'est pas redirigé : les sondes locales restent sur `:8443`.
 - Le certificat reste auto-signé : l'avertissement du navigateur et les limites du Service Worker décrites dans WEB-CLIENT demeurent.
 - Retour arrière : supprimer la table nftables ; le serveur continue de répondre sur `:8443`. Un binaire plus ancien refuserait `Host` sans port, donc le web sur 443 cesserait de fonctionner mais rien d'autre.
+- Risques résiduels relevés par la revue n° 5 (voir runbook, étape 8) : adresse primaire de l'interface, `flush ruleset` du fichier nftables par défaut si `nftables.service` est activé plus tard, état `failed` de l'unité si la table a déjà disparu.
 - Non prouvé tant que non exécuté sur le Pi : présence et état de nftables / iptables, règles existantes, persistance au redémarrage, comportement avec un vrai navigateur.
