@@ -13,11 +13,11 @@ Lire d'abord les conventions : le script est envoyé par **stdin** (`bash -s`), 
 | 2 Contrôle local des hashes | toi ou moi | non |
 | 3 Préflight lecture seule | toi ou moi (via ta connexion) | **non** (root, mais lecture seule) |
 | 4 Copie de deux fichiers | toi ou moi | **oui : 2 fichiers dans `/var/tmp`** |
-| 5 Exécution du script V7 | toi ou moi | **oui : le déploiement** (arrêt bref du service, sauvegarde privée, binaire, dossier web) |
+| 5 Exécution du script V8 | toi ou moi | **oui : le déploiement** (arrêt bref du service, sauvegarde privée, binaire, dossier web) |
 | 6 Vérification et nettoyage | toi ou moi | supprime les 2 fichiers de `/var/tmp` |
 | 7 Retour arrière | seulement si nécessaire | oui |
 
-Tu peux coller toi-même chaque bloc. Ou bien tu m'autorises à les exécuter à travers **ta** connexion maître : dans ce cas écris explicitement « **Feu vert déploiement V7** » **et** le chemin du socket (étape 1), et je n'exécute que les étapes 2 à 6, dans l'ordre, en m'arrêtant à la première sortie inattendue.
+Tu peux coller toi-même chaque bloc. Ou bien tu m'autorises à les exécuter à travers **ta** connexion maître : dans ce cas écris explicitement « **Feu vert déploiement V8** » **et** le chemin du socket (étape 1), et je n'exécute que les étapes 2 à 6, dans l'ordre, en m'arrêtant à la première sortie inattendue.
 
 ## Étape 0 — conditions du feu vert (à vérifier avant de le donner)
 
@@ -121,7 +121,7 @@ echo "code de sortie : $?"
 | **1 ou 3** avec des lignes `RECOVERY:` | Échec après l'arrêt ; **restauration automatique** | lire les deux dernières lignes : `service is active` + `answers over strict TLS` = **ancien état rétabli** ; `ERR line N: …` dit ce qui a échoué ; **ne pas relancer** avant d'avoir compris |
 | `RECOVERY: SERVICE IS NOT ACTIVE` ou `could NOT be restored` | La restauration n'a pas pu tout rétablir | **étape 7 (manuelle) immédiatement** |
 | **129 / 130 / 143** | Interrompu (SSH coupé, Ctrl-C) | la récupération s'est exécutée ; refaire le **préflight** (étape 3) pour lire l'état réel |
-| **1 sans aucune ligne `RECOVERY`**, sortie fermée | Probablement LOW-2 : déployé, résumé non imprimé | préflight : si `installed_binary_sha256=2412…` et service actif, c'est déployé ; vérifier l'étape 6 |
+| **1 sans aucune ligne `RECOVERY`**, sortie fermée | Probablement LOW-2 : déployé, résumé non imprimé | préflight : si `installed_binary_sha256=b804…` et service actif, c'est déployé ; vérifier l'étape 6 |
 | Sortie vide, SSH tombé | État inconnu | préflight (étape 3) ; **ne pas relancer le script** tant que l'état n'est pas lu |
 
 ## Étape 6 — vérification et nettoyage
@@ -137,7 +137,7 @@ openssl s_client -connect 192.168.1.42:8443 </dev/null 2>/dev/null | openssl x50
 pi 'rm -f /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar; ls /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar 2>&1 | head -2'
 ```
 
-Attendu : hash binaire `24120568…`, `active`, un dossier `web` root, empreinte `3018fb4d…`, deux fichiers absents. Je peux ensuite refaire la sonde Node en lecture seule (catalogue, Range MKV/MP4/AVI, décodeur) contre le serveur réel.
+Attendu : hash binaire `b80408da…`, `active`, un dossier `web` root, empreinte `3018fb4d…`, deux fichiers absents. Je peux ensuite refaire la sonde Node en lecture seule (catalogue, Range MKV/MP4/AVI, décodeur) contre le serveur réel.
 
 **Voir l'interface** : ouvre `https://192.168.1.42:8443/` dans le navigateur. Le certificat est auto-signé : une page d'avertissement apparaît. Deux options, à ton choix :
 - **Exception ponctuelle** pour cette adresse : la page se charge ; **Service Worker et installation PWA seront probablement refusés**.

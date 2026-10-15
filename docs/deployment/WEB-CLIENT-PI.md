@@ -24,7 +24,7 @@ Interruption du service : arrêt, sauvegarde hors ligne, copies et redémarrage 
 | Ancien rollback R7 (déjà sur le Pi) | `/root/chillcenter-rollback/chill-server-r7-9a17ffe55e3d`, `9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6` |
 | Certificat public du Pi (lu le 15 oct.) | SPKI SHA-256 `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`, valide du 14/10/2026 au 14/04/2028 ; `server_id` `885f7713-b8c6-4891-a8d1-c1410d5f1537` |
 | Script opérateur candidat **V8** `scripts/pi-update-web-operator.sh` (= V7 `b61b9fd6…` approuvé par la revue n° 3, dont le hash de l'ancien binaire, auparavant codé en dur, devient le paramètre obligatoire `OLD_BINARY_SHA256` ; **V8 n'a pas encore été relu** : revue n° 4 requise) | 17 916 octets, SHA-256 **`dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29`** — **toute modification, même un commentaire, annule la revue** |
-| **Archive web finale** (`scripts/package-web-pi.sh`, sans métadonnées macOS) | `artifacts/web-pi/chillcenter-web.tar`, **1 125 376 octets**, 56 entrées (54 fichiers), SHA-256 **`894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118`**. Le tar n'est pas reproductible octet pour octet (horodatages) : **ce fichier exact** est celui à copier ; contenu : build web `1556174bd809` |
+| **Archive web finale** (`scripts/package-web-pi.sh`, sans métadonnées macOS) | `artifacts/web-pi/chillcenter-web.tar`, **1 125 376 octets**, 60 membres : 56 fichiers dont `SHA256SUMS`, 4 répertoires, SHA-256 **`894fbe952a58bdae01527e8d8fa646e87977b9f1aea5bd996d770bacb71f7118`**. Le tar n'est pas reproductible octet pour octet (horodatages) : **ce fichier exact** est celui à copier ; contenu : build web `1556174bd809` |
 | Décodeur MPEG-4 embarqué | `mpeg4-decoder.wasm` SHA-256 `453fb7b171fde50d1306a57793ebac571459a7c324d28bd8b4f6c3db6b7bda53` (652 895 o), `mpeg4-decoder.js` `64d97f891594c386652cf3f783dfbdaf65d358ddb0bf1be96f1fbe3b2d3be827` ; FFmpeg 9.0.2 `8c385028…002e`, emsdk 6.0.12 `sha256:a7883da4…8c98` |
 | **Nouveau binaire serveur** (`cargo zigbuild --release --locked --offline -p chill-server --target aarch64-unknown-linux-gnu.2.28`) | `target/aarch64-unknown-linux-gnu/release/chill-server`, **14 765 736 octets**, ELF 64-bit ARM aarch64 dynamique, strippé, SHA-256 **`b80408da05e9f013c897c4599805494282a63afb3630f8e305faa90e0939c89f`** → `NEW_BINARY_SHA256` |
 | Source | binaire construit à partir du merge `7204e19` (codex/player-streaming `a59f5e6` dans codex/web-pwa) ; le code Rust ne change plus après ce commit |
@@ -47,7 +47,7 @@ Interruption du service : arrêt, sauvegarde hors ligne, copies et redémarrage 
 
 **Changements du script V8 par rapport à V7** : suppression de `old_expected='1eb24e97…'` et des noms `chill-server-1eb24e97bcdf` codés en dur ; `OLD_BINARY_SHA256` est obligatoire (64 hex, différent de `NEW_BINARY_SHA256`), le nom du rollback et le préfixe des temporaires en sont dérivés (12 premiers hex). Aucune autre ligne modifiée. Le préflight lecture seule affiche désormais l'attendu `cef54cd0…`.
 
-**Statut.** V8 est **relu seulement par son auteur** : la revue indépendante n° 4, sur ces octets exacts, est la prochaine étape ; aucune exécution sur le Pi avant elle et sans nouveau feu vert explicite.
+**Statut.** La revue indépendante n° 4 (octets V8 `dcf18661…`) conclut **APPROVED_WITH_CONDITIONS** : [rapport verbatim](../reviews/web-pi-deploy-v8-review-4.md). Conditions documentaires traitées : MEDIUM-1 (hashes périmés du runbook, étapes 5 et 6), LOW-1 (retour arrière du plan §7), LOW-2 (mentions V7 du runbook), LOW-3 (décompte du tar). **Non traités, acceptés** : MEDIUM-2 (la simulation ne détecte pas la casse du nettoyage du temporaire de rollback, impact faible), LOW-4 (cache ≤ 1 h des fichiers statiques non `no-cache`, lecture intégrale en mémoire) et les résiduels hérités LOW-2/LOW-3 de la revue 3. Aucune exécution sur le Pi sans nouveau feu vert explicite et connexion maître.
 
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 
@@ -161,7 +161,7 @@ Enseignement conservé de l'échec V1–V3 (BUG-0051) : le script est envoyé pa
 
 ## 5. Exécution (seulement après revue + ton feu vert explicite)
 
-> **Le [runbook](WEB-CLIENT-PI-RUNBOOK.md) fait foi** pour l'exécution (conventions SSH, préflight en lecture seule par stdin, hashes V7 exacts, tableau des codes de sortie, retour arrière). Les commandes ci-dessous sont l'esquisse initiale, conservée pour traçabilité ; en cas de différence, c'est le runbook qui s'applique.
+> **Le [runbook](WEB-CLIENT-PI-RUNBOOK.md) fait foi** pour l'exécution (conventions SSH, préflight en lecture seule par stdin, hashes V8 exacts, tableau des codes de sortie, retour arrière). Les commandes ci-dessous sont l'esquisse initiale, conservée pour traçabilité ; en cas de différence, c'est le runbook qui s'applique.
 
 Prérequis : une **connexion maître SSH stricte/batch** ouverte par toi (les anciens sockets `/private/tmp/chillcenter-ssh.*` ne sont plus utilisables comme preuve d'une session valide ; je ne contourne aucun échec d'agent).
 
@@ -196,8 +196,8 @@ Par moi ensuite (Mac, lecture seule, bail volatil libéré) : sonde Node déjà 
 
 ```bash
 systemctl stop chillcenter
-install -o root -g root -m 0755 /root/chillcenter-rollback/chill-server-1eb24e97bcdf /usr/lib/chillcenter/chill-server
-sha256sum /usr/lib/chillcenter/chill-server        # doit afficher 1eb24e97…c181
+install -o root -g root -m 0755 /root/chillcenter-rollback/chill-server-cef54cd0e8ba /usr/lib/chillcenter/chill-server
+sha256sum /usr/lib/chillcenter/chill-server        # doit afficher cef54cd0…b3c3
 rm -rf --one-file-system /usr/lib/chillcenter/web   # ou : mv -T /root/chillcenter-rollback/web-<horodatage> /usr/lib/chillcenter/web
 systemctl start chillcenter
 ```
