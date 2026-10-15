@@ -1,5 +1,22 @@
 # État réel du Raspberry Pi et règles de coordination entre agents
 
+## État courant — serveur seul f3fdac5, 15 octobre22:20UTC
+
+Le serveur a été mis à jour sans modifier `/usr/lib/chillcenter/web` ni le worktree de développement web. Vérification indépendante APPROVED_SCOPED : [rapport](../releases/REL-SERVER-ONLY-F3FDAC5-verification.md), [release](../releases/REL-SERVER-ONLY-F3FDAC5.md). Les sections plus bas décrivent l'ancien checkpointffcc, pas le hash courant.
+
+- Source `f3fdac503c4b845571981c1fd1bc00bd0b13ec21`, binaire installé ET processus : `d77e9e1669287a6d10f279c17f33d7f776efe7e194acc01cd542bcea33511c90`.
+- Actif PID3117/NRestarts0, démarrage22:14:29UTC, stable au dernier contrôle22:20:30UTC.
+- Web existant identique : arbre SHA `07868e61cd75dc36d5bf62eefd258b7409b6ed264bde726cdcf626d45b57fe2b`, contenus/métadonnées/inodes. Aucun nouveau build web installé.
+- Configurationd6167cb1…, unité76f7d349…, TLS SPKI3018fb4d…, montageNAS1935a8db… inchangés ; HTTP8080/HTTPS8443 et redirections externes80/443 conservés et testés.
+- Sauvegarde privée `/var/lib/chillcenter/data/backups/5dd8df08-adcb-4d09-a6c1-2eb549c0c414` :1746entrées/manifest/SQLite vérifiés. Rollbackffcc : `/root/chillcenter-rollback/chill-server-ffcc634923f6`.
+- API2026-10-14/v1 conservées ; titres historiques par défaut, `selector=key` facultatif.70 chemins/89 opérations hérités présents, total76/95.
+- Nouveau Mac : `artifacts/macos/Chill Center-f3fdac5.app`.11aa529 reste partiel pour les opérations opaques qui ne transmettent pas le paramètre.
+- Aucun changement NAS/config/TLS/unité/pare-feu ou données personnelles. [BUG0072](../debug/BUG-0072-deployment-session-observation.md) conserve l'incident de surveillance pendant sauvegarde ; aucun code retour opérateur inventé.
+
+Tout futur déploiement doit refaire un préflight et coordonner le binaire attendu **d77e**, sans écraser le web ou une autre livraison. Les anciens scripts épinglés surffcc doivent refuser. Cette mise à jour documentaire est sur la branche d'intégration, pas dans le worktree web en cours.
+
+## Historique — déploiement web ffcc
+
 > **État revérifié le 15 octobre 2026 à 20:18–20:23 UTC** (le Pi avait été injoignable d'environ 16 h à 20 h UTC, puis a redémarré : service relancé à 21:03 IST, redirection 443 et configuration conservées). Les valeurs ci-dessous sont celles **observées après** le déploiement du 20:21 UTC. Refaire un préflight en lecture seule avant toute intervention.
 
 Document à lire **avant toute intervention sur le Pi** (livraison, script de déploiement, changement de configuration ou de pare-feu). Mis à jour le 15 octobre 2026 par l'instance qui a développé le client web (branche `codex/web-pwa`). Il sert aussi à prévenir l'agent qui développe le client Mac (branche `codex/player-streaming`) : le Pi **n'est plus dans l'état que ses scripts attendent**.

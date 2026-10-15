@@ -1,5 +1,13 @@
 # REL-SERVER-ONLY-F3FDAC5
 
+## Statut courant : DEPLOYED / VERIFIED_SCOPED
+
+Serveur démarré le15octobre à22:14:29UTC, sourcef3fdac5/SHA d77e9e16 ; vérification indépendante22:18–22:20UTC APPROVED_SCOPED, [rapport](REL-SERVER-ONLY-F3FDAC5-verification.md) et [gate post-déploiement](../gates/G-POST-REL-SERVER-ONLY-F3FDAC5.md). Actif PID3117/NRestarts0, web/config/unité/TLS/montage identiques, sauvegarde privée5dd8df08… exacte1746entrées, rollbackffcc validé. Vrai UiClient2496fiches/révision série/reconnexion/delta inchangé21ms PASS. Aucun nouveau lecteur/GUI/fournisseur/scan.
+
+Bundle Mac publié : `artifacts/macos/Chill Center-f3fdac5.app`, exécutable arm64 SHA `d31bfff6e722c086b57a135fcd5744c1f8d0fe6383bb821a32e5cad019a7327c`,48dylibs arm64, signature ad hoc profonde et chargement libmpvAPI2.5 PASS, sans lancement graphique. Remplace11aa529 comme bundle recommandé pour les sélecteurs explicites ; ancienne version conservée. Archive serveur publiée `artifacts/linux/chillcenter-server-f3fdac5-pi64.tar.gz`, SHA `35310c439f54fc0b45cbd4342c9154ec7302d8a86148fc7a4975252beb2ccd6f`, sans fichier web.
+
+[Exécution](REL-SERVER-ONLY-F3FDAC5-deployment.md) : code terminal/stdout de l'opérateur non conservé et démarrage manuel prématuré pendant sauvegarde ([BUG0072](../debug/BUG-0072-deployment-session-observation.md)). L'état finalement déployé et la sauvegarde ont été relus intégralement par un vérificateur distinct ; pas de rc0 inventé, pas de rollback recommandé. Aucun travail web en cours n'a été modifié. Les étapes ci-dessous sont le dossier de readiness historique.
+
 ## Readiness et autorité
 
 2026-10-15, source `f3fdac503c4b845571981c1fd1bc00bd0b13ec21`, serveur Linux ARM64. Livraison explicitement autorisée par l'utilisateur, web strictement exclu. Gate [G-DEPLOY](../gates/G-DEPLOY-REL-SERVER-ONLY-F3FDAC5.md) et trois reviewers distincts du constructeur. Coordinateur `/root`, déployeur `/root/deploy_server_only_f3fdac5`, vérification indépendante requise après bascule. Statut à ce checkpoint : READY, pas encore DEPLOYED/VERIFIED.

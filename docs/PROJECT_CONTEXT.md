@@ -1,5 +1,13 @@
 # Contexte du projet
 
+## Livraison serveur seul f3fdac5 — Pi vérifié, web inchangé
+
+15 octobre 2026 : source `f3fdac503c4b845571981c1fd1bc00bd0b13ec21`, serveur SHA `d77e9e1669287a6d10f279c17f33d7f776efe7e194acc01cd542bcea33511c90`, actif PID3117/NRestarts0 depuis22:14:29Z. Vérification indépendante22:18–22:20Z APPROVED_SCOPED. Web préservé (contenu/inodes/métadonnées), configuration/unité/TLS/montage inchangés ; HTTP8080/HTTPS8443 et accès externes80/443 confirmés. API2026-10-14/v1 conservées,70 chemins/89 opérations hérités présents ; `selector=key` facultatif pour les nouvelles identités de séries, anciens titres inchangés par défaut ([ADR0019](architecture/decisions/ADR-0019-explicit-series-selector.md)). Aucun déploiement web ni modification du chantier web.
+
+Bundle à utiliser : `artifacts/macos/Chill Center-f3fdac5.app` (arm64,48dylibs, signature profonde ad hoc/APIlibmpv2.5 vérifiées).11aa529 est conservé mais reste partiel pour les nouvelles opérations opaques sans paramètre.296Rust/Clippy/API76 PASS, trois revues exactes favorables. Vrai UiClient :2496fiches/sagas/listes, révision de série présente, cache chaud, delta inchangé21ms PASS, sans mutation foyer/fournisseur/vidéo. Sauvegarde privée5dd8df08… exacte1746entrées/SQLitequick_check, rollbackffcc vérifiés.
+
+[Release](releases/REL-SERVER-ONLY-F3FDAC5.md), [exécution](releases/REL-SERVER-ONLY-F3FDAC5-deployment.md), [vérification indépendante](releases/REL-SERVER-ONLY-F3FDAC5-verification.md). [BUG0072](debug/BUG-0072-deployment-session-observation.md) conserve le suivi SSH et le redémarrage prématuré pendant sauvegarde : code terminal opérateur perdu, état final vérifié indépendamment, aucune récupération de données/suppression de verrou. Pas de nouveau test lecteur/GUI, benchmarkNAS/Wi-Fi ou fournisseur. Ne pas installer l'ancien serveur11aa ni supposer queffcc est encore actif. Les checkpoints ci-dessous sont historiques.
+
 ## Vérification Pi / Mac11aa529 / web — 15 octobre, aucun redéploiement
 
 Le remplacement concurrent est attribué au chantier web confirmé par l'utilisateur. Au contrôle SSH en lecture seule du15octobre à21:11:21Z : service actif, PID1634/NRestarts0, fichier installé et processus SHA `ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7`, identique à l'artefact du worktree `codex/web-pwa`. HTTPS8443/HTTP8080 conservés ; API datée2026-10-14, package0.1.0. La version0.1.0 seule ne distingue pas les builds.
