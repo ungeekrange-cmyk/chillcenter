@@ -1119,6 +1119,19 @@
         }
       ]
     },
+    "/profiles/{profile}/catalog/revision": {
+      "get": {
+        "tags": ["Catalog"],
+        "operationId": "catalogRevision_get",
+        "description": "Lit uniquement le curseur opaque durable du catalogue pour ce profil. Ne matérialise ni métadonnées, ni checkpoint, ni transfert paginé. Adapté au client web sans miroir SQLite ; comparer la chaîne et recharger les vues seulement si elle change.",
+        "responses": {
+          "200": { "description": "Révision courante, sans données média.", "content": { "application/json": { "schema": { "type": "object", "required": ["revision"], "properties": { "revision": { "type": "string", "maxLength": 255 } } } } } },
+          "404": { "$ref": "#/components/responses/Error" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "parameters": [{ "name": "profile", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }]
+    },
     "/profiles/{profile}/catalog/changes": {
       "post": {
         "tags": ["Catalog"],

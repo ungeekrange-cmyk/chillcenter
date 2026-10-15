@@ -11,6 +11,9 @@ use std::{
 #[serde(default, deny_unknown_fields)]
 pub struct ServerConfig {
     pub listen: SocketAddr,
+    /// Optional extra listener in plain HTTP, for the bundled web client only (ADR-0018). Off unless configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_listen: Option<SocketAddr>,
     pub data_dir: PathBuf,
     pub tls_names: Vec<String>,
     pub video_root: Option<PathBuf>,
@@ -20,6 +23,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             listen: "127.0.0.1:8443".parse().expect("literal socket address"),
+            http_listen: None,
             data_dir: PathBuf::from("/var/lib/chillcenter"),
             tls_names: vec!["localhost".into(), "127.0.0.1".into()],
             video_root: None,
@@ -49,6 +53,16 @@ impl ServerConfig {
         }
         if !is_local_address(self.listen.ip()) {
             return Err("Sans authentification, écoutez une adresse LAN explicite ou loopback, pas toutes les interfaces/public Internet.".into());
+        }
+        if let Some(http) = self.http_listen {
+            if http.port() == 0 || !is_local_address(http.ip()) {
+                return Err("Le listener HTTP doit utiliser une adresse LAN explicite ou loopback et un port non nul.".into());
+            }
+            if http.port() == self.listen.port() {
+                return Err(
+                    "Le listener HTTP doit avoir un port différent du listener HTTPS.".into(),
+                );
+            }
         }
         if self.tls_names.is_empty() || self.tls_names.len() > 32 {
             return Err("Configurez entre 1 et 32 noms DNS/adresses IP pour HTTPS.".into());
@@ -342,6 +356,42 @@ mod tests {
             };
             assert!(config.validate().is_err());
         }
+    }
+
+    #[test]
+    fn http_listener_is_optional_local_and_on_another_port() {
+        let base = ServerConfig::default();
+        assert!(base.validate().is_ok());
+        let ok = ServerConfig {
+            http_listen: Some("127.0.0.1:8080".parse().unwrap()),
+            ..base.clone()
+        };
+        assert!(ok.validate().is_ok());
+        for bad in [
+            "127.0.0.1:8443",
+            "127.0.0.1:0",
+            "0.0.0.0:8080",
+            "8.8.8.8:8080",
+        ] {
+            let config = ServerConfig {
+                http_listen: Some(bad.parse().unwrap()),
+                ..base.clone()
+            };
+            assert!(config.validate().is_err(), "{bad}");
+        }
+        // Absent field: parsed as None and never written back, so a config without it stays byte-compatible.
+        let parsed: ServerConfig = serde_json::from_str(r#"{"listen":"127.0.0.1:8443"}"#).unwrap();
+        assert_eq!(parsed.http_listen, None);
+        assert!(
+            !serde_json::to_string(&parsed)
+                .unwrap()
+                .contains("http_listen")
+        );
+        let with: ServerConfig = serde_json::from_str(
+            r#"{"http_listen":"192.168.1.42:8080","listen":"192.168.1.42:8443"}"#,
+        )
+        .unwrap();
+        assert_eq!(with.http_listen, Some("192.168.1.42:8080".parse().unwrap()));
     }
 
     #[test]

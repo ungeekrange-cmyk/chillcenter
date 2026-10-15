@@ -1,5 +1,11 @@
 # Contexte du projet
 
+## Vérification Pi / Mac11aa529 / web — 15 octobre, aucun redéploiement
+
+Le remplacement concurrent est attribué au chantier web confirmé par l'utilisateur. Au contrôle SSH en lecture seule du15octobre à21:11:21Z : service actif, PID1634/NRestarts0, fichier installé et processus SHA `ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7`, identique à l'artefact du worktree `codex/web-pwa`. HTTPS8443/HTTP8080 conservés ; API datée2026-10-14, package0.1.0. La version0.1.0 seule ne distingue pas les builds.
+
+Compatibilité Mac11aa529 **partielle** : vrai UiClient, TLS épinglé, catalogue2496, fiches/sagas/listes et réouverture chaude PASS ; delta et ajouts série/saison absents du serveur actif. Branche isolée `codex/mac-web-compat-20261015` réunit localement les sources Mac et web, conserve les deux listeners et ajoute une vérification de révision légère pour le navigateur. **Non déployée**, aucun nouveau bundle livré ; ne pas installer l'ancien serveur11aa seul, qui perdrait le web et sa configuration. [Preuves et limites](implementation/MAC-WEB-COMPATIBILITY-20261015.md), [état Pi du chantier web](deployment/PI-LIVE-STATE.md). Les historiques ci-dessous restent des checkpoints datés, pas l'état courant.
+
 ## Correctifs catalogue/IA — Mac11aa529 publié, Pi suspendu
 
 15octobre : source `11aa529f2eced060156a3017456bf1d9634f8a56`, bundle `artifacts/macos/Chill Center-11aa529.app`, anciennes versions et `.claude/` préservées. Bouton IA disponible après sélection profil ; synchro détachée/delta, fiches fraîches/images en place, étoiles, matching admin et séries/saisons/homonymes. Revues source finales favorables,281 tests Rust concernés/41Node/Clippy/contrat/navigateur synthétique PASS. CLI IA/TMDB réels et GUI du bundle final non testés. [Release](releases/REL-LIBRARY-UX-SYNC-001.md).
@@ -28,6 +34,10 @@ Lot14octobre livré localement : [REL-MAC-UI-PANELS-001](releases/REL-MAC-UI-PAN
 ## Remise locale effective — Pi mis à jour
 
 Interface/API source9277ac4 promue localement, bundle `artifacts/macos/Chill Center-9277ac4.app` et archive Linux disponibles ; [release](releases/REL-UX-API-001.md). Après confirmation explicite renouvelée, déployeur distinct et revue opérateur V4 APPROVED, Pi mis à jour le14octobre à19:12:40UTC : binaire1eb24… actifPID5145. Sauvegarde privée offline et rollbackR7 conservés surPi ; NAS/configuration/unité/TLS/profil foyer inchangés. [Vérification indépendante post-bascule APPROVED](releases/REL-UX-API-001-pi-verification.md), [gate](gates/G-POST-CC-UX-API-001.md) : processus/hash stable/NRestarts0, sauvegarde cohérente, TLS strict/API datée/v1/OpenAPI et propre sonde réelle du même clientRust queTauri connexion/catalogue48/reconnexion PASS. Sans écriture serveur ni accès aux réglages réels du Mac ; pas une validation humaine de la fenêtre/son ni une nouvelle lecture NAS. [BUG0051](debug/BUG-0051-pi-update-output-quoting.md) conserve la première tentative opérateur échouée et le redémarrage sûr deR7.
+
+## Branche parallèle — client web PWA (`codex/web-pwa`)
+
+14 octobre 2026, demande utilisateur : reproduire le client Mac en web app/PWA servie par le Pi, sans authentification, calcul vidéo côté navigateur, serveur inchangé hors delta minimal. Travail isolé dans un worktree distinct pour ne pas gêner le client Mac. [ADR-0012](architecture/decisions/ADR-0012-web-client-pwa.md) PROPOSED, [architecture web](architecture/WEB-CLIENT.md). Aucun déploiement, aucun push. Dépôt distant : `https://github.com/ungeekrange-cmyk/chillcenter.git`.
 
 ## Point actuel — interface/API approuvées, livraison coordonnée en cours
 
@@ -96,3 +106,5 @@ Checkpoint CC-PLAY-001 du 2026-10-13 : source `b4100a37f985943fa1932bd98a2ec99d7
 Branding r4 : l'utilisateur autorise explicitement « Oui, créer le gabarit SVG commun » pour supprimer les différences d'espacement entre ambiances. Source `icons/branding/vector/master.svg`,13 SVG générés par `scripts/branding.rs` (Rust, sans dépendance supplémentaire), galerie mise à jour. Original PNG approuvé intact ; anciens PNG conservés. Sapin commun derrière les lettres/dossier avec débordements latéraux ; été plus chaud et lumineux ; citrouille commune sur l'assise. Preuves dans `vector/provenance.json`, BUG-0010 ; SVG proposés pour validation visuelle, runtime toujours non raccordé.
 
 Poursuivre l'implémentation autorisée : setup/profils/admin/catalogue Tauri raccordés ; intégrer maintenant surface lecteur Tauri, routes vidéo/sous-titres, baux/progression/enchaînement puis autres stories. Demander G-04 uniquement à la remise complète. Ne pas recommencer discovery/architecture/stories ni affirmer que 124 tests couvrent 133 AC ou le Pi/Wi-Fi. Les LOW et fonctionnalités non terminées restent listés dans STATUS ; ce checkpoint n'annonce pas de travail en arrière-plan.
+
+**État réel du Raspberry Pi (à lire avant tout déploiement, même depuis une autre branche)** : [docs/deployment/PI-LIVE-STATE.md](deployment/PI-LIVE-STATE.md). Le Pi exécute depuis le 15 octobre 2026 un binaire construit sur `codex/web-pwa` (client web, redirection du port 443) : un déploiement construit sans ces changements casserait le client web, et refuserait la configuration si elle contient `http_listen`.

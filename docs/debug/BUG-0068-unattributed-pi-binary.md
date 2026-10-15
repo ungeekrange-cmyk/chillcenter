@@ -11,3 +11,9 @@ Deuxième procédure avec garde-fou renforcé/testé : refus2 en préflight sans
 Ledger : H1 négation `! is-active` sous errexit causant seule la panne REFUTED par mock ; H2 reprise silencieuse tolérant un échec de `systemctl start` CONFIRMED comme faiblesse latente, pas cause prouvée ici. Même logique dans le script historique. Garde-fou opérateur : reprise sans errexit, contrôle actif+HTTPS borné, échec explicite70, trace phase/ligne/code sans données. Deux mocks PASS : échec restart explicite ; reprise HTTPS conserve le code initial. Scripts conservés dans `/private/tmp/chillcenter-catalog-release.HPoPXM`, première version préservée.
 
 Pas de correction spéculative du serveur, restauration de données, scan/TMDB/IA/lecture vidéo. Prochaine action : clarifier la publication inconnue puis choisir une seule livraison et son retour arrière. Voir REL-LIBRARY-UX-SYNC-001-verification.
+
+## Attribution ultérieure — 15 octobre, 21:11Z
+
+L'utilisateur a confirmé une autre mise à jour puis sa fin. Les documents du worktree `codex/web-pwa` attribuent a7ab au chantier web et consignent son remplacement par ffcc. Vérification SSH en lecture seule : service actif/PID1634/NRestarts0, binaire installé et `/proc/1634/exe` SHA `ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7`, identique à l'artefact local de ce worktree ; HTTP8080 et HTTPS8443 actifs. Attribution RESOLVED ; ce n'est pas la livraison du serveur11aa. La vérification défavorable de cette ancienne livraison reste inchangée.
+
+Aucun redéploiement effectué pour ce contrôle. Le serveur web reste partiellement compatible avec Mac11aa529 ; intégration locale seulement, voir [rapport](../implementation/MAC-WEB-COMPATIBILITY-20261015.md). Ne pas restaurer un serveur antérieur ignorant `http_listen` ou dépourvu du client web.

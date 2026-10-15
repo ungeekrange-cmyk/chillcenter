@@ -102,6 +102,7 @@ struct Page {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/profiles/{profile}/catalog/revision", get(revision_only))
         .route("/profiles/{profile}/catalog/changes", post(changes))
         .route("/profiles/{profile}/catalog/changes/{snapshot}", get(page))
 }
@@ -192,6 +193,15 @@ async fn current_revision(state: &AppState, profile: &str) -> Result<(String, St
             epoch,
         ),
     ))
+}
+async fn revision_only(
+    State(state): State<AppState>,
+    Path(profile): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    // Web has no SQLite mirror: it needs the same cheap cursor without opening
+    // a paginated transfer it would have to fetch and then discard.
+    let (_, revision) = current_revision(&state, &profile).await?;
+    Ok(Json(json!({"revision":revision})))
 }
 async fn changes(
     State(state): State<AppState>,

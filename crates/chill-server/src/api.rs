@@ -191,34 +191,115 @@ fn api_routes() -> Router<AppState> {
         .route("/openapi.json", get(crate::api_version::openapi))
 }
 
+/// Routes that carry secrets or whole archives never go over the clear-text listener (ADR-0018); the web client does not use them.
+fn https_only_path(path: &str) -> bool {
+    let rest = path
+        .strip_prefix("/api/")
+        .and_then(|p| p.split_once('/'))
+        .map_or("", |(_, rest)| rest)
+        .trim_start_matches('/');
+    ["admin/tmdb", "admin/exports", "admin/imports"]
+        .iter()
+        .any(|prefix| {
+            rest == *prefix
+                || rest
+                    .strip_prefix(prefix)
+                    .is_some_and(|r| r.starts_with('/'))
+        })
+}
+
+/// Which listener a request came in on. The plain-HTTP listener (ADR-0018) serves the bundled web client only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scheme {
+    Https,
+    Http,
+}
+
 pub fn router(state: AppState) -> Router {
+    build_router(state, Scheme::Https)
+}
+
+pub fn router_http(state: AppState) -> Router {
+    build_router(state, Scheme::Http)
+}
+
+fn build_router(state: AppState, scheme: Scheme) -> Router {
     let api = api_routes();
     Router::new()
         .nest(crate::api_version::PREFIX, api.clone())
         .nest("/api/v1", api)
+        .fallback(crate::web_static::serve)
         .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), same_origin))
+        .layer(axum::Extension(scheme))
         .layer(middleware::from_fn(crate::api_version::normalize_response))
         .with_state(state)
 }
 
-/// No CORS. Native Rust requests have no Origin; any browser-origin request is
-/// refused for now (web client is explicitly deferred). Host must name this server.
+/// No CORS. Native Rust requests have no Origin. A browser request is accepted
+/// only when it is same-origin with this server (the bundled web client, ADR-0014):
+/// `Sec-Fetch-Site: same-origin`, and `Origin`, when present, equal to `https://<Host>`.
+/// Everything else (cross-site, same-site, other origins) is refused. Host must name this server.
 async fn same_origin(
     State(state): State<AppState>,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, ApiError> {
-    if request.headers().contains_key("origin") || request.headers().contains_key("sec-fetch-site")
-    {
-        return Err(ApiError(StatusCode::FORBIDDEN, "BROWSER_ORIGIN_REFUSED"));
-    }
+    // Synchronous checks live in their own function: no borrow of the request may stay alive across
+    // the `.await` below, otherwise the middleware future stops being `Send`.
+    check_browser_origin_and_host(&state, &request)?;
+    // Current routes are JSON only. Future media routes need per-read deadlines,
+    // not a total playback deadline.
+    tokio::time::timeout(std::time::Duration::from_secs(30), next.run(request))
+        .await
+        .map_err(|_| ApiError(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"))
+}
+
+fn check_browser_origin_and_host(
+    state: &AppState,
+    request: &Request<Body>,
+) -> Result<(), ApiError> {
     let host = request
         .headers()
         .get("host")
         .and_then(|h| h.to_str().ok())
         .or_else(|| request.uri().authority().map(|a| a.as_str()))
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "HOST_REQUIRED"))?;
+    let scheme = request
+        .extensions()
+        .get::<Scheme>()
+        .copied()
+        .unwrap_or(Scheme::Https);
+    let (prefix, default_port, listen_port) = match scheme {
+        Scheme::Https => ("https", 443, state.config.listen.port()),
+        Scheme::Http => ("http", 80, state.config.http_listen.map_or(0, |a| a.port())),
+    };
+    if scheme == Scheme::Http && https_only_path(request.uri().path()) {
+        return Err(ApiError(StatusCode::FORBIDDEN, "HTTPS_ONLY"));
+    }
+    let expected_origin = format!("{prefix}://{host}");
+    let header = |name: &str| request.headers().get(name).map(|v| v.to_str().ok());
+    let browser_allowed = match (header("sec-fetch-site"), header("origin")) {
+        (None, None) => true,
+        (Some(Some("same-origin")), None) => true,
+        (Some(Some("same-origin")), Some(Some(origin))) => {
+            origin.eq_ignore_ascii_case(&expected_origin)
+        }
+        // Browsers send no `Sec-Fetch-*` to a plain-HTTP origin that is not "potentially trustworthy" (a LAN address is
+        // not), but they always send `Origin` on non-GET requests: it must be this server's own origin (ADR-0018).
+        (None, Some(Some(origin))) if scheme == Scheme::Http => {
+            origin.eq_ignore_ascii_case(&expected_origin)
+        }
+        // `none` is a user-typed navigation: static page only, never the API.
+        (Some(Some("none")), None) => {
+            !request.uri().path().starts_with("/api/")
+                && request.method() == axum::http::Method::GET
+        }
+        _ => false,
+    };
+    if !browser_allowed {
+        return Err(ApiError(StatusCode::FORBIDDEN, "BROWSER_ORIGIN_REFUSED"));
+    }
     let authority: axum::http::uri::Authority = host
         .parse()
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "HOST_INVALID"))?;
@@ -226,20 +307,19 @@ async fn same_origin(
         .host()
         .trim_start_matches('[')
         .trim_end_matches(']');
+    // The default HTTPS port is also accepted: a network-level redirect 443 -> listen port (ADR-0017) makes
+    // browsers send `Host: <name>` without a port. The name is still checked against the certificate names.
+    let port = authority.port_u16().unwrap_or(default_port);
     if !state
         .config
         .tls_names
         .iter()
         .any(|n| n.eq_ignore_ascii_case(raw_host))
-        || authority.port_u16().unwrap_or(443) != state.config.listen.port()
+        || (port != listen_port && port != default_port)
     {
         return Err(ApiError(StatusCode::FORBIDDEN, "HOST_REFUSED"));
     }
-    // Current routes are JSON only. Future media routes need per-read deadlines,
-    // not a total playback deadline.
-    tokio::time::timeout(std::time::Duration::from_secs(30), next.run(request))
-        .await
-        .map_err(|_| ApiError(StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"))
+    Ok(())
 }
 
 async fn server(
@@ -585,9 +665,13 @@ mod tests {
         );
     }
     fn setup() -> (tempfile::TempDir, Router) {
+        setup_with(false)
+    }
+    fn setup_with(http: bool) -> (tempfile::TempDir, Router) {
         let dir = tempfile::tempdir().unwrap();
         let config = ServerConfig {
             data_dir: dir.path().to_owned(),
+            http_listen: http.then(|| "127.0.0.1:8080".parse().unwrap()),
             ..ServerConfig::default()
         };
         let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
@@ -600,7 +684,69 @@ mod tests {
             config: Arc::new(config),
             certificate: Arc::new(Mutex::new(certificates.schedule)),
         };
-        (dir, router(state))
+        (
+            dir,
+            if http {
+                router_http(state)
+            } else {
+                router(state)
+            },
+        )
+    }
+    #[tokio::test]
+    async fn catalog_revision_is_small_read_only_and_profile_scoped() {
+        let (dir, app) = setup();
+        let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let a = store.create_profile("Revision A").unwrap();
+        let b = store.create_profile("Revision B").unwrap();
+        let item = chill_catalog::scanner::parse_file(
+            std::path::Path::new("/fixture"),
+            std::path::Path::new("/fixture/Film.mkv"),
+        );
+        store.snapshot(vec![item]).unwrap();
+        let id = store.catalog(&a.id).unwrap()[0].id.clone();
+        let endpoint = format!("/api/2026-10-14/profiles/{}/catalog/revision", a.id);
+        let (status, first) = json_call(&app, "GET", &endpoint, Value::Null).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(first["revision"].as_str().is_some());
+        assert!(first.to_string().len() < 256);
+        assert_eq!(first.as_object().unwrap().len(), 1);
+        store.set_watched(&b.id, &id, true).unwrap();
+        assert_eq!(
+            json_call(&app, "GET", &endpoint, Value::Null).await.1,
+            first
+        );
+        store.set_rating(&a.id, &id, Some(4), "video").unwrap();
+        let changed = json_call(&app, "GET", &endpoint, Value::Null).await.1;
+        assert_ne!(changed, first);
+        assert_eq!(
+            json_call(
+                &app,
+                "GET",
+                &format!("/api/v1/profiles/{}/catalog/revision", a.id),
+                Value::Null
+            )
+            .await
+            .1,
+            changed
+        );
+        let sql = rusqlite::Connection::open(dir.path().join("catalog.sqlite")).unwrap();
+        let generated: i64 = sql
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name LIKE 'cc_catalog_delta_checkpoint%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            generated, 0,
+            "Revision GET must not materialize a checkpoint"
+        );
+        store.delete_profile(&a.id).unwrap();
+        assert_eq!(
+            json_call(&app, "GET", &endpoint, Value::Null).await.0,
+            StatusCode::NOT_FOUND
+        );
     }
     #[tokio::test]
     async fn catalog_changes_contract_paging_profile_isolation_and_real_delta() {
@@ -1071,6 +1217,348 @@ mod tests {
             app.oneshot(rebound).await.unwrap().status(),
             StatusCode::FORBIDDEN
         );
+    }
+
+    #[tokio::test]
+    async fn plain_http_listener_accepts_only_its_own_origin_and_ports() {
+        let (_dir, app) = setup_with(true);
+        let call = |host: &str, headers: &[(&str, &str)]| {
+            let mut r = request("PUT", "/api/v1/admin/library", json!({}));
+            r.headers_mut().insert("host", host.parse().unwrap());
+            for (k, v) in headers {
+                r.headers_mut().insert(
+                    axum::http::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                    v.parse().unwrap(),
+                );
+            }
+            let app = app.clone();
+            async move { app.oneshot(r).await.unwrap().status() }
+        };
+        let refused = StatusCode::FORBIDDEN;
+        // Hosts: the HTTP listener's own port and the default port 80; never the HTTPS port or another one.
+        for host in ["localhost:8080", "localhost", "localhost:80"] {
+            assert_ne!(call(host, &[]).await, refused, "{host}");
+        }
+        for host in [
+            "localhost:8443",
+            "localhost:443",
+            "localhost:9090",
+            "attacker.example:8080",
+            "attacker.example",
+        ] {
+            assert_eq!(call(host, &[]).await, refused, "{host}");
+        }
+        // Browsers send no Sec-Fetch-* to a plain-HTTP LAN origin, but always an Origin on writes: it must be our own.
+        assert_ne!(
+            call("localhost:8080", &[("origin", "http://localhost:8080")]).await,
+            refused
+        );
+        assert_ne!(
+            call("localhost", &[("origin", "http://localhost")]).await,
+            refused
+        );
+        assert_ne!(
+            call("localhost", &[("origin", "HTTP://LOCALHOST")]).await,
+            refused
+        );
+        for origin in [
+            "http://attacker.example",
+            "http://localhost:9090",
+            "https://localhost:8080",
+            "null",
+            "",
+        ] {
+            assert_eq!(
+                call("localhost:8080", &[("origin", origin)]).await,
+                refused,
+                "origin {origin:?}"
+            );
+        }
+        // Cross-site and same-site hints are refused when a browser does send them (localhost is trustworthy).
+        for site in ["cross-site", "same-site"] {
+            assert_eq!(
+                call("localhost:8080", &[("sec-fetch-site", site)]).await,
+                refused
+            );
+        }
+        assert_ne!(
+            call(
+                "localhost:8080",
+                &[
+                    ("sec-fetch-site", "same-origin"),
+                    ("origin", "http://localhost:8080")
+                ]
+            )
+            .await,
+            refused
+        );
+        assert_eq!(
+            call(
+                "localhost:8080",
+                &[
+                    ("sec-fetch-site", "same-origin"),
+                    ("origin", "https://localhost:8080")
+                ]
+            )
+            .await,
+            refused
+        );
+    }
+
+    #[tokio::test]
+    async fn secrets_and_archives_are_https_only() {
+        let (_dir, http) = setup_with(true);
+        let (_dir2, https) = setup();
+        let get = |path: &str, host: &str| {
+            let mut r = request("GET", path, Value::Null);
+            r.headers_mut().insert("host", host.parse().unwrap());
+            r
+        };
+        for path in [
+            "/api/v1/admin/tmdb",
+            "/api/v1/admin/tmdb/jobs",
+            "/api/v1/admin/tmdb/jobs/x/cancel",
+            "/api/2026-10-14/admin/tmdb",
+            "/api/v1/admin/exports",
+            "/api/v1/admin/exports/abc",
+            "/api/v1/admin/imports",
+            "/api/v1/admin/imports/abc/apply",
+        ] {
+            assert_eq!(
+                http.clone()
+                    .oneshot(get(path, "localhost:8080"))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN,
+                "{path} must be refused over HTTP"
+            );
+            assert_ne!(
+                https
+                    .clone()
+                    .oneshot(get(path, "localhost:8443"))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN,
+                "{path} must stay available over HTTPS"
+            );
+        }
+        // Everything the web client needs stays reachable; look-alike prefixes are not caught.
+        for path in [
+            "/api/v1/admin/library",
+            "/api/v1/profiles",
+            "/api/v1/admin/scan",
+            "/api/v1/admin/tmdbx",
+            "/api/v1/admin/exportsx",
+        ] {
+            assert_ne!(
+                http.clone()
+                    .oneshot(get(path, "localhost:8080"))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN,
+                "{path}"
+            );
+        }
+        assert!(super::https_only_path("/api/v1//admin/tmdb"));
+        assert!(!super::https_only_path("/admin/tmdb"));
+    }
+
+    #[tokio::test]
+    async fn https_listener_still_refuses_an_origin_without_fetch_metadata() {
+        let (_dir, app) = setup();
+        for origin in ["https://localhost:8443", "http://localhost:8443"] {
+            let mut r = request("PUT", "/api/v1/admin/library", json!({}));
+            r.headers_mut().insert("origin", origin.parse().unwrap());
+            assert_eq!(
+                app.clone().oneshot(r).await.unwrap().status(),
+                StatusCode::FORBIDDEN,
+                "{origin}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn default_https_port_is_accepted_for_a_redirected_443_but_names_and_other_ports_are_not()
+    {
+        let (_dir, app) = setup();
+        let with_host = |host: &str, origin: Option<&str>| {
+            let mut r = request("GET", "/api/v1/server", Value::Null);
+            r.headers_mut().insert("host", host.parse().unwrap());
+            if let Some(origin) = origin {
+                r.headers_mut()
+                    .insert("sec-fetch-site", "same-origin".parse().unwrap());
+                r.headers_mut().insert("origin", origin.parse().unwrap());
+            }
+            r
+        };
+        let status = |r: Request<Body>| {
+            let app = app.clone();
+            async move { app.oneshot(r).await.unwrap().status() }
+        };
+        assert_eq!(
+            status(with_host("localhost:8443", None)).await,
+            StatusCode::OK
+        );
+        assert_eq!(status(with_host("localhost", None)).await, StatusCode::OK);
+        assert_eq!(
+            status(with_host("localhost:443", None)).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(with_host("localhost", Some("https://localhost"))).await,
+            StatusCode::OK
+        );
+        // An Origin without the port does not match a Host that carries one, and vice versa.
+        assert_eq!(
+            status(with_host("localhost:8443", Some("https://localhost"))).await,
+            StatusCode::FORBIDDEN
+        );
+        for refused in [
+            "localhost:9443",
+            "localhost:80",
+            "attacker.example",
+            "attacker.example:443",
+        ] {
+            assert_eq!(
+                status(with_host(refused, None)).await,
+                StatusCode::FORBIDDEN,
+                "{refused}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn same_origin_browser_is_accepted_and_cross_site_is_refused() {
+        let (dir, app) = setup();
+        let with = |site: &str, origin: Option<&str>, path: &str| {
+            let mut r = request("GET", path, Value::Null);
+            r.headers_mut()
+                .insert("sec-fetch-site", site.parse().unwrap());
+            if let Some(origin) = origin {
+                r.headers_mut().insert("origin", origin.parse().unwrap());
+            }
+            r
+        };
+        let status = |r: Request<Body>| {
+            let app = app.clone();
+            async move { app.oneshot(r).await.unwrap().status() }
+        };
+        assert_eq!(
+            status(with("same-origin", None, "/api/v1/server")).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(with(
+                "same-origin",
+                Some("https://localhost:8443"),
+                "/api/v1/server"
+            ))
+            .await,
+            StatusCode::OK
+        );
+        for refused in [
+            with("cross-site", None, "/api/v1/server"),
+            with("same-site", None, "/api/v1/server"),
+            with("none", None, "/api/v1/server"),
+            with(
+                "same-origin",
+                Some("https://other.example"),
+                "/api/v1/server",
+            ),
+        ] {
+            assert_eq!(status(refused).await, StatusCode::FORBIDDEN);
+        }
+        // Without a web directory the static fallback is a plain 404; with one it serves.
+        assert_eq!(status(with("none", None, "/")).await, StatusCode::NOT_FOUND);
+        std::fs::create_dir(dir.path().join("web")).unwrap();
+        std::fs::write(dir.path().join("web/index.html"), b"<!doctype html>").unwrap();
+        crate::web_static::set_test_root(Some(dir.path().join("web")));
+        assert_eq!(status(with("none", None, "/")).await, StatusCode::OK);
+        assert_eq!(
+            status(with("none", None, "/.env")).await,
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    // The test web root lives in a thread-local: `#[tokio::test]` runs the whole request on the test's own thread.
+    #[tokio::test]
+    async fn static_files_obey_the_same_guard_and_unknown_api_routes_stay_json_404() {
+        let (dir, app) = setup();
+        std::fs::create_dir(dir.path().join("web")).unwrap();
+        std::fs::write(dir.path().join("web/index.html"), b"<!doctype html>").unwrap();
+        crate::web_static::set_test_root(Some(dir.path().join("web")));
+        let send = |method: &str, path: &str, headers: Vec<(&str, Vec<u8>)>| {
+            let app = app.clone();
+            let mut r = Request::builder()
+                .method(method)
+                .uri(path)
+                .header("host", "localhost:8443")
+                .body(Body::empty())
+                .unwrap();
+            for (name, value) in headers {
+                r.headers_mut().insert(
+                    axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                    axum::http::HeaderValue::from_bytes(&value).unwrap(),
+                );
+            }
+            async move { app.oneshot(r).await.unwrap() }
+        };
+        let same = || vec![("sec-fetch-site", b"same-origin".to_vec())];
+        // Static files are refused to other sites, like the API.
+        assert_eq!(
+            send("GET", "/", vec![("sec-fetch-site", b"cross-site".to_vec())])
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        // Typed-in navigation (`none`) may only GET static files.
+        assert_eq!(
+            send("POST", "/", vec![("sec-fetch-site", b"none".to_vec())])
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        // Origin `null`, non-UTF-8 origin, foreign origin: refused even when same-origin is claimed.
+        for origin in [
+            b"null".to_vec(),
+            vec![0xff, 0xfe],
+            b"https://other.example".to_vec(),
+        ] {
+            let mut h = same();
+            h.push(("origin", origin));
+            assert_eq!(send("GET", "/", h).await.status(), StatusCode::FORBIDDEN);
+        }
+        // Scheme/host case is irrelevant to the origin comparison.
+        let mut h = same();
+        h.push(("origin", b"HTTPS://LOCALHOST:8443".to_vec()));
+        assert_eq!(send("GET", "/", h).await.status(), StatusCode::OK);
+        // HEAD is served without a body, other methods are refused on static files.
+        let head = send("HEAD", "/index.html", same()).await;
+        assert_eq!(head.status(), StatusCode::OK);
+        assert!(
+            head.into_body()
+                .collect()
+                .await
+                .unwrap()
+                .to_bytes()
+                .is_empty()
+        );
+        assert_eq!(
+            send("POST", "/index.html", same()).await.status(),
+            StatusCode::METHOD_NOT_ALLOWED
+        );
+        // Unknown API routes keep the JSON ROUTE_NOT_FOUND envelope for every method.
+        for method in ["GET", "POST", "PUT", "DELETE"] {
+            let response = send(method, "/api/2026-10-14/does-not-exist", Vec::new()).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{method}");
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(body["code"], "ROUTE_NOT_FOUND", "{method}");
+        }
     }
 
     #[tokio::test]

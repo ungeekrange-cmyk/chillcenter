@@ -1,6 +1,6 @@
 # Journal des bugs, observations et risques
 
-[BUG0068](BUG-0068-unattributed-pi-binary.md), INVESTIGATING : hash Pi non attribué pendant tentative de livraison11aa ; service actif, écritures suspendues. Ne pas écraser ni supposer une version connue.
+[BUG0068](BUG-0068-unattributed-pi-binary.md), attribution RESOLVED le15octobre21:11Z : chantier web confirmé, Pi ffcc6349 actif ; l'ancienne livraison11aa reste non déployée. [Compatibilité Mac/web](../implementation/MAC-WEB-COMPATIBILITY-20261015.md) partielle sur le Pi, intégration locale non déployée. [BUG0069](BUG-0069-web-bridge-catalog-sync.md) : adaptateur web actualisé pour l'interface commune et invalidation des affiches tardives.
 
 [BUG0067](BUG-0067-ai-button-availability.md), FIXED Mac11aa529 : bouton IA resté désactivé après sélection d’un profil, ordre de restauration/rendu reproduit/corrigé. Fournisseur réel non testé.
 

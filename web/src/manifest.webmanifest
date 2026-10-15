@@ -1,0 +1,12 @@
+{
+  "name": "Chill Center",
+  "short_name": "Chill Center",
+  "description": "Votre vidéothèque familiale, lue depuis le serveur du foyer.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#14161a",
+  "theme_color": "#14161a",
+  "icons": [{ "src": "branding/default.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

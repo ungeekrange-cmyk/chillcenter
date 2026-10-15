@@ -1,0 +1,9 @@
+/* Web-only adjustments layered over ui/connected. */
+#organize-ai, #advice-toggle, #advice-panel { display: none !important; } /* IA : CLI locale, hors navigateur (ADR-0014) */
+.shortcut { display: none; }
+#server-switch, #connect-form label, #saved-servers { display: none; } /* un seul serveur : celui qui sert cette page */
+body.player-open #native-video { background: #000; }
+#native-video video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+@media (max-width: 760px) { .app-shell { grid-template-columns: 1fr; } .sidebar { position: static; } }
+#native-video canvas { width: 100%; height: 100%; object-fit: contain; background: #000; }
+#native-video audio { display: none; }

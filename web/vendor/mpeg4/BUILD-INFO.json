@@ -1,0 +1,11 @@
+{
+  "ffmpeg": "ffmpeg-9.0.2",
+  "ffmpeg_tarball_sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+  "emscripten": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.12 (5488e0871d46d19a3209988190fa6a653126256f)",
+  "license": "LGPL-2.1-or-later (FFmpeg libavcodec/libavutil, built without --enable-gpl or --enable-nonfree)",
+  "configure": "./configure --prefix=/tmp/tmp.tLwAWzosA7/install --target-os=none --arch=x86_32 --enable-cross-compile --cc=emcc --cxx=em++ --objcc=emcc --dep-cc=emcc --ar=emar --ranlib=emranlib --nm=llvm-nm --disable-all --disable-autodetect --disable-programs --disable-doc --disable-debug --disable-stripping --disable-asm --disable-x86asm --disable-inline-asm --disable-runtime-cpudetect --disable-network --disable-pthreads --disable-w32threads --disable-os2threads --enable-avcodec --enable-avutil --enable-decoder=mpeg4 --extra-cflags=-O3 -fno-exceptions",
+  "mpeg4_decoder_wasm_sha256": "453fb7b171fde50d1306a57793ebac571459a7c324d28bd8b4f6c3db6b7bda53",
+  "mpeg4_decoder_js_sha256": "64d97f891594c386652cf3f783dfbdaf65d358ddb0bf1be96f1fbe3b2d3be827",
+  "wasm_bytes": 652895,
+  "js_bytes": 14954
+}
