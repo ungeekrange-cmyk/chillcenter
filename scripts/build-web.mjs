@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ui = join(root, "ui/connected");
 const src = join(root, "web/src");
 const out = resolve(process.argv[2] || join(root, "web/dist"));
-const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "catalog-query.js", "catalog-store.js", "catalog-sync.js", "artwork-cache.js", "bridge.js", "register-sw.js"];
+const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "audio-core.js", "audio-register.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "catalog-query.js", "catalog-store.js", "catalog-sync.js", "artwork-cache.js", "bridge.js", "register-sw.js"];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -27,6 +27,13 @@ if (existsSync(join(vendor, "mpeg4-decoder.wasm"))) {
   cpSync(vendor, join(out, "vendor/mpeg4"), { recursive: true });
   for (const name of ["mpeg4-core.js", "mpeg4-worker.js"]) cpSync(join(src, name), join(out, "vendor/mpeg4", name));
 } else console.warn("web/vendor/mpeg4 absent : les AVI Xvid/DivX resteront non lisibles.");
+// Audio transcoder (AC-3, E-AC-3, DTS, TrueHD -> AAC) in WebAssembly: built by web/decoder/audio, loaded by a Worker only when needed (ADR-0020).
+const audioVendor = join(root, "web/vendor/audio");
+if (existsSync(join(audioVendor, "audio-transcoder.wasm"))) {
+  mkdirSync(join(out, "vendor/audio"), { recursive: true });
+  cpSync(audioVendor, join(out, "vendor/audio"), { recursive: true });
+  for (const name of ["audio-core.js", "audio-worker.js"]) cpSync(join(src, name), join(out, "vendor/audio", name));
+} else console.warn("web/vendor/audio absent : les pistes AC-3/E-AC-3/DTS resteront sans son.");
 
 // Device wording: this is no longer "this Mac".
 const patch = (file, from, to) => {
@@ -42,7 +49,7 @@ const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" hr
   + webScripts.map(name => `<script src="${name}"></script>`).join("");
 if (!html.includes("<title>")) throw new Error("index.html sans <title>");
 html = html.replace("</head>", `<script src="web-sync-ui.js" defer></script></head>`).replace("<title>", head + "<title>").replace("Apparence de ce Mac", "Apparence de cet appareil").replace("Le Mac ne monte pas ce chemin.", "Cet appareil ne monte pas ce chemin.");
-writeFileSync(join(out, "index.html"), html);
+writeFileSync(join(out, "index.html"), html);   // stamped with the build id below, once it is known
 
 const files = [];
 (function walk(dir) {
@@ -55,6 +62,10 @@ files.sort();
 const build = createHash("sha256");
 for (const f of files) build.update(f).update(readFileSync(join(out, f)));
 const id = build.digest("hex").slice(0, 12);
+// Every local script, stylesheet and manifest URL of the page carries ?v=<build id>. The server ignores the query and caches static files for
+// an hour; the id makes a new build a new URL, so a browser never mixes old and new files after an update (no Service Worker over plain HTTP).
+const stamped = readFileSync(join(out, "index.html"), "utf8").replace(/(src|href)="([^":?#]+\.(?:js|css|webmanifest))"/g, (_, attr, url) => `${attr}="${url}?v=${id}"`);
+writeFileSync(join(out, "index.html"), stamped);
 const shell = ["./", ...files.filter(f => f !== "sw.js" && !f.endsWith(".md"))];
 writeFileSync(join(out, "sw.js"), readFileSync(join(src, "sw.js"), "utf8").replace("__BUILD__", id).replace("__SHELL__", JSON.stringify(shell)));
 writeFileSync(join(out, "build.json"), JSON.stringify({ build: id, source: "ui/connected + web/src", files: files.length + 1 }, null, 2) + "\n");

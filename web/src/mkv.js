@@ -4,6 +4,7 @@
 // header-only cluster hop) drives seeking. No decoding: the browser decodes.
 (function (root) {
   const Mp4 = typeof module !== "undefined" ? require("./mp4.js") : root.ChillMp4;
+  const AudioCore = typeof module !== "undefined" ? require("./audio-core.js") : root.ChillAudioCore;
   const { box, full, u32b, concat } = Mp4;
   const fail = message => Object.assign(new Error(message), { code: "PLAYER_ERROR" });
   const enc = s => new TextEncoder().encode(s);
@@ -67,9 +68,18 @@
   const visual = (type, w, h, cfg) => box(type, zeros(6), u16b(1), zeros(16), u16b(w), u16b(h), u32b(0x00480000), u32b(0x00480000), u32b(0), u16b(1), zeros(32), u16b(0x18), u16b(0xffff), cfg);
   const audio = (type, ch, rate, cfg) => box(type, zeros(6), u16b(1), zeros(8), u16b(ch), u16b(16), u16b(0), u16b(0), u32b(Math.min(rate, 65535) * 65536), cfg);
 
+  // Audio the browser cannot decode through MSE (AC-3, E-AC-3, DTS, TrueHD) is declared as AAC-LC stereo at the same sample rate and
+  // converted by the WebAssembly transcoder while the file is read; the player sees an ordinary AAC track.
+  const TRANSCODED = { "A_AC3": ["ac3", "AC-3"], "A_EAC3": ["eac3", "E-AC-3"], "A_DTS": ["dts", "DTS"], "A_DTS/EXPRESS": ["dts", "DTS"], "A_DTS/LOSSLESS": ["dts", "DTS-HD"], "A_TRUEHD": ["truehd", "TrueHD"], "A_MLP": ["mlp", "MLP"] };
   /** Matroska track -> MP4 sample entry bytes, or null when this build cannot remux the codec. */
   function sampleEntryFor(t) {
     const cp = t.codecPrivate;
+    if (TRANSCODED[t.codecId]) {
+      const asc = AudioCore && AudioCore.audioSpecificConfig(Math.round(t.sampleRate), 2);
+      if (!asc) return null;
+      t.transcode = TRANSCODED[t.codecId][0]; t.sourceLabel = TRANSCODED[t.codecId][1];
+      return audio("mp4a", 2, Math.round(t.sampleRate), esds(0x40, 5, asc));
+    }
     switch (t.codecId) {
       case "V_MPEG4/ISO/AVC": return cp && visual("avc1", t.width, t.height, box("avcC", cp));
       case "V_MPEGH/ISO/HEVC": return cp && visual("hvc1", t.width, t.height, box("hvcC", cp));
@@ -94,7 +104,7 @@
     const entry = sampleEntryFor(t);
     const lang = (t.language || "und").padEnd(3, "d").slice(0, 3);
     const packed = ((lang.charCodeAt(0) - 96) << 10) | ((lang.charCodeAt(1) - 96) << 5) | (lang.charCodeAt(2) - 96);
-    const base = { id: t.number, kind, timescale, shift: 0, language: LANG2[t.language] || (t.bcp47 ? t.bcp47.slice(0, 2) : t.language) || null, name: t.name, width: t.width, height: t.height, codecId: t.codecId, defaultDuration: t.defaultDuration, flagDefault: t.flagDefault };
+    const base = { id: t.number, kind, timescale, shift: 0, transcode: t.transcode || null, sourceLabel: t.sourceLabel || null, language: LANG2[t.language] || (t.bcp47 ? t.bcp47.slice(0, 2) : t.language) || null, name: t.name, width: t.width, height: t.height, codecId: t.codecId, defaultDuration: t.defaultDuration, flagDefault: t.flagDefault };
     if (!entry) return { ...base, codec: null, mime: null, type: t.codecId };
     const stsdBox = box("stsd", full(0, 0), u32b(1), entry);
     const parsed = Mp4.sampleEntry(stsdBox, Mp4.boxes(stsdBox, 16)[0], kind);
@@ -225,7 +235,35 @@
   }
 
   class MkvSource {
-    constructor(reader) { this.reader = reader; this.queues = new Map(); this.cursor = 0; this.gen = 0; this.pipes = new Map(); this.seq = 0; this.active = null; }
+    // options.audio: factory of audio transcoders ({ create({codec, rate, channels, kbps}) }), see audio-register.js.
+    constructor(reader, options = {}) { this.reader = reader; this.queues = new Map(); this.cursor = 0; this.gen = 0; this.pipes = new Map(); this.seq = 0; this.active = null; this.audio = options.audio || null; this.transcoders = new Map(); }
+    close() { for (const st of this.transcoders.values()) { try { st.tc.close(); } catch { /* already gone */ } } this.transcoders.clear(); }
+
+    /**
+     * Converts compressed audio access units into AAC frames (1024 samples each) with their own timeline. The encoder's priming delay
+     * (`initial_padding` samples) is subtracted so that the first audible sample sits at the time of the first input frame; a frame that
+     * would start before 0 is only encoder pre-roll and is dropped. The timeline restarts from the first frame after every seek.
+     */
+    async transcodeEntries(track, samples, gen, flush = false) {
+      let st = this.transcoders.get(track.id);
+      if (!st) {
+        if (!this.audio) throw fail(`Cette piste audio (${track.sourceLabel || track.type}) doit être convertie, mais le transcodeur audio n'est pas disponible.`);
+        const tc = this.audio.create({ codec: track.transcode, rate: track.timescale, channels: 2, kbps: 192 });
+        await tc.open();
+        st = { tc, anchor: null, count: 0, priming: tc.priming || 1024 };
+        this.transcoders.set(track.id, st);
+      }
+      if (!flush && st.anchor === null) { st.anchor = Math.round(samples[0].ms * track.timescale / 1000); st.count = 0; }
+      const packets = flush ? await st.tc.flush() : await st.tc.convert(samples.map(s => s.data));
+      if (gen !== this.gen || st.anchor === null) return [];   // a seek happened meanwhile: this output belongs to the old timeline
+      const entries = [];
+      for (const data of packets) {
+        const dts = st.anchor + (st.count - 1) * 1024; st.count += 1;
+        if (dts < 0) continue;
+        entries.push({ s: { data, key: true, ms: dts * 1000 / track.timescale }, pts: dts, dts, dur: 1024 });
+      }
+      return entries;
+    }
     setActive(ids) { this.active = new Set(ids); for (const id of this.queues.keys()) if (!this.active.has(id)) this.queues.set(id, []); }
 
     async read(a, b) { return this.reader.read(a, Math.min(b, this.reader.size - 1)); }
@@ -325,6 +363,7 @@
       for (const id of this.queues.keys()) this.queues.set(id, []);
       this.pipes.clear();
       this.cursor = await this.clusterFor(seconds);
+      for (const st of this.transcoders.values()) { st.anchor = null; st.count = 0; await st.tc.reset(); }
       this.needKey = new Set(this.tracks.filter(t => t.kind === "video").map(t => t.id));
       this.eof = false;
     }
@@ -348,6 +387,12 @@
           if (!track.mime) continue;
           let usable = list;
           if (this.needKey?.has(id)) { const k = usable.findIndex(s => s.key); if (k < 0) continue; usable = usable.slice(k); this.needKey.delete(id); }
+          if (track.transcode) {
+            const entries = await this.transcodeEntries(track, usable, gen);
+            if (gen !== this.gen) return true;
+            if (entries.length) this.queues.get(id).push(buildBatch(track, entries));
+            continue;
+          }
           if (!this.pipes.has(id)) this.pipes.set(id, new Pipeline(track));
           const ready = this.pipes.get(id).feed(usable);
           if (ready.length) this.queues.get(id).push(buildBatch(track, ready));
@@ -361,6 +406,13 @@
         if (ready.length) { this.queues.get(id).push(buildBatch(this.tracks.find(t => t.id === id), ready)); flushed = true; }
       }
       this.pipes.clear();
+      for (const [id, st] of this.transcoders) {
+        if (st.anchor === null) continue;
+        const track = this.tracks.find(t => t.id === id);
+        const entries = await this.transcodeEntries(track, [], gen, true);
+        if (entries.length) { this.queues.get(id).push(buildBatch(track, entries)); flushed = true; }
+        st.anchor = null;
+      }
       this.eof = true;
       return flushed;
     }

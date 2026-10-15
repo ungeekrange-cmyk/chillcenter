@@ -90,7 +90,7 @@
     // ---- local mirror of the catalogue (ADR-0019) --------------------------------------------------------------------
     // Reads (catalogue pages, series, sagas, playlists, media sheets) are answered from memory, loaded from IndexedDB at start; the
     // server is only asked, in the background, whether anything changed. Without `env.store` (tests) everything goes to the server.
-    const mirror = { key: null, profile: null, entries: null, index: null, doc: null, manifest: null, ready: false, loading: null, syncing: null, timer: null, lastCheck: 0, scanning: false };
+    const mirror = { key: null, profile: null, entries: null, index: null, doc: null, manifest: null, ready: false, loading: null, syncing: null, timer: null, lastCheck: 0, scanning: false, unsupported: false };
     const now = () => (env.now ? env.now() : Date.now());
     const setTimer = env.setTimer || ((f, ms) => setTimeout(f, ms)), clearTimer = env.clearTimer || (t => clearTimeout(t));
     let artCache = null;
@@ -98,11 +98,11 @@
     function mirrorApply(entries, doc, manifest) { mirror.entries = entries; mirror.index = Query.prepare(entries); mirror.doc = doc; mirror.manifest = manifest; mirror.ready = Boolean(doc); }
     function mirrorClose() {
       if (mirror.timer) clearTimer(mirror.timer);
-      Object.assign(mirror, { key: null, profile: null, entries: null, index: null, doc: null, manifest: null, ready: false, loading: null, timer: null, scanning: false });
+      Object.assign(mirror, { key: null, profile: null, entries: null, index: null, doc: null, manifest: null, ready: false, loading: null, timer: null, scanning: false, unsupported: false });
       if (artCache) artCache.clear();
     }
     function scheduleSync(delay) {
-      if (!env.store || !mirror.key) return;
+      if (!env.store || !mirror.key || mirror.unsupported) return;
       if (mirror.timer) clearTimer(mirror.timer);
       mirror.timer = setTimer(() => { mirror.timer = null; runSync(); }, delay);
     }
@@ -132,7 +132,10 @@
           if (result.unchanged) { mirror.manifest = { ...(mirror.manifest || {}), checked_at: mirror.lastCheck }; return; }
           mirrorApply(result.entries, result.doc, { revision: result.revision, total: result.entries.length, synced_at: mirror.lastCheck, checked_at: mirror.lastCheck });
           if (env.notify && (result.changed || result.removed || result.firstSync)) env.notify({ type: "catalog-updated", changed: result.changed, removed: result.removed, firstSync: result.firstSync });
-        } catch { /* keep serving the last good mirror; the next trigger retries */ }
+        } catch (e) {
+          // A server without the snapshot routes (older API) is not retried for this connection: everything keeps going to the server.
+          if (e && (e.code === "ROUTE_NOT_FOUND" || e.status === 405)) mirror.unsupported = true;   // else: keep the last good mirror, the next trigger retries
+        }
         finally { mirror.syncing = null; }
       })();
       return mirror.syncing;

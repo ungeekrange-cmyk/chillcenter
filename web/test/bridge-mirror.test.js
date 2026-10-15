@@ -126,3 +126,13 @@ test("posters: fetched once per revision, then served from the cache; no mirror 
   const plain = client(w, null); await select(plain); await plain.ui({ action: "artwork", media_id: uid(1) });
   assert.equal(w.artworkCalls, 2);
 });
+
+test("a server without the snapshot routes (older API) is never retried, and keeps answering through the plain API", async () => {
+  const w = world([film(1)]); const orig = w.fetch;
+  w.fetch = async (url, init = {}) => (url.includes("/catalog/snapshot") ? { ok: false, status: 404, text: async () => JSON.stringify({ code: "ROUTE_NOT_FOUND" }) } : orig(url, init));
+  const c = client(w, Store.createMemoryBackend()); await select(c); await c.flush();
+  assert.equal(c.bridge._mirror().unsupported, true); assert.equal(c.events.length, 0);
+  const n = w.calls.length; c.bridge.wake(); await c.ui({ action: "refresh" }); assert.equal(c.timers.length, 0, "nothing is scheduled any more");
+  await page(c); assert.equal(w.catalogCalls, 1, "the server answers");
+  assert.ok(w.calls.length > n);
+});

@@ -36,7 +36,7 @@
       await this.reader.open();
       const kind = sniffContainer(this.reader.head);
       if (kind === "unknown") throw fail("Format de fichier non reconnu.");
-      this.src = kind === "mp4" ? new Mp4.Mp4Source(this.reader) : kind === "mkv" ? new Mkv.MkvSource(this.reader) : new Avi.AviSource(this.reader);
+      this.src = kind === "mp4" ? new Mp4.Mp4Source(this.reader) : kind === "mkv" ? new Mkv.MkvSource(this.reader, { audio: root.ChillAudio || null }) : new Avi.AviSource(this.reader);
       this.movie = await this.src.open();
       // MP3 is not accepted inside audio/mp4 everywhere (Chromium builds): fall back to a bare MPEG audio stream.
       for (const t of this.movie.tracks) {
@@ -222,12 +222,13 @@
       return {
         loaded: v.readyState >= 1, paused: v.paused, buffering: !v.paused && !v.ended && v.readyState < 3, ended: v.ended,
         error: this.errorText || this.soft?.errorText || null, notice: this.notice, position: v.currentTime || 0, duration: this.movie.duration, speed: v.playbackRate, volume: Math.round(v.volume * 100),
-        tracks: (this.audio || []).map((t, i) => ({ id: t.id, kind: "Audio", language: t.language, title: codecLabel(t.codec), selected: t === this.activeAudio, original: i === 0 })),
+        tracks: (this.audio || []).map((t, i) => ({ id: t.id, kind: "Audio", language: t.language, title: t.sourceLabel ? `${t.sourceLabel} (converti en AAC)` : codecLabel(t.codec), selected: t === this.activeAudio, original: i === 0 })),
         hardware_decoder: this.soft ? "no" : this.hardware, decoder: this.soft ? this.softLabel : "Décodeur du navigateur",
       };
     }
     close() {
       this.closed = true; this.epoch++;
+      try { this.src?.close?.(); } catch { /* ignore */ }
       try { this.soft?.close(); } catch { /* ignore */ }
       try { this.video?.pause(); this.video?.removeAttribute("src"); this.video?.load(); } catch { /* ignore */ }
       if (this.url) this.d.URL.revokeObjectURL(this.url);

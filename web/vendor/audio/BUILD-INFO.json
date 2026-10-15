@@ -1,0 +1,11 @@
+{
+  "ffmpeg": "ffmpeg-9.0.2",
+  "ffmpeg_tarball_sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+  "emscripten": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.12 (5488e0871d46d19a3209988190fa6a653126256f)",
+  "license": "LGPL-2.1-or-later (FFmpeg libavcodec/libswresample/libavutil, built without --enable-gpl or --enable-nonfree)",
+  "configure": "./configure --prefix=/tmp/tmp.N9rVS1IBDm/install --target-os=none --arch=x86_32 --enable-cross-compile --cc=emcc --cxx=em++ --objcc=emcc --dep-cc=emcc --ar=emar --ranlib=emranlib --nm=llvm-nm --disable-all --disable-autodetect --disable-programs --disable-doc --disable-debug --disable-stripping --disable-asm --disable-x86asm --disable-inline-asm --disable-runtime-cpudetect --disable-network --disable-pthreads --disable-w32threads --disable-os2threads --enable-avcodec --enable-avutil --enable-swresample --enable-decoder=ac3,eac3,dca,truehd,mlp --enable-encoder=aac --extra-cflags=-O3 -fno-exceptions",
+  "audio_transcoder_wasm_sha256": "55668748feef2c0cff26976ea8a223d03e107c7025b7fa77586fcdf41ffb5c98",
+  "audio_transcoder_js_sha256": "dbba0a769395db10d5ecc2dfae644527ff762d82ce2a829d51362cd893294f3e",
+  "wasm_bytes": 967016,
+  "js_bytes": 15236
+}
