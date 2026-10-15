@@ -137,3 +137,7 @@ Aucune migration SQLite n'est introduite par ce lot : l'ancien binaire reste com
 Exécution du script opérateur sur un vrai Pi (`NOT_RUN`), durée réelle d'interruption, revue indépendante du script et du diff (`NOT_DONE`), lecture réelle depuis un navigateur sur le Pi, performances sur appareils faibles, Service Worker sur certificat auto-signé. Compilation, tests Rust, build ARM64 et essai de bout en bout Linux : faits (§3).
 
 Rejouer l'essai de bout en bout : `colima start` puis `colima ssh -- <repo>/scripts/web-e2e-linux.sh <repo>` (le binaire et `artifacts/web-pi/chillcenter-web.tar` doivent exister), puis `colima stop`.
+
+## Revue indépendante n° 1 (15 octobre 2026)
+
+Verdict **CHANGES_REQUESTED** (script V5, trois défauts MEDIUM S1–S3), Rust APPROVED_WITH_CONDITIONS, artefacts APPROVED : [rapport verbatim](../reviews/web-pi-deploy-v5-review-1.md). Le script `8d47e9df…` ne doit donc **pas** être exécuté ; sa correction produira un nouveau hash et une nouvelle revue.
