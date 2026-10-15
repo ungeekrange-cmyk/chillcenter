@@ -1,6 +1,6 @@
 "use strict";
 // Engine registry. An Engine decodes/plays bytes fetched with Range from the leased stream
-// (client-side compute, ADR-0012). Interface:
+// (client-side compute, ADR-0014). Interface:
 //   open({mediaId, lease, startAt, speed}) -> Promise      play() pause() seek(s) setSpeed(x) setVolume(0..100)
 //   selectAudio(id) selectSubtitle(id|null) externalSubtitles() snapshot() close()
 //   snapshot() -> {loaded, paused, buffering, ended, error, notice, position, duration, speed, volume,

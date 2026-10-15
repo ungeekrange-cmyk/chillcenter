@@ -11,16 +11,106 @@ pub fn normalized(value: &str) -> String {
         .to_lowercase()
 }
 
-fn clean(value: &str) -> String {
-    static RELEASE: OnceLock<Regex> = OnceLock::new();
-    let release = RELEASE.get_or_init(|| Regex::new(r"(?i)\b(2160p|1080p|720p|480p|bluray|blu-ray|bdrip|brrip|webrip|web-dl|hdtv|dvdrip|x264|x265|h264|h265|hevc|hdr|dv|remux|multi|vff|vfq|vostfr|french|aac|ac3|dts|proper|repack)\b.*").unwrap());
+fn year_pattern() -> &'static Regex {
+    static YEAR: OnceLock<Regex> = OnceLock::new();
+    YEAR.get_or_init(|| Regex::new(r"\b((?:18|19|20)\d{2})\b").unwrap())
+}
+
+fn is_dash(c: char) -> bool {
+    "-‐‑‒–—−".contains(c)
+}
+
+/// Stop before an audio/video section, not just its first recognised codec.
+/// Language words are weaker evidence: "La French" is a legitimate title.
+fn release_prefix(value: &str) -> &str {
+    static TECHNICAL: OnceLock<Regex> = OnceLock::new();
+    static LABEL: OnceLock<Regex> = OnceLock::new();
+    static LANGUAGE: OnceLock<Regex> = OnceLock::new();
+    let technical=TECHNICAL.get_or_init(||Regex::new(r"(?i)\b(?:2160p|1080[pi]|720p|576p|480p|4k|uhd|blu[ ._-]?ray|bdremux|bdrip|brrip|web[ ._-]?(?:rip|dl)|hdtv|dvdrip|[xh][ ._-]?26[45]|hevc|avc|av1|xvid|divx|remux|hdr10?\+?|vff|vfq|vfi|vost(?:fr|a|en)?|aac|e[ ._-]?ac[ ._-]?3|ac[ ._-]?3|dts|true[ ._-]?hd|atmos|flac|opus|proper|repack)\b|\bDDP(?:[ ._-]*[257](?:[ ._-][01])?)?\b|\bDD\+").unwrap());
+    let label=LABEL.get_or_init(||Regex::new(r"(?i)\b(?:audio|vid[eé]o)[\s._:=\-–—\[\(]+(?:fr(?:an[cç]ais|ench)?|en(?:g(?:lish)?)?|vo(?:st(?:fr|a|en)?)?|vf[fiq]?|multi|ddp|dd|dts|aac|ac3|eac3|truehd|hevc|avc|av1|[xh][ ._-]?26[45]|1080[pi]|2160p|720p|4k|full[ ._-]?hd)\b").unwrap());
+    let language =
+        LANGUAGE.get_or_init(|| Regex::new(r"(?i)\b(?:french|english|multi|vf|vo|dv)\b").unwrap());
+    let strong = technical
+        .find_iter(value)
+        .chain(label.find_iter(value))
+        .map(|m| m.start());
+    let weak = language
+        .find_iter(value)
+        .filter(|m| {
+            let prefix = value[..m.start()].trim_end();
+            prefix
+                .chars()
+                .last()
+                .is_some_and(|c| is_dash(c) || c == '[' || c == '(')
+                || year_pattern().is_match(prefix)
+        })
+        .map(|m| m.start());
+    let cut = strong
+        .chain(weak)
+        .filter(|&at| value[..at].chars().any(char::is_alphanumeric))
+        .min()
+        .unwrap_or(value.len());
+    &value[..cut]
+}
+
+fn tidy(value: &str) -> String {
+    static EMPTY: OnceLock<Regex> = OnceLock::new();
+    static DASHES: OnceLock<Regex> = OnceLock::new();
+    let empty = EMPTY.get_or_init(|| Regex::new(r"\(\s*\)|\[\s*\]").unwrap());
+    let dashes = DASHES.get_or_init(|| Regex::new(r"[-‐‑‒–—−](?:\s*[-‐‑‒–—−])+").unwrap());
     let spaced = value.replace(['.', '_'], " ");
-    let without_release = release.replace(&spaced, "");
-    without_release
-        .trim_matches(|c: char| c.is_whitespace() || ['-', '[', ']', '(', ')'].contains(&c))
+    let emptied = empty.replace_all(&spaced, " ");
+    let separated = dashes.replace_all(&emptied, " ");
+    separated
+        .trim_start_matches(|c: char| c.is_whitespace() || is_dash(c) || c == ']' || c == ')')
+        .trim_end_matches(|c: char| c.is_whitespace() || is_dash(c) || c == '[' || c == '(')
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Clean technical release suffixes from a label without treating numbers in an
+/// already indexed title (e.g. Blade Runner 2049) as release years.
+pub fn title_for_search(value: &str) -> String {
+    let spaced = value.replace(['.', '_'], " ");
+    tidy(release_prefix(&spaced))
+}
+
+/// Extract a release year only when parsing source filenames, not stored titles.
+fn title_and_year(value: &str) -> (String, Option<i32>) {
+    let spaced = value.replace(['.', '_'], " ");
+    let content = release_prefix(&spaced).to_owned();
+    // A leading number may be the actual title (1917, 2001, 1899), not a date.
+    let year = year_pattern()
+        .captures_iter(&content)
+        .filter(|c| {
+            content[..c.get(0).unwrap().start()]
+                .chars()
+                .any(char::is_alphanumeric)
+        })
+        .last();
+    let (without_year, date) = if let Some(c) = year {
+        let matched = c.get(0).unwrap();
+        (
+            format!(
+                "{}{}",
+                &content[..matched.start()],
+                &content[matched.end()..]
+            ),
+            c[1].parse().ok(),
+        )
+    } else {
+        (content, None)
+    };
+    let title = tidy(&without_year);
+    (
+        if title.is_empty() {
+            value.to_owned()
+        } else {
+            title
+        },
+        date,
+    )
 }
 
 pub fn parse_file(root: &Path, path: &Path) -> Media {
@@ -31,7 +121,6 @@ pub fn parse_file(root: &Path, path: &Path) -> Media {
     static EPISODIC: OnceLock<Regex> = OnceLock::new();
     static SEASON: OnceLock<Regex> = OnceLock::new();
     static EPISODE: OnceLock<Regex> = OnceLock::new();
-    static YEAR: OnceLock<Regex> = OnceLock::new();
     let episodic = EPISODIC.get_or_init(|| {
         Regex::new(r"(?i)(?:s(\d{1,3})[ ._-]*e(\d{1,4})|(\d{1,3})x(\d{1,4}))").unwrap()
     });
@@ -39,10 +128,8 @@ pub fn parse_file(root: &Path, path: &Path) -> Media {
         SEASON.get_or_init(|| Regex::new(r"(?i)(?:season|saison|s)[ ._-]*(\d{1,3})\b").unwrap());
     let episode_only =
         EPISODE.get_or_init(|| Regex::new(r"(?i)\b(?:e|ep|episode)[ ._-]*(\d{1,4})\b").unwrap());
-    let year_re = YEAR.get_or_init(|| Regex::new(r"\b((?:19|20)\d{2})\b").unwrap());
     let searchable = stem.replace(['.', '_'], " ");
-    let year_capture = year_re.captures_iter(&searchable).last();
-    let year = year_capture.as_ref().and_then(|c| c[1].parse().ok());
+    let (mut title, year) = title_and_year(&stem);
     let ep = episodic.captures(&stem);
     let folder_season = season_folder
         .captures(&directories)
@@ -78,15 +165,11 @@ pub fn parse_file(root: &Path, path: &Path) -> Media {
     } else {
         "film"
     };
-    let without_year = if let Some(c) = year_capture.as_ref().and_then(|c| c.get(0)) {
-        format!("{}{}", &searchable[..c.start()], &searchable[c.end()..])
-    } else {
-        searchable.clone()
-    };
-    let mut title = clean(&without_year);
     let mut series = None;
     if category == "serie" {
-        let prefix = cut.map(|n| clean(&stem[..n])).unwrap_or_default();
+        let prefix = cut
+            .map(|n| title_for_search(&stem[..n]))
+            .unwrap_or_default();
         let from_folder = relative
             .parent()
             .into_iter()
@@ -100,10 +183,10 @@ pub fn parse_file(root: &Path, path: &Path) -> Media {
                     && !season_folder.is_match(s)
             });
         series = Some(if !prefix.is_empty() {
-            clean(&year_re.replace(&prefix, ""))
+            title_and_year(&prefix).0
         } else {
             from_folder
-                .map(|s| clean(&s))
+                .map(|s| title_for_search(&s))
                 .unwrap_or_else(|| title.clone())
         });
         if let Some(c) = ep
@@ -111,7 +194,7 @@ pub fn parse_file(root: &Path, path: &Path) -> Media {
             .and_then(|c| c.get(0))
             .or_else(|| only_ep.as_ref().and_then(|c| c.get(0)))
         {
-            let suffix = clean(&stem[c.end()..]);
+            let suffix = title_for_search(&stem[c.end()..]);
             title = if suffix.is_empty() {
                 format!("Épisode {}", episode.unwrap_or(0))
             } else {
@@ -226,6 +309,81 @@ pub fn discover_with_budget(root: &Path, budget: usize) -> Result<Vec<Media>, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn release_separator_audio_video_and_empty_year_wrappers() {
+        for (name, title, year) in [
+            ("Attack the Block - - Vosta.mkv", "Attack the Block", None),
+            ("Birdman () - vost DDP 5 1.mkv", "Birdman", None),
+            ("Birdman_(2014)_--_VOST_DDP_5_1.mkv", "Birdman", Some(2014)),
+            (
+                "Attack the Block - - (2011) - - VOSTA - - 1080p.mkv",
+                "Attack the Block",
+                Some(2011),
+            ),
+            (
+                "Birdman (2014) -- [Audio: VOST DDP 5.1] -- [Video: H.264 1080p].mp4",
+                "Birdman",
+                Some(2014),
+            ),
+            (
+                "12 hommes en colère - - (1957) - Audio - FR DTS-HD MA 5.1 - Vidéo - H264.mkv",
+                "12 hommes en colère",
+                Some(1957),
+            ),
+            (
+                "(500) jours ensemble -- 2009 -- [Audio: ENG E-AC-3 5.1] -- [Video: HEVC].mkv",
+                "(500) jours ensemble",
+                Some(2009),
+            ),
+            (
+                "2001.A.Space.Odyssey.(1968) -- Video - x265 - Encoded 2020.mkv",
+                "2001 A Space Odyssey",
+                Some(1968),
+            ),
+            (
+                "Wall-E -- (2008) -- Audio: VFF DD+ 5.1 -- Video: AV1 10bit.avi",
+                "Wall-E",
+                Some(2008),
+            ),
+        ] {
+            let m = parse_file(Path::new("/nas"), &Path::new("/nas").join(name));
+            assert_eq!(m.title, title, "{name}");
+            assert_eq!(m.year, year, "{name}");
+            assert_eq!(m.id, name, "parsing must not rename the source");
+        }
+    }
+    #[test]
+    fn release_cleaning_preserves_title_hyphens_parentheses_and_language_words() {
+        for (name, title) in [
+            (
+                "Spider-Man - No Way Home (2021) - 1080p.mkv",
+                "Spider-Man - No Way Home",
+            ),
+            ("La French (2014) - - 1080p.mkv", "La French"),
+            ("French Kiss (1995) -- AAC.mkv", "French Kiss"),
+            (
+                "Birdman (or The Unexpected Virtue of Ignorance) (2014).mkv",
+                "Birdman (or The Unexpected Virtue of Ignorance)",
+            ),
+            ("1917.mkv", "1917"),
+            ("2001.A.Space.Odyssey.mkv", "2001 A Space Odyssey"),
+        ] {
+            let m = parse_file(Path::new("/nas"), &Path::new("/nas").join(name));
+            assert_eq!(m.title, title, "{name}");
+        }
+    }
+    #[test]
+    fn release_cleaning_keeps_series_numbering_and_episode_titles() {
+        let m = parse_file(
+            Path::new("/nas"),
+            Path::new(
+                "/nas/Séries/Dark - - S02E03 - - Ghosts -- Audio - VOSTA DDP 5 1 -- Video - x265.mkv",
+            ),
+        );
+        assert_eq!(m.series.as_deref(), Some("Dark"));
+        assert_eq!(m.title, "Ghosts");
+        assert_eq!((m.season, m.episode), (Some(2), Some(3)));
+    }
     #[test]
     fn movie_year_and_release() {
         let m = parse_file(

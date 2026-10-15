@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproducible build of web/vendor/mpeg4 from pinned inputs (ADR-0014). No network inside the container.
+# Reproducible build of web/vendor/mpeg4 from pinned inputs (ADR-0016). No network inside the container.
 #   usage: web/decoder/mpeg4/build-in-docker.sh /path/to/ffmpeg-9.0.2.tar.xz
 # The tarball is copied into .build-cache/ (git-ignored) because container VMs such as Colima only share
 # the home directory; its SHA-256 is checked again inside the container by build.sh.

@@ -496,6 +496,10 @@ impl Database {
         for media in all.iter().filter(|m| m.category != "film") {
             tx.execute("DELETE FROM collection_members WHERE media_id=?1 AND collection_id IN (SELECT id FROM collections WHERE kind='saga')", [&media.id]).map_err(db_error)?;
         }
+        // Legacy/TMDB imports above create collections after Database::open's
+        // migration. Initialize their CAS in the same transaction, without
+        // ever resetting a revision already issued to a client.
+        tx.execute("INSERT OR IGNORE INTO collection_revisions(collection_id,revision) SELECT id,1 FROM collections", []).map_err(db_error)?;
         tx.commit().map_err(db_error)?;
         let mut stmt = self
             .connection
@@ -1205,6 +1209,30 @@ pub fn similar(media: &Media, all: Vec<Media>) -> Vec<Media> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lazily_imported_sagas_have_revisions_without_resetting_existing_cas() {
+        let mut db = db();
+        let mut film = movie("Auto.mkv");
+        film.saga = Some("TMDB saga".into());
+        db.put(&film).unwrap();
+        let collection = db.collections().unwrap().remove(0);
+        assert_eq!(db.saga_revision(&collection.id).unwrap(), 1);
+        db.rename_saga_at_revision(&collection.id, "Renamed", 1)
+            .unwrap();
+        let revision = db.saga_revision(&collection.id).unwrap();
+        db.collections().unwrap();
+        assert_eq!(db.saga_revision(&collection.id).unwrap(), revision);
+        // Repair old rows missing the additive revision, never media metadata.
+        db.connection
+            .execute(
+                "DELETE FROM collection_revisions WHERE collection_id=?1",
+                [&collection.id],
+            )
+            .unwrap();
+        db.collections().unwrap();
+        assert_eq!(db.saga_revision(&collection.id).unwrap(), 1);
+        assert_eq!(db.get(&film.id).unwrap().saga.as_deref(), Some("TMDB saga"));
+    }
     #[test]
     fn missing_media_is_distinct_from_failed_or_corrupt_catalogue_reads() {
         let db = db();

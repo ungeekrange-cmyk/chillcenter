@@ -58,20 +58,41 @@ pub struct SeriesCounters {
 
 /// Personal playlist view.  The revision is deliberately separate from the
 /// common legacy `Collection`: clients must supply it for every mutation.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PlaylistView {
     pub id: String,
     pub name: String,
     pub revision: u64,
     pub media_ids: Vec<String>,
+    #[serde(default)]
+    pub poster: Option<String>,
 }
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SagaView {
     pub id: String,
     pub name: String,
     pub revision: u64,
     pub media_ids: Vec<String>,
     pub poster: Option<String>,
+}
+
+/// A bounded, profile-scoped catalogue image suitable for a client-side mirror.
+/// It contains relative media references only; it is never an operational backup.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SyncMedia {
+    pub media: Media,
+    pub revision: u64,
+}
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SyncSnapshot {
+    pub items: Vec<SyncMedia>,
+    pub sagas: Vec<SagaView>,
+    pub playlists: Vec<PlaylistView>,
+    pub series_revisions: std::collections::BTreeMap<String, u64>,
+    #[serde(skip)]
+    pub serialized_bytes: usize,
+    #[serde(skip)]
+    pub captured_revision: (u64, u64),
 }
 
 pub struct Store {
@@ -162,6 +183,10 @@ impl Store {
                 position INTEGER NOT NULL CHECK(position >= 0),
                 PRIMARY KEY(playlist_id, stable_media_id), UNIQUE(playlist_id, position)
              );
+             CREATE TABLE IF NOT EXISTS cc_playlist_artwork (
+                playlist_id TEXT PRIMARY KEY REFERENCES cc_playlists(id) ON DELETE CASCADE,
+                poster TEXT NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS cc_imports (export_id TEXT PRIMARY KEY);
              CREATE TABLE IF NOT EXISTS cc_catalog_epoch (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
              INSERT OR IGNORE INTO cc_catalog_epoch(id,revision) VALUES(1,0);
@@ -180,11 +205,28 @@ impl Store {
              CREATE TRIGGER IF NOT EXISTS cc_epoch_members_i AFTER INSERT ON cc_playlist_members BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_epoch_members_u AFTER UPDATE ON cc_playlist_members BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_epoch_members_d AFTER DELETE ON cc_playlist_members BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_playlist_artwork_i AFTER INSERT ON cc_playlist_artwork BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_playlist_artwork_u AFTER UPDATE ON cc_playlist_artwork BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
+             CREATE TRIGGER IF NOT EXISTS cc_epoch_playlist_artwork_d AFTER DELETE ON cc_playlist_artwork BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_epoch_collections_i AFTER INSERT ON collections BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_epoch_collections_u AFTER UPDATE ON collections BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_epoch_collections_d AFTER DELETE ON collections BEGIN UPDATE cc_catalog_epoch SET revision=revision+1 WHERE id=1; END;
              PRAGMA user_version=3;"
         ).map_err(db_error)?;
+        // Catalogue mirrors do not include playhead, language or speed. Such
+        // writes must not invalidate every cached catalogue in the household.
+        personal.execute_batch("CREATE TABLE IF NOT EXISTS cc_sync_personal_epoch(profile_id TEXT PRIMARY KEY REFERENCES cc_profiles(id) ON DELETE CASCADE,revision INTEGER NOT NULL DEFAULT 0);
+        INSERT OR IGNORE INTO cc_sync_personal_epoch(profile_id) SELECT id FROM cc_profiles;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_profile_i AFTER INSERT ON cc_profiles BEGIN INSERT INTO cc_sync_personal_epoch(profile_id) VALUES(NEW.id); END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_state_i AFTER INSERT ON cc_profile_state WHEN NEW.watched<>0 OR NEW.rating IS NOT NULL BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_state_u AFTER UPDATE OF watched,rating ON cc_profile_state WHEN NEW.watched IS NOT OLD.watched OR NEW.rating IS NOT OLD.rating BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_state_d AFTER DELETE ON cc_profile_state WHEN OLD.watched<>0 OR OLD.rating IS NOT NULL BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=OLD.profile_id; END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_playlist_i AFTER INSERT ON cc_playlists BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_playlist_u AFTER UPDATE ON cc_playlists BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_playlist_d AFTER DELETE ON cc_playlists BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=OLD.profile_id; END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_member_i AFTER INSERT ON cc_playlist_members BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_member_u AFTER UPDATE ON cc_playlist_members BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
+        CREATE TRIGGER IF NOT EXISTS cc_sync_member_d AFTER DELETE ON cc_playlist_members BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=OLD.playlist_id); END;").map_err(db_error)?;
         // AI plans have two independent stale tokens.  Keep their maintenance in
         // SQLite so mutations from every Store connection are visible atomically.
         personal.execute_batch(
@@ -206,6 +248,9 @@ impl Store {
              CREATE TRIGGER IF NOT EXISTS cc_personal_member_i AFTER INSERT ON cc_playlist_members BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
              CREATE TRIGGER IF NOT EXISTS cc_personal_member_u AFTER UPDATE ON cc_playlist_members BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
              CREATE TRIGGER IF NOT EXISTS cc_personal_member_d AFTER DELETE ON cc_playlist_members BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=OLD.playlist_id); END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_playlist_artwork_i AFTER INSERT ON cc_playlist_artwork BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_playlist_artwork_u AFTER UPDATE ON cc_playlist_artwork BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
+             CREATE TRIGGER IF NOT EXISTS cc_personal_playlist_artwork_d AFTER DELETE ON cc_playlist_artwork BEGIN UPDATE cc_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=OLD.playlist_id); END;
              CREATE TRIGGER IF NOT EXISTS cc_common_collections_i AFTER INSERT ON collections BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_common_collections_u AFTER UPDATE ON collections BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
              CREATE TRIGGER IF NOT EXISTS cc_common_collections_d AFTER DELETE ON collections BEGIN UPDATE cc_common_epoch SET revision=revision+1 WHERE id=1; END;
@@ -355,6 +400,22 @@ impl Store {
                 params![profile.id, profile.name],
             )
             .map_err(profile_collision)?;
+        Ok(profile)
+    }
+    pub fn create_profile_with_preferences(
+        &self,
+        name: &str,
+        preferences: Option<Preferences>,
+    ) -> Result<Profile, String> {
+        if let Some(p) = &preferences {
+            p.validate()?;
+        }
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let profile = self.create_profile(name)?;
+        if let Some(preferences) = preferences {
+            self.save_preferences(&profile.id, &preferences)?;
+        }
+        tx.commit().map_err(db_error)?;
         Ok(profile)
     }
 
@@ -1050,7 +1111,7 @@ impl Store {
         let mut stmt = self
             .personal
             .prepare(
-                "SELECT id,name,revision FROM cc_playlists WHERE profile_id=?1 ORDER BY name,id",
+                "SELECT p.id,p.name,p.revision,a.poster FROM cc_playlists p LEFT JOIN cc_playlist_artwork a ON a.playlist_id=p.id WHERE p.profile_id=?1 ORDER BY p.name,p.id",
             )
             .map_err(db_error)?;
         stmt.query_map([profile_id], |r| {
@@ -1058,16 +1119,20 @@ impl Store {
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
                 r.get::<_, i64>(2)?,
+                r.get::<_, Option<String>>(3)?,
             ))
         })
         .map_err(db_error)?
         .map(|row| {
-            let (id, name, revision) = row.map_err(db_error)?;
+            let (id, name, revision, poster) = row.map_err(db_error)?;
+            let artwork =
+                poster.map(|_| format!("/api/v1/profiles/{profile_id}/playlists/{id}/artwork"));
             Ok(PlaylistView {
                 media_ids: self.playlist_members(&id)?,
                 id,
                 name,
                 revision: revision as u64,
+                poster: artwork,
             })
         })
         .collect()
@@ -1153,12 +1218,12 @@ impl Store {
 
     pub fn playlist(&self, profile_id: &str, id: &str) -> Result<PlaylistView, String> {
         self.require_playlist(profile_id, id)?;
-        let (name, revision): (String, i64) = self
+        let (name, revision, poster): (String, i64, Option<String>) = self
             .personal
             .query_row(
-                "SELECT name,revision FROM cc_playlists WHERE id=?1 AND profile_id=?2",
+                "SELECT p.name,p.revision,a.poster FROM cc_playlists p LEFT JOIN cc_playlist_artwork a ON a.playlist_id=p.id WHERE p.id=?1 AND p.profile_id=?2",
                 params![id, profile_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .map_err(db_error)?;
         Ok(PlaylistView {
@@ -1166,7 +1231,329 @@ impl Store {
             name,
             revision: revision as u64,
             media_ids: self.playlist_members(id)?,
+            poster: poster.map(|_| format!("/api/v1/profiles/{profile_id}/playlists/{id}/artwork")),
         })
+    }
+
+    pub fn set_playlist_artwork_at_revision(
+        &self,
+        profile: &str,
+        playlist: &str,
+        expected: u64,
+        bytes: &[u8],
+        cache: &Path,
+    ) -> Result<(), String> {
+        self.require_playlist(profile, playlist)?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err("Image trop volumineuse.".into());
+        }
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let revision: i64 = tx
+            .query_row(
+                "SELECT revision FROM cc_playlists WHERE id=?1 AND profile_id=?2",
+                params![playlist, profile],
+                |r| r.get(0),
+            )
+            .map_err(db_error)?;
+        if revision as u64 != expected {
+            return Err("La playlist a changé entre-temps.".into());
+        }
+        let old: Option<String> = tx
+            .query_row(
+                "SELECT poster FROM cc_playlist_artwork WHERE playlist_id=?1",
+                [playlist],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        let poster = chill_catalog::poster::store(bytes, cache)?;
+        if tx.execute("UPDATE cc_playlists SET revision=revision+1 WHERE id=?1 AND profile_id=?2 AND revision=?3", params![playlist,profile,revision]).map_err(db_error)? != 1 { return Err("La playlist a changé entre-temps.".into()); }
+        tx.execute("INSERT INTO cc_playlist_artwork(playlist_id,poster) VALUES(?1,?2) ON CONFLICT(playlist_id) DO UPDATE SET poster=excluded.poster", params![playlist,poster]).map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        if let Some(old) = old {
+            let _ = self.remove_unreferenced_playlist_image(&old, cache);
+        }
+        Ok(())
+    }
+    fn remove_unreferenced_playlist_image(&self, old: &str, cache: &Path) -> Result<(), String> {
+        let path = Path::new(old);
+        if path.parent() != Some(cache)
+            || !path
+                .file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with("custom-"))
+        {
+            return Ok(());
+        }
+        let used:bool=self.personal.query_row("SELECT EXISTS(SELECT 1 FROM cc_playlist_artwork WHERE poster=?1 UNION ALL SELECT 1 FROM collection_artwork WHERE poster=?1 UNION ALL SELECT 1 FROM media WHERE json_extract(data,'$.poster')=?1)",[old],|r|r.get(0)).map_err(db_error)?;
+        if !used
+            && let Ok(m) = std::fs::symlink_metadata(path)
+            && m.file_type().is_file()
+        {
+            let _ = std::fs::remove_file(path);
+        }
+        Ok(())
+    }
+
+    pub fn playlist_artwork_path(&self, profile: &str, playlist: &str) -> Result<PathBuf, String> {
+        self.require_playlist(profile, playlist)?;
+        self.personal
+            .query_row(
+                "SELECT poster FROM cc_playlist_artwork WHERE playlist_id=?1",
+                [playlist],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(db_error)?
+            .map(PathBuf::from)
+            .ok_or_else(|| "Affiche introuvable.".into())
+    }
+
+    /// Captures profile-facing catalogue state while the caller owns the Store
+    /// actor. The caller may safely page this immutable value after the call.
+    pub fn sync_snapshot(&mut self, profile: &str) -> Result<SyncSnapshot, String> {
+        self.sync_snapshot_with_probe(profile, || {})
+    }
+    fn sync_snapshot_with_probe(
+        &mut self,
+        profile: &str,
+        after_media: impl FnOnce(),
+    ) -> Result<SyncSnapshot, String> {
+        self.require_profile(profile)?;
+        let before = self.sync_revision(profile)?;
+        let (count, bytes): (i64, i64) = self
+            .personal
+            .query_row(
+                "SELECT COUNT(*),COALESCE(SUM(length(CAST(data AS BLOB))),0) FROM media",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(db_error)?;
+        if count > 10_000 {
+            return Err("SYNC_CATALOG_TOO_LARGE".into());
+        }
+        if bytes > 32 * 1024 * 1024 {
+            return Err("SYNC_SNAPSHOT_TOO_LARGE".into());
+        }
+        let missing:bool=self.personal.query_row("SELECT EXISTS(SELECT 1 FROM media m LEFT JOIN cc_media_identity i ON i.legacy_id=m.id WHERE i.stable_id IS NULL)",[],|r|r.get(0)).map_err(db_error)?;
+        if missing {
+            self.ensure_identities(&self.catalogue.list()?)?;
+        }
+        // One joined query instead of several point queries per media on the Pi.
+        let mut statement=self.personal.prepare("SELECT m.data,i.stable_id,i.relative_path,COALESCE(r.revision,1),COALESCE(s.watched,0),s.rating FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id LEFT JOIN cc_media_revision r ON r.stable_id=i.stable_id LEFT JOIN cc_profile_state s ON s.stable_media_id=i.stable_id AND s.profile_id=?1 ORDER BY m.id").map_err(db_error)?;
+        let rows = statement
+            .query_map([profile], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, bool>(4)?,
+                    r.get::<_, Option<u8>>(5)?,
+                ))
+            })
+            .map_err(db_error)?;
+        let items = rows
+            .map(|r| {
+                let (raw, id, path, revision, watched, rating) = r.map_err(db_error)?;
+                let mut media: Media = serde_json::from_str(&raw).map_err(|_| "SYNC_INVALID")?;
+                media.id = id;
+                media.path = path;
+                media.watched = watched;
+                media.rating = rating;
+                if media.poster.is_some() {
+                    media.poster = Some(format!(
+                        "/api/v1/profiles/{profile}/media/{}/artwork",
+                        media.id
+                    ));
+                }
+                Ok(SyncMedia {
+                    media,
+                    revision: revision as u64,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        drop(statement);
+        after_media();
+        let captured_revision = self.sync_revision(profile)?;
+        let series_revision = captured_revision.0;
+        let mut series_revisions = std::collections::BTreeMap::new();
+        for item in &items {
+            if item.media.category == "serie" {
+                let key = item.media.series.as_ref().unwrap_or(&item.media.title);
+                series_revisions.insert(key.clone(), series_revision);
+            }
+        }
+        let mut snapshot = SyncSnapshot {
+            items,
+            sagas: self.sagas()?,
+            playlists: self.playlists(profile)?,
+            series_revisions,
+            serialized_bytes: 0,
+            captured_revision,
+        };
+        let after = self.sync_revision(profile)?;
+        if before != after {
+            return Err("SYNC_SNAPSHOT_CHANGED".into());
+        }
+        snapshot.captured_revision = after;
+        struct Budget(usize);
+        impl std::io::Write for Budget {
+            fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+                self.0 = self.0.saturating_add(data.len());
+                if self.0 > 32 * 1024 * 1024 {
+                    return Err(std::io::Error::other("snapshot limit"));
+                }
+                Ok(data.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut budget = Budget(0);
+        serde_json::to_writer(&mut budget, &snapshot)
+            .map_err(|_| "SYNC_SNAPSHOT_TOO_LARGE".to_owned())?;
+        snapshot.serialized_bytes = budget.0;
+        Ok(snapshot)
+    }
+    pub fn sync_revision(&self, profile: &str) -> Result<(u64, u64), String> {
+        self.require_profile(profile)?;
+        let personal: i64 = self
+            .personal
+            .query_row(
+                "SELECT revision FROM cc_sync_personal_epoch WHERE profile_id=?1",
+                [profile],
+                |r| r.get(0),
+            )
+            .map_err(db_error)?;
+        Ok((self.common_revision()?, personal as u64))
+    }
+
+    /// This is intentionally opt-in and only called by the desktop client's
+    /// private SQLite cache. Server startup never invokes it.
+    pub fn replace_client_mirror(
+        &mut self,
+        profile: &str,
+        items: &[SyncMedia],
+        cache_document: &Value,
+    ) -> Result<(), String> {
+        if items.len() > 10_000 {
+            return Err("SYNC_CATALOG_TOO_LARGE".into());
+        }
+        let encoded =
+            serde_json::to_string(cache_document).map_err(|_| "SYNC_INVALID".to_string())?;
+        if encoded.len() > 32 * 1024 * 1024 {
+            return Err("SYNC_SNAPSHOT_TOO_LARGE".into());
+        }
+        let mut ids = HashSet::new();
+        for item in items {
+            if Uuid::parse_str(&item.media.id).is_err() || !ids.insert(item.media.id.as_str()) {
+                return Err("SYNC_INVALID".into());
+            }
+        }
+        self.personal.execute_batch("CREATE TABLE IF NOT EXISTS cc_client_mirror (id INTEGER PRIMARY KEY CHECK(id=1), profile_id TEXT NOT NULL, document TEXT NOT NULL);").map_err(db_error)?;
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        // A client cache is scoped to exactly one (server, profile) database.
+        // Use the stable id as the local legacy id too: it is opaque and no path
+        // is opened by Store browsing operations.
+        tx.execute("DELETE FROM cc_playlist_artwork", [])
+            .map_err(db_error)?;
+        tx.execute("DELETE FROM cc_playlist_members", [])
+            .map_err(db_error)?;
+        tx.execute("DELETE FROM cc_playlists", [])
+            .map_err(db_error)?;
+        tx.execute_batch("DELETE FROM collection_positions;DELETE FROM collection_members;DELETE FROM collection_artwork;DELETE FROM collection_revisions;DELETE FROM imported_sagas;DELETE FROM collections;").map_err(db_error)?;
+        tx.execute("DELETE FROM cc_profile_state", [])
+            .map_err(db_error)?;
+        tx.execute("DELETE FROM cc_media_revision", [])
+            .map_err(db_error)?;
+        tx.execute("DELETE FROM cc_media_identity", [])
+            .map_err(db_error)?;
+        tx.execute("DELETE FROM media", []).map_err(db_error)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO cc_profiles(id,name) VALUES(?1,?1)",
+            [profile],
+        )
+        .map_err(db_error)?;
+        for item in items {
+            let stable = &item.media.id;
+            let serialized =
+                serde_json::to_string(&item.media).map_err(|_| "SYNC_INVALID".to_string())?;
+            tx.execute(
+                "INSERT INTO media(id,data) VALUES(?1,?2)",
+                params![stable, serialized],
+            )
+            .map_err(db_error)?;
+            tx.execute(
+                "INSERT INTO cc_media_identity(stable_id,legacy_id,relative_path) VALUES(?1,?1,?2)",
+                params![stable, item.media.path],
+            )
+            .map_err(db_error)?;
+            tx.execute(
+                "INSERT INTO cc_media_revision(stable_id,revision) VALUES(?1,?2)",
+                params![stable, item.revision as i64],
+            )
+            .map_err(db_error)?;
+            tx.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,watched,rating) VALUES(?1,?2,?3,?4)", params![profile,stable,item.media.watched,item.media.rating]).map_err(db_error)?;
+        }
+        let sagas: Vec<SagaView> =
+            serde_json::from_value(cache_document["sagas"].clone()).map_err(|_| "SYNC_INVALID")?;
+        for saga in sagas {
+            let id = saga.id.parse::<i64>().map_err(|_| "SYNC_INVALID")?;
+            if id <= 0 || saga.revision > i64::MAX as u64 {
+                return Err("SYNC_INVALID".into());
+            }
+            tx.execute(
+                "INSERT INTO collections(id,name,kind) VALUES(?1,?2,'saga')",
+                params![id, saga.name],
+            )
+            .map_err(db_error)?;
+            tx.execute(
+                "INSERT INTO collection_revisions(collection_id,revision) VALUES(?1,?2)",
+                params![id, saga.revision as i64],
+            )
+            .map_err(db_error)?;
+            for (position, media) in saga.media_ids.iter().enumerate() {
+                if !ids.contains(media.as_str()) {
+                    return Err("SYNC_INVALID".into());
+                }
+                tx.execute(
+                    "INSERT INTO collection_members(collection_id,media_id) VALUES(?1,?2)",
+                    params![id, media],
+                )
+                .map_err(db_error)?;
+                tx.execute("INSERT INTO collection_positions(collection_id,media_id,position) VALUES(?1,?2,?3)",params![id,media,position as i64]).map_err(db_error)?;
+            }
+        }
+        tx.execute("DELETE FROM cc_client_mirror", [])
+            .map_err(db_error)?;
+        tx.execute(
+            "INSERT INTO cc_client_mirror(id,profile_id,document) VALUES(1,?1,?2)",
+            params![profile, encoded],
+        )
+        .map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        Ok(())
+    }
+    pub fn client_mirror_document(&self, profile: &str) -> Result<Option<Value>, String> {
+        let exists: bool = self.personal.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cc_client_mirror')",
+            [], |r| r.get(0),
+        ).map_err(db_error)?;
+        if !exists {
+            return Ok(None);
+        }
+        let value: Option<String> = self
+            .personal
+            .query_row(
+                "SELECT document FROM cc_client_mirror WHERE id=1 AND profile_id=?1",
+                [profile],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        value
+            .map(|v| serde_json::from_str(&v).map_err(|_| "Cache local invalide.".into()))
+            .transpose()
     }
 
     pub fn create_collection(
@@ -1406,6 +1793,20 @@ impl Store {
             .map_err(db_error)?;
         Ok(())
     }
+    pub fn delete_playlist_with_artwork(
+        &self,
+        profile: &str,
+        id: &str,
+        cache: &Path,
+    ) -> Result<(), String> {
+        self.require_playlist(profile, id)?;
+        let old = self.playlist_artwork_path(profile, id).ok();
+        self.delete_collection(profile, id)?;
+        if let Some(path) = old {
+            let _ = self.remove_unreferenced_playlist_image(&path.to_string_lossy(), cache);
+        }
+        Ok(())
+    }
 
     pub fn export_json(&mut self) -> Result<Value, String> {
         self.export_json_with_limit(Some(MAX_IN_MEMORY_EXPORT_BYTES))
@@ -1467,8 +1868,20 @@ impl Store {
                 .map_err(db_error)?;
         let profiles = self.profiles()?;
         let mut posters = Vec::new();
-        out.write_all(br#"{"format_version":1,"export_id":"#)
-            .map_err(|_| "Export de staging inaccessible.")?;
+        let has_playlist_artwork: bool = self
+            .personal
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM cc_playlist_artwork)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(db_error)?;
+        out.write_all(if has_playlist_artwork {
+            br#"{"format_version":2,"export_id":"#
+        } else {
+            br#"{"format_version":1,"export_id":"#
+        })
+        .map_err(|_| "Export de staging inaccessible.")?;
         serde_json::to_writer(&mut *out, export_id).map_err(|_| "Export invalide.")?;
         out.write_all(b",\"profiles\":")
             .map_err(|_| "Export de staging inaccessible.")?;
@@ -1558,8 +1971,41 @@ impl Store {
                 out.write_all(b",")
                     .map_err(|_| "Export de staging inaccessible.")?;
             }
-            serde_json::to_writer(&mut *out, &self.export_profile(profile)?)
-                .map_err(|_| "Export invalide.")?;
+            let mut personal = self.export_profile(profile)?;
+            if let Some(playlists) = personal.get_mut("playlists").and_then(Value::as_array_mut) {
+                for playlist in playlists {
+                    let Some(id) = playlist.get("id").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    let path: Option<String> = self
+                        .personal
+                        .query_row(
+                            "SELECT poster FROM cc_playlist_artwork WHERE playlist_id=?1",
+                            [id],
+                            |r| r.get(0),
+                        )
+                        .optional()
+                        .map_err(db_error)?;
+                    if let Some(relative) = path
+                        .as_deref()
+                        .and_then(|p| Path::new(p).strip_prefix(poster_root).ok())
+                        .filter(|p| {
+                            p.components()
+                                .all(|c| matches!(c, std::path::Component::Normal(_)))
+                        })
+                    {
+                        let reference = format!("posters/playlist-{id}.bin");
+                        if let Some(object) = playlist.as_object_mut() {
+                            object.insert("poster_ref".into(), Value::String(reference.clone()));
+                        }
+                        posters.push(ArchivePoster {
+                            reference,
+                            relative: relative.to_path_buf(),
+                        });
+                    }
+                }
+            }
+            serde_json::to_writer(&mut *out, &personal).map_err(|_| "Export invalide.")?;
         }
         out.write_all(b"],\"leases\":[]}")
             .map_err(|_| "Export de staging inaccessible.")?;
@@ -1956,6 +2402,36 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use tempfile::tempdir;
+    #[test]
+    fn snapshot_rejects_a_scanner_commit_between_rows_and_revision() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("race.sqlite");
+        let mut reader = Store::open(&path).unwrap();
+        let profile = reader.create_profile("Reader").unwrap();
+        reader
+            .snapshot(vec![media("A.mp4", "/fixture/A.mp4")])
+            .unwrap();
+        let old = reader.sync_snapshot(&profile.id).unwrap();
+        let mut scanner = Store::open(&path).unwrap();
+        let result = reader.sync_snapshot_with_probe(&profile.id, || {
+            scanner
+                .snapshot(vec![
+                    media("A.mp4", "/fixture/A.mp4"),
+                    media("B.mp4", "/fixture/B.mp4"),
+                ])
+                .unwrap();
+        });
+        assert_eq!(result.unwrap_err(), "SYNC_SNAPSHOT_CHANGED");
+        let retry = reader.sync_snapshot(&profile.id).unwrap();
+        assert_ne!(retry.captured_revision, old.captured_revision);
+        assert_eq!(old.items.len(), 1);
+        assert_eq!(retry.items.len(), 2);
+        assert!(retry.items.iter().any(|item| item.media.title == "B.mp4"));
+        assert_eq!(
+            retry.captured_revision,
+            reader.sync_revision(&profile.id).unwrap()
+        );
+    }
     #[test]
     fn scan_publishes_new_media_revision_without_legacy_catalog_warmup() {
         let dir = tempdir().unwrap();

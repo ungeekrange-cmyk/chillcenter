@@ -1,9 +1,9 @@
-# ADR-0014 — Évaluation d'un décodeur MPEG-4 ASP (Xvid) en WebAssembly pour l'AVI web
+# ADR-0016 — Évaluation d'un décodeur MPEG-4 ASP (Xvid) en WebAssembly pour l'AVI web
 
 - Status : `PROPOSED` — direction **B** demandée par l'utilisateur ; **décodeur compilé et intégré le 15 octobre 2026** (voir « Réalisation »). Revue indépendante et mesures sur appareils réels à faire. Date : `2026-10-14`.
 - Decision Owner / Author Instance : `/root` ; Reviewer Instance : à désigner (≠ auteur).
-- Branche : `codex/web-pwa`. Supersedes / Superseded By : `NONE` / `NONE`. Complète ADR-0013 (qui réserve le WASM à un ADR dédié).
-- Related Items : ADR-0012/0013, [preuve Pi](../../implementation/WEB-PI-READONLY-EVIDENCE.md), F-22.
+- Branche : `codex/web-pwa`. Supersedes / Superseded By : `NONE` / `NONE`. Complète ADR-0015 (qui réserve le WASM à un ADR dédié).
+- Related Items : ADR-0014/0015, [preuve Pi](../../implementation/WEB-PI-READONLY-EVIDENCE.md), F-22.
 
 ## Historique de la décision utilisateur (14 octobre 2026)
 
@@ -120,7 +120,7 @@ Choix technique, cohérent avec « léger et stable » : **pas de libav.js ni ff
 
 Aucun autre élément. Configuration visée : `--disable-everything --enable-decoder=mpeg4 --enable-parser=mpeg4video`, **sans** `--enable-gpl` ni `--enable-nonfree` ; module attendu de l'ordre de quelques centaines de Kio (**estimation**, à mesurer). Livrables dans le dépôt : `.wasm` + glue JS (< 20 Kio estimé), le **numéro de version exact de FFmpeg, la somme SHA-256 de l'archive, la ligne `configure`** et l'avis de licence LGPL ; l'obligation LGPL de fournir les sources est remplie par ces références et l'archive d'origine.
 
-Critères d'arrêt du spike (chiffrés, SD uniquement ≤ 720 px de large) : ≥ 30 images/s soutenues en décodage seul à 640×480 sur le Mac et sur l'appareil le plus faible visé ; `.wasm` < 1 Mio ; aucune erreur de désynchronisation sur 10 min de lecture ; mémoire < 150 Mio. Au-delà de ces critères, l'option est abandonnée et ADR-0014 est remplacé.
+Critères d'arrêt du spike (chiffrés, SD uniquement ≤ 720 px de large) : ≥ 30 images/s soutenues en décodage seul à 640×480 sur le Mac et sur l'appareil le plus faible visé ; `.wasm` < 1 Mio ; aucune erreur de désynchronisation sur 10 min de lecture ; mémoire < 150 Mio. Au-delà de ces critères, l'option est abandonnée et ADR-0016 est remplacé.
 
 ## À vérifier avant tout engagement (non fait)
 

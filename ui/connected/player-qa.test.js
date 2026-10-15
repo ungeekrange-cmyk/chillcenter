@@ -8,7 +8,7 @@ test('player QA exposes bounded phase traces and reveals controls before the DOM
  const rect=source.indexOf('const pauseRect=$("player-pause").getBoundingClientRect();',phase);
  const hit=source.indexOf('document.elementFromPoint(',phase);
  assert.ok(phase>=0&&reveal>phase&&rect>reveal&&hit>rect,'the hit-test must synchronously reveal the existing controls first');
- assert.equal((source.match(/step="/g)||[]).length,3,'phase transitions must use the trace helper rather than silently assigning step');
+ assert.equal((source.match(/step="/g)||[]).length,4,'the next-episode QA only initializes its own phase before using the trace helper');
 });
 
 test('timer-sensitive player QA waits for a visibility event instead of polling while hidden',()=>{
@@ -24,7 +24,7 @@ test('timer-sensitive player QA waits for a visibility event instead of polling 
 test('debug player launch prepares the native application before evaluating QA',()=>{
  const host=fs.readFileSync(__dirname+'/../../apps/desktop/src/main.rs','utf8');
  const native=fs.readFileSync(__dirname+'/../../apps/desktop/src/native_player.rs','utf8');
- const prepare=host.indexOf('if mode == "player" &&');
+ const prepare=host.indexOf('if matches!(mode.as_str(),"player"|"next_series")');
  const evaluate=host.indexOf('webview.eval(format!(',prepare);
  assert.ok(prepare>=0&&evaluate>prepare&&host.slice(prepare,evaluate).includes('qa_prepare_visible_player(webview)'),'player QA must prepare visibility before evaluation');
  assert.match(native,/\#\[cfg\(debug_assertions\)\][\s\S]*qa_prepare_visible_player/);

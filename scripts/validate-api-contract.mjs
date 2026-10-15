@@ -166,6 +166,36 @@ if (!same(tmdb.required, ['credential_type', 'credential', 'auto_enrich']) || tm
 if (!tmdb.allOf?.some((rule) => rule.if?.properties?.auto_enrich?.const === true && rule.then?.required?.includes('profile_id'))) fail('TmdbConfig profile_id conditionnel manquant');
 for (const credentialType of ['api_key', 'bearer']) if (!tmdb.allOf?.some((rule) => rule.if?.properties?.credential_type?.const === credentialType && rule.then?.properties?.credential?.pattern)) fail(`TmdbConfig validation ${credentialType} manquante`);
 if (!schema('Saga').required?.includes('poster')) fail('Saga.poster doit être documenté');
+const syncPost = operation('/profiles/{profile}/catalog/snapshot', 'post');
+const syncPage = operation('/profiles/{profile}/catalog/snapshot/{snapshot}', 'get');
+if (!syncPost || !syncPage) fail('routes de synchronisation locale manquantes');
+if (schema('SyncSnapshotRequest').additionalProperties !== false) fail('SyncSnapshotRequest doit refuser les champs inconnus');
+if (!same(schema('SyncSnapshotResponse').oneOf?.map((entry) => entry.$ref), [
+  '#/components/schemas/SyncSnapshotUnchanged', '#/components/schemas/SyncSnapshotFirstPage'
+])) fail('SyncSnapshotResponse doit être l’union inchangé/première page');
+for (const name of ['SyncSnapshotFirstPage', 'SyncSnapshotPage']) {
+  const sync = schema(name);
+  if (sync.properties?.total?.maximum !== 10000 || sync.properties?.items?.maxItems !== 100) fail(`${name}: bornes total/page divergentes`);
+  if (sync.additionalProperties === false) fail(`${name}: réponse doit rester extensible`);
+}
+if (!hasParam('/profiles/{profile}/catalog/snapshot/{snapshot}', 'get', 'offset')
+  || schema('SyncSnapshotPage').properties?.next_offset?.maximum !== 10000) fail('pagination snapshot incomplète');
+const playlist = schema('Playlist');
+if (!playlist.properties?.poster || playlist.properties.poster.type?.join(',') !== 'string,null') fail('Playlist.poster optionnel manquant');
+const playlistArtwork = operation('/profiles/{profile}/playlists/{playlist}/artwork', 'get');
+const playlistPoster = operation('/profiles/{profile}/playlists/{playlist}/poster', 'put');
+if (!playlistArtwork || !playlistPoster) fail('routes d’affiche de playlist manquantes');
+for (const type of ['image/jpeg', 'image/png', 'image/webp']) {
+  if (!playlistArtwork?.responses?.[200]?.content?.[type]) fail(`GET artwork playlist: ${type} absent`);
+  if (!playlistPoster?.requestBody?.content?.[type]) fail(`PUT poster playlist: ${type} absent`);
+}
+if (!hasParam('/profiles/{profile}/playlists/{playlist}/poster', 'put', 'expected_revision')
+  || playlistPoster?.responses?.[200]?.content?.['application/json']?.schema?.$ref !== '#/components/schemas/PlaylistEnvelope') fail('PUT poster playlist doit être CAS et retourner PlaylistEnvelope');
+for (const name of ['Preferences', 'PreferencesInput']) {
+  const autoplay = schema(name).properties?.autoplay_seconds;
+  if (!autoplay?.enum?.includes(15) || autoplay.default !== 10) fail(`${name}.autoplay_seconds doit inclure 15 et préserver le défaut API 10`);
+}
+if(schema('ProfileCreateRequest').properties?.initial_preferences?.$ref!=='#/components/schemas/PreferencesInput')fail('initialisation atomique explicite des nouveaux profils requise');
 for (const [path, item] of Object.entries(spec.paths)) {
   const pathNames = [...path.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
   const declared = (item.parameters ?? []).filter((parameter) => parameter.in === 'path');

@@ -1,4 +1,4 @@
-# ADR-0012 — Client web PWA, calcul vidéo côté navigateur
+# ADR-0014 — Client web PWA, calcul vidéo côté navigateur
 
 - Status : `PROPOSED` ; date : `2026-10-14`. Passe à `ACCEPTED` après revue indépendante et validation utilisateur du périmètre ci-dessous.
 - Decision Owner / Author Instance : `/root` ; Reviewer Instance : à désigner (≠ auteur).

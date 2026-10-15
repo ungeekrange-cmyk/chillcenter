@@ -102,6 +102,25 @@ test("artwork becomes a blob URL once; unsupported commands fail explicitly", as
   await assert.rejects(ui({ action: "tmdb_status" }), e => e.code === "WEB_UNSUPPORTED");
 });
 
+test("artwork of sagas and playlists, and the player presentation setting, are supported", async () => {
+  const SAGA = "saga_1-A";
+  const { ui, calls } = make({
+    [`GET /profiles/${P}/sagas/${SAGA}/artwork`]: [200, "", { size: 10 }],
+    [`GET /profiles/${P}/playlists/${M}/artwork`]: [200, "", { size: 10 }],
+  });
+  await ui({ action: "boot" }); await ui({ action: "select_profile", id: P });
+  assert.deepEqual(await ui({ action: "saga_artwork", id: SAGA }), { src: "blob:x" });
+  assert.deepEqual(await ui({ action: "playlist_artwork", id: M }), { src: "blob:x" });
+  await ui({ action: "saga_artwork", id: SAGA });
+  assert.equal(calls.filter(c => c.url.endsWith("/artwork")).length, 2, "each artwork fetched once");
+  await assert.rejects(ui({ action: "saga_artwork", id: "../x" }), /Identifiant de saga invalide/);
+  await assert.rejects(ui({ action: "playlist_artwork", id: "not-a-uuid" }), /Identifiant invalide/);
+  assert.equal((await ui({ action: "refresh" })).player_presentation.fullscreen_on_start, true, "default: fullscreen at launch");
+  assert.deepEqual(await ui({ action: "save_player_settings", fullscreen_on_start: false }), { player_presentation: { fullscreen_on_start: false } });
+  assert.equal((await ui({ action: "refresh" })).player_presentation.fullscreen_on_start, false, "persisted and returned in the state");
+  await assert.rejects(ui({ action: "save_player_settings", fullscreen_on_start: "false" }), /Réglage du lecteur invalide/);
+});
+
 test("calendar boundaries and device-local cache bounds match the Rust client", async () => {
   const a = { mode: "auto", manual: "autumn" };
   for (const [y, m, d, want] of [[2026, 2, 28, "winter"], [2026, 3, 1, "spring"], [2026, 6, 1, "summer"], [2026, 9, 1, "autumn"], [2026, 10, 1, "halloween"], [2026, 10, 31, "halloween"], [2026, 11, 24, "autumn"], [2026, 11, 25, "christmas"], [2026, 12, 25, "christmas"], [2026, 12, 26, "winter"]]) assert.equal(resolveAppearance(a, y, m, d), want, `${m}/${d}`);

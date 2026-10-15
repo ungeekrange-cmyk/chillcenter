@@ -1,6 +1,6 @@
 # Client web (PWA) Chill Center
 
-Révision `CC-WEB-001`, statut `PROPOSED` ([ADR-0012](decisions/ADR-0012-web-client-pwa.md)), 2026-10-14, branche `codex/web-pwa`. Ce document décrit la cible et l'état réel ; ce n'est pas une preuve de livraison.
+Révision `CC-WEB-001`, statut `PROPOSED` ([ADR-0014](decisions/ADR-0014-web-client-pwa.md)), 2026-10-14, branche `codex/web-pwa`. Ce document décrit la cible et l'état réel ; ce n'est pas une preuve de livraison.
 
 ## Vue d'ensemble
 
@@ -28,9 +28,9 @@ Démux, décodage, rendu, sous-titres, cache de lecture et horloge de visionnage
 | Thème, ambiances F-21 | JS existant, `localStorage` | Implémenté |
 | Cache de lecture ADR-0010 | Plafonds sur le tampon MSE | Réglages stockés ; application à faire |
 | Bail, heartbeat 5 s, progression, `WatchClock`, enchaînement | `player-web.js`, `watch-clock.js` | Implémenté, testé avec moteur factice |
-| Lecture MP4/MOV (codecs au choix du navigateur : H.264, HEVC, VP9, AV1, AAC, Opus…) | `mp4.js` (démux + remux fMP4 en JS pur), `range-reader.js`, `mse-engine.js` ; le navigateur décode ([ADR-0013](decisions/ADR-0013-web-playback-engine.md)) | Implémenté ; vérifié sur fichier généré VP9/Opus, **pas encore sur un fichier réel du NAS ni sur le Pi** |
+| Lecture MP4/MOV (codecs au choix du navigateur : H.264, HEVC, VP9, AV1, AAC, Opus…) | `mp4.js` (démux + remux fMP4 en JS pur), `range-reader.js`, `mse-engine.js` ; le navigateur décode ([ADR-0015](decisions/ADR-0015-web-playback-engine.md)) | Implémenté ; vérifié sur fichier généré VP9/Opus, **pas encore sur un fichier réel du NAS ni sur le Pi** |
 | Lecture MKV/WebM | `mkv.js` : démuxeur EBML en JS pur (Cues pour les sauts, sinon parcours des en-têtes de clusters ; laçage Xiph/EBML/fixe ; réordonnancement des B-frames en flux) | Implémenté ; vérifié sur fichiers générés (H.264/AAC avec B-frames, VP9/Opus), **pas encore sur un MKV réel du NAS** |
-| Lecture AVI (Xvid/DivX + MP3, 15 % du catalogue) | `avi.js` (démuxeur JS pur) + `soft-video.js` (décodeur enfichable → canvas, horloge audio) ; décodeur MPEG-4 ASP FFmpeg compilé en WASM (652 895 octets, LGPL, Worker, `web/vendor/mpeg4`) ([ADR-0014](decisions/ADR-0014-web-avi-xvid-decoder-evaluation.md)) | **Implémenté et vérifié** sur AVI généré (images conformes à ffmpeg natif, ×76 temps réel à 640×480, A/V à 30 ms) ; **pas encore essayé sur un AVI réel du NAS ni sur appareil faible** |
+| Lecture AVI (Xvid/DivX + MP3, 15 % du catalogue) | `avi.js` (démuxeur JS pur) + `soft-video.js` (décodeur enfichable → canvas, horloge audio) ; décodeur MPEG-4 ASP FFmpeg compilé en WASM (652 895 octets, LGPL, Worker, `web/vendor/mpeg4`) ([ADR-0016](decisions/ADR-0016-web-avi-xvid-decoder-evaluation.md)) | **Implémenté et vérifié** sur AVI généré (images conformes à ffmpeg natif, ×76 temps réel à 640×480, A/V à 30 ms) ; **pas encore essayé sur un AVI réel du NAS ni sur appareil faible** |
 | AC-3/E-AC-3/DTS, MPEG-4 ASP, ASS complet | Non décodés par le navigateur : piste alternative sinon message ; aucun WASM sans ADR | Limite assumée |
 | Transfert confirmé de lecture, SSE | `player-web.js` | À faire |
 | Admin : bibliothèque, profils, scan, préférences | Pont | Implémenté |

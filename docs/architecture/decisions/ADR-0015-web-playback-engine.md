@@ -1,13 +1,13 @@
-# ADR-0013 — Moteur de lecture web : standards seulement, zéro dépendance
+# ADR-0015 — Moteur de lecture web : standards seulement, zéro dépendance
 
-- Status : `PROPOSED` ; date : `2026-10-14`. Complète ADR-0012 (point 3) sans le remplacer.
+- Status : `PROPOSED` ; date : `2026-10-14`. Complète ADR-0014 (point 3) sans le remplacer.
 - Decision Owner / Author Instance : `/root` ; Reviewer Instance : à désigner (≠ auteur).
 - Branche : `codex/web-pwa`. Supersedes / Superseded By : `NONE` / `NONE`.
-- Related Items : ADR-0008 (I/O bornées), ADR-0010 (cache), ADR-0012.
+- Related Items : ADR-0008 (I/O bornées), ADR-0010 (cache), ADR-0014.
 
 ## Contexte
 
-Demande utilisateur (14 octobre 2026) : technologies **le moins sujettes aux changements de version** et **les plus légères possible**. ADR-0012 laissait ouverte la voie WASM (ffmpeg/libav.js) ou une bibliothèque de démuxage (mp4box.js).
+Demande utilisateur (14 octobre 2026) : technologies **le moins sujettes aux changements de version** et **les plus légères possible**. ADR-0014 laissait ouverte la voie WASM (ffmpeg/libav.js) ou une bibliothèque de démuxage (mp4box.js).
 
 ## Options
 

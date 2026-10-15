@@ -1,5 +1,5 @@
 "use strict";
-// Software video path (ADR-0014): raw samples -> pluggable decoder -> canvas, paced by an external
+// Software video path (ADR-0016): raw samples -> pluggable decoder -> canvas, paced by an external
 // clock (the audio element). The decoder is any object registered in ChillDecoders; none is bundled yet.
 //
 // Decoder contract (async, may live in a Worker):

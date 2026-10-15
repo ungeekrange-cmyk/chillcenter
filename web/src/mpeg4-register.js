@@ -1,5 +1,5 @@
 "use strict";
-// Registers the WebAssembly MPEG-4 decoder (Xvid/DivX) with the software video path (ADR-0014).
+// Registers the WebAssembly MPEG-4 decoder (Xvid/DivX) with the software video path (ADR-0016).
 // The decoder lives in a Worker; the .wasm is only fetched when such a video is played.
 (function (root) {
   if (!root.ChillSoft || typeof Worker === "undefined") return;

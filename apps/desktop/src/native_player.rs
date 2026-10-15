@@ -9,10 +9,10 @@ use chill_player::{
     PlayerEvent, PlayerOptions, Track,
 };
 use objc2::rc::Retained;
-use objc2::{AnyThread, MainThreadMarker, MainThreadOnly};
-use objc2::{msg_send, runtime::AnyClass};
 #[cfg(debug_assertions)]
 use objc2::runtime::AnyObject;
+use objc2::{AnyThread, MainThreadMarker, MainThreadOnly};
+use objc2::{msg_send, runtime::AnyClass};
 use objc2_app_kit::{
     NSOpenGLContext, NSOpenGLPFAAccelerated, NSOpenGLPFAAlphaSize, NSOpenGLPFAColorSize,
     NSOpenGLPFADoubleBuffer, NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat,
@@ -675,9 +675,8 @@ impl SurfacePlayer {
             self.loaded = true;
             return Ok(());
         };
-        if let Some(position) = pending
-            .resume_seconds
-            .filter(|value| value.is_finite() && *value >= 0.0)
+        if let Some(position) =
+            resume_position(pending.resume_seconds, self.player.duration_seconds()?)
         {
             self.player.seek_absolute(position)?;
         }
@@ -847,6 +846,21 @@ mod deadline_clock_tests {
     }
 }
 
+fn resume_position(position: Option<f64>, duration: Option<f64>) -> Option<f64> {
+    position
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .map(|position| {
+            // FileLoaded supplies the actual duration. An EOF saved by another
+            // device is a replay, not a seek into an already-ended native file.
+            if duration.is_some_and(|d| {
+                d.is_finite() && d > 0.0 && position > 0.0 && position >= (d - 0.25).max(0.0)
+            }) {
+                0.0
+            } else {
+                position
+            }
+        })
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LoadPhase {
     Loading,
@@ -881,6 +895,14 @@ impl LoadPhase {
 #[cfg(test)]
 mod reload_phase_tests {
     use super::*;
+    #[test]
+    fn a_completed_position_restarts_but_partial_playback_keeps_its_resume() {
+        assert_eq!(resume_position(Some(16.0), Some(16.0)), Some(0.0));
+        assert_eq!(resume_position(Some(16.0), Some(16.034)), Some(0.0));
+        assert_eq!(resume_position(Some(99.0), Some(100.0)), Some(99.0));
+        assert_eq!(resume_position(Some(18.5), None), Some(18.5));
+        assert_eq!(resume_position(Some(f64::NAN), Some(100.0)), None);
+    }
     #[test]
     fn old_stop_before_new_started_is_ignored() {
         let mut phase = LoadPhase::Loading;

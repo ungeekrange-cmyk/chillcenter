@@ -1,7 +1,7 @@
 "use strict";
 // Web playback controller. Implements the `player_command` contract of the Mac client
 // (apps/desktop/src/player_bridge.rs) on top of the lease API. Decoding is delegated to
-// an Engine (see engines/); nothing here touches the NAS or transcodes (ADR-0012).
+// an Engine (see engines/); nothing here touches the NAS or transcodes (ADR-0014).
 (function (root) {
   const Clock = typeof module !== "undefined" ? require("./watch-clock.js") : root.ChillWatchClock;
   const HEARTBEAT_MS = 5000;
@@ -52,7 +52,7 @@
         case "audio": this.engine?.selectAudio(c.track_id); return this.view();
         case "subtitle": this.engine?.selectSubtitle(c.track_id); return this.view();
         case "external_subtitle": await this.engine?.selectExternalSubtitle?.(c.id); return this.view();
-        case "fullscreen": this.fullscreen = c.enabled ?? !this.fullscreen; await this.d.setFullscreen?.(this.fullscreen); return this.view();
+        case "fullscreen": { const want = c.enabled ?? !this.fullscreen; const actual = await this.d.setFullscreen?.(want); this.fullscreen = typeof actual === "boolean" ? actual : want; return this.view(); }
         case "volume": this.engine?.setVolume(c.volume); return this.view();
         default: throw Object.assign(new Error("Commande de lecture inconnue."), { code: "PLAYER_ERROR" });
       }
@@ -233,7 +233,11 @@
           engineFactory: () => root.ChillEngines.create(document.getElementById("native-video")),
           storage: root.localStorage, now: () => performance.now(), setInterval: (f, t) => root.setInterval(f, t), clearInterval: t => root.clearInterval(t),
           EventSource: root.EventSource, uuid: () => crypto.randomUUID(),
-          setFullscreen: async on => { const el = document.getElementById("player-panel"); if (on) await el.requestFullscreen?.(); else if (document.fullscreenElement) await document.exitFullscreen(); },
+          setFullscreen: async on => { // browsers refuse this without a recent user gesture: report the real state instead of failing
+          const el = document.getElementById("player-panel");
+          try { if (on) await el.requestFullscreen?.(); else if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* refused */ }
+          return Boolean(document.fullscreenElement);
+        },
         });
         return player.command(c, ctx);
       },

@@ -1,6 +1,6 @@
 "use strict";
 // Leased byte reader over the stream route: single Range per request, headers carry the lease,
-// ETag pinned after the first answer (If-Match afterwards). Same-origin fetch only (ADR-0012/0013).
+// ETag pinned after the first answer (If-Match afterwards). Same-origin fetch only (ADR-0014/0015).
 (function (root) {
   const MAX_READ = 8 * 1024 * 1024;
   const fail = (message, code, status) => Object.assign(new Error(message), { code: code || "PLAYER_ERROR", status: status ?? null });

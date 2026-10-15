@@ -648,6 +648,7 @@ fn exact_candidate(
     candidates: Vec<chill_catalog::metadata::Candidate>,
 ) -> Option<chill_catalog::metadata::Candidate> {
     let label = media.series.as_deref().unwrap_or(&media.title);
+    let label = chill_catalog::scanner::title_for_search(label);
     let norm = |v: &str| {
         v.chars()
             .filter(|c| c.is_alphanumeric())
@@ -663,7 +664,7 @@ fn exact_candidate(
         .into_iter()
         .filter(|c| {
             c.kind == kind
-                && norm(&c.title) == norm(label)
+                && norm(&c.title) == norm(&label)
                 && media.year.is_none_or(|y| c.year == Some(y))
         })
         .collect::<Vec<_>>();
@@ -712,6 +713,30 @@ mod job_tests {
             kind: "movie".into(),
         }
     }
+    #[test]
+    fn exact_match_cleans_legacy_audio_video_suffixes() {
+        for (dirty, title) in [
+            ("Attack the Block - - Vosta", "Attack the Block"),
+            ("Birdman () - vost DDP 5 1", "Birdman"),
+            ("Blade Runner 2049", "Blade Runner 2049"),
+        ] {
+            assert!(
+                exact_candidate(
+                    &media(dirty, Some(2014)),
+                    vec![candidate(title, Some(2014))]
+                )
+                .is_some()
+            );
+            assert!(
+                exact_candidate(
+                    &media(dirty, Some(2014)),
+                    vec![candidate(title, Some(2014)), candidate(title, Some(2014))]
+                )
+                .is_none()
+            );
+        }
+    }
+
     #[test]
     fn exact_match_refuses_ambiguity_and_year_mismatch() {
         assert!(

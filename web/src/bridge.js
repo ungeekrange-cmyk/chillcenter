@@ -1,6 +1,6 @@
 "use strict";
 // Web replacement for the Tauri command bridge: translates the UiCommand set used by
-// ui/connected into same-origin fetch calls against the dated Chill Center API (ADR-0012).
+// ui/connected into same-origin fetch calls against the dated Chill Center API (ADR-0014).
 (function (root) {
   const Json64 = typeof module !== "undefined" ? require("./json64.js") : root.ChillJson64;
   const BASE = "/api/2026-10-14";
@@ -77,7 +77,7 @@
 
   function createBridge(env) {
     const doFetch = env.fetch, storage = env.storage, player = env.player || null;
-    const defaults = { theme: "system", appearance: { mode: "auto", manual: "autumn" }, playback_cache: { forward_mib: 128, back_mib: 64 }, last_profile: {} };
+    const defaults = { theme: "system", appearance: { mode: "auto", manual: "autumn" }, playback_cache: { forward_mib: 128, back_mib: 64 }, player_presentation: { fullscreen_on_start: true }, last_profile: {} };
     let settings = (() => { try { return { ...defaults, ...JSON.parse(storage.getItem("chill.settings") || "{}") }; } catch { return { ...defaults }; } })();
     const save = () => { try { storage.setItem("chill.settings", JSON.stringify(settings)); } catch { /* private mode: keep in memory */ } };
     let conn = null;
@@ -103,7 +103,7 @@
 
     function theme() { return ["light", "dark"].includes(settings.theme) ? settings.theme : "system"; }
     function disconnectedView(notice) {
-      const view = { stage: "server", address: env.address || "", servers: [], theme: theme(), appearance: settings.appearance, playback_cache: settings.playback_cache };
+      const view = { stage: "server", address: env.address || "", servers: [], theme: theme(), appearance: settings.appearance, playback_cache: settings.playback_cache, player_presentation: settings.player_presentation };
       if (notice) view.notice = notice;
       return view;
     }
@@ -114,7 +114,7 @@
       conn.profiles = profiles;
       const library = await get("/admin/library");
       const preferences = conn.active ? await get(`/profiles/${conn.active}/preferences`) : null;
-      return { stage: "connected", address: env.address || "", server_id: conn.id, profile_id: conn.active, profiles, library, preferences, theme: theme(), appearance: settings.appearance, playback_cache: settings.playback_cache, notice: conn.notice || null };
+      return { stage: "connected", address: env.address || "", server_id: conn.id, profile_id: conn.active, profiles, library, preferences, theme: theme(), appearance: settings.appearance, playback_cache: settings.playback_cache, player_presentation: settings.player_presentation, notice: conn.notice || null };
     }
     async function connect() {
       conn = null;
@@ -126,6 +126,17 @@
       const profiles = await get("/profiles");
       if (last && profiles.some(p => p.id === last)) conn.active = last;
       return view();
+    }
+    async function artworkFor(kind, id) {
+      const p = profile(), key = kind + ":" + id;
+      if (!artwork.has(key)) {
+        const response = await doFetch(`${BASE}/profiles/${p}/${kind === "media" ? "media" : kind}/${id}/artwork`, { credentials: "same-origin" });
+        if (!response.ok) throw apiError(response.status, null);
+        const blob = await response.blob();
+        if (blob.size > 8 * 1024 * 1024) throw invalid("Affiche non prise en charge.");
+        artwork.set(key, env.objectUrl(blob));
+      }
+      return { src: artwork.get(key) };
     }
     const unsupported = () => { throw fail("Cette fonction n'est pas encore disponible dans le client web.", "WEB_UNSUPPORTED"); };
 
@@ -179,17 +190,13 @@
         case "rename_playlist": validId(c.id); return request("PUT", personal(`/playlists/${c.id}`), { body: { expected_revision: c.expected_revision, name: c.name } });
         case "start_scan": return request("POST", "/admin/scan", { body: {} });
         case "scan_status": return get("/admin/scan");
-        case "artwork": {
-          validId(c.media_id); const p = profile();
-          if (!artwork.has(c.media_id)) {
-            const response = await doFetch(`${BASE}/profiles/${p}/media/${c.media_id}/artwork`, { credentials: "same-origin" });
-            if (!response.ok) throw apiError(response.status, null);
-            const blob = await response.blob();
-            if (blob.size > 8 * 1024 * 1024) throw invalid("Affiche non prise en charge.");
-            artwork.set(c.media_id, env.objectUrl(blob));
-          }
-          return { src: artwork.get(c.media_id) };
-        }
+        case "artwork": validId(c.media_id); return artworkFor("media", c.media_id);
+        case "saga_artwork": if (!SAGA_ID.test(c.id)) throw invalid("Identifiant de saga invalide."); return artworkFor("sagas", c.id);
+        case "playlist_artwork": validId(c.id); return artworkFor("playlists", c.id);
+        case "save_player_settings":
+          if (typeof c.fullscreen_on_start !== "boolean") throw invalid("Réglage du lecteur invalide.");
+          settings.player_presentation = { fullscreen_on_start: c.fullscreen_on_start }; save();
+          return { player_presentation: settings.player_presentation };
         case "theme":
           if (!["system", "light", "dark"].includes(c.theme)) throw invalid("Thème invalide.");
           settings.theme = c.theme; save(); return view();

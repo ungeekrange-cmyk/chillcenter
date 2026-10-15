@@ -1,5 +1,5 @@
 "use strict";
-// Zero-dependency Matroska/WebM demuxer + fMP4 remuxer (ADR-0013). Unlike MP4 there is no
+// Zero-dependency Matroska/WebM demuxer + fMP4 remuxer (ADR-0015). Unlike MP4 there is no
 // global sample table: clusters are parsed lazily while playing, and the Cues index (or a
 // header-only cluster hop) drives seeking. No decoding: the browser decodes.
 (function (root) {

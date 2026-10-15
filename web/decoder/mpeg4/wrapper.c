@@ -1,4 +1,4 @@
-// Minimal MPEG-4 Part 2 (Xvid/DivX) decoder bridge over FFmpeg's libavcodec (ADR-0014).
+// Minimal MPEG-4 Part 2 (Xvid/DivX) decoder bridge over FFmpeg's libavcodec (ADR-0016).
 // Whole interface: open / send / receive / flush / reset / close, plus plane accessors.
 // Packets are handed in by JavaScript; frames are read back plane by plane and copied there.
 #include <stdint.h>

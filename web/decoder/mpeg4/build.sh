@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the minimal MPEG-4 Part 2 decoder to WebAssembly (ADR-0014). Runs INSIDE the pinned
+# Builds the minimal MPEG-4 Part 2 decoder to WebAssembly (ADR-0016). Runs INSIDE the pinned
 # emscripten/emsdk container (see build-in-docker.sh); never needs the network.
 #
 #   FFMPEG_TARBALL   path to ffmpeg-9.0.2.tar.xz (mounted read-only)

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Builds the PWA from the Mac client's UI (ui/connected) plus the web bridge (web/src).
-// ui/connected is never modified: the web client follows it at every build (ADR-0012).
+// ui/connected is never modified: the web client follows it at every build (ADR-0014).
 // Usage: node scripts/build-web.mjs [outDir]   (default: web/dist)
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";

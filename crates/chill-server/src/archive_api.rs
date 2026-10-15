@@ -431,6 +431,12 @@ async fn apply_plan(
                     })
                     .filter_map(|p| p.poster_ref.as_ref()),
             )
+            .chain(
+                plan.personal
+                    .iter()
+                    .flat_map(|p| p.playlists.iter())
+                    .filter_map(|p| p.poster_ref.as_ref()),
+            )
             .collect::<HashSet<_>>();
         for reference in refs {
             let bytes = read_zip_limited(&mut zip, reference, 8 * 1024 * 1024)?;
@@ -808,7 +814,10 @@ fn inspect_archive_cancellable(
         .filter(|id| uuid::Uuid::parse_str(id).is_ok())
         .ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "IMPORT_INVALID"))?;
     if version != Some(1)
-        || document.get("format_version").and_then(|v| v.as_u64()) != Some(1)
+        || !matches!(
+            document.get("format_version").and_then(|v| v.as_u64()),
+            Some(1 | 2)
+        )
         || document.get("export_id").and_then(|v| v.as_str()) != Some(export_id)
         || export_id == preview_id
     {

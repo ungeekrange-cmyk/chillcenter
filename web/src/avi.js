@@ -1,5 +1,5 @@
 "use strict";
-// Zero-dependency AVI (RIFF) demuxer (ADR-0013/0014). Builds the same track tables as the MP4
+// Zero-dependency AVI (RIFF) demuxer (ADR-0015/0016). Builds the same track tables as the MP4
 // source, so seeking and fragment building are shared. Video that browsers cannot decode (Xvid,
 // DivX) is exposed with `decoder` info and `mime: null` for a pluggable software decoder.
 (function (root) {

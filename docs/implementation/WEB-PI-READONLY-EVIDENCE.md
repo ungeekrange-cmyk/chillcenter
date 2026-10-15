@@ -29,7 +29,7 @@ Limite de la mesure de débit : un seul client (ce Mac), requêtes séquentielle
 - Vidéo H.264 : majoritaire ; HEVC : 5 MKV sur 12 et 1 MP4 sur 4 (profil Main/Main10) ; **AVI : 5 sur 5 en Xvid (MPEG-4 ASP)**.
 - Audio : AAC dans 11 fichiers MKV/MP4 ; **AC-3 dans 6 MKV sur 12, E-AC-3 dans 1** ; sous-titres MP4 `tx3g` ; un MKV avec VOBSUB.
 
-## Conséquences pour la décision (ADR-0013)
+## Conséquences pour la décision (ADR-0015)
 
 1. MKV d'abord était justifié : 78 % du catalogue.
 2. **Xvid/MPEG-4 ASP n'est décodé par aucun navigateur** : l'AVI du catalogue (15 %) ne pourra pas être lu par le client web sans décodeur logiciel en WASM, ce qui contredit le critère « léger et stable ». Décision utilisateur requise (message explicite et renvoi vers le client Mac, ou ADR dédié pour un décodeur).
@@ -41,7 +41,7 @@ Limite de la mesure de débit : un seul client (ce Mac), requêtes séquentielle
 
 Un bail volatil par fichier, acquis puis libéré aussitôt (aucune progression, aucun titre relevé) : **deux passes de 369 fichiers plus un essai sur 1 fichier, soit 739 acquisitions/libérations au total**. Une première passe a échoué sur les 369 fichiers à cause d'un défaut de **mon analyseur** (entiers RIFF lus en gros-boutiste) ; elle n'a rien modifié côté serveur, a été diagnostiquée sur un seul fichier, corrigée, puis relancée. Résultat de la passe corrigée : 368 lus, 1 illisible.
 
-Xvid 354, DX50 13, H.264 1 ; largeur ≤ ≈ 720 px pour 366 fichiers ; audio MP3 stéréo 364, AC-3 4 ; une seule piste audio. Détail et conséquences dans [ADR-0014](../architecture/decisions/ADR-0014-web-avi-xvid-decoder-evaluation.md).
+Xvid 354, DX50 13, H.264 1 ; largeur ≤ ≈ 720 px pour 366 fichiers ; audio MP3 stéréo 364, AC-3 4 ; une seule piste audio. Détail et conséquences dans [ADR-0016](../architecture/decisions/ADR-0016-web-avi-xvid-decoder-evaluation.md).
 
 Écritures déclarées : uniquement les baux volatils (mémoire du serveur). Aucune interruption ni erreur 409 pendant le relevé.
 

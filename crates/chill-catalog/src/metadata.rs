@@ -140,13 +140,16 @@ async fn body_limited(
 fn text<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or("")
 }
-fn search_query<'a>(media: &'a Media, query: &'a str) -> &'a str {
+fn search_query(media: &Media, query: &str) -> String {
     if !query.trim().is_empty() {
-        query.trim()
-    } else if media.category == "serie" {
-        media.series.as_deref().unwrap_or(&media.title)
+        query.trim().to_owned()
     } else {
-        &media.title
+        let label = if media.category == "serie" {
+            media.series.as_deref().unwrap_or(&media.title)
+        } else {
+            &media.title
+        };
+        crate::scanner::title_for_search(label)
     }
 }
 
@@ -294,7 +297,7 @@ impl Tmdb {
         let results = self
             .get_checked(
                 &format!("search/{kind}"),
-                &[("query", query), ("include_adult", "false")],
+                &[("query", query.as_str()), ("include_adult", "false")],
             )
             .await?;
         Ok(results["results"]
@@ -666,6 +669,19 @@ mod tests {
         media.series = Some("Wrong association".into());
         assert_eq!(search_query(&media, " New association "), "New association");
         assert_eq!(search_query(&media, ""), "Wrong association");
+    }
+    #[test]
+    fn automatic_query_cleans_legacy_release_titles_but_manual_query_is_not_rewritten() {
+        let mut media = movie();
+        for (dirty, expected) in [
+            ("Attack the Block - - Vosta", "Attack the Block"),
+            ("Birdman () - vost DDP 5 1", "Birdman"),
+            ("Blade Runner 2049", "Blade Runner 2049"),
+        ] {
+            media.title = dirty.into();
+            assert_eq!(search_query(&media, ""), expected);
+            assert_eq!(search_query(&media, dirty), dirty);
+        }
     }
     #[test]
     fn movie_presentation_reads_runtime_cast_and_only_directors() {

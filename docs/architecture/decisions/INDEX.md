@@ -1,5 +1,9 @@
 # Index des décisions techniques
 
+[ADR-0013](ADR-0013-client-catalog-mirror.md), ACCEPTED,14octobre2026 : miroir SQLite et affiches persistées, API additive, opérations lecteur séparées ; revues indépendantes exactes APPROVED sur07358f7/7a0f480, réserve P2 nettoyage serveur documentée.
+
+[ADR-0012](ADR-0012-client-player-and-collection-pages.md), IMPLEMENTED_DETAIL,14octobre2026 : plein écran initial réglable parMac, panneau droit intégral, collections et sélection par vignettes en pages. Correction utilisateur directe ; aucun changement moteur/serveur/API. Voir la release REL-MAC-UI-PANELS-001 pour les preuves, pas une validation visuelle humaine supposée.
+
 Révision `CC-DOC-001`, 2026-10-13. Auteur et propriétaire : `/root`. Tous les ADR sont `ACCEPTED` par validation utilisateur de CC-DOC-001, sans prédécesseur ni successeur. La preuve est [G-02](../../gates/G-02-CC-DOC-001.md) ; les hashes historiques de revue portent sur la proposition approuvée. Les hash exacts de revue figurent dans les rapports.
 
 | ID | Décision proposée | Exigences | Statut |
@@ -24,8 +28,10 @@ Complément d'implémentation, distinct des sept décisions approuvées en G-02 
 
 [ADR-0011](ADR-0011-date-versioned-api.md), ACCEPTED, CC-API-2026-10-14,2026-10-14, auteur/propriétaire/root : base HTTPS `/api/2026-10-14`, alias v1 commun et OpenAPI/guide tiers. Supersedes/superseded_by:NONE/NONE ; revue indépendante APPROVED, proposition0a confirmée inchangée à9277ac4, [gate](../../gates/G-DEV-CC-UX-API-001.md). Demande utilisateur explicite, aucune modification des garanties TLS ou de l'absence d'authentification LAN.
 
-[ADR-0012](ADR-0012-web-client-pwa.md), PROPOSED, CC-WEB-001, 2026-10-14, auteur/propriétaire/root, branche `codex/web-pwa` : client web PWA servi par le serveur (même origine), calcul vidéo côté navigateur, delta serveur minimal (dossier `web/` à côté du binaire, garde `Sec-Fetch-Site: same-origin`). Supersedes/superseded_by:NONE/NONE ; revue indépendante et validation utilisateur à obtenir, rien déployé. Voir [WEB-CLIENT](../WEB-CLIENT.md).
+[ADR-0014](ADR-0014-web-client-pwa.md), PROPOSED, CC-WEB-001, 2026-10-14, auteur/propriétaire/root, branche `codex/web-pwa` : client web PWA servi par le serveur (même origine), calcul vidéo côté navigateur, delta serveur minimal (dossier `web/` à côté du binaire, garde `Sec-Fetch-Site: same-origin`). Supersedes/superseded_by:NONE/NONE ; revue indépendante et validation utilisateur à obtenir, rien déployé. Voir [WEB-CLIENT](../WEB-CLIENT.md).
 
-[ADR-0013](ADR-0013-web-playback-engine.md), PROPOSED, 2026-10-14, branche `codex/web-pwa` : moteur de lecture web sans dépendance (fetch/MediaSource, démux MP4 puis MKV en JS pur, le navigateur décode), à la demande « technologies stables et légères ». Complète ADR-0012, supersedes/superseded_by:NONE/NONE ; revue indépendante à obtenir.
+[ADR-0015](ADR-0015-web-playback-engine.md), PROPOSED, 2026-10-14, branche `codex/web-pwa` : moteur de lecture web sans dépendance (fetch/MediaSource, démux MP4 puis MKV en JS pur, le navigateur décode), à la demande « technologies stables et légères ». Complète ADR-0014, supersedes/superseded_by:NONE/NONE ; revue indépendante à obtenir.
 
-[ADR-0014](ADR-0014-web-avi-xvid-decoder-evaluation.md), PROPOSED (évaluation seulement, aucune adoption), 2026-10-14, branche `codex/web-pwa` : coût d'un décodeur MPEG-4 ASP (Xvid) en WASM pour les AVI du client web ; recommandation A (message + client Mac) en attendant un spike chiffré. Supersedes/superseded_by:NONE/NONE.
+[ADR-0016](ADR-0016-web-avi-xvid-decoder-evaluation.md), PROPOSED (évaluation seulement, aucune adoption), 2026-10-14, branche `codex/web-pwa` : coût d'un décodeur MPEG-4 ASP (Xvid) en WASM pour les AVI du client web ; recommandation A (message + client Mac) en attendant un spike chiffré. Supersedes/superseded_by:NONE/NONE.
+
+**Renumérotation du client web (15 octobre 2026, après fusion de `codex/player-streaming`)** : la branche Mac avait déjà publié ADR-0012 (pages lecteur/collections) et ADR-0013 (miroir catalogue). Les ADR du client web, créés comme 0012, 0013 et 0014, sont devenus **ADR-0014** (client web PWA), **ADR-0015** (moteur de lecture) et **ADR-0016** (évaluation du décodeur Xvid). Les rapports de revue `docs/reviews/web-pi-deploy-*` sont conservés verbatim et citent encore les anciens numéros : ADR-0012 = ADR-0014, ADR-0013 = ADR-0015, ADR-0014 = ADR-0016 dans ces rapports.

@@ -41,7 +41,7 @@ Un profil est toujours explicite dans l'URL. Les sagas sont communes au foyer; l
 
 La suppression d’un profil exige l’en-tête `x-chill-confirm-delete` dont la valeur est exactement l’UUID `{profile}` de l’URL. Ce n’est ni `true`, ni une confirmation générique.
 
-`PUT .../preferences` remplace les préférences : envoyez audio_language, subtitle_language et autoplay_seconds ensemble. Un champ omis reprend son défaut (anglais/anglais/10 secondes), pas la valeur précédemment enregistrée. Une chaîne de sous-titres vide désactive la préférence automatique ; `autoplay_seconds: null` désactive l’enchaînement automatique.
+`PUT .../preferences` remplace les préférences : envoyez audio_language, subtitle_language et autoplay_seconds ensemble. Un champ omis reprend son défaut historique (anglais/anglais/10 secondes), pas la valeur précédemment enregistrée. Pour son nouveau défaut de 20 s, le client Mac envoie `POST /profiles` avec `initial_preferences: {"audio_language":"en","subtitle_language":"en","autoplay_seconds":20}` : création et préférences sont atomiques. Sans ce nouveau champ optionnel, les anciens clients gardent leur comportement. Les profils existants ne sont pas réécrits. Une chaîne de sous-titres vide désactive la préférence automatique ; `autoplay_seconds: null` désactive l’enchaînement automatique. Les valeurs admises sont 0, 5, 10, 15, 20 et 30 secondes.
 
 Le catalogue est paginé côté serveur (`offset`, `limit`, maximum 100, défaut 48), même si l'interface officielle charge les pages en continu. Pour une intégration légère, demandez seulement ce qui est visible :
 
@@ -52,6 +52,24 @@ curl --fail-with-body --cacert ./chill-center-public.pem \
 ```
 
 La réponse contient `items`, `has_more` et `series_counters`. `Media.path` est seulement un chemin relatif de catalogue : ce n'est ni une URL, ni un droit d'accès au stockage. Pour modifier une fiche, une saga, ou un ordre, suivez exactement les révisions et les corps de l'OpenAPI.
+
+### Synchronisation locale du catalogue (client lourd)
+
+Le client officiel conserve les métadonnées et les miniatures dans son cache privé local ; les flux vidéo restent exclusivement servis par le serveur. Une intégration tierce peut adopter le même comportement avec l'extension additive suivante de l'API datée :
+
+`POST /profiles/{profile}/catalog/snapshot` accepte `{ "known_revision": "…" }`. Si rien n'a changé, elle répond `{ "revision": "…", "unchanged": true }` sans matérialiser le catalogue. Sinon elle crée un instantané cohérent, limité à 10 000 éléments et 32 Mio, et retourne sa première page de 100 éléments, les sagas, les playlists, les révisions de séries et `snapshot_id`. Les éléments sont `{ "media": {…}, "revision": n }`.
+
+Les pages suivantes se lisent par `GET /profiles/{profile}/catalog/snapshot/{snapshot_id}?offset=100`. L'instantané est immuable pendant deux minutes, lié au serveur et au profil. Trois instantanés au maximum sont conservés ; une session terminée peut être remplacée pour laisser place à la suivante. Un quatrième transfert actif renvoie `429 SYNC_BUSY` ; attendre avant de recommencer, sans lancer une boucle de resynchronisation. L'expiration autonome libère la mémoire même sans nouvelles requêtes. `410 SYNC_SNAPSHOT_EXPIRED` demande de reprendre depuis le `POST`, `413 SYNC_TOO_LARGE` indique une limite atteinte. Un profil supprimé ne peut plus lire un ancien instantané. La révision est opaque, comprend l'identité serveur/processus/profil et des révisions communes/personnelles ciblées : elle ne doit pas être interprétée comme nombre. Les positions de lecture, vitesses et préférences, absentes du miroir, ne l'invalident pas ; les vus/notes n'invalident que le profil concerné.
+
+Un scan concurrent pendant la capture peut produire `409 SYNC_SNAPSHOT_CHANGED` : reprendre le `POST` de façon bornée (le Mac fait au plus trois tentatives espacées de 100 ms), puis conserver le cache précédent si le conflit persiste. Les epochs sont comparés avant/après toutes les lectures : aucune page incohérente n'est publiée sous une nouvelle révision.
+
+Le client Mac conserve ces métadonnées dans une SQLite privée par serveur/profil, ainsi que les originaux et miniatures JPEG des affiches. Les lectures de grilles/fiches/suggestions/séries/listes sont locales ; les originaux d'images se chargent progressivement, un à la fois, hors du verrou du lecteur. Plafond d'images : 2 Gio par profil. Les changements du catalogue déclenchent une nouvelle copie cohérente ; inchangé = seulement la vérification de révision. Les vidéos restent diffusées par Range HTTPS, jamais dans ce miroir. En cas d'échec d'une actualisation, la dernière copie complète est conservée et signalée comme périmée, sans tentative réseau à chaque navigation ; démarrage/focus/rechargement explicite permettent de retenter. Aucune mutation n'est rejouée hors ligne. Après une liste de profils autoritative valide, seuls les caches des profils supprimés de ce serveur sont purgés ; échec signalé, liens symboliques refusés.
+
+Les archives contenant une affiche de playlist ont un `data.json.format_version` 2 ; le conteneur ZIP/manifeste conserve son format 1. Le nouvel importeur accepte les documents 1 et 2. Un ancien serveur ne peut pas importer un document 2 : remettre son ancienne sauvegarde privée pour un rollback complet. Les documents sans cette extension restent au format 1.
+
+Les chemins restent relatifs et l'instantané n'expose ni chemin NAS absolu, ni base opérationnelle, ni autre profil. Ne réutilisez jamais le cache d'un serveur ou d'un profil pour un autre. Les routes historiques de catalogue restent inchangées.
+
+Une playlist peut également avoir une affiche personnalisée : `PUT /profiles/{profile}/playlists/{playlist}/poster?expected_revision=n` avec une image JPEG, PNG ou WebP de 8 Mio maximum, puis `GET /profiles/{profile}/playlists/{playlist}/artwork`. Le champ optionnel `poster` de la playlist contient cette URL quand elle existe. Sans affiche personnalisée, le client compose sa tuile à partir des neuf premiers membres.
 
 ## Lecture : bail, SSE et Range
 

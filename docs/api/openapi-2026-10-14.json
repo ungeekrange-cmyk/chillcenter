@@ -122,7 +122,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NameRequest"
+                "$ref": "#/components/schemas/ProfileCreateRequest"
               }
             }
           }
@@ -1046,6 +1046,79 @@
         }
       ]
     },
+    "/profiles/{profile}/catalog/snapshot": {
+      "post": {
+        "tags": ["Catalog"],
+        "operationId": "catalogSnapshot_post",
+        "description": "Crée un instantané cohérent, privé au profil, ou confirme la révision déjà connue. Le serveur refuse un catalogue de plus de 10 000 éléments ou un instantané JSON de plus de 32 Mio. Les fichiers vidéo ne font jamais partie de la réponse.",
+        "responses": {
+          "200": {
+            "description": "Instantané inchangé ou première page d'un nouvel instantané.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncSnapshotResponse" }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SyncSnapshotRequest" }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": { "$ref": "#/components/schemas/Uuid" }
+        }
+      ]
+    },
+    "/profiles/{profile}/catalog/snapshot/{snapshot}": {
+      "get": {
+        "tags": ["Catalog"],
+        "operationId": "catalogSnapshotPage_get",
+        "description": "Lit une page d'un instantané déjà créé. L'identifiant est opaque, lié au profil et expire après 120 secondes.",
+        "responses": {
+          "200": {
+            "description": "Page cohérente d'au plus 100 éléments.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncSnapshotPage" }
+              }
+            }
+          },
+          "410": { "$ref": "#/components/responses/Error" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": { "$ref": "#/components/schemas/Uuid" }
+        },
+        {
+          "name": "snapshot",
+          "in": "path",
+          "required": true,
+          "schema": { "$ref": "#/components/schemas/Uuid" }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": { "type": "integer", "minimum": 0, "maximum": 10000, "default": 0 }
+        }
+      ]
+    },
     "/sagas/{saga}/artwork": {
       "get": {
         "tags": [
@@ -1751,6 +1824,57 @@
             "$ref": "#/components/schemas/Uuid"
           }
         }
+      ]
+    },
+    "/profiles/{profile}/playlists/{playlist}/artwork": {
+      "get": {
+        "tags": ["Collections"],
+        "operationId": "playlistArtwork_get",
+        "description": "Retourne uniquement l'affiche personnalisée validée de la playlist. Une playlist sans affiche personnalisée répond par une erreur ; le client compose alors les neuf premiers membres.",
+        "responses": {
+          "200": {
+            "description": "Affiche de playlist validée.",
+            "content": {
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "image/webp": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "parameters": [
+        { "name": "profile", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } },
+        { "name": "playlist", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }
+      ]
+    },
+    "/profiles/{profile}/playlists/{playlist}/poster": {
+      "put": {
+        "tags": ["Collections"],
+        "operationId": "playlistPoster_put",
+        "description": "Remplace l'affiche personnalisée après contrôle CAS de la révision de playlist. Le corps doit être une image JPEG, PNG ou WebP de 8 Mio au plus.",
+        "responses": {
+          "200": {
+            "description": "Playlist avec sa nouvelle affiche.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlaylistEnvelope" } } }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/jpeg": { "schema": { "type": "string", "format": "binary", "maxLength": 8388608 } },
+            "image/png": { "schema": { "type": "string", "format": "binary", "maxLength": 8388608 } },
+            "image/webp": { "schema": { "type": "string", "format": "binary", "maxLength": 8388608 } }
+          }
+        },
+        "parameters": [
+          { "name": "expected_revision", "in": "query", "required": true, "schema": { "type": "integer", "format": "uint64", "minimum": 0 } }
+        ]
+      },
+      "parameters": [
+        { "name": "profile", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } },
+        { "name": "playlist", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Uuid" } }
       ]
     },
     "/profiles/{profile}/playlists/{playlist}/members": {
@@ -3748,9 +3872,12 @@
               0,
               5,
               10,
+              15,
               20,
               30
-            ]
+            ],
+            "default": 10,
+            "description": "Défaut historique API 10 s conservé. Le client Mac initialise explicitement ses nouveaux profils à 20 s. null désactive l'enchaînement."
           }
         },
         "additionalProperties": true
@@ -4556,9 +4683,108 @@
             "items": {
               "$ref": "#/components/schemas/UuidResponse"
             }
+          },
+          "poster": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL relative de l'affiche personnalisée, ou null. Sans affiche, composer au plus neuf miniatures des membres."
           }
         },
         "additionalProperties": true
+      },
+      "SyncMedia": {
+        "type": "object",
+        "required": [
+          "media",
+          "revision"
+        ],
+        "properties": {
+          "media": {
+            "$ref": "#/components/schemas/Media"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "SyncSnapshotRequest": {
+        "type": "object",
+        "properties": {
+          "known_revision": {
+            "type": ["string", "null"],
+            "description": "Jeton opaque retourné par une synchronisation antérieure du même serveur et profil."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SyncSnapshotUnchanged": {
+        "type": "object",
+        "required": [
+          "revision",
+          "unchanged"
+        ],
+        "properties": {
+          "revision": { "type": "string", "minLength": 1, "description": "Jeton opaque, spécifique au processus et au serveur ; ne pas l'interpréter comme un nombre." },
+          "unchanged": { "const": true }
+        },
+        "additionalProperties": true
+      },
+      "SyncSnapshotFirstPage": {
+        "type": "object",
+        "required": [
+          "revision",
+          "snapshot_id",
+          "total",
+          "items",
+          "sagas",
+          "playlists",
+          "series_revisions",
+          "has_more",
+          "next_offset"
+        ],
+        "properties": {
+          "revision": { "type": "string", "minLength": 1, "description": "Jeton opaque, spécifique au processus et au serveur ; ne pas l'interpréter comme un nombre." },
+          "snapshot_id": { "$ref": "#/components/schemas/UuidResponse", "description": "UUID opaque, lié au profil et valide 120 secondes au plus." },
+          "total": { "type": "integer", "minimum": 0, "maximum": 10000 },
+          "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/components/schemas/SyncMedia" } },
+          "sagas": { "type": "array", "items": { "$ref": "#/components/schemas/Saga" } },
+          "playlists": { "type": "array", "items": { "$ref": "#/components/schemas/Playlist" } },
+          "series_revisions": { "type": "object", "additionalProperties": { "type": "integer", "format": "uint64", "minimum": 0 } },
+          "has_more": { "type": "boolean" },
+          "next_offset": { "type": ["integer", "null"], "minimum": 0, "maximum": 10000 }
+        },
+        "additionalProperties": true
+      },
+      "SyncSnapshotPage": {
+        "type": "object",
+        "required": [
+          "revision",
+          "snapshot_id",
+          "total",
+          "items",
+          "has_more",
+          "next_offset"
+        ],
+        "properties": {
+          "revision": { "type": "string", "minLength": 1, "description": "Jeton opaque, spécifique au processus et au serveur ; ne pas l'interpréter comme un nombre." },
+          "snapshot_id": { "$ref": "#/components/schemas/UuidResponse", "description": "UUID opaque, lié au profil et valide 120 secondes au plus." },
+          "total": { "type": "integer", "minimum": 0, "maximum": 10000 },
+          "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/components/schemas/SyncMedia" } },
+          "has_more": { "type": "boolean" },
+          "next_offset": { "type": ["integer", "null"], "minimum": 0, "maximum": 10000 }
+        },
+        "additionalProperties": true
+      },
+      "SyncSnapshotResponse": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/SyncSnapshotUnchanged" },
+          { "$ref": "#/components/schemas/SyncSnapshotFirstPage" }
+        ]
       },
       "PlaylistEnvelope": {
         "type": "object",
@@ -4936,6 +5162,15 @@
           }
         },
         "additionalProperties": false
+      },
+      "ProfileCreateRequest": {
+        "type":"object",
+        "required":["name"],
+        "properties":{
+          "name":{"type":"string"},
+          "initial_preferences":{"$ref":"#/components/schemas/PreferencesInput","description":"Initialisation atomique optionnelle. Sans ce champ, les anciens défauts API sont conservés."}
+        },
+        "additionalProperties":false
       },
       "RenameRequest": {
         "type": "object",
@@ -6241,10 +6476,12 @@
               0,
               5,
               10,
+              15,
               20,
               30
             ],
-            "default": 10
+            "default": 10,
+            "description": "Défaut historique API. Le client Mac fournit explicitement 20 s lors de la création d’un profil."
           }
         },
         "additionalProperties": false

@@ -1,5 +1,5 @@
 /* Web-only adjustments layered over ui/connected. */
-#organize-ai, #advice-toggle, #advice-panel { display: none !important; } /* IA : CLI locale, hors navigateur (ADR-0012) */
+#organize-ai, #advice-toggle, #advice-panel { display: none !important; } /* IA : CLI locale, hors navigateur (ADR-0014) */
 .shortcut { display: none; }
 #server-switch, #connect-form label, #saved-servers { display: none; } /* un seul serveur : celui qui sert cette page */
 body.player-open #native-video { background: #000; }

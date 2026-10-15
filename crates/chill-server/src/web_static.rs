@@ -1,4 +1,4 @@
-//! Read-only static files for the same-origin web client (ADR-0012).
+//! Read-only static files for the same-origin web client (ADR-0014).
 //!
 //! Files live in `web/` next to the server binary (`/usr/lib/chillcenter/web` once installed):
 //! root-owned, read-only for the service, untouched by data backups and restores, replaced

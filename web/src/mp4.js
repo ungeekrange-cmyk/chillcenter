@@ -1,5 +1,5 @@
 "use strict";
-// Zero-dependency MP4/MOV demuxer and fMP4 remuxer (ADR-0013). Reads sample tables from
+// Zero-dependency MP4/MOV demuxer and fMP4 remuxer (ADR-0015). Reads sample tables from
 // `moov`, then rebuilds per-track init segments and moof+mdat fragments for MediaSource.
 // No decoding happens here: the browser decodes. Pure functions, no DOM.
 (function (root) {

@@ -137,6 +137,9 @@ impl From<chill_domain::StoreFailure> for ApiError {
     fn from(error: chill_domain::StoreFailure) -> Self {
         use chill_domain::StoreFailure::*;
         match error {
+            SyncChanged => Self(StatusCode::CONFLICT, "SYNC_SNAPSHOT_CHANGED"),
+            SyncTooLarge => Self(StatusCode::PAYLOAD_TOO_LARGE, "SYNC_TOO_LARGE"),
+            ArtworkNotFound => Self(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"),
             ProfileNotFound => Self(StatusCode::NOT_FOUND, "PROFILE_NOT_FOUND"),
             MediaNotFound => Self(StatusCode::NOT_FOUND, "MEDIA_NOT_FOUND"),
             ProfileConflict => Self(StatusCode::CONFLICT, "PROFILE_CONFLICT"),
@@ -195,7 +198,7 @@ pub fn router(state: AppState) -> Router {
 }
 
 /// No CORS. Native Rust requests have no Origin. A browser request is accepted
-/// only when it is same-origin with this server (the bundled web client, ADR-0012):
+/// only when it is same-origin with this server (the bundled web client, ADR-0014):
 /// `Sec-Fetch-Site: same-origin`, and `Origin`, when present, equal to `https://<Host>`.
 /// Everything else (cross-site, same-site, other origins) is refused. Host must name this server.
 async fn same_origin(
@@ -335,6 +338,8 @@ async fn profiles(State(state): State<AppState>) -> Result<Json<Vec<Profile>>, A
 #[serde(deny_unknown_fields)]
 struct Name {
     name: String,
+    #[serde(default)]
+    initial_preferences: Option<Preferences>,
 }
 async fn create_profile(
     State(state): State<AppState>,
@@ -345,7 +350,9 @@ async fn create_profile(
         Json(
             state
                 .database
-                .call(move |store| store.create_profile(&body.name))
+                .call(move |store| {
+                    store.create_profile_with_preferences(&body.name, body.initial_preferences)
+                })
                 .await?,
         ),
     ))
@@ -427,6 +434,176 @@ mod tests {
     use super::*;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
+    async fn json_call(
+        app: &Router,
+        method: &str,
+        path: &str,
+        value: Value,
+    ) -> (StatusCode, Value) {
+        let response = app
+            .clone()
+            .oneshot(request(method, path, value))
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+    #[tokio::test]
+    async fn catalog_mirror_is_coherent_scoped_and_ignores_unrelated_progress() {
+        let (dir, app) = setup();
+        let (_, a) = json_call(
+            &app,
+            "POST",
+            "/api/v1/profiles",
+            json!({"name":"A","initial_preferences":{"autoplay_seconds":20}}),
+        )
+        .await;
+        let (_, b) = json_call(&app, "POST", "/api/v1/profiles", json!({"name":"B"})).await;
+        let a = a["id"].as_str().unwrap();
+        let b = b["id"].as_str().unwrap();
+        assert_eq!(
+            json_call(
+                &app,
+                "GET",
+                &format!("/api/v1/profiles/{a}/preferences"),
+                Value::Null
+            )
+            .await
+            .1["autoplay_seconds"],
+            20
+        );
+        assert_eq!(
+            json_call(
+                &app,
+                "GET",
+                &format!("/api/v1/profiles/{b}/preferences"),
+                Value::Null
+            )
+            .await
+            .1["autoplay_seconds"],
+            10
+        );
+        let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let media=(0..201).map(|i|serde_json::from_value(json!({"id":format!("film-{i:03}.mkv"),"path":format!("/fixture/film-{i:03}.mkv"),"title":format!("Film {i}"),"category":"film","year":2026,"genres":[],"overview":"fixture","poster":null,"saga":null,"watched":false,"available":true,"added_at":1,"tmdb_id":null})).unwrap()).collect();
+        store.snapshot(media).unwrap();
+        let endpoint = format!("/api/2026-10-14/profiles/{a}/catalog/snapshot");
+        let (status, first) = json_call(&app, "POST", &endpoint, json!({})).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(first["items"].as_array().unwrap().len(), 100);
+        assert_eq!(first["total"], 201);
+        let rev = first["revision"].as_str().unwrap();
+        let id = first["items"][0]["media"]["id"].as_str().unwrap();
+        assert!(!first.to_string().contains("/fixture/"));
+        let sql = rusqlite::Connection::open(dir.path().join("catalog.sqlite")).unwrap();
+        sql.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms) VALUES(?1,?2,2000)",rusqlite::params![a,id]).unwrap();
+        store.set_watched(b, id, true).unwrap();
+        store
+            .save_preferences(
+                a,
+                &Preferences {
+                    autoplay_seconds: Some(15),
+                    ..Preferences::default()
+                },
+            )
+            .unwrap();
+        let check = json_call(&app, "POST", &endpoint, json!({"known_revision":rev}))
+            .await
+            .1;
+        assert_eq!(
+            check["unchanged"], true,
+            "progress/preferences/other profile must not trigger catalogue download"
+        );
+        let before = store.sync_revision(a).unwrap();
+        store.set_watched(a, id, true).unwrap();
+        assert_ne!(store.sync_revision(a).unwrap(), before);
+        let changed = json_call(&app, "POST", &endpoint, json!({"known_revision":rev}))
+            .await
+            .1;
+        assert!(changed["items"].is_array());
+        assert_ne!(changed["revision"], rev);
+        // Three cold sessions must coexist; never evict an active transfer.
+        let third = json_call(
+            &app,
+            "POST",
+            &format!("/api/v1/profiles/{b}/catalog/snapshot"),
+            json!({"known_revision":rev}),
+        )
+        .await;
+        assert_eq!(third.0, StatusCode::OK);
+        assert!(third.1["items"].is_array());
+        assert_eq!(
+            json_call(&app, "POST", &endpoint, json!({})).await.0,
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        let snapshot = first["snapshot_id"].as_str().unwrap();
+        let page = json_call(
+            &app,
+            "GET",
+            &format!("{endpoint}/{snapshot}?offset=100"),
+            Value::Null,
+        )
+        .await
+        .1;
+        assert_eq!(page["revision"], rev);
+        assert_eq!(page["items"].as_array().unwrap().len(), 100);
+        assert_eq!(
+            json_call(
+                &app,
+                "GET",
+                &format!("/api/v1/profiles/{b}/catalog/snapshot/{snapshot}?offset=100"),
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+        let final_page = json_call(
+            &app,
+            "GET",
+            &format!("{endpoint}/{snapshot}?offset=200"),
+            Value::Null,
+        )
+        .await
+        .1;
+        assert_eq!(final_page["items"].as_array().unwrap().len(), 1);
+        assert_eq!(final_page["has_more"], false);
+        store.delete_profile(a).unwrap();
+        assert_eq!(
+            json_call(
+                &app,
+                "GET",
+                &format!("{endpoint}/{snapshot}?offset=100"),
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            json_call(&app, "POST", &endpoint, json!({"known_revision":rev}))
+                .await
+                .0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            json_call(
+                &app,
+                "GET",
+                &format!(
+                    "/api/v1/profiles/{b}/catalog/snapshot/{snapshot}?offset={}",
+                    usize::MAX
+                ),
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+    }
     fn setup() -> (tempfile::TempDir, Router) {
         let dir = tempfile::tempdir().unwrap();
         let config = ServerConfig {

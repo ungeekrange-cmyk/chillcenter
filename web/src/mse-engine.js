@@ -1,5 +1,5 @@
 "use strict";
-// MP4 playback through MediaSource (ADR-0013): bytes come from the leased Range reader, mp4.js
+// MP4 playback through MediaSource (ADR-0015): bytes come from the leased Range reader, mp4.js
 // remuxes them to fMP4 in the browser, the browser decodes. No dependency, no transcoding.
 (function (root) {
   const Mp4 = typeof module !== "undefined" ? require("./mp4.js") : root.ChillMp4;
