@@ -36,6 +36,16 @@ test("background catalogue reload preserves old cards until all batches commit",
  pending({items:media(3,"new-"),has_more:false});await task;
  assert.deepEqual(f.ids(),["new-0","new-1","new-2"]);
 });
+test("failed later catalogue page returns false and preserves the previous complete view",async()=>{
+ let refresh=false;
+ const original=media(2,"old-"),f=fixture(async c=>{
+  if(!refresh)return {items:original,has_more:false};
+  if(c.offset===0)return {items:media(48,"new-"),has_more:true};
+  throw new Error("network interrupted");
+ });
+ assert.equal(await f.load(),true);const grid=f.get("media").children[0];refresh=true;
+ assert.equal(await f.load(),false);assert.deepEqual(f.ids(),original.map(m=>m.id));assert.equal(f.get("media").children[0],grid);
+});
 test("profile switch clears old cards and scroll cannot repaint them while the new mirror loads",async()=>{
  let finish;const f=fixture(()=>f.sandbox.state.profile_id==="profile"?Promise.resolve({items:media(2,"old-"),has_more:false}):new Promise(resolve=>finish=resolve));
  await f.load();f.sandbox.state.profile_id="new-profile";const pending=f.load();vm.runInContext("renderCatalogWindow()",f.sandbox);

@@ -119,21 +119,22 @@ async function catalogRequest(command,generation,context){
 }
 async function loadPage(){
  const context=state.server_id+":"+state.profile_id;if(context!==catalogContext){clearCatalogContext();catalogContext=context;}const generation=++catalogGeneration;
- if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return;}
+ if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return false;}
  const filters=catalogFilters(),ids=new Set(),staged=[],counters={};let at=0;
  if(!catalogItems.length)$("catalog-count").textContent="Chargement du catalogue…";
  for(;;){
   const page=await catalogRequest(catalogCommand(filters,at,true),generation,context);
-  if(!page||generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return;
-  if(!Array.isArray(page.items)||page.items.length>CATALOG_PAGE_SIZE||page.has_more&&page.items.length===0){message("Réponse catalogue incohérente.");return;}
+  if(!page||generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return false;
+  if(!Array.isArray(page.items)||page.items.length>CATALOG_PAGE_SIZE||page.has_more&&page.items.length===0){message("Réponse catalogue incohérente.");return false;}
   let added=0;for(const item of page.items){if(!ids.has(item.id)){ids.add(item.id);staged.push(item);added++;}}
   Object.assign(counters,page.series_counters||{});
   if(!page.has_more)break;
-  if(!added||staged.length>=30000){message("Catalogue trop volumineux ou modifié pendant le chargement. Rechargez depuis Administration.");return;}
+  if(!added||staged.length>=30000){message("Catalogue trop volumineux ou modifié pendant le chargement. Rechargez depuis Administration.");return false;}
   at+=page.items.length;
  }
  catalogItems=staged;catalogCounters=counters;catalogWindowKey="";$("catalog-count").textContent=catalogItems.length+" titres";
  if(catalogItems.length)renderCatalogWindow();else{$("media").style.height="";$("media").replaceChildren(node("p","Aucun titre ne correspond. Configurez puis scannez la bibliothèque dans Administration.","muted"));}
+ return true;
 }
 $("connect-form").onsubmit=e=>{e.preventDefault();connect($("address").value);};
 $("approve-trust").onclick=async()=>{const r=await run({action:"approve",token:state.token});if(r?.profile_id){await loadPage();void syncCatalog();}};
@@ -170,7 +171,16 @@ async function syncCatalog(){
  if(state.stage!=="connected"||!state.profile_id)return;
  const requestedContext=state.server_id+":"+state.profile_id;if(syncPromise)return syncContext===requestedContext?syncPromise:syncPromise.then(()=>syncCatalog());syncContext=requestedContext;
  const context=state.server_id+":"+state.profile_id;let icon=$("sync-indicator");if(!icon){icon=node("span","⟳","sync-indicator");icon.id="sync-indicator";icon.setAttribute("role","status");$("profile-menu").before(icon);}icon.hidden=false;icon.classList.add("syncing");icon.title="Vérification des nouveautés";icon.setAttribute("aria-label",icon.title);
- syncPromise=(async()=>{try{const result=await invoke({action:"sync_catalog"});if(context!==state.server_id+":"+state.profile_id)return;if(result.changed)await loadPage();icon.title=result.discarded?"Mise à jour différée après une modification locale":"Catalogue à jour";}catch(error){if(context===state.server_id+":"+state.profile_id){icon.title="Serveur indisponible — catalogue local conservé";}}finally{icon.classList.remove("syncing");icon.setAttribute("aria-label",icon.title);syncPromise=null;}})();return syncPromise;
+ syncPromise=(async()=>{try{
+  const result=await invoke({action:"sync_catalog"});if(context!==state.server_id+":"+state.profile_id)return;
+  if(result.changed){
+   if(!await loadPage())throw new Error("Actualisation du catalogue incomplète");
+   if(context!==state.server_id+":"+state.profile_id)return;
+   // Only the web bridge issues a ticket; existing native clients need no new command.
+   if(result.ack_ticket!==undefined){const ack=await invoke({action:"ack_catalog_sync",ticket:result.ack_ticket});if(ack.discarded){icon.title="Mise à jour différée après une modification locale";return;}}
+  }
+  icon.title=result.discarded?"Mise à jour différée après une modification locale":"Catalogue à jour";
+ }catch(error){if(context===state.server_id+":"+state.profile_id){icon.title="Serveur indisponible — catalogue local conservé";}}finally{icon.classList.remove("syncing");icon.setAttribute("aria-label",icon.title);syncPromise=null;}})();return syncPromise;
 }
 async function syncAfterMutation(){if(syncPromise)await syncPromise;await syncCatalog();}
 window.addEventListener("focus",()=>{if(state.stage!=="connected"||!state.profile_id||busy)return;const now=Date.now();if(now-lastFocusRefresh<5000)return;lastFocusRefresh=now;void syncCatalog();});

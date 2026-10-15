@@ -166,7 +166,9 @@ test("revision sync is context-scoped, cheap after its first check, and invalida
   const b = createBridge({ fetch: s.fetch, storage: memory(), objectUrl: () => `blob:${++blobs}`, revoke: () => revokes++ });
   const invoke = command => b.invoke("ui_command", { command });
   await invoke({ action: "boot" }); await invoke({ action: "select_profile", id: P });
-  assert.equal((await invoke({ action: "sync_catalog" })).changed, true);
+  const first = await invoke({ action: "sync_catalog" });
+  assert.equal(first.changed, true);
+  assert.deepEqual(await invoke({ action: "ack_catalog_sync", ticket: first.ack_ticket }), { discarded: false });
   assert.equal((await invoke({ action: "sync_catalog" })).changed, false);
   assert.equal(s.calls.filter(c => c.url.includes("/catalog/revision")).length, 2, "revision checks transfer no catalog page");
   await invoke({ action: "artwork", media_id: M });
@@ -176,6 +178,33 @@ test("revision sync is context-scoped, cheap after its first check, and invalida
   await invoke({ action: "artwork", media_id: M });
   await invoke({ action: "set_watched", media_id: M, watched: true });
   assert.equal(revokes, 2, "a contextual mutation revokes the replacement detail image");
+});
+
+test("an unapplied revision retries after failed catalog pages; old tickets cannot acknowledge newer checks", async () => {
+  let revision = "R1", catalogFails = false;
+  const { ui } = make({
+    [`GET /profiles/${P}/catalog/revision`]: () => ok({ revision }),
+    [`GET /profiles/${P}/catalog`]: () => catalogFails ? [503, { code: "BUSY" }] : ok({ items: [], has_more: false }),
+  });
+  await ui({ action: "boot" }); await ui({ action: "select_profile", id: P });
+  const first = await ui({ action: "sync_catalog" });
+  await ui({ action: "ack_catalog_sync", ticket: first.ack_ticket });
+  revision = "R2";
+  const failed = await ui({ action: "sync_catalog" });
+  catalogFails = true;
+  await assert.rejects(ui({ action: "catalog", offset: 0 }), e => e.status === 503);
+  // The UI did not acknowledge because a catalog page failed.
+  const retry = await ui({ action: "sync_catalog" });
+  assert.equal(failed.changed, true); assert.equal(retry.changed, true);
+  assert.deepEqual(await ui({ action: "ack_catalog_sync", ticket: failed.ack_ticket }), { discarded: true });
+  catalogFails = false;
+  await ui({ action: "catalog", offset: 0 });
+  await ui({ action: "ack_catalog_sync", ticket: retry.ack_ticket });
+  assert.equal((await ui({ action: "sync_catalog" })).changed, false);
+  revision = "R3";
+  const beforeMutation = await ui({ action: "sync_catalog" });
+  await ui({ action: "disconnect" });
+  assert.deepEqual(await ui({ action: "ack_catalog_sync", ticket: beforeMutation.ack_ticket }), { discarded: true });
 });
 
 test("late profile A revision checks are discarded and older servers request an explicit full refresh", async () => {

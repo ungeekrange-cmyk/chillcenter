@@ -86,11 +86,13 @@
     const artwork = new Map();
     const catalogRevisions = new Map();
     let artworkGeneration = 0;
+    let pendingSync = null, syncTicket = 0;
 
     const contextKey = (serverId, profileId) => `${serverId}:${profileId}`;
     const currentContext = () => conn && conn.active ? contextKey(conn.id, conn.active) : null;
     function clearArtwork() {
       artworkGeneration++;
+      pendingSync = null;
       for (const url of artwork.values()) env.revoke?.(url);
       artwork.clear();
     }
@@ -173,9 +175,13 @@
         // discarded; it must never update the active profile's revision/cache.
         if (currentContext() !== captured) return { changed: false, discarded: true };
         const changed = knownRevision !== revision;
-        catalogRevisions.set(captured, revision);
-        if (changed) clearArtwork();
-        return { changed, revision, discarded: false };
+        pendingSync = null;
+        if (!changed) return { changed, revision, discarded: false };
+        clearArtwork();
+        pendingSync = { context: captured, revision, ticket: ++syncTicket };
+        // A revision is applied only after the shared UI has committed every
+        // catalog page. Failed/abandoned loads must retry the same revision.
+        return { changed, revision, discarded: false, ack_ticket: pendingSync.ticket };
       } catch (error) {
         // Older web-capable servers do not have the inexpensive revision route.
         // Do not claim an unchanged catalog: request the UI's bounded normal-page
@@ -208,6 +214,12 @@
         case "save_preferences": await request("PUT", personal("/preferences"), { body: { audio_language: c.audio_language, subtitle_language: c.subtitle_language, autoplay_seconds: c.autoplay_seconds ?? null } }); return view();
         case "catalog": return get(personal("/catalog"), catalogQuery(c));
         case "sync_catalog": return syncCatalog();
+        case "ack_catalog_sync": {
+          if (!pendingSync || c.ticket !== pendingSync.ticket || pendingSync.context !== currentContext()) return { discarded: true };
+          catalogRevisions.set(pendingSync.context, pendingSync.revision);
+          pendingSync = null;
+          return { discarded: false };
+        }
         case "set_watched": validId(c.media_id); return mutation(() => request("PUT", personal(`/media/${c.media_id}/watched`), { body: { watched: c.watched } }));
         case "set_rating": validId(c.media_id); return mutation(() => request("PUT", personal(`/media/${c.media_id}/rating`), { body: { rating: c.rating ?? null } }));
         case "group_rating": validId(c.media_id); return mutation(() => request("PUT", personal(`/media/${c.media_id}/rating`), { body: { rating: c.rating ?? null, scope: c.scope } }));
