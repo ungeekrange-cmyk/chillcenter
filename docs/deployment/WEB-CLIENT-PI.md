@@ -141,6 +141,8 @@ Enseignement conservé de l'échec V1–V3 (BUG-0051) : le script est envoyé pa
 
 ## 5. Exécution (seulement après revue + ton feu vert explicite)
 
+> **Le [runbook](WEB-CLIENT-PI-RUNBOOK.md) fait foi** pour l'exécution (conventions SSH, préflight en lecture seule par stdin, hashes V7 exacts, tableau des codes de sortie, retour arrière). Les commandes ci-dessous sont l'esquisse initiale, conservée pour traçabilité ; en cas de différence, c'est le runbook qui s'applique.
+
 Prérequis : une **connexion maître SSH stricte/batch** ouverte par toi (les anciens sockets `/private/tmp/chillcenter-ssh.*` ne sont plus utilisables comme preuve d'une session valide ; je ne contourne aucun échec d'agent).
 
 ```bash
