@@ -90,6 +90,71 @@ impl Store {
             .map(|n| n as u64)
             .map_err(db)
     }
+    /// Compatibility view for clients whose existing API key is a display title.
+    /// Aggregation is a view only: it never changes provider or source identity.
+    pub fn legacy_series_view(&mut self, profile: &str, title: &str) -> Result<Vec<Media>, String> {
+        self.require_profile(profile)?;
+        let mut members = self
+            .catalogue
+            .series_members(title)?
+            .into_iter()
+            .map(|m| self.profile_view(profile, m))
+            .collect::<Result<Vec<_>, _>>()?;
+        members.sort_by_key(|m| {
+            (
+                m.season.unwrap_or(i32::MAX),
+                m.episode.unwrap_or(i32::MAX),
+                m.title.clone(),
+            )
+        });
+        Ok(members)
+    }
+    /// Preserve the historical title-addressed batch edit for existing web clients.
+    /// New clients use opaque keys and `update_shared_series` instead. This edits
+    /// shared display metadata only; it cannot associate/merge provider identities.
+    pub fn update_legacy_series_view(
+        &self,
+        profile: &str,
+        title: &str,
+        expected: u64,
+        patch: &SeriesPatch,
+    ) -> Result<(), String> {
+        self.require_profile(profile)?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&self.personal, TransactionBehavior::Immediate)
+                .map_err(db)?;
+        if self.common_revision()? != expected {
+            return Err("La fiche a changé entre-temps.".into());
+        }
+        if title.is_empty() || title.len() > 500 {
+            return Err("Série invalide.".into());
+        }
+        let collision: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM media WHERE json_extract(data,'$.category')='serie' AND COALESCE(json_extract(data,'$.series'),json_extract(data,'$.title'))=?1)", [patch.name.trim()], |r| r.get(0)).map_err(db)?;
+        if patch.name.trim() != title && collision {
+            return Err("Une série porte déjà ce nom.".into());
+        }
+        let members = self.catalogue.series_members(title)?;
+        let metadata = patch.validate(members.first().ok_or("Série introuvable.")?)?;
+        for mut media in members {
+            let stable = self.stable_id(&media.id)?;
+            media.series = Some(patch.name.trim().into());
+            media.series_manual = true;
+            media.series_overview = metadata.overview.clone();
+            media.series_metadata = Some(metadata.clone());
+            tx.execute(
+                "UPDATE media SET data=?1 WHERE id=?2",
+                params![encode(&media)?, media.id],
+            )
+            .map_err(db)?;
+            tx.execute("INSERT INTO cc_media_revision(stable_id,revision) VALUES(?1,1) ON CONFLICT(stable_id) DO UPDATE SET revision=revision+1",[stable]).map_err(db)?;
+        }
+        if patch.name.trim() != title {
+            tx.execute("INSERT OR IGNORE INTO cc_series_speed(profile_id,series_key,speed) SELECT profile_id,?1,speed FROM cc_series_speed WHERE series_key=?2",params![patch.name.trim(),title]).map_err(db)?;
+            tx.execute("DELETE FROM cc_series_speed WHERE series_key=?1", [title])
+                .map_err(db)?;
+        }
+        tx.commit().map_err(db)
+    }
     /// Coarse catalogue epoch deliberately includes episode changes: a shared
     /// form never silently overwrites a concurrently changed grouping.
     pub fn update_shared_series(

@@ -488,11 +488,26 @@ async fn series(
     Path((profile, series)): Path<(String, String)>,
 ) -> Result<Json<Value>, ApiError> {
     let key = series.clone();
-    let (members, revision, seasons) = state
+    let (members, revision, seasons, tv_id) = state
         .database
         .call(move |store| {
-            let members = store.series(&profile, &key)?;
-            let tv_id = members.first().and_then(|m| m.tmdb_id);
+            let members = if key.starts_with("media:") || key.starts_with("tmdb:tv:") {
+                store.series(&profile, &key)?
+            } else {
+                store.legacy_series_view(&profile, &key)?
+            };
+            let groups = members
+                .iter()
+                .filter_map(|m| {
+                    m.tmdb_id
+                        .map(|id| format!("tmdb:tv:{id}"))
+                        .or_else(|| chill_catalog::database::series_source_key(m))
+                })
+                .collect::<std::collections::HashSet<_>>();
+            let tv_id = members
+                .first()
+                .and_then(|m| m.tmdb_id)
+                .filter(|_| groups.len() == 1);
             let mut seasons = serde_json::Map::new();
             if let Some(tv_id) = tv_id {
                 for number in members
@@ -512,13 +527,13 @@ async fn series(
                     }
                 }
             }
-            Ok((members, store.common_revision()?, seasons))
+            Ok((members, store.common_revision()?, seasons, tv_id))
         })
         .await?;
     let total = members.len();
     let watched = members.iter().filter(|m| m.watched).count();
     Ok(Json(
-        json!({"name":series,"revision":revision,"metadata":members.first().and_then(|m|m.series_metadata.clone()),"tmdb_id":members.first().and_then(|m|m.tmdb_id),"season_metadata":seasons,"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}}),
+        json!({"name":series,"revision":revision,"metadata":members.first().and_then(|m|m.series_metadata.clone()),"tmdb_id":tv_id,"season_metadata":seasons,"episodes":members,"counters":{"total":total,"watched":watched,"unwatched":total-watched}}),
     ))
 }
 #[derive(Deserialize)]
@@ -535,6 +550,20 @@ async fn edit_series(
     let result = state
         .database
         .call(move |s| {
+            if !series.starts_with("media:") && !series.starts_with("tmdb:tv:") {
+                let next = body.patch.name.trim().to_owned();
+                s.update_legacy_series_view(
+                    &profile,
+                    &series,
+                    body.expected_revision,
+                    &body.patch,
+                )?;
+                return Ok((
+                    s.legacy_series_view(&profile, &next)?,
+                    s.common_revision()?,
+                    next,
+                ));
+            }
             let anchor = s
                 .series(&profile, &series)?
                 .first()

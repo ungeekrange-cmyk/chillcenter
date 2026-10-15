@@ -694,6 +694,110 @@ mod tests {
         )
     }
     #[tokio::test]
+    async fn legacy_title_series_api_keeps_web_reads_and_edits_without_merging_identities() {
+        let (dir, app) = setup();
+        let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let profile = store.create_profile("Legacy web").unwrap();
+        let other = store.create_profile("Other").unwrap();
+        let items = [1001, 2002]
+            .into_iter()
+            .map(|tv| {
+                let mut m = chill_catalog::scanner::parse_file(
+                    std::path::Path::new("/fixture"),
+                    &std::path::PathBuf::from(format!(
+                        "/fixture/Show{tv}/Season 1/Doctor Who S01E01.mkv"
+                    )),
+                );
+                m.category = "serie".into();
+                m.series = Some("Doctor Who".into());
+                m.season = Some(1);
+                m.episode = Some(1);
+                m.tmdb_id = Some(tv);
+                m
+            })
+            .collect();
+        store.snapshot(items).unwrap();
+        let before = store.catalog(&profile.id).unwrap();
+        store.set_watched(&profile.id, &before[0].id, true).unwrap();
+        let revision = store.common_revision().unwrap();
+        for version in ["2026-10-14", "v1"] {
+            let endpoint = format!("/api/{version}/profiles/{}/series/Doctor%20Who", profile.id);
+            let (status, view) = json_call(&app, "GET", &endpoint, Value::Null).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(view["name"], "Doctor Who");
+            assert_eq!(view["episodes"].as_array().unwrap().len(), 2);
+            assert_eq!(view["counters"]["total"], 2);
+            assert_eq!(view["counters"]["watched"], 1);
+            assert!(view["tmdb_id"].is_null());
+            assert_eq!(view["season_metadata"], json!({}));
+            let (_, personal) = json_call(
+                &app,
+                "GET",
+                &format!("/api/{version}/profiles/{}/series/Doctor%20Who", other.id),
+                Value::Null,
+            )
+            .await;
+            assert_eq!(personal["counters"]["watched"], 0);
+            for (key, tv) in [
+                ("tmdb:tv:1001".to_owned(), 1001),
+                (
+                    format!(
+                        "media:{}",
+                        before.iter().find(|m| m.tmdb_id == Some(2002)).unwrap().id
+                    ),
+                    2002,
+                ),
+            ] {
+                let (status, one) = json_call(
+                    &app,
+                    "GET",
+                    &format!("/api/{version}/profiles/{}/series/{key}", profile.id),
+                    Value::Null,
+                )
+                .await;
+                assert_eq!(status, StatusCode::OK);
+                assert_eq!(one["episodes"].as_array().unwrap().len(), 1);
+                assert_eq!(one["tmdb_id"], tv);
+            }
+        }
+        assert_eq!(
+            store.common_revision().unwrap(),
+            revision,
+            "GET must not change the catalog"
+        );
+        let endpoint = format!("/api/v1/profiles/{}/series/Doctor%20Who", profile.id);
+        let body = json!({"expected_revision":revision,"patch":{"name":"Doctor Who legacy","year":0,"genres":[],"overview":"Legacy batch description","cast":[],"directors":[]}});
+        let (status, updated) = json_call(&app, "PUT", &endpoint, body.clone()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(updated["episodes"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            json_call(&app, "PUT", &endpoint, body).await.0,
+            StatusCode::CONFLICT
+        );
+        let after = store.catalog(&profile.id).unwrap();
+        for m in &before {
+            let a = after.iter().find(|a| a.id == m.id).unwrap();
+            assert_eq!(a.tmdb_id, m.tmdb_id);
+            assert_eq!(a.path, m.path);
+            assert_eq!(a.season, m.season);
+            assert_eq!(a.episode, m.episode);
+            assert_eq!(a.series.as_deref(), Some("Doctor Who legacy"));
+        }
+        assert!(
+            store.series(&profile.id, "Doctor Who legacy").is_err(),
+            "Internal title-based mutations must remain guarded"
+        );
+        let (status,updated)=json_call(&app,"PUT",&format!("/api/2026-10-14/profiles/{}/series/tmdb:tv:1001",profile.id),json!({"expected_revision":store.common_revision().unwrap(),"patch":{"name":"Doctor Who isolated","year":0,"genres":[],"overview":"One show only","cast":[],"directors":[]}})).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(updated["episodes"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            store.series(&profile.id, "tmdb:tv:2002").unwrap()[0]
+                .series
+                .as_deref(),
+            Some("Doctor Who legacy")
+        );
+    }
+    #[tokio::test]
     async fn catalog_revision_is_small_read_only_and_profile_scoped() {
         let (dir, app) = setup();
         let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
