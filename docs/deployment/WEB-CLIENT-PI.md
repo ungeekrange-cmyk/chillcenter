@@ -1,4 +1,4 @@
-# Déploiement du client web sur le Pi — artefacts construits et testés, déploiement NON exécuté
+# Déploiement du client web sur le Pi — déployé le 15 octobre 2026 (voir « Exécution du 15 octobre 2026 »)
 
 Révision `CC-WEB-DEPLOY-001` r4, 15 octobre 2026, branche `codex/web-pwa`, source du binaire : merge `7204e19` puis `1a4019f` (condition `Host` du port 443 ; ancienne source `3a0d53a4`, périmée) (le script et le banc d'essai sont au commit `e2e1c8bdd07d12102184e727790a67e241e2ef90`, qui ne modifie pas `crates/`). **Rien n'a été exécuté sur le Pi ni copié vers lui.** Ce document est une proposition soumise à revue indépendante puis à ton feu vert explicite (AGENTS : pas de déploiement sur un matériel ou un réseau supposé ; un seul auteur par chemin, le reviewer n'édite pas).
 
@@ -62,6 +62,22 @@ Demande de l'utilisateur : joindre le client web sur le port normal. Décision :
 | Relevé du pare-feu du Pi (lecture seule, exécuté le 15 oct. 15:22 UTC via ta connexion maître) | `scripts/pi-firewall-probe-readonly.sh` (19 lignes, SHA-256 `7116d03bab4b6117c9202ca784eb0560566678e08680ecb56cabcfa5acb2f2ce`). Constat : Debian 13, noyau 6.18.50+rpt-rpi-v8, `nft` 1.1.3 présent, `nftables.service` **désactivé**, jeu de règles **vide**, ni iptables ni ufw, rien n'écoute sur 80/443, modules `nf_tables`/`nft_nat`/`nft_redir` disponibles (non chargés), `/etc/nftables.conf` par défaut (`flush ruleset`, donc **ni édité ni activé**). Préflight du même jour : tout conforme (binaire `cef54cd0…`, service actif, certificat `3018fb4d…`, `web_dir` absent, aucun fichier entrant) |
 | Script d'installation de la règle 443 → 8443 | `scripts/pi-redirect-443-operator.sh`, SHA-256 `3e7f6d4f8b0bdfa33af09f7031f7862ddca992426507dbf0cd498a63fe1f4ef4` : table nftables dédiée `ip chillcenter_web` chargée par sa propre unité `chillcenter-redirect.service` ; installation, `--remove`, `--self-test`. **Simulation** `scripts/pi-redirect-simulation.sh` (VM Ubuntu 24.04 aarch64, systemd et nftables réels, client dans un espace réseau séparé, vrai binaire et vraie archive) : **43 PASS, 0 FAIL** (40 d'abord ; R3b « autre adresse locale non redirigée » et R9 « service arrêté : refus » ajoutés après la revue n° 5, car les mutants correspondants n'étaient pas détectés ; vérifié : R3b détecte le mutant sans `ip daddr`). Elle a trouvé un défaut réel du script (temporaires laissés si l'essai à blanc `nft -c` échoue), corrigé par un nettoyage à la sortie |
 | Revue n° 5 (15 octobre 2026) | **APPROVED_WITH_CONDITIONS** pour le script de redirection `3e7f6d4f…` ; **APPROVED** pour le delta Rust et le binaire `a7ab7b07…` : [rapport verbatim](../reviews/web-pi-redirect-443-review-5.md). Conditions C1 (contrôle de l'adresse primaire + test de bout en bout obligatoire), C2 (hash périmé du runbook) et C3 (risques résiduels) traitées dans le runbook, étape 8 ; octets du script inchangés. La revue n° 4 reste valable pour le script V8 |
+
+## Exécution du 15 octobre 2026 (feu vert de l'utilisateur pour les deux actions)
+
+Tout ce qui suit a réellement été exécuté, via la connexion maître de l'utilisateur (`/private/tmp/chillcenter-ssh.pkLA1S/control`), après contrôle local des hashes (tous conformes) et un préflight frais (conforme, aucune connexion cliente établie).
+
+| Étape | Résultat observé |
+| --- | --- |
+| Copie dans `/var/tmp` | binaire `a7ab7b07…` et archive `894fbe95…` : hashes relus sur le Pi, identiques |
+| Script V8 (`dcf18661…`, par stdin, `OLD_BINARY_SHA256=cef54cd0…`) | **code de sortie 0** à 15:44:49 UTC ; `installed_hash=a7ab7b07…`, `rollback_hash=cef54cd0…`, `web_archive_hash=894fbe95…`, `web_previous=none`, sauvegarde privée `/var/lib/chillcenter/data/backups/93f3dee3-6297-4319-a455-a0ece8a98437` ; copie de rollback `chill-server-cef54cd0e8ba` créée |
+| Préflight après déploiement (lecture seule) | binaire `a7ab7b07…`, service actif (PID 9457, `NRestarts=0`), `web_dir` présent, configuration `ea24f2f0…`, unité `76f7d349…` et certificat `3018fb4d…` **inchangés**, 6 sauvegardes |
+| Nettoyage | `/var/tmp/chill-server-web.new` et `/var/tmp/chillcenter-web.tar` supprimés |
+| Vérification depuis le Mac, TLS strict (certificat du Pi comme seule ancre, empreinte `3018fb4d…` vérifiée) | `/` 200 `text/html` 19 604 o ; `/api/2026-10-14/server` 200 ; cross-site 403 ; décodeur `.wasm` 200 `application/wasm` 652 895 o ; `sw.js` 200 ; profils lus (`server_id` `885f7713…`) |
+| Redirection 443 (`pi-redirect-443-operator.sh` `3e7f6d4f…`) | contrôles préalables : `wlan0` n'a que `192.168.1.42/24` (primaire), `/etc/chillcenter` `750 root:chillcenter` ; `--self-test` PASS sur le Pi ; installation **code 0** à 15:45:51 UTC, `unit_state=enabled/active`, `rules_sha256=d3da7f4f…`, `unit_sha256=c3bf9e7d…`, service toujours actif |
+| Vérification de bout en bout sur 443 depuis le Mac | certificat servi : empreinte `3018fb4d…` ; `https://192.168.1.42/` 200 ; API same-origin 200 (profils lus) ; cross-site 403 ; `:8443` répond toujours 200 |
+
+**Non vérifié** : ouverture dans un vrai navigateur (le navigateur intégré à l'application a refusé la navigation vers `https://192.168.1.42/` ; installation en PWA et Service Worker sur certificat auto-signé non testés) ; lecture réelle d'un média depuis un navigateur ; comportement de la règle après un **redémarrage réel** du Pi (l'unité est activée ; la persistance n'a été prouvée qu'en VM) ; test de bascule/retour arrière sur le Pi (non nécessaire, non exécuté).
 
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 
