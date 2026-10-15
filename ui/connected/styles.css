@@ -8,3 +8,8 @@
 #ai-dialog { width: min(850px, 90vw); }
 #ai-dialog textarea { width: 100%; }
 #ai-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Modal content scrolls independently; neither its edges nor its backdrop may
+   move the catalogue underneath. Closing it preserves the catalogue position. */
+html:has(dialog[open]), body:has(dialog[open]) { overflow: hidden; overscroll-behavior: none; }
+dialog[open] { overflow-y: auto; overscroll-behavior: contain; }
+.detail-path { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; padding: 10px 12px; }

@@ -48,6 +48,7 @@ async function openMedia(id){
   const result=await run({action:"media_detail",media_id:id},false);if(!result)return;detailView=result;
   const m=result.media;$("detail-title").textContent=m.title;$("detail-overview").textContent=m.overview||"Informations à compléter";
   $("detail-metadata").textContent=[m.year,m.runtime_minutes?m.runtime_minutes+" min":null,...m.genres,...m.directors.map(n=>"Réalisation : "+n),...m.cast].filter(Boolean).join(" · ");
+  let sourcePath=$("detail-path");if(!sourcePath){sourcePath=node("code",undefined,"detail-path muted");sourcePath.id="detail-path";sourcePath.setAttribute("aria-label","Chemin relatif de la vidéo sur le serveur");$("detail-metadata").after(sourcePath);}sourcePath.textContent=m.path||"";sourcePath.hidden=!m.path;
   $("detail-availability").textContent=m.available?"":"Indisponible";$("detail-availability").hidden=m.available;
   $("detail-poster").replaceChildren(node("span",m.title.slice(0,1).toUpperCase()));if(m.poster)observeArtwork($("detail-poster"),m.id);
   $("detail-addlist").onclick=()=>pickPlaylist(m.id);

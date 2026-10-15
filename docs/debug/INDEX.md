@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+[BUG0062](BUG-0062-release-filename-parsing.md), 15 octobre : titres à séparateurs répétés, VOSTA/VOST/DDP et nettoyage des recherches automatiques corrigés/testés localement sans réécrire les fiches. [BUG0063](BUG-0063-media-detail-scroll-and-path.md) : chemin relatif affiché et scroll derrière les dialogues bloqué, Chromium RED/GREEN ; WebKit/Tauri restant. NON_LIVRÉ, Pi et bundle inchangés.
+
 Déploiement15octobre : [BUG0059](BUG-0059-lazy-saga-revisions.md) révisions absentes pour sagas TMDB paresseuses,422sagas/snapshot confirmé37/30 puis correctifCFC et sonde réelle2496médias PASS ; [BUG0060](BUG-0060-backup-empty-sidecars.md) deux fichiers auxiliaires SQLite vides mis en quarantaine réversible, sauvegardes exactes/rollback vérifiés. Première vérification indépendante défavorable conservée, addendum final APPROVED_SCOPED. Aucun nouveau test lecteur/GUI/vidéo dans ce lot de livraison.
 
 [BUG0058](BUG-0058-replay-at-eof.md) : reprise à EOF lors d'une relecture, confirmée par vraie fixture native et RED unitaire ; correction locale au FileLoaded, preuve GREEN dans le lot cache.
