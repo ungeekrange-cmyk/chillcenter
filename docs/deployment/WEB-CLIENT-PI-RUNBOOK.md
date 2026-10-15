@@ -163,3 +163,19 @@ Puis refaire le préflight (étape 3) : binaire `cef54cd0…`, service actif, `w
 ## Ce que ce runbook ne garantit pas
 
 Comportement sur Debian 13 réel avec systemd réel, durée réelle d'interruption, mémoire du Pi 3B+ sous charge, CSP et Service Worker dans un vrai navigateur sur le certificat auto-signé : voir [WEB-CLIENT-PI.md §8](WEB-CLIENT-PI.md) et les trois revues dans `docs/reviews/`.
+
+## Étape 8 — port 443 (redirection vers 8443), **après** la revue n° 5 et ton feu vert séparé (ADR-0017)
+
+Ne se fait qu'une fois le déploiement des étapes 4 à 6 réussi (le nouveau binaire accepte `Host` sans port ; l'ancien le refuse). Le script ne touche ni le service, ni sa configuration, ni `/etc/nftables.conf`.
+
+```bash
+cd "$R"
+[ "$(shasum -a 256 scripts/pi-redirect-443-operator.sh | cut -d' ' -f1)" = 3e7f6d4f8b0bdfa33af09f7031f7862ddca992426507dbf0cd498a63fe1f4ef4 ] && echo "script redirection conforme" || echo "SCRIPT MODIFIÉ : STOP"
+pi 'sudo -n /bin/bash -s -- --self-test' < scripts/pi-redirect-443-operator.sh          # redirect_self_test=PASS
+pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s --' < scripts/pi-redirect-443-operator.sh
+```
+
+Succès : `redirect=192.168.1.42:443->8443`, `unit_state=enabled/active`, `service_active=active`. Ensuite, depuis le Mac : `openssl s_client -connect 192.168.1.42:443` doit montrer l'empreinte `3018fb4d…`, et `https://192.168.1.42/` s'ouvre dans le navigateur.
+
+**Retour arrière** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s -- --remove' < scripts/pi-redirect-443-operator.sh`. Le serveur continue de répondre sur `:8443`. Le trafic émis par le Pi lui-même n'est pas redirigé (sondes locales sur `:8443`).
+
