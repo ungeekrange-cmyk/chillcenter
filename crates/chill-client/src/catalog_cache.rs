@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    io::{Read, Write},
+    io::Read,
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     sync::{
@@ -142,26 +142,6 @@ fn libc_no_follow() -> i32 {
 fn libc_no_follow() -> i32 {
     0x20000
 }
-fn publish(path: &Path, bytes: &[u8]) -> Result<(), UiError> {
-    let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-    let result = (|| {
-        let mut f = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&temporary)
-            .map_err(|_| error("Écriture du cache impossible."))?;
-        f.write_all(bytes)
-            .and_then(|_| f.sync_all())
-            .map_err(|_| error("Écriture du cache impossible."))?;
-        fs::rename(&temporary, path).map_err(|_| error("Publication du cache impossible."))?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(temporary);
-    }
-    result
-}
 pub struct ArtworkTask {
     transport: Transport,
     directory: PathBuf,
@@ -169,6 +149,7 @@ pub struct ArtworkTask {
     endpoint: String,
     gate: Arc<tokio::sync::Semaphore>,
     budget: Arc<Mutex<u64>>,
+    pool: PathBuf,
 }
 
 /// Closed transport work prepared while the native host holds its short context
@@ -442,9 +423,11 @@ impl ArtworkTask {
                 if used.saturating_add(added) > 2 * 1024 * 1024 * 1024 {
                     return Err(error("Cache d’images plein (2 Gio par profil)."));
                 }
-                publish(&original, &source)?;
+                crate::artwork_cache::publish(&self.pool, &original, &source, false)
+                    .map_err(|_| error("Écriture du cache impossible."))?;
                 *used += source.len() as u64;
-                publish(&preview, &thumbnail)?;
+                crate::artwork_cache::publish(&self.pool, &preview, &thumbnail, true)
+                    .map_err(|_| error("Publication du cache impossible."))?;
                 *used += thumbnail.len() as u64;
             }
             thumbnail
@@ -846,6 +829,13 @@ impl LocalCatalog {
         Ok(ArtworkTask {
             transport,
             directory: self.directory.clone(),
+            pool: self
+                .directory
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join(".artwork-blobs"),
             key,
             endpoint: if kind == "season" {
                 let (tv, season) = id.split_once(':').unwrap();
@@ -955,7 +945,13 @@ mod tests {
         let directory = dir.path().join("images");
         let thumbnail =
             chill_catalog::poster::thumbnail(include_bytes!("../../../icons/icon.png")).unwrap();
-        publish(&directory.join("key.jpg"), &thumbnail).unwrap();
+        crate::artwork_cache::publish(
+            &dir.path().join("pool"),
+            &directory.join("key.jpg"),
+            &thumbnail,
+            true,
+        )
+        .unwrap();
         let endpoint = crate::ServerEndpoint::parse("fixture", "https://127.0.0.1:9").unwrap();
         let transport = Transport::new(
             endpoint,
@@ -974,6 +970,7 @@ mod tests {
             endpoint: "/api/v1/no-network".into(),
             gate: Arc::new(tokio::sync::Semaphore::new(1)),
             budget: Arc::new(Mutex::new(0)),
+            pool: dir.path().join("pool"),
         };
         assert!(
             runtime.block_on(task.fetch()).unwrap()["src"]

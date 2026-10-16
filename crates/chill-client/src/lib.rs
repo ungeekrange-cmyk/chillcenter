@@ -22,6 +22,7 @@ use x509_parser::extensions::GeneralName;
 use x509_parser::prelude::*;
 pub mod appearance;
 pub mod artwork;
+pub mod artwork_cache;
 mod catalog_cache;
 pub mod playback;
 pub mod playback_cache;
