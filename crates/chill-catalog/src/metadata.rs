@@ -1,7 +1,7 @@
 use crate::model::{Media, SeasonProvider, SeriesPatch, SeriesProvider};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{path::Path, time::Duration};
+use std::{future::Future, path::Path, time::Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Candidate {
@@ -215,9 +215,7 @@ fn candidates_from_results(results: &Value, kind: &str) -> Vec<Candidate> {
 /// If the provider reports that its bounded fallback query was used, the
 /// fallback label is considered only after there is no primary exact match.
 /// This keeps a duplicate or mismatched primary result ambiguous.
-pub fn exact_automatic_candidate(media: &Media, search: &CandidateSearch) -> Option<Candidate> {
-    let source_label = media.series.as_deref().unwrap_or(&media.title);
-    let primary = crate::scanner::title_for_search(source_label);
+fn exact_matches(media: &Media, candidates: &[Candidate], label: &str) -> Vec<Candidate> {
     let kind = if media.category == "serie" { "tv" } else { "movie" };
     let normalized = |value: &str| {
         value
@@ -226,19 +224,21 @@ pub fn exact_automatic_candidate(media: &Media, search: &CandidateSearch) -> Opt
             .flat_map(char::to_lowercase)
             .collect::<String>()
     };
-    let matching = |label: &str| {
-        search
-            .candidates
-            .iter()
-            .filter(|candidate| {
-                candidate.kind == kind
-                    && normalized(&candidate.title) == normalized(label)
-                    && media.year.is_none_or(|year| candidate.year == Some(year))
-            })
-            .cloned()
-            .collect::<Vec<_>>()
-    };
-    let primary_matches = matching(&primary);
+    candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.kind == kind
+                && normalized(&candidate.title) == normalized(label)
+                && media.year.is_none_or(|year| candidate.year == Some(year))
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn exact_automatic_candidate(media: &Media, search: &CandidateSearch) -> Option<Candidate> {
+    let source_label = media.series.as_deref().unwrap_or(&media.title);
+    let primary = crate::scanner::title_for_search(source_label);
+    let primary_matches = exact_matches(media, &search.candidates, &primary);
     if !primary_matches.is_empty() {
         return (primary_matches.len() == 1).then(|| primary_matches.into_iter().next().unwrap());
     }
@@ -246,8 +246,52 @@ pub fn exact_automatic_candidate(media: &Media, search: &CandidateSearch) -> Opt
         return None;
     }
     let fallback = crate::scanner::title_for_search_fallback(source_label)?;
-    let matches = matching(&fallback);
+    let matches = exact_matches(media, &search.candidates, &fallback);
     (matches.len() == 1).then(|| matches.into_iter().next().unwrap())
+}
+
+async fn candidate_search_with<F, Fut>(
+    media: &Media,
+    kind: &str,
+    queries: Vec<String>,
+    fallback_delay: Duration,
+    mut fetch: F,
+) -> Result<CandidateSearch, ProviderFailure>
+where
+    F: FnMut(String) -> Fut,
+    Fut: Future<Output = Result<Value, ProviderFailure>>,
+{
+    let has_fallback = queries.len() > 1;
+    for (index, query) in queries.into_iter().enumerate() {
+        if index > 0 && !fallback_delay.is_zero() {
+            tokio::time::sleep(fallback_delay).await;
+        }
+        let candidates = candidates_from_results(&fetch(query).await?, kind);
+        if index == 0 {
+            let primary = crate::scanner::title_for_search(
+                media.series.as_deref().unwrap_or(&media.title),
+            );
+            // A unique primary match wins, and multiple exact primary matches
+            // remain ambiguous. Only zero exact matches permit the one retry.
+            if !exact_matches(media, &candidates, &primary).is_empty() {
+                return Ok(CandidateSearch {
+                    candidates,
+                    fallback_used: false,
+                });
+            }
+            if has_fallback {
+                continue;
+            }
+        }
+        return Ok(CandidateSearch {
+            candidates,
+            fallback_used: index > 0,
+        });
+    }
+    Ok(CandidateSearch {
+        candidates: Vec::new(),
+        fallback_used: false,
+    })
 }
 
 fn names(values: impl Iterator<Item = String>) -> Vec<String> {
@@ -401,31 +445,14 @@ impl Tmdb {
         if queries.iter().any(|query| query.is_empty() || query.len() > 500) {
             return Err("Recherche TMDB trop longue.".into());
         }
-        for (index, query) in queries.into_iter().enumerate() {
-            // Keep the fallback from bypassing the worker's provider spacing.
-            // It is one additional lookup at most, and only follows a valid
-            // empty response rather than a transient failure.
-            if index > 0 {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-            let results = self
-                .get_checked(
-                    &format!("search/{kind}"),
-                    &[("query", query.as_str()), ("include_adult", "false")],
-                )
-                .await?;
-            let candidates = candidates_from_results(&results, kind);
-            if !candidates.is_empty() {
-                return Ok(CandidateSearch {
-                    candidates,
-                    fallback_used: index > 0,
-                });
-            }
-        }
-        Ok(CandidateSearch {
-            candidates: Vec::new(),
-            fallback_used: false,
+        candidate_search_with(media, kind, queries, Duration::from_secs(1), |query| async move {
+            self.get_checked(
+                &format!("search/{kind}"),
+                &[("query", query.as_str()), ("include_adult", "false")],
+            )
+            .await
         })
+        .await
     }
 
     pub async fn artwork_candidates(&self, query: &str) -> Result<Vec<ArtworkCandidate>, String> {
@@ -844,6 +871,92 @@ mod tests {
         );
         assert_eq!(candidates[0].year, Some(2005));
         assert_eq!(candidates[1].year, Some(2023));
+    }
+    #[tokio::test]
+    async fn automatic_lookup_retries_only_after_no_primary_exact_match() {
+        let mut media = movie();
+        media.title = "Attack the Block -- (2011) -- Audio -- VOSTA".into();
+        media.year = Some(2011);
+        let result = |title: &str| {
+            serde_json::json!({"results":[{
+                "id": 1, "title": title, "release_date": "2011-01-01"
+            }]})
+        };
+
+        let mut calls = Vec::new();
+        let mut responses = vec![result("Unrelated"), result("Attack the Block")].into_iter();
+        let search = candidate_search_with(
+            &media,
+            "movie",
+            search_queries(&media, ""),
+            Duration::ZERO,
+            |query| {
+                calls.push(query);
+                std::future::ready(Ok(responses.next().unwrap()))
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(calls, ["Attack the Block (2011)", "Attack the Block"]);
+        assert!(search.fallback_used);
+        assert_eq!(
+            exact_automatic_candidate(&media, &search).map(|candidate| candidate.title),
+            Some("Attack the Block".into())
+        );
+
+        let primary = "Attack the Block (2011)";
+        let mut calls = Vec::new();
+        let duplicates = serde_json::json!({"results":[
+            {"id": 1, "title": primary, "release_date": "2011-01-01"},
+            {"id": 2, "title": primary, "release_date": "2011-01-01"}
+        ]});
+        let search = candidate_search_with(
+            &media,
+            "movie",
+            search_queries(&media, ""),
+            Duration::ZERO,
+            |query| {
+                calls.push(query);
+                std::future::ready(Ok(duplicates.clone()))
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(calls, [primary]);
+        assert!(!search.fallback_used);
+        assert!(exact_automatic_candidate(&media, &search).is_none());
+
+        let mut calls = Vec::new();
+        let search = candidate_search_with(
+            &media,
+            "movie",
+            search_queries(&media, ""),
+            Duration::ZERO,
+            |query| {
+                calls.push(query);
+                std::future::ready(Ok(result(primary)))
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(calls, [primary]);
+        assert!(!search.fallback_used);
+        assert!(exact_automatic_candidate(&media, &search).is_some());
+
+        let mut calls = Vec::new();
+        let _ = candidate_search_with(
+            &media,
+            "movie",
+            search_queries(&media, "Manual choice"),
+            Duration::ZERO,
+            |query| {
+                calls.push(query);
+                std::future::ready(Ok(result("Unrelated")))
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(calls, ["Manual choice"]);
     }
     #[test]
     fn movie_presentation_reads_runtime_cast_and_only_directors() {

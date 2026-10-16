@@ -1,7 +1,7 @@
 //! Volatile playback coordination; mutations are serialized by the SQLite actor.
 use crate::{
     api::{ApiError, AppState},
-    media_stream::{FileVersion, io_job, open_indexed},
+    media_stream::{FileVersion, IndexedOpenResult, io_job, open_indexed_observed},
 };
 use axum::{
     Json, Router,
@@ -36,27 +36,11 @@ type Failure = &'static str;
 /// indexed leaf open returned `NotFound`. A missing mount, a stale
 /// root, permission failure or an I/O timeout must stay a transient playback
 /// failure rather than making an entire catalogue entry unavailable.
-enum IndexedOpen {
-    Opened(std::fs::File, FileVersion),
-    MissingLeaf,
-}
-
 fn open_indexed_for_playback(
     root: &std::path::Path,
     path: &std::path::Path,
-) -> io::Result<IndexedOpen> {
-    if !std::fs::metadata(root)?.is_dir() {
-        return Err(io::ErrorKind::NotADirectory.into());
-    }
-    let parent = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
-    if parent != root && !std::fs::metadata(parent)?.is_dir() {
-        return Err(io::ErrorKind::NotADirectory.into());
-    }
-    match open_indexed(root, path) {
-        Ok((file, version)) => Ok(IndexedOpen::Opened(file, version)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(IndexedOpen::MissingLeaf),
-        Err(error) => Err(error),
-    }
+) -> io::Result<IndexedOpenResult> {
+    open_indexed_observed(root, path)
 }
 
 /// The observed leaf is actionable only if it still names the same indexed
@@ -918,8 +902,8 @@ async fn propose_transfer(
     let f = path.clone();
     let opened = io_job(&s.playback, move || open_indexed_for_playback(&r, &f)).await?;
     let (_, version) = match opened {
-        IndexedOpen::Opened(file, version) => (file, version),
-        IndexedOpen::MissingLeaf => {
+        IndexedOpenResult::Opened(file, version) => (file, version),
+        IndexedOpenResult::MissingLeaf => {
             if !persist_verified_missing(
                 &s,
                 profile.clone(),
@@ -1178,8 +1162,8 @@ async fn acquire(
     let f = path.clone();
     let opened = io_job(&s.playback, move || open_indexed_for_playback(&r, &f)).await?;
     let (_, version) = match opened {
-        IndexedOpen::Opened(file, version) => (file, version),
-        IndexedOpen::MissingLeaf => {
+        IndexedOpenResult::Opened(file, version) => (file, version),
+        IndexedOpenResult::MissingLeaf => {
             if !persist_verified_missing(
                 &s,
                 profile.clone(),
@@ -1372,12 +1356,12 @@ mod tests {
         std::fs::write(&leaf, b"fixture").unwrap();
         assert!(matches!(
             open_indexed_for_playback(&root, &leaf).unwrap(),
-            IndexedOpen::Opened(_, _)
+            IndexedOpenResult::Opened(_, _)
         ));
         std::fs::remove_file(&leaf).unwrap();
         assert!(matches!(
             open_indexed_for_playback(&root, &leaf).unwrap(),
-            IndexedOpen::MissingLeaf
+            IndexedOpenResult::MissingLeaf
         ));
         assert!(open_indexed_for_playback(&root, &root.join("gone/Episode.mkv")).is_err());
         assert!(open_indexed_for_playback(&root.join("offline"), &leaf).is_err());
@@ -1387,7 +1371,7 @@ mod tests {
         let root = temp.path().canonicalize().unwrap();
         let path = root.join("x.mp4");
         std::fs::write(&path, b"video").unwrap();
-        let (_, version) = open_indexed(&root, &path).unwrap();
+        let (_, version) = crate::media_stream::open_indexed(&root, &path).unwrap();
         (
             LeaseBook::new(),
             Instant::now(),
@@ -1428,9 +1412,9 @@ mod tests {
         };
         let selected = settings.root_for_path(&extra_file).unwrap();
         assert_eq!(selected, extra);
-        assert!(open_indexed(&selected, &extra_file).is_ok());
+        assert!(crate::media_stream::open_indexed(&selected, &extra_file).is_ok());
         // A lease for the extra library can never be redirected into primary.
-        assert!(open_indexed(&selected, &primary_file).is_err());
+        assert!(crate::media_stream::open_indexed(&selected, &primary_file).is_err());
     }
     fn ctrl(l: &Lease) -> PlaybackControl {
         PlaybackControl {

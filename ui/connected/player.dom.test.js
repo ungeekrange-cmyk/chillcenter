@@ -43,19 +43,25 @@ test('controls hide after 2.5 seconds of playing inactivity and pointer brings t
  h.get('player-panel').events.pointermove();assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
  await h.advance(2500);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),true);
 });
-test('pause, buffering, loading, ended, keyboard focus and menu hover pin native-overlay controls',async()=>{
+test('pause, buffering, loading, ended, keyboard focus and an active select pin native-overlay controls',async()=>{
  for(const native of [{paused:true},{buffering:true},{loaded:false},{ended:true},{error:'failed'}]){
   const h=harness(null);playing(h,native);await h.advance(5000);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
  }
- for(const source of ['focus','hover']){
+ for(const source of ['focus','select']){
   const h=harness(null);playing(h);
   if(source==='focus'){h.sandbox.document.activeElement={closest:()=>h.get('player-overlay')};vm.runInContext('playerKeyboardFocus=true;',h.sandbox);}
-  else h.get('player-overlay').events.pointerenter();
+  else h.sandbox.document.activeElement={tagName:'SELECT',closest:()=>h.get('player-overlay')};
   await h.advance(5000);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
   if(source==='focus'){h.sandbox.document.activeElement=null;h.get('player-panel').events.focusout();}
-  else h.get('player-overlay').events.pointerleave();
+  else {h.sandbox.document.activeElement=null;h.get('player-panel').events.focusout();}
   await h.advance(2500);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),true);
  }
+});
+test('stationary hover and a mouse-focused button fade after inactivity, while movement reveals controls',async()=>{
+ const h=harness(null);playing(h);
+ h.get('player-overlay').events.pointerenter();h.sandbox.document.activeElement={tagName:'BUTTON',closest:()=>h.get('player-overlay')};
+ await h.advance(2500);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),true);
+ h.get('player-panel').events.pointermove();assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
 });
 test('native fullscreen state drives viewport class and button accessibility',()=>{
  const h=harness(null);playing(h,{fullscreen:true});vm.runInContext('syncPlayerFullscreen();',h.sandbox);

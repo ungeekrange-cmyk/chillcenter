@@ -33,4 +33,8 @@ Configuration `library.json` enrichie : un futur rollback vers un ancien serveur
 
 ## Remise
 
+Premières [revues681afad CHANGES_REQUESTED](../reviews/configuration-681afad-initial.md) conservées : secours TMDB après suggestions non exactes, survol stationnaire et course parent/leaf. Tous corrigés dans la révision suivante, tests de leurs mécanismes ajoutés. Suites intégrées suivantes :82catalogue/41client/74domaine/136serveur PASS ; nouvelle source à figer/revoir, aucun681afad installé surPi. Les artefacts initiaux sont conservés mais pas ceux à utiliser après révision.
+
+[Audit RAM/stockage en lecture seule](../performance/RESOURCE-AUDIT-20261016.md) : mesures réelles, duplications d'images et copies de snapshots identifiées ; aucune suppression/compaction ou réduction du tampon. Les optimisations proposées ne sont pas présentées comme implémentées ou comme un gain mesuré.
+
 En préparation : source figée, revue distincte, scan de secrets du delta, bundle Mac séparé, binaire ARM64 serveur seul, opérateur sauvegarde/bascule revu et vérification post-bascule distincte. Ne pas utiliser le numéro0.5.1/build6 seul pour identifier un bundle ; nom de fichier et hash exacts gouvernent la remise. Les validations humaines Tauri et de débit réel Pi/Wi-Fi/NAS sont distinctes des tests simulés et ne seront pas déduites de leur succès.

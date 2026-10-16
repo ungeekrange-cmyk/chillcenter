@@ -227,7 +227,32 @@ impl FileVersion {
 
 /// No canonicalize/check-then-open race: every component is opened relative to
 /// its already-open parent with O_NOFOLLOW, including the configured root.
+pub(crate) enum IndexedOpenResult {
+    Opened(File, FileVersion),
+    /// Only returned when the root and every parent descriptor were already
+    /// opened, and opening the final non-symlink leaf returned ENOENT.
+    MissingLeaf,
+}
+
 pub(crate) fn open_indexed(root: &FsPath, path: &FsPath) -> io::Result<(File, FileVersion)> {
+    match open_indexed_observed(root, path)? {
+        IndexedOpenResult::Opened(file, version) => Ok((file, version)),
+        IndexedOpenResult::MissingLeaf => Err(io::ErrorKind::NotFound.into()),
+    }
+}
+
+/// Descriptor-relative variant used by playback acquisition.  It deliberately
+/// classifies ENOENT only at the final `openat`: an unavailable root or a
+/// vanished intermediate directory remains a transient I/O failure.
+pub(crate) fn open_indexed_observed(root: &FsPath, path: &FsPath) -> io::Result<IndexedOpenResult> {
+    open_indexed_observed_after_parent(root, path, || {})
+}
+
+fn open_indexed_observed_after_parent(
+    root: &FsPath,
+    path: &FsPath,
+    after_parent_open: impl FnOnce(),
+) -> io::Result<IndexedOpenResult> {
     if !root.is_absolute()
         || root == FsPath::new("/")
         || !path.is_absolute()
@@ -255,16 +280,26 @@ pub(crate) fn open_indexed(root: &FsPath, path: &FsPath) -> io::Result<(File, Fi
         }
     }
     let components: Vec<_> = relative.components().collect();
+    let mut after_parent_open = Some(after_parent_open);
     for (i, c) in components.iter().enumerate() {
         let Component::Normal(name) = c else {
             return Err(io::ErrorKind::PermissionDenied.into());
         };
-        let file = open_child(&directory, name, i + 1 < components.len())?;
         if i + 1 == components.len() {
+            // The parent descriptor is live and pinned at this instant.  This
+            // is the sole place where NotFound is an actionable vanished leaf.
+            after_parent_open.take().unwrap()();
+            let file = match open_child(&directory, name, false) {
+                Ok(file) => file,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    return Ok(IndexedOpenResult::MissingLeaf);
+                }
+                Err(error) => return Err(error),
+            };
             let version = FileVersion::from_metadata(&file.metadata()?)?;
-            return Ok((file, version));
+            return Ok(IndexedOpenResult::Opened(file, version));
         }
-        directory = file;
+        directory = open_child(&directory, name, true)?;
     }
     Err(io::ErrorKind::PermissionDenied.into())
 }
@@ -649,6 +684,31 @@ mod tests {
         // SAFETY: a NUL-terminated, fresh fixture path; no production filesystem.
         assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
         assert!(open_indexed(&root, &root.join("pipe.mp4")).is_err());
+    }
+    #[test]
+    fn descriptor_observation_marks_only_a_leaf_removed_after_its_parent_opens() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let parent = root.join("series");
+        std::fs::create_dir(&parent).unwrap();
+        let leaf = parent.join("episode.mkv");
+        std::fs::write(&leaf, b"fixture").unwrap();
+        // A missing intermediate directory is never an actionable media
+        // disappearance: the secure traversal could not pin its parent.
+        std::fs::remove_dir_all(&parent).unwrap();
+        assert!(open_indexed_observed(&root, &leaf).is_err());
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::write(&leaf, b"fixture").unwrap();
+        // The deterministic hook runs only after `series` has an open fd and
+        // immediately before the final openat.  This is the exact race that
+        // may safely become MissingLeaf.
+        assert!(matches!(
+            open_indexed_observed_after_parent(&root, &leaf, || {
+                std::fs::remove_file(&leaf).unwrap();
+            })
+            .unwrap(),
+            IndexedOpenResult::MissingLeaf
+        ));
     }
     #[test]
     fn subtitle_index_is_adjacent_bounded_and_never_follows_links() {

@@ -10,7 +10,11 @@ let playerStartScroll=null;
 const playerIdleDelay=2500;
 function playerControlsPinned(){
   const n=playerState.native;
-  return playerState.stage!=="player"||!n?.loaded||n.paused||n.buffering||n.ended||Boolean(n.error)||playerHover||playerKeyboardFocus&&Boolean(document.activeElement?.closest?.("#player-overlay, .player-heading"));
+  const focused=document.activeElement;
+  // Hover is only activity: a stationary pointer over a control must still
+  // fade the chrome. Keyboard focus and an open/native select remain pinned
+  // so keyboard and menu interaction stay usable.
+  return playerState.stage!=="player"||!n?.loaded||n.paused||n.buffering||n.ended||Boolean(n.error)||focused?.tagName==="SELECT"||playerKeyboardFocus&&Boolean(focused?.closest?.("#player-overlay, .player-heading"));
 }
 function updatePlayerControls(){
   clearTimeout(playerIdleTimer);playerIdleTimer=null;
@@ -218,13 +222,13 @@ $("player-next-thumb").onclick=()=>{if($("player-next-thumb").getAttribute("aria
 $("transfer-confirm").onclick=()=>playerCall({action:"confirm_transfer"});$("transfer-refuse").onclick=()=>playerCall({action:"refuse_transfer"});
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&(nextDeadline!==null||nextTimer!==null)&&!nextLaunching)cancelNext();});
 $("player-pause").onclick=async()=>{
-  const prior=playerState,paused=Boolean(prior.native?.paused),action=paused?"resume":"pause";
+  const prior=playerState,paused=Boolean(prior.native?.paused),action=paused?"resume":"pause",epoch=playerNavigationEpoch,scope=playbackScope();
   // Optimistically switch the glyph.  Resume keeps the last server snapshot's
   // position while the existing decoder/cache is unpaused; an error restores
   // that snapshot rather than briefly presenting 00:00.
   playerState={...prior,native:{...prior.native,paused:!paused,resuming:true}};renderPlayer();
   const result=await playerCall({action});
-  if(!result){playerState=prior;renderPlayer();}
+  if(!result&&epoch===playerNavigationEpoch&&scope===playbackScope()){playerState=prior;renderPlayer();}
 };
 $("player-back").onclick=()=>playerCall({action:"jump",seconds:-10});$("player-forward").onclick=()=>playerCall({action:"jump",seconds:30});
 $("player-speed").onchange=()=>playerCall({action:"speed",speed:Number($("player-speed").value)});
