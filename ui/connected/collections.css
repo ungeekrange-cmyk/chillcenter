@@ -19,7 +19,19 @@
 #collection-members{position:relative;display:block;margin-top:20px}
 .collection-media-card .member-title{font-size:14px;line-height:1.4;padding:0;border:0;background:transparent;color:var(--text);text-align:left}
 .collection-media-card .member-copy{min-width:0}.collection-media-card .info{height:104px;overflow:hidden}
-.series-members{height:auto!important}.series-season{margin:16px 0;display:flex;flex-wrap:wrap;gap:18px}.series-season>summary,.series-season>.actions{flex-basis:100%}.series-season:not([open])>:not(summary){display:none}.series-season>.collection-media-card{width:200px}
+.series-members{height:auto!important}
+.series-season{margin:16px 0;display:block}
+.series-season>summary{cursor:pointer}
+.series-season:not([open])>:not(summary){display:none}
+.series-episodes{margin-top:18px;gap:18px}
+.series-overview{display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px;align-items:start;margin-bottom:28px}
+.series-overview>.series-poster{width:100%;height:auto;aspect-ratio:2/3}
+.series-overview-copy{min-width:0}
+.series-overview-copy>p{line-height:1.7;margin:0 0 16px}
+.series-summary-counts{color:var(--muted)}
+.series-tools{margin-top:32px;padding-top:24px;border-top:1px solid var(--line)}
+@media(max-width:1000px){.series-overview{grid-template-columns:160px minmax(0,1fr);gap:20px}}
+@media(max-width:600px){.series-overview{grid-template-columns:110px minmax(0,1fr);gap:16px}}
 #picker-form input{flex:1;max-width:none}#picker-form select{max-width:190px}
 .picker-toolbar{display:flex;gap:12px;align-items:center;margin:14px 0}.picker-toolbar p{margin-right:auto}
 #picker-items{display:block;height:calc(100vh - 350px);min-height:250px;overflow:auto;position:relative;scrollbar-gutter:stable}

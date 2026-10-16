@@ -1,6 +1,8 @@
 "use strict";
 let playerState={stage:"closed"},playerBusy=false,playerTimer=null,playerResize=null;
 let nextKey=null,nextDeadline=null,nextTimer=null,nextCancelled=false;
+let playerNavigationEpoch=0,completedPlayback=null;
+const playbackScope=()=>typeof state==="undefined"?null:state.server_id+":"+state.profile_id;
 let playerIdleTimer=null,playerIdleAt=Date.now(),playerHover=false,playerFullscreenRequest=null,playerAutoFullscreen=false;
 const playerIdleDelay=2500;
 function playerControlsPinned(){
@@ -57,6 +59,7 @@ async function playerCall(command,quiet=false){
   finally{playerBusy=false;}
 }
 window.chillPlay=async (media_id,context=null)=>{
+  ++playerNavigationEpoch;completedPlayback=null;
   clearNext();
   // Snapshot this Mac's preference for a new manual launch, not each status tick
   // or automatic episode. A confirmed transfer uses the same pending intent.
@@ -79,8 +82,35 @@ function applyPlayerPresentation(){
 function cancelNext(){clearTimeout(nextTimer);nextTimer=null;nextDeadline=null;nextCancelled=true;$("player-next-count").textContent="Lancement automatique annulé.";}
 async function cancelNextAndClose(){
   cancelNext();
-  await stopPlayerForNavigation();
-  if(typeof loadPage==="function")await loadPage();
+  await returnFromPlayback();
+}
+async function returnFromPlayback(completion=null){
+  const playback={media_id:playerState.media_id,context:playerState.context},scope=playbackScope();
+  const epoch=++playerNavigationEpoch,current=()=>epoch===playerNavigationEpoch&&scope===playbackScope();
+  if(!await stopPlayerForNavigation(current)||!current())return;
+  // The originating panel remains visible while its local mirror catches up.
+  // A newer launch/navigation/profile must never be replaced by this delayed return.
+  if(completion)await completion;
+  else if(typeof syncAfterMutation==="function")await syncAfterMutation();
+  if(!current())return;
+  if(window.catalogReturnFromPlayback)await window.catalogReturnFromPlayback(playback,current);
+  else if(typeof loadPage==="function")await loadPage();
+}
+function observePlaybackCompletion(){
+  const next=playerState.next;
+  // A resolved next object (even with media:null) confirms EOF reporting and lease
+  // release succeeded. A missing object or decoder error is not a terminal list.
+  if(!playerState.native?.ended||playerState.native.error||!next)return;
+  const key=playerNavigationEpoch+":"+playerState.media_id;
+  if(completedPlayback?.key===key)return;
+  const scope=playbackScope(),epoch=playerNavigationEpoch;
+  const completion={key,promise:null};completedPlayback=completion;
+  // renderPlayer runs inside playerCall's lock; defer sync/stop until it is released.
+  setTimeout(()=>{
+    if(epoch!==playerNavigationEpoch||scope!==playbackScope()||completedPlayback!==completion)return;
+    completion.promise=typeof syncAfterMutation==="function"?Promise.resolve(syncAfterMutation()).catch(()=>{}):Promise.resolve();
+    if(!next.media)void returnFromPlayback(completion.promise);
+  },0);
 }
 async function launchNext(){
   if(playerBusy){nextTimer=setTimeout(launchNext,100);return;}
@@ -98,6 +128,7 @@ function countdownNext(){
   nextTimer=setTimeout(countdownNext,250);
 }
 function renderNext(){
+  observePlaybackCompletion();
   const next=playerState.next,media=next?.media;
   if(!playerState.native?.ended||playerState.native.error||!media){clearNext();return;}
   const key=playerState.media_id+":"+media.id;
@@ -160,12 +191,18 @@ $("player-audio").onchange=()=>playerCall({action:"audio",track_id:Number($("pla
 $("player-subtitle").onchange=()=>{const value=$("player-subtitle").value;playerCall(value.startsWith("sub-")?{action:"external_subtitle",id:value}:{action:"subtitle",track_id:value==="off"?null:Number(value)});};
 $("player-fullscreen").onclick=()=>togglePlayerFullscreen();
 if($("player-volume"))$("player-volume").onchange=()=>playerCall({action:"volume",volume:Number($("player-volume").value)});
-$("player-close").onclick=async()=>{if(await stopPlayerForNavigation())await loadPage();};
-async function stopPlayerForNavigation(){
+$("player-close").onclick=()=>returnFromPlayback();
+async function stopPlayerForNavigation(current=null){
+  if(!current){const epoch=++playerNavigationEpoch,scope=playbackScope();current=()=>epoch===playerNavigationEpoch&&scope===playbackScope();}
   playerAutoFullscreen=false;
+  while(playerBusy&&current())await new Promise(resolve=>setTimeout(resolve,50));
+  if(!current())return false;
   if(playerState.stage==="closed")return true;
-  if(document.body.classList.contains("player-fullscreen")){await togglePlayerFullscreen(false);if(document.body.classList.contains("player-fullscreen"))return false;}
+  if(document.body.classList.contains("player-fullscreen")){await togglePlayerFullscreen(false);if(!current()||document.body.classList.contains("player-fullscreen"))return false;}
+  while(playerBusy&&current())await new Promise(resolve=>setTimeout(resolve,50));
+  if(!current())return false;
   if(!await playerCall({action:"stop"}))return false;
+  if(!current())return false;
   hidePlayer();return true;
 }
 const reposition=()=>{clearTimeout(playerResize);playerResize=setTimeout(()=>{if(!$("player-panel").hidden&&playerState.stage==="player"){if(playerBusy){reposition();return;}playerCall({action:"mount",rect:videoRect()},true);}},80);};

@@ -90,3 +90,7 @@ LOW ouverts, propriétaire /root : UISEC-002 (fsync du parent des réglages clie
 Créer `BUG-NNNN-titre.md` : date, environnement/matériel/réseau, branche/commit exacts, attendu/réel, reproduction, hypothèses numérotées avec une seule expérience falsifiable à la fois, résultat, cause confirmée ou inconnue, correction et commit, tests de régression, rollback, exigences/ADR concernés. Limite : cinq hypothèses non confirmées puis retour à l'utilisateur. Ne pas appliquer une correction spéculative à une dépendance externe indisponible.
 
 Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. « Non reproduit » n'est pas « corrigé ». Les preuves originales ne sont pas effacées ; une correction ajoute un lien. Ajouter ici le résumé consultable, sans enregistrer secrets ou contenu des profils.
+# Correctifs série / fin de lecture — 16 octobre 2026
+
+[BUG0085](BUG-0085-series-season-card-layout.md) : saison non vue ouverte, grille et fiche série réorganisée, corrigé localement. [BUG0086](BUG-0086-terminal-playback-return.md) : fin du dernier élément et conservation du contexte de lecture, corrigé localement. [BUG0087](BUG-0087-watched-eof-local-refresh.md) : rafraîchissement personnel à EOF corrigé localement, règle des vidéos courtes en attente de choix humain. Preuves synthétiques ciblées, pas de nouveau test vidéo réel ou déploiement Pi/web.
+

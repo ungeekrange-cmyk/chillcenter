@@ -21,3 +21,15 @@ test('detail rating is five immediate stars without a scope selector',async()=>{
  await stars.children[3].onclick();
  assert.ok(f.calls.some(c=>c.action==='group_rating'&&c.rating===4&&c.scope==='video'));
 });
+for(const kind of ['series','saga','playlist'])test('play from a member detail preserves its '+kind+' ordering context',async()=>{
+ const f=fixture(c=>c.action==='media_detail'?{media:media('B'),revision:2}:{items:[]});prepare(f);
+ const played=[];f.sandbox.window.chillPlay=(id,context)=>played.push(JSON.parse(JSON.stringify({id,context})));
+ await f.execute('shellSection="collection";collectionKind='+JSON.stringify(kind)+';collectionView={id:"origin",media_ids:["B"]};openMedia("B");');
+ await f.get('detail-play').onclick();assert.deepEqual(played,[{id:'B',context:{kind,id:'origin'}}]);
+});
+test('a film opened from the catalogue never inherits a stale collection context',async()=>{
+ const f=fixture(c=>c.action==='media_detail'?{media:media('B'),revision:2}:{items:[]});prepare(f);
+ const played=[];f.sandbox.window.chillPlay=(id,context)=>played.push({id,context});
+ await f.execute('shellSection="catalog";collectionKind="saga";collectionView={id:"stale",media_ids:["B"]};openMedia("B");');
+ await f.get('detail-play').onclick();assert.deepEqual(played,[{id:'B',context:null}]);
+});
