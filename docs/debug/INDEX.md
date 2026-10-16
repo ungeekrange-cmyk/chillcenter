@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+[BUG0073](BUG-0073-event-animation-pause.md), FIXED/VERIFIED_LOCAL v0.5 : spécificité CSS de pause des décorations corrigée, RED/GREEN dans le vrai DOM connecté synthétique ; pas une preuve de lecture native. Voir [release v0.5](../releases/REL-V0.5.md) pour la source1e16ee2, le bundle et les limites de validation.
+
 [BUG0071](BUG-0071-legacy-series-api-compatibility.md) FIXED/VERIFIED : compatibilité des titres historiques, collisions titre/clé et sélecteur explicite ; sourcef3fdac5 livrée serveur seul, web intact. [BUG0072](BUG-0072-deployment-session-observation.md) : surveillance de commande distante et redémarrage prématuré pendant sauvegarde, incident terminé, état final vérifié indépendamment ; preuve du code retour opérateur indisponible conservée. [Release courante](../releases/REL-SERVER-ONLY-F3FDAC5.md) / [vérification APPROVED_SCOPED](../releases/REL-SERVER-ONLY-F3FDAC5-verification.md). Les mentionsffcc/non-déployé ci-dessous sont les checkpoints antérieurs.
 
 [BUG0068](BUG-0068-unattributed-pi-binary.md), attribution RESOLVED le15octobre21:11Z : chantier web confirmé, Pi ffcc6349 actif ; l'ancienne livraison11aa reste non déployée. [Compatibilité Mac/web](../implementation/MAC-WEB-COMPATIBILITY-20261015.md) partielle sur le Pi, intégration locale non déployée. [BUG0069](BUG-0069-web-bridge-catalog-sync.md) : adaptateur web actualisé pour l'interface commune et invalidation des affiches tardives.

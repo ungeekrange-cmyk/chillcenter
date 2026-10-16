@@ -1,5 +1,17 @@
 # Chill Center v0.5 — Mac Apple Silicon
 
+## État courant — livré localement, lancé, tag figé
+
+Source exacte **`1e16ee2058269b04e3bad7f57c2975eb07d77011`**, tag annoté local **`v0.5`** dans les deux dépôts, application **0.5.0/build5**. [Revue indépendante APPROVED_SCOPED](../reviews/v0.5-code-1e16ee2.md), rapport initial et correction d'attribution conservés.
+
+Bundle à utiliser : `/Users/ghillaumesoubigou/Documents/Dev/Perso/ChillCenter/artifacts/macos/Chill Center-v0.5.app` ; exécutable SHA256 **`169ac5126ea4369174db35ad00f12ea5029bf51e686c0cf4ae2283c5fd604a84`**. Environ81Mio, arm64,48dylibs relocalisées, signature ad hoc profonde et chargement libmpvAPI2.5 **PASS**. Non notarisé Apple, comme les versions locales antérieures.
+
+Construction réussie avec `CARGO_HOME=/private/tmp/video-catalog-cargo CARGO_TARGET_DIR=/private/tmp/chillcenter-series-target.ZXNxst CARGO_NET_OFFLINE=true bash scripts/package-macos.sh '…/Chill Center-v0.5.0-1e16ee2.app'`. Deux warnings morts de QA natif préexistants (`nonblank`/`glReadPixels`), pas d'erreur. Publication par copie en staging puis `renamex_np(RENAME_EXCL)` via le helper existant ; aucune fusion/écrasement d'un ancien bundle.
+
+Lancement `open -n` réussi ; processus **33148**, chemin exact du bundle utilisateur, encore actif à09:59:17UTC le16octobre2026. [Vérification indépendante post-publication APPROVED_SCOPED](REL-V0.5-verification.md) : source/tag, manifestes de copie identiques,0.5.0/build5/arm64, signature profonde,48dylibs/libmpvAPI2.5, PID et fichier exécutable via lsof, repli f3 préservé. Cette preuve confirme le packaging et le démarrage, **pas** une validation visuelle native, une connexion réelle ou une lecture. Aucun rollback recommandé.
+
+Sources/prompts/preuves consultables sur branche locale canonique `codex/release-v0.5`, créée par fetch local sans changer la branche active `codex/player-streaming`. `.claude/` et ses worktrees préservés ; aucun push/GitHub release/déploiement Pi/web. Le tag pointe sur la source bâtie, pas sur les commits documentaires ultérieurs. Le bundle cef6 précédent est un candidat non livré et ne doit pas être utilisé.
+
 16 octobre 2026. Demande/approbation : « validé. Lance la version et on la fige en v0.5 ». Périmètre : filtres genres/années et ambiances proposés dans CC-CONCEPT-20261016 révision5. Version application **0.5.0**, API **2026-10-14** inchangée. Statut initial : candidat intégré, revue indépendante et bundle en cours ; aucune livraison déclarée avant preuves finales ci-dessous.
 
 ## Inclus / exclus
@@ -22,6 +34,6 @@
 
 Delta de revue avant gel : la paire de tokens génériques accent/bouton de la barre Noël clair est rendue cohérente (`--button:#701019`). La première attribution à l'avatar était erronée : ce dernier est dans le panneau droit et n'hérite pas de ces tokens locaux ; aucun défaut visible de l'avatar n'est revendiqué. Tests de contraste calculé ajoutés pour la paire locale et l'avatar réel, sur les quatre combinaisons. Le bundle candidat cef6 reste non livré, remplacé par un build au nouveau SHA.
 
-Source finale, revue indépendante, chemin du bundle, versions/signature/hash, tag local et lancement à compléter après exécution réelle. Ne pas remplacer un ancien bundle ni utiliser la maquette comme application. Repli : relancer `Chill Center-f3fdac5.app`, conservé ; aucune migration de données ou changement serveur dans ce lot.
+Le checkpoint initial ci-dessus est remplacé par l'état courant en tête : source finale, revue, chemin, versions/signature/hash, tag et lancement sont exécutés. Repli : quitter uniquement la nouvelle application puis relancer `Chill Center-f3fdac5.app`, conservé ; aucune migration de données ou changement serveur dans ce lot. Aucun retour automatique à effectuer sur le Pi.
 
 Après lancement, restent à vérifier humainement dans Tauri : apparence/filtres sur la bibliothèque du foyer, rendu et fluidité du décor sur Mac, consommation réelle ; pas de nouveau benchmark Pi/NAS nécessaire pour ce delta client seul. Le fonctionnement physique Pi/NAS/Wi-Fi et les réserves de la release précédente ne sont pas requalifiés par ces tests locaux.
