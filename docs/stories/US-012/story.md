@@ -63,6 +63,8 @@ Then son identité et historique sont réutilisés si sa référence existait en
 
 ## 5. Contraintes fonctionnelles de qualité
 
+Amendement16octobre2026, **US-012-AC-05** : une tentative de lancement détectant l'absence certaine du fichier final marque cette seule référence indisponible sans scan, conserve ses UUID/historiques, ferme proprement l'état de lancement et garde la position de navigation. La fiche désactive Lire et donne accès aux outils pour retrouver/gérer la référence. Montage/parent/permissions en panne ne constituent pas une absence certaine ; aucune purge ou indisponibilité globale inventée. BUG0096.
+
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.
 
 ## 6. Traçabilité et revue

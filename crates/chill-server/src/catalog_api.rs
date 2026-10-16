@@ -1138,7 +1138,7 @@ async fn scan_status(State(state): State<AppState>) -> Result<Json<ScanStatus>, 
     ))
 }
 async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let root = {
+    let roots = {
         // Same lock order as library changes: library then scan; root cannot change mid-scan.
         let settings = state
             .library
@@ -1151,15 +1151,15 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
         if status.running {
             return Err(ApiError(StatusCode::CONFLICT, "SCAN_ACTIVE"));
         }
-        let root = settings
-            .video_root
-            .clone()
-            .ok_or(ApiError(StatusCode::BAD_REQUEST, "ROOT_REQUIRED"))?;
+        let roots = settings.roots();
+        if roots.is_empty() {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "ROOT_REQUIRED"));
+        }
         *status = ScanStatus {
             running: true,
             ..ScanStatus::default()
         };
-        root
+        (settings.clone(), roots)
     };
     tokio::spawn(async move {
         struct ScanGuard(AppState);
@@ -1173,27 +1173,40 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
         let guard = ScanGuard(state.clone());
         let result = async {
             let exe = std::env::current_exe().map_err(|_| ())?;
-            let child = tokio::process::Command::new(exe)
-                .arg("--scan-worker")
-                .arg(root)
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .stdout(Stdio::piped())
-                .kill_on_drop(true)
-                .spawn()
+            let (settings, roots) = roots;
+            let mut media = Vec::new();
+            let mut serialized_bytes = 0usize;
+            let deadline = Instant::now() + Duration::from_secs(300);
+            // Each root is scanned independently, then one SQLite snapshot is
+            // published only after every root completed successfully.
+            for root in roots {
+                let child = tokio::process::Command::new(&exe)
+                    .arg("--scan-worker")
+                    .arg(&root)
+                    .stdin(Stdio::null())
+                    .stderr(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .kill_on_drop(true)
+                    .spawn()
+                    .map_err(|_| ())?;
+                let (exit, bytes) = chill_catalog::process::capture(
+                    child,
+                    chill_catalog::scanner::MAX_SCAN_BYTES,
+                    deadline
+                        .checked_duration_since(Instant::now())
+                        .filter(|remaining| !remaining.is_zero())
+                        .ok_or(())?,
+                )
+                .await
                 .map_err(|_| ())?;
-            let (exit, bytes) = chill_catalog::process::capture(
-                child,
-                chill_catalog::scanner::MAX_SCAN_BYTES,
-                Duration::from_secs(300),
-            )
-            .await
-            .map_err(|_| ())?;
-            if !exit.success() {
-                return Err(());
+                if !exit.success() {
+                    return Err(());
+                }
+                let found: Vec<chill_catalog::model::Media> =
+                    serde_json::from_slice(&bytes).map_err(|_| ())?;
+                append_scanned_root(&settings, &root, found, &mut media, &mut serialized_bytes)?;
             }
-            let media: Vec<chill_catalog::model::Media> =
-                serde_json::from_slice(&bytes).map_err(|_| ())?;
+            media.sort_by(|a, b| a.id.cmp(&b.id));
             let count = media.len();
             // Catalogue merge/serialization does not occupy the interactive actor.
             // WAL readers remain usable; only the final atomic write owns SQLite's
@@ -1213,4 +1226,135 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
         }
     });
     Ok(Json(json!({"running":true})))
+}
+
+/// Keep a physical absolute path server-internal while giving an additional
+/// root a stable, collision-free catalogue identity.
+fn namespace_scan_media(
+    settings: &crate::config::LibrarySettings,
+    root: &std::path::Path,
+    media: &mut [chill_catalog::model::Media],
+) -> Result<(), ()> {
+    for item in media {
+        item.id = settings
+            .indexed_id(root, std::path::Path::new(&item.path))
+            .map_err(|_| ())?;
+    }
+    Ok(())
+}
+
+/// Worker output has a per-root limit.  Keep the assembled snapshot within the
+/// same global budget, otherwise sixteen individually valid roots could exceed
+/// the Pi's bounded scan memory by a factor of sixteen.
+fn append_scanned_root(
+    settings: &crate::config::LibrarySettings,
+    root: &std::path::Path,
+    mut found: Vec<chill_catalog::model::Media>,
+    all: &mut Vec<chill_catalog::model::Media>,
+    serialized_bytes: &mut usize,
+) -> Result<(), ()> {
+    namespace_scan_media(settings, root, &mut found)?;
+    if all.len().saturating_add(found.len()) > 200_000 {
+        return Err(());
+    }
+    for item in &found {
+        let bytes = serde_json::to_vec(item)
+            .map_err(|_| ())?
+            .len()
+            .saturating_add(1);
+        *serialized_bytes = serialized_bytes.checked_add(bytes).ok_or(())?;
+        if *serialized_bytes > chill_catalog::scanner::MAX_SCAN_BYTES - 1024 {
+            return Err(());
+        }
+    }
+    all.extend(found);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::LibrarySettings;
+    use std::{fs, path::PathBuf};
+
+    #[test]
+    fn two_library_roots_keep_same_filename_as_distinct_catalogue_items() {
+        let temp = tempfile::tempdir().unwrap();
+        let primary = temp.path().join("films");
+        let extra = temp.path().join("series");
+        fs::create_dir(&primary).unwrap();
+        fs::create_dir(&extra).unwrap();
+        let first = primary.join("same.mp4");
+        let second = extra.join("same.mp4");
+        fs::write(&first, b"first content").unwrap();
+        fs::write(&second, b"different content").unwrap();
+        let settings = LibrarySettings {
+            video_root: Some(primary.clone()),
+            additional_video_roots: vec![extra.clone()],
+            revision: 0,
+        };
+        let mut primary_media = vec![chill_catalog::scanner::parse_file(&primary, &first)];
+        let mut extra_media = vec![chill_catalog::scanner::parse_file(&extra, &second)];
+        namespace_scan_media(&settings, &primary, &mut primary_media).unwrap();
+        namespace_scan_media(&settings, &extra, &mut extra_media).unwrap();
+        assert_eq!(primary_media[0].id, "same.mp4");
+        assert_ne!(primary_media[0].id, extra_media[0].id);
+        assert!(extra_media[0].id.starts_with(".chillcenter-locations/"));
+        assert_ne!(primary_media[0].path, extra_media[0].path);
+        assert_eq!(
+            settings.root_for_path(&PathBuf::from(&extra_media[0].path)),
+            Some(extra)
+        );
+    }
+
+    #[test]
+    fn aggregate_scan_budget_is_global_and_a_late_root_failure_cannot_publish() {
+        let root = std::path::Path::new("/library");
+        let settings = LibrarySettings {
+            video_root: Some(root.into()),
+            additional_video_roots: vec![],
+            revision: 0,
+        };
+        let item = chill_catalog::scanner::parse_file(root, &root.join("old.mp4"));
+        let mut candidate = Vec::new();
+        let mut bytes = 0;
+        append_scanned_root(&settings, root, vec![item], &mut candidate, &mut bytes).unwrap();
+        let assembled_before_late_root_error = candidate.clone();
+        let late_root: Result<Vec<chill_catalog::model::Media>, ()> = Err(());
+        assert!(late_root.is_err());
+        // `start_scan` publishes only after this aggregation loop succeeds;
+        // therefore this assembled partial candidate never reaches SQLite.
+        assert_eq!(candidate, assembled_before_late_root_error);
+
+        let oversized = chill_catalog::model::Media {
+            id: "large.mp4".into(),
+            path: "/library/large.mp4".into(),
+            title: "large".into(),
+            category: "film".into(),
+            year: None,
+            series: None,
+            season: None,
+            episode: None,
+            genres: vec![],
+            overview: "x".repeat(chill_catalog::scanner::MAX_SCAN_BYTES),
+            poster: None,
+            poster_custom: false,
+            runtime_minutes: None,
+            cast: vec![],
+            directors: vec![],
+            series_overview: String::new(),
+            series_metadata: None,
+            series_manual: false,
+            rating: None,
+            saga: None,
+            watched: false,
+            available: true,
+            added_at: 0,
+            tmdb_id: None,
+        };
+        assert!(
+            append_scanned_root(&settings, root, vec![oversized], &mut candidate, &mut bytes)
+                .is_err()
+        );
+    }
 }

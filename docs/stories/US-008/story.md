@@ -63,6 +63,8 @@ Then cet épisode reste accessible, classé après les numéros connus et sans i
 
 ## 5. Contraintes fonctionnelles de qualité
 
+Amendement16octobre2026, **US-008-AC-05** : variantes d'une même source ne différant que par casse/accents/espaces réunies sans réécrire fichiers/UUID ; deux sources distinctes ou IDs TMDB différents restent séparés. Mise à jour automatique du cache dérivé une seule fois par version de règle, sélecteur historique ambigu toujours refusé. Voir ADR0023.
+
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.
 
 ## 6. Traçabilité et revue

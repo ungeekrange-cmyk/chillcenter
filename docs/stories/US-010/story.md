@@ -63,6 +63,8 @@ Then un message explique le problème et les informations précédentes ainsi qu
 
 ## 5. Contraintes fonctionnelles de qualité
 
+Amendement16octobre2026, **US-010-AC-05** : valider une proposition ferme immédiatement les choix, affiche « Association en cours avec XXX… » et un indicateur local ; succès seulement après réponse serveur, erreur explicitement non confirmée et ancienne réponse incapable de repeindre une nouvelle fiche. Reste de l'application utilisable. **AC-06** : recherche automatique avec nettoyage des suffixes de release et au plus un secours prudent après zéro résultat, sans réécriture d'une saisie manuelle ni acceptation d'un titre ambigu/mauvaise année. BUG0081/0094.
+
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.
 
 ## 6. Traçabilité et revue

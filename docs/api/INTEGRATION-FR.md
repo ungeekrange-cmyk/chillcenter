@@ -165,6 +165,14 @@ Un export est asynchrone, puis téléchargeable en ZIP lorsqu'il est prêt. Un i
 
 ## Compatibilité et limites
 
+### Ajouts compatibles du16octobre2026
+
+La base d'API reste **2026-10-14**, alias **v1** maintenu. Capacité additive `multi_library_locations` : `GET /admin/library` fournit, en plus de `video_root` et `revision`, `additional_video_roots`. `PUT /admin/library` accepte ce tableau facultatif ; omission ou `null` conserve les emplacements supplémentaires, `[]` les retire. Les anciens clients peuvent donc toujours modifier le répertoire principal sans effacer les autres. Au plus16 emplacements au total, absolus, distincts et sans chevauchement. Le serveur ne crée ni ne monte ces emplacements. Les contrôles de révision et refus pendant un scan restent identiques.
+
+Un scan traite tous les emplacements, séquentiellement, avec des budgets globaux de300s/64Mio de résultat/200000 médias. Aucun nouvel état n'est publié si une source échoue. Les UUID déjà connus du répertoire principal ne changent pas ; les répertoires supplémentaires ont un espace de noms d'index interne réservé, stable face à leur réordonnancement. Le client reçoit toujours des identifiants opaques et jamais un chemin de lecture arbitraire. Retirer un emplacement de la configuration ne supprime aucun fichier. Les archives anciennes du seul emplacement principal restent importables ; une archive contenant des identifiants multi-emplacements est refusée avec `IMPORT_MULTIPLE_LIBRARY_LOCATIONS_UNSUPPORTED` tant que sa correspondance explicite n'est pas définie.
+
+Au lancement, `503 MEDIA_FILE_MISSING` signifie que le serveur a confirmé l'absence du seul fichier final dans un dossier accessible, puis persisté cette entrée comme indisponible et publié sa révision dans les deltas. Aucun bail n'est accordé. Afficher le statut, fermer proprement l'état de lancement et proposer de retrouver/gérer la référence. Une erreur de montage, de dossier parent ou de permissions ne constitue pas cette preuve : elle reste `MEDIA_UNAVAILABLE` et ne déclasse pas arbitrairement les vidéos du catalogue. Les codes sont extensibles ; un ancien client continue de recevoir une erreur structurée sans modification du corps de succès.
+
 Le serveur ne promet pas un codec particulier dans MKV/MP4/AVI : le décodage et les pistes sont gérés par la machine cliente. Les sous-titres externes sont des ressources protégées par le bail, limitées à 16 Mio. Les affiches chargées sont JPEG/PNG/WebP, limitées à 8 Mio. Les appels JSON ordinaires sont limités à 1 Mio.
 
 Avant une mise à jour de client, lisez `GET /server` et n'activez une capacité que si elle est annoncée. Avant une intégration de production domestique, testez les erreurs Range, l'expiration du bail, la reprise après transfert, une modification concurrente, et une connexion TLS avec certificat renouvelé.

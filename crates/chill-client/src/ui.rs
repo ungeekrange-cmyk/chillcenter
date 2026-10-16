@@ -65,6 +65,9 @@ pub enum UiCommand {
     SyncCatalog,
     SaveLibrary {
         video_root: Option<String>,
+        /// `None` preserves additional locations for clients compiled before
+        /// multi-library support; an explicit list replaces them.
+        additional_video_roots: Option<Vec<String>>,
         expected_revision: u64,
     },
     SavePreferences {
@@ -298,7 +301,7 @@ impl From<ClientError> for UiError {
                 "Un scan est déjà en cours. Attendez sa fin avant de relancer ou de modifier le dossier."
             }
             "ROOT_REQUIRED" => {
-                "Configurez le dossier vidéo du serveur dans Administration avant de scanner."
+                "Configurez un emplacement vidéo du serveur dans Configuration › Bibliothèque avant de scanner."
             }
             "CONFIG_INVALID_OR_UNWRITABLE" => {
                 "Chemin invalide ou réglages non enregistrables. Vérifiez le chemin et les droits du serveur."
@@ -308,6 +311,12 @@ impl From<ClientError> for UiError {
                 "Ce profil a été supprimé. Rechargez et choisissez un profil existant."
             }
             "MEDIA_NOT_FOUND" => "Cet élément n'existe plus. Rechargez le catalogue.",
+            "MEDIA_FILE_MISSING" => {
+                "Fichier absent : la vidéo est marquée indisponible. Retrouvez-la dans Configuration › Bibliothèque, sans perdre ses historiques."
+            }
+            "IMPORT_MULTIPLE_LIBRARY_LOCATIONS_UNSUPPORTED" => {
+                "Cette archive contient plusieurs emplacements. Une correspondance explicite des emplacements est nécessaire ; aucun import n’a été appliqué."
+            }
             "BUSY" | "DATABASE_OFFLINE" => {
                 "Serveur occupé ou base indisponible. Réessayez dans quelques instants."
             }
@@ -364,6 +373,20 @@ fn invalid(message: &str) -> UiError {
         status: None,
         code: "CLIENT_INVALID".into(),
     }
+}
+
+fn library_update_body(
+    video_root: Option<String>,
+    additional_video_roots: Option<Vec<String>>,
+    expected_revision: u64,
+) -> Value {
+    let mut body = json!({"video_root":video_root,"expected_revision":expected_revision});
+    // Old servers reject unknown request fields: absence must stay absence,
+    // not an explicitly serialized null, until the user edits extra locations.
+    if let Some(roots) = additional_video_roots {
+        body["additional_video_roots"] = json!(roots);
+    }
+    body
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -2264,12 +2287,15 @@ impl UiClient {
             }
             UiCommand::SaveLibrary {
                 video_root,
+                additional_video_roots,
                 expected_revision,
             } => {
+                let body =
+                    library_update_body(video_root, additional_video_roots, expected_revision);
                 self.request(
                     HttpMethod::PUT,
                     "/api/v1/admin/library",
-                    Some(&json!({"video_root":video_root,"expected_revision":expected_revision})),
+                    Some(&body),
                     &[],
                     &[],
                 )?;
@@ -2518,6 +2544,17 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_library_update_does_not_send_the_new_optional_field() {
+        assert_eq!(
+            super::library_update_body(Some("/fixture/films".into()), None, 2),
+            serde_json::json!({"video_root":"/fixture/films","expected_revision":2})
+        );
+        assert_eq!(
+            super::library_update_body(None, Some(vec![]), 3),
+            serde_json::json!({"video_root":null,"additional_video_roots":[],"expected_revision":3})
+        );
+    }
     #[test]
     fn opaque_series_keys_are_explicit_on_the_wire() {
         assert_eq!(
@@ -2939,9 +2976,14 @@ mod tests {
     fn safe_api_codes_have_operation_specific_recovery() {
         for (code, text) in [
             ("SCAN_ACTIVE", "scan"),
-            ("ROOT_REQUIRED", "dossier"),
+            ("ROOT_REQUIRED", "Configuration"),
             ("PROFILE_CONFLICT", "concurrente"),
             ("MEDIA_NOT_FOUND", "élément"),
+            ("MEDIA_FILE_MISSING", "indisponible"),
+            (
+                "IMPORT_MULTIPLE_LIBRARY_LOCATIONS_UNSUPPORTED",
+                "aucun import",
+            ),
             ("DATABASE_OFFLINE", "base"),
             ("BUSY", "occupé"),
         ] {

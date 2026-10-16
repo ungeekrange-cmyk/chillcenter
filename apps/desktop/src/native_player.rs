@@ -493,6 +493,11 @@ impl SurfacePlayer {
         self.notice = None;
         self.loaded = false;
         self.load_phase = LoadPhase::Loading;
+        // libmpv presents asynchronously.  Do not leave the previous movie in
+        // the AppKit drawable while the next grant is being acquired/decoded.
+        // This is a real OpenGL clear + flush, not a CSS mask that could hide
+        // the new native frame as well.
+        self.present_black();
         self.pending = Some(PendingLoad {
             resume_seconds,
             audio_language,
@@ -594,6 +599,8 @@ impl SurfacePlayer {
         self.view.setHidden(false);
         if self.loaded {
             self.render_frame()?;
+        } else {
+            self.present_black();
         }
         Ok(())
     }
@@ -615,7 +622,7 @@ impl SurfacePlayer {
     }
     fn render_tick(&mut self) -> Result<(), NativePlayerError> {
         self.expire_if_needed()?;
-        if !self.paused && !self.ended && !self.view.isHidden() {
+        if should_render_frame(self.loaded, self.paused, self.ended, self.view.isHidden()) {
             self.render_frame()?;
         }
         Ok(())
@@ -643,6 +650,16 @@ impl SurfacePlayer {
         }
         self.context.flushBuffer();
         Ok(())
+    }
+    fn present_black(&self) {
+        self.context.makeCurrentContext();
+        unsafe {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glViewport(0, 0, self.drawable_size.0, self.drawable_size.1);
+            glClearColor(0., 0., 0., 1.);
+            glClear(0x4000);
+        }
+        self.context.flushBuffer();
     }
     fn poll_and_render(&mut self) -> Result<(), NativePlayerError> {
         self.expire_if_needed()?;
@@ -807,6 +824,13 @@ fn framebuffer_size(width: i32, height: i32) -> (i32, i32) {
     )
 }
 
+/// A new load cannot repaint until libmpv has emitted `FileLoaded` and the
+/// generation's pending preferences have been applied.  This keeps a cleared
+/// drawable black instead of resurrecting an old frame during the hand-off.
+fn should_render_frame(loaded: bool, paused: bool, ended: bool, hidden: bool) -> bool {
+    loaded && !paused && !ended && !hidden
+}
+
 #[cfg(test)]
 mod deadline_clock_tests {
     use super::*;
@@ -815,6 +839,15 @@ mod deadline_clock_tests {
         assert_eq!(framebuffer_size(3840, 2160), (3840, 2160));
         assert_eq!(framebuffer_size(15360, 8640), (8192, 4608));
         assert_eq!(framebuffer_size(8640, 15360), (4608, 8192));
+    }
+
+    #[test]
+    fn framebuffer_stays_black_until_the_new_generation_is_loaded() {
+        assert!(!should_render_frame(false, false, false, false));
+        assert!(!should_render_frame(true, true, false, false));
+        assert!(!should_render_frame(true, false, true, false));
+        assert!(!should_render_frame(true, false, false, true));
+        assert!(should_render_frame(true, false, false, false));
     }
     #[test]
     fn wall_clock_expiry_covers_a_monotonic_clock_that_did_not_advance_during_suspend() {

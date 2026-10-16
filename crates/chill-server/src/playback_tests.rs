@@ -26,6 +26,7 @@ struct Fixture {
     profiles: Vec<String>,
     media: Vec<String>,
     root: PathBuf,
+    database: DatabaseActor,
     bytes: Vec<u8>,
     playback: crate::playback::PlaybackService,
 }
@@ -62,6 +63,7 @@ async fn fixture() -> Fixture {
         .await
         .unwrap();
     let playback = crate::playback::PlaybackService::default();
+    let database = db.clone();
     let state = AppState {
         tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
         playback: playback.clone(),
@@ -77,9 +79,39 @@ async fn fixture() -> Fixture {
         profiles,
         media,
         root,
+        database,
         bytes,
         playback,
     }
+}
+
+#[tokio::test]
+async fn missing_indexed_leaf_marks_only_that_media_unavailable_and_never_grants_a_lease() {
+    let f = fixture().await;
+    let id = f.media[0].clone();
+    std::fs::remove_file(f.root.join("FilmA.mp4")).unwrap();
+    let (status, body) = json_reply(
+        &f.app,
+        "POST",
+        &format!("/api/v1/profiles/{}/playback/acquire", f.profiles[0]),
+        json!({"media_id":id,"device_id":uuid::Uuid::new_v4().to_string()}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body["code"], "MEDIA_FILE_MISSING");
+    assert!(body.get("lease").is_none());
+    let (missing, untouched) = f
+        .database
+        .call({
+            let profile = f.profiles[0].clone();
+            let id = id.clone();
+            let other = f.media[1].clone();
+            move |store| Ok((store.media(&profile, &id)?, store.media(&profile, &other)?))
+        })
+        .await
+        .unwrap();
+    assert!(!missing.available);
+    assert!(untouched.available);
 }
 
 #[tokio::test]

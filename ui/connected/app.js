@@ -57,11 +57,11 @@ function render(){
   $("profile-empty").hidden=Boolean(state.profiles.length);
   $("profile-panel").hidden=Boolean(state.profile_id);$("catalog-panel").hidden=!state.profile_id;
   if(!state.profile_id)$("media").replaceChildren();
-  $("video-root").value=state.library.video_root||"";$("personal-settings").hidden=!state.profile_id;
+  if(window.refreshLibraryLocations)window.refreshLibraryLocations(state.library);else $("video-root").value=state.library.video_root||"";$("personal-settings").hidden=!state.profile_id;
   if(!$("autoplay").querySelector('option[value="15"]'))$("autoplay").append(new Option("Après 15 secondes","15"));
   if(state.preferences){$("audio-language").value=state.preferences.audio_language;$("subtitle-language").value=state.preferences.subtitle_language;$("autoplay").value=state.preferences.autoplay_seconds===null?"off":String(state.preferences.autoplay_seconds);}
   else{$("audio-language").value="";$("subtitle-language").value="";}
-  if(window.renderShell)window.renderShell();
+  if(window.renderShell)window.renderShell();window.refreshConfiguration?.();
 }
 async function connect(address){draftAddress=address;state={stage:"server",address,theme:state.theme,servers:state.servers||[]};render();const r=await run({action:"connect",address});if(r?.profile_id){await loadPage();void syncCatalog();}}
 async function selectProfile(id){if(!id)return;clearCatalogContext();offset=0;await run({action:"select_profile",id});await loadPage();void syncCatalog();}
@@ -114,6 +114,18 @@ function renderCatalogWindow(){
  target.replaceChildren(grid);if(focused){const restore=[...grid.children].find(card=>card.dataset.mediaId===focused);restore?.focus({preventScroll:true});}
 }
 function scheduleCatalogWindow(){if(catalogFrame)return;catalogFrame=requestAnimationFrame(()=>{catalogFrame=null;renderCatalogWindow();});}
+window.catalogMediaUnavailable=mediaId=>{
+ const update=media=>media.id===mediaId?{...media,available:false}:media;
+ // A grouped show's availability is not that of its representative episode.
+ // Update its individual detail, not the whole show's poster/card blindly.
+ catalogItems=catalogItems.map(media=>media.category==="serie"?media:update(media));
+ if(facetBase)facetBase={...facetBase,items:facetBase.items.map(media=>media.category==="serie"?media:update(media))};
+ const old=catalogCards.get(mediaId);if(old){window.retireArtwork?.(old.querySelector(".poster-image"));catalogCards.delete(mediaId);}
+ catalogWindowKey="";renderCatalogWindow();window.catalogDetailUnavailable?.(mediaId);
+ // The server persisted this one-file observation. Fetch its normal delta in
+ // background, never force a full scan or discard unrelated cached titles.
+ void syncCatalog();
+};
 window.addEventListener("scroll",scheduleCatalogWindow,{passive:true});window.addEventListener("resize",()=>{catalogWindowKey="";scheduleCatalogWindow();});
 // A busy native bridge is retried only while this profile and request generation remain current.
 async function catalogRequest(command,generation,context){
@@ -124,7 +136,7 @@ async function catalogRequest(command,generation,context){
    await new Promise(resolve=>setTimeout(resolve,150));
   }
  }
- message("Le serveur est occupé. Rechargez le catalogue depuis Administration.");return null;
+ message("Le serveur est occupé. Rechargez le catalogue depuis Configuration.");return null;
 }
 // Stage the complete replacement before rendering: background refresh must not blank the grid.
 // Generation/context guards also discard replies from a previous filter, server or profile.
@@ -144,7 +156,7 @@ async function loadPage(reuseFacetBase=false){
   let added=0;for(const item of page.items){if(!ids.has(item.id)){ids.add(item.id);staged.push(item);added++;}}
   Object.assign(counters,page.series_counters||{});
   if(!page.has_more)break;
-  if(!added||staged.length>=30000){message("Catalogue trop volumineux ou modifié pendant le chargement. Rechargez depuis Administration.");return false;}
+  if(!added||staged.length>=30000){message("Catalogue trop volumineux ou modifié pendant le chargement. Rechargez depuis Configuration.");return false;}
   at+=page.items.length;
  }
   facetBase={key:baseKey,items:staged,counters};
@@ -162,7 +174,7 @@ $("profile-switch").onchange=()=>selectProfile($("profile-switch").value);
 for(const id of ["create-first","create-admin","create-profile-menu"])$(id).onsubmit=async e=>{e.preventDefault();const name=e.currentTarget.elements.name.value;const r=await run({action:"create_profile",name});if(r){$(id).reset();$("profile-menu").open=false;}};
 $("admin-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("admin");const context=state.server_id+":"+state.profile_id,current=()=>context===state.server_id+":"+state.profile_id&&shellSection==="admin";$("admin-panel").hidden=false;void syncCatalog();await pollScan();if(!current())return;await unavailableAdmin();if(current())await window.refreshTmdbStatus?.();};
 $("admin-close").onclick=()=>{$("admin-panel").hidden=true;clearTimeout(timer);};
-$("library-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_library",video_root:$("video-root").value.trim()||null,expected_revision:state.library.revision}))message("Chemin enregistré sur le serveur.");};
+$("library-form").onsubmit=async e=>{e.preventDefault();let command;try{command=window.configurationLibraryCommand?.()||{action:"save_library",video_root:$("video-root").value.trim()||null,expected_revision:state.library.revision};}catch(error){message(error.message);return;}if(await run(command))message("Emplacements enregistrés sur le serveur.");};
 $("preferences-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_preferences",audio_language:$("audio-language").value,subtitle_language:$("subtitle-language").value,autoplay_seconds:$("autoplay").value==="off"?null:Number($("autoplay").value)}))message("Préférences du profil enregistrées.");};
 $("theme").onchange=()=>run({action:"theme",theme:$("theme").value});
 $("filter-form").onsubmit=e=>{e.preventDefault();offset=0;loadPage();};$("refresh-catalog").onclick=()=>syncCatalog();

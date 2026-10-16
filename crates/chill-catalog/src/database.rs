@@ -3,6 +3,11 @@ use crate::model::{
     merge_enrichment, now,
 };
 
+/// Changing the derived series key must also bump the cache rule in `Store`.
+/// It is deliberately separate from the database schema: this is a rebuildable
+/// index, never source media data.
+pub const SERIES_GROUP_RULE_VERSION: i64 = 2;
+
 /// A pre-identification series is grouped by its source folder rather than by
 /// title alone.  This is intentionally conservative: two "Doctor Who" trees
 /// must never become one just because their display name is identical.  The
@@ -12,7 +17,7 @@ fn legacy_series_root(media: &Media) -> String {
     let path = Path::new(&media.path);
     let mut parent = path.parent().unwrap_or(path);
     let leaf = parent.file_name().and_then(|v| v.to_str()).unwrap_or("");
-    let normalized = leaf.to_ascii_lowercase().replace(['_', '.'], " ");
+    let normalized = crate::scanner::normalized(leaf).replace(['_', '.'], " ");
     if normalized.starts_with("season ")
         || normalized.starts_with("saison ")
         || normalized.starts_with('s') && normalized[1..].chars().all(|c| c.is_ascii_digit())
@@ -20,6 +25,28 @@ fn legacy_series_root(media: &Media) -> String {
         parent = parent.parent().unwrap_or(parent);
     }
     parent.to_string_lossy().to_string()
+}
+
+/// Match display spelling differences without making punctuation or a path
+/// boundary disappear.  In particular, `Série Été` and `serie ete` are one
+/// label, whereas two different parent trees remain two unknown series.
+pub fn series_title_key(value: &str) -> String {
+    crate::scanner::normalized(value)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn series_root_key(media: &Media) -> String {
+    legacy_series_root(media)
+        .split(std::path::MAIN_SEPARATOR)
+        .map(series_title_key)
+        .collect::<Vec<_>>()
+        .join("\u{1f}")
+}
+
+fn series_label_key(media: &Media) -> String {
+    series_title_key(media.series.as_deref().unwrap_or(&media.title))
 }
 
 fn same_series_group(anchor: &Media, candidate: &Media) -> bool {
@@ -30,9 +57,8 @@ fn same_series_group(anchor: &Media, candidate: &Media) -> bool {
         Some(id) => candidate.tmdb_id == Some(id),
         None => {
             candidate.tmdb_id.is_none()
-                && anchor.series.as_deref().unwrap_or(&anchor.title)
-                    == candidate.series.as_deref().unwrap_or(&candidate.title)
-                && legacy_series_root(anchor) == legacy_series_root(candidate)
+                && series_label_key(anchor) == series_label_key(candidate)
+                && series_root_key(anchor) == series_root_key(candidate)
         }
     }
 }
@@ -43,8 +69,8 @@ pub fn series_source_key(media: &Media) -> Option<String> {
     (media.category == "serie").then(|| {
         format!(
             "{}\u{1f}{}",
-            media.series.as_deref().unwrap_or(&media.title),
-            legacy_series_root(media)
+            series_label_key(media),
+            series_root_key(media)
         )
     })
 }
@@ -1721,6 +1747,30 @@ mod tests {
         db.put(&new).unwrap();
         assert_eq!(db.series_members_for(&old).unwrap().len(), 1);
         assert_eq!(db.series_members_for(&new).unwrap().len(), 1);
+    }
+    #[test]
+    fn source_group_normalizes_series_and_folder_spelling_without_merging_remakes() {
+        let mut first = movie("Séries/Été Show/Season 01/E01.mkv");
+        let mut variant = movie("series/ete   show/Season 01/E02.mkv");
+        let mut remake = movie("series/ete show (2023)/Season 01/E01.mkv");
+        for (media, name) in [
+            (&mut first, "Été Show"),
+            (&mut variant, "ete   show"),
+            (&mut remake, "Été Show"),
+        ] {
+            media.category = "serie".into();
+            media.series = Some(name.into());
+        }
+        assert_eq!(series_source_key(&first), series_source_key(&variant));
+        assert_ne!(series_source_key(&first), series_source_key(&remake));
+        assert!(same_series_group(&first, &variant));
+        assert!(!same_series_group(&first, &remake));
+
+        // A provider identity is stronger than any display spelling: two TMDB
+        // ids remain distinct even if their folders happen to be the same.
+        first.tmdb_id = Some(101);
+        variant.tmdb_id = Some(202);
+        assert!(!same_series_group(&first, &variant));
     }
     #[test]
     fn forget_unavailable_is_atomic_cleans_memberships_and_keeps_files_and_collections() {

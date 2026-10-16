@@ -644,11 +644,14 @@ impl PlayerHost {
                     .await
                     .map_err(native_error)?;
                 self.rendering.store(false, Ordering::Release);
+                // Pausing is a local playback state, not the end of this
+                // session.  Keep the lease and libmpv instance alive so its
+                // bounded packet cache can continue to be useful on resume.
+                // Reporting `playing: false` also makes the watch clock stop
+                // accruing credit while the user is paused.
                 if s.lease.is_some() {
                     let saved = report(s, was_playing, false).await;
-                    let released = release(s).await;
                     saved?;
-                    released?;
                 }
             }
             PlayerCommand::Resume => {

@@ -643,32 +643,19 @@ async fn enqueue_auto_checked(state: AppState) -> Result<(), ApiError> {
     });
     Ok(())
 }
+#[cfg(test)]
 fn exact_candidate(
     media: &chill_catalog::model::Media,
     candidates: Vec<chill_catalog::metadata::Candidate>,
+    fallback_used: bool,
 ) -> Option<chill_catalog::metadata::Candidate> {
-    let label = media.series.as_deref().unwrap_or(&media.title);
-    let label = chill_catalog::scanner::title_for_search(label);
-    let norm = |v: &str| {
-        v.chars()
-            .filter(|c| c.is_alphanumeric())
-            .flat_map(char::to_lowercase)
-            .collect::<String>()
-    };
-    let kind = if media.category == "serie" {
-        "tv"
-    } else {
-        "movie"
-    };
-    let matches = candidates
-        .into_iter()
-        .filter(|c| {
-            c.kind == kind
-                && norm(&c.title) == norm(&label)
-                && media.year.is_none_or(|y| c.year == Some(y))
-        })
-        .collect::<Vec<_>>();
-    (matches.len() == 1).then(|| matches.into_iter().next().unwrap())
+    chill_catalog::metadata::exact_automatic_candidate(
+        media,
+        &chill_catalog::metadata::CandidateSearch {
+            candidates,
+            fallback_used,
+        },
+    )
 }
 async fn run_job(state: AppState, service: Arc<TmdbJobService>, id: String, task: JobTask) {
     let playback = state.playback.clone();
@@ -723,14 +710,16 @@ mod job_tests {
             assert!(
                 exact_candidate(
                     &media(dirty, Some(2014)),
-                    vec![candidate(title, Some(2014))]
+                    vec![candidate(title, Some(2014))],
+                    false,
                 )
                 .is_some()
             );
             assert!(
                 exact_candidate(
                     &media(dirty, Some(2014)),
-                    vec![candidate(title, Some(2014)), candidate(title, Some(2014))]
+                    vec![candidate(title, Some(2014)), candidate(title, Some(2014))],
+                    false,
                 )
                 .is_none()
             );
@@ -742,7 +731,8 @@ mod job_tests {
         assert!(
             exact_candidate(
                 &media("Alien!", Some(1979)),
-                vec![candidate("Alien", Some(1979))]
+                vec![candidate("Alien", Some(1979))],
+                false,
             )
             .is_some()
         );
@@ -752,17 +742,35 @@ mod job_tests {
                 vec![
                     candidate("Alien", Some(1979)),
                     candidate("Alien", Some(1979))
-                ]
+                ],
+                false,
             )
             .is_none()
         );
         assert!(
             exact_candidate(
                 &media("Alien", Some(1979)),
-                vec![candidate("Alien", Some(1986))]
+                vec![candidate("Alien", Some(1986))],
+                false,
             )
             .is_none()
         );
+    }
+    #[test]
+    fn exact_match_uses_dashed_fallback_only_when_provider_used_it() {
+        let source = media("Attack the Block - - (2011) - - Unknown release note", Some(2011));
+        let matched = vec![candidate("Attack the Block", Some(2011))];
+        assert!(exact_candidate(&source, matched.clone(), false).is_none());
+        assert!(exact_candidate(&source, matched, true).is_some());
+
+        // A primary exact match remains authoritative; a duplicate primary
+        // match stays ambiguous rather than falling through to the fallback.
+        let candidates = vec![
+            candidate("Attack the Block (2011) Unknown release note", Some(2011)),
+            candidate("Attack the Block (2011) Unknown release note", Some(2011)),
+            candidate("Attack the Block", Some(2011)),
+        ];
+        assert!(exact_candidate(&source, candidates, true).is_none());
     }
     #[test]
     fn recovered_active_job_is_retryable_without_media_or_secret() {

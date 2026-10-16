@@ -1,5 +1,6 @@
 //! Static service settings and independently persisted, administrator-editable library settings.
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::Write,
@@ -144,6 +145,10 @@ pub fn prepare_data_dir(path: &Path) -> Result<(), String> {
 #[serde(deny_unknown_fields)]
 pub struct LibrarySettings {
     pub video_root: Option<PathBuf>,
+    /// Extra independent library roots.  The primary root deliberately keeps
+    /// its historic ids; extra roots receive a virtual, non-filesystem prefix.
+    #[serde(default)]
+    pub additional_video_roots: Vec<PathBuf>,
     pub revision: u64,
 }
 
@@ -154,14 +159,13 @@ impl LibrarySettings {
             Ok(data) if data.len() <= 64 * 1024 => {
                 let settings: Self = serde_json::from_slice(&data)
                     .map_err(|_| "Réglages de bibliothèque invalides.")?;
-                if let Some(root) = &settings.video_root {
-                    validate_absolute(root)?;
-                }
+                settings.validate_roots()?;
                 Ok(settings)
             }
             Ok(_) => Err("Réglages de bibliothèque trop volumineux.".into()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self {
                 video_root: config.video_root.clone(),
+                additional_video_roots: Vec::new(),
                 revision: 0,
             }),
             Err(_) => Err("Réglages de bibliothèque inaccessibles.".into()),
@@ -174,27 +178,36 @@ impl LibrarySettings {
         &mut self,
         config: &ServerConfig,
         root: Option<PathBuf>,
+        additional_roots: Option<Vec<PathBuf>>,
         expected_revision: u64,
     ) -> Result<(), String> {
-        self.update_with_writer(config, root, expected_revision, atomic_private_write)
+        self.update_with_writer(
+            config,
+            root,
+            additional_roots,
+            expected_revision,
+            atomic_private_write,
+        )
     }
     fn update_with_writer(
         &mut self,
         config: &ServerConfig,
         root: Option<PathBuf>,
+        additional_roots: Option<Vec<PathBuf>>,
         expected_revision: u64,
         writer: impl FnOnce(&Path, &[u8]) -> Result<(), String>,
     ) -> Result<(), String> {
         if self.revision != expected_revision {
             return Err("CONFIG_CONFLICT".into());
         }
-        if let Some(root) = &root {
-            validate_absolute(root)?;
-        }
+        let additional_video_roots =
+            additional_roots.unwrap_or_else(|| self.additional_video_roots.clone());
         let updated = Self {
             video_root: root,
+            additional_video_roots,
             revision: self.revision.checked_add(1).ok_or("Révision invalide.")?,
         };
+        updated.validate_roots()?;
         let data = serde_json::to_vec_pretty(&updated).map_err(|_| "Sérialisation impossible.")?;
         let published = writer(&config.data_dir.join("library.json"), &data);
         if let Err(error) = &published
@@ -204,6 +217,62 @@ impl LibrarySettings {
         }
         *self = updated;
         published
+    }
+
+    pub fn roots(&self) -> Vec<PathBuf> {
+        self.video_root
+            .iter()
+            .chain(self.additional_video_roots.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// Return the configured root owning an indexed absolute path.  Roots are
+    /// non-overlapping, so this cannot accidentally select a broader mount.
+    pub fn root_for_path(&self, path: &Path) -> Option<PathBuf> {
+        self.roots().into_iter().find(|root| path.starts_with(root))
+    }
+
+    /// Primary media ids remain unchanged for compatibility.  Additional roots
+    /// live in a reserved virtual namespace which can never be a primary file.
+    pub fn indexed_id(&self, root: &Path, path: &Path) -> Result<String, String> {
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|_| "Chemin hors bibliothèque.")?;
+        if root == self.video_root.as_deref().unwrap_or(Path::new("")) {
+            let id = relative.to_string_lossy().into_owned();
+            if id.starts_with(".chillcenter-locations/") {
+                return Err(
+                    "Le préfixe .chillcenter-locations est réservé par Chill Center.".into(),
+                );
+            }
+            return Ok(id);
+        }
+        let mut digest = Sha256::new();
+        digest.update(root.as_os_str().as_encoded_bytes());
+        let namespace = format!(".chillcenter-locations/{:x}", digest.finalize());
+        Ok(format!("{}/{}", namespace, relative.to_string_lossy()))
+    }
+
+    fn validate_roots(&self) -> Result<(), String> {
+        let roots = self.roots();
+        if roots.len() > 16 {
+            return Err("Configurez au plus 16 emplacements de bibliothèque.".into());
+        }
+        for root in &roots {
+            validate_absolute(root)?;
+        }
+        for (index, root) in roots.iter().enumerate() {
+            if roots.iter().enumerate().any(|(other, candidate)| {
+                other != index
+                    && (candidate == root
+                        || candidate.starts_with(root)
+                        || root.starts_with(candidate))
+            }) {
+                return Err("Les emplacements de bibliothèque doivent être distincts et ne pas se chevaucher.".into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -267,7 +336,7 @@ mod tests {
         };
         let mut settings = LibrarySettings::load(&config).unwrap();
         let error = settings
-            .update_with_writer(&config, Some("/mnt/new".into()), 0, |path, bytes| {
+            .update_with_writer(&config, Some("/mnt/new".into()), None, 0, |path, bytes| {
                 atomic_private_write_with_sync(path, bytes, |_| {
                     Err(std::io::Error::other("injected fsync"))
                 })
@@ -278,7 +347,7 @@ mod tests {
         assert_eq!(LibrarySettings::load(&config).unwrap(), settings);
         assert_eq!(
             settings
-                .update(&config, Some("/mnt/stale".into()), 0)
+                .update(&config, Some("/mnt/stale".into()), None, 0)
                 .unwrap_err(),
             "CONFIG_CONFLICT"
         );
@@ -286,7 +355,7 @@ mod tests {
         let published = fs::read(dir.path().join("library.json")).unwrap();
         assert!(
             settings
-                .update_with_writer(&config, None, 1, |_, _| Err("before rename".into()))
+                .update_with_writer(&config, None, None, 1, |_, _| Err("before rename".into()))
                 .is_err()
         );
         assert_eq!(settings, before);
@@ -326,17 +395,102 @@ mod tests {
         };
         let mut settings = LibrarySettings::load(&config).unwrap();
         settings
-            .update(&config, Some("/mnt/new-nas".into()), 0)
+            .update(&config, Some("/mnt/new-nas".into()), None, 0)
             .unwrap();
         assert_eq!(LibrarySettings::load(&config).unwrap(), settings);
         assert!(
             settings
-                .update(&config, Some("/mnt/stale".into()), 0)
+                .update(&config, Some("/mnt/stale".into()), None, 0)
                 .is_err()
         );
         assert_eq!(settings.video_root, Some("/mnt/new-nas".into()));
-        settings.update(&config, None, 1).unwrap();
+        settings.update(&config, None, None, 1).unwrap();
         assert_eq!(LibrarySettings::load(&config).unwrap().video_root, None);
+    }
+
+    #[test]
+    fn extra_locations_are_persisted_and_legacy_updates_preserve_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = ServerConfig {
+            data_dir: dir.path().to_owned(),
+            video_root: Some("/mnt/films".into()),
+            ..ServerConfig::default()
+        };
+        let mut settings = LibrarySettings::load(&config).unwrap();
+        settings
+            .update(
+                &config,
+                Some("/mnt/films".into()),
+                Some(vec!["/mnt/series".into(), "/mnt/documentaires".into()]),
+                0,
+            )
+            .unwrap();
+        // The v1-shaped update has no extra-roots field and must not erase it.
+        settings
+            .update(&config, Some("/mnt/films-2".into()), None, 1)
+            .unwrap();
+        assert_eq!(
+            settings.additional_video_roots,
+            vec![
+                PathBuf::from("/mnt/series"),
+                PathBuf::from("/mnt/documentaires")
+            ]
+        );
+        assert_eq!(LibrarySettings::load(&config).unwrap(), settings);
+    }
+
+    #[test]
+    fn extra_root_ids_are_distinct_and_primary_namespace_is_reserved() {
+        let settings = LibrarySettings {
+            video_root: Some("/library/films".into()),
+            additional_video_roots: vec!["/library/series".into()],
+            revision: 4,
+        };
+        settings.validate_roots().unwrap();
+        assert_eq!(
+            settings
+                .indexed_id(
+                    Path::new("/library/films"),
+                    Path::new("/library/films/same.mkv")
+                )
+                .unwrap(),
+            "same.mkv"
+        );
+        let additional = settings
+            .indexed_id(
+                Path::new("/library/series"),
+                Path::new("/library/series/same.mkv"),
+            )
+            .unwrap();
+        assert!(additional.starts_with(".chillcenter-locations/"));
+        assert!(additional.ends_with("/same.mkv"));
+        assert_eq!(
+            settings.root_for_path(Path::new("/library/series/same.mkv")),
+            Some(PathBuf::from("/library/series"))
+        );
+        assert!(
+            settings
+                .indexed_id(
+                    Path::new("/library/films"),
+                    Path::new("/library/films/.chillcenter-locations/x.mkv")
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn duplicate_or_overlapping_locations_are_refused() {
+        for roots in [
+            vec![PathBuf::from("/mnt/films")],
+            vec![PathBuf::from("/mnt/films/child")],
+        ] {
+            let settings = LibrarySettings {
+                video_root: Some("/mnt/films".into()),
+                additional_video_roots: roots,
+                revision: 0,
+            };
+            assert!(settings.validate_roots().is_err());
+        }
     }
 
     #[test]
@@ -453,7 +607,7 @@ mod tests {
         let mut settings = LibrarySettings::default();
         assert!(
             settings
-                .update(&config, Some("/srv/videos".into()), 0)
+                .update(&config, Some("/srv/videos".into()), None, 0)
                 .is_err()
         );
         assert_eq!(settings, LibrarySettings::default());

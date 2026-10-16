@@ -332,7 +332,7 @@ async fn server(
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?
         .clone();
     Ok(Json(
-        json!({"server_id":certificate.server_id,"api_version":if uri.path().starts_with("/api/v1/"){json!(1)}else{json!(crate::api_version::VERSION)},"supported_api_versions":[crate::api_version::VERSION,"v1"],"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","catalog_pages","manual_personal_state","scan","playback_leases","media_range","progress","tmdb_configuration","tmdb_jobs","ai_filters","openapi"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
+        json!({"server_id":certificate.server_id,"api_version":if uri.path().starts_with("/api/v1/"){json!(1)}else{json!(crate::api_version::VERSION)},"supported_api_versions":[crate::api_version::VERSION,"v1"],"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","multi_library_locations","catalog_pages","manual_personal_state","scan","playback_leases","media_range","progress","tmdb_configuration","tmdb_jobs","ai_filters","openapi"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
     ))
 }
 
@@ -349,6 +349,9 @@ async fn library(State(state): State<AppState>) -> Result<Json<LibrarySettings>,
 #[serde(deny_unknown_fields)]
 struct LibraryUpdate {
     video_root: Option<PathBuf>,
+    /// Omitted by legacy clients: retain already configured extra locations.
+    #[serde(default)]
+    additional_video_roots: Option<Vec<PathBuf>>,
     expected_revision: u64,
 }
 async fn update_library(
@@ -369,7 +372,12 @@ async fn update_library(
             return Err(ApiError(StatusCode::CONFLICT, "SCAN_ACTIVE"));
         }
         let before = settings.revision;
-        let result = settings.update(&state.config, body.video_root, body.expected_revision);
+        let result = settings.update(
+            &state.config,
+            body.video_root,
+            body.additional_video_roots,
+            body.expected_revision,
+        );
         // A rename followed by failed directory fsync still published a new root.
         // Invalidate old grants even when durable persistence cannot be promised.
         if settings.revision != before {
@@ -1379,6 +1387,54 @@ mod tests {
             .status(),
             StatusCode::CONFLICT
         );
+    }
+
+    #[tokio::test]
+    async fn dated_and_v1_library_updates_keep_extra_locations_when_legacy_body_omits_them() {
+        let (_dir, app) = setup();
+        let first = app
+            .clone()
+            .oneshot(request(
+                "PUT",
+                "/api/2026-10-14/admin/library",
+                json!({"video_root":"/mnt/films","additional_video_roots":["/mnt/series"],"expected_revision":0}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+        let legacy = app
+            .clone()
+            .oneshot(request(
+                "PUT",
+                "/api/v1/admin/library",
+                json!({"video_root":"/mnt/films-renamed","expected_revision":1}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(legacy.status(), StatusCode::OK);
+        let legacy_body: Value =
+            serde_json::from_slice(&legacy.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(
+            legacy_body["additional_video_roots"],
+            json!(["/mnt/series"])
+        );
+        for prefix in ["/api/v1", "/api/2026-10-14"] {
+            let response = app
+                .clone()
+                .oneshot(request(
+                    "GET",
+                    &format!("{prefix}/admin/library"),
+                    Value::Null,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(body["additional_video_roots"], json!(["/mnt/series"]));
+        }
     }
     #[tokio::test]
     async fn zero_profiles_is_bootstrappable() {

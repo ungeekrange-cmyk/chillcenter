@@ -16,6 +16,7 @@ use chill_domain::{
 };
 use std::{
     collections::BTreeMap,
+    io,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -29,6 +30,61 @@ const TRANSFER_OFFER_TIME: Duration = Duration::from_secs(120);
 const MAX_TRANSFER_TOKENS: usize = 6;
 const MAX_ACTIVE_PROFILES: usize = 3;
 type Failure = &'static str;
+
+/// A file is only declared missing after the configured root and the indexed
+/// parent directory were both confirmed accessible, then the descriptor-safe
+/// indexed leaf open returned `NotFound`. A missing mount, a stale
+/// root, permission failure or an I/O timeout must stay a transient playback
+/// failure rather than making an entire catalogue entry unavailable.
+enum IndexedOpen {
+    Opened(std::fs::File, FileVersion),
+    MissingLeaf,
+}
+
+fn open_indexed_for_playback(
+    root: &std::path::Path,
+    path: &std::path::Path,
+) -> io::Result<IndexedOpen> {
+    if !std::fs::metadata(root)?.is_dir() {
+        return Err(io::ErrorKind::NotADirectory.into());
+    }
+    let parent = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
+    if parent != root && !std::fs::metadata(parent)?.is_dir() {
+        return Err(io::ErrorKind::NotADirectory.into());
+    }
+    match open_indexed(root, path) {
+        Ok((file, version)) => Ok(IndexedOpen::Opened(file, version)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(IndexedOpen::MissingLeaf),
+        Err(error) => Err(error),
+    }
+}
+
+/// The observed leaf is actionable only if it still names the same indexed
+/// media under the same library revision.  This closes the gap between a slow
+/// descriptor open and a concurrent library/root or identity update.
+async fn persist_verified_missing(
+    state: &AppState,
+    profile: String,
+    media: String,
+    path: PathBuf,
+    root: PathBuf,
+    library_revision: u64,
+) -> Result<bool, ApiError> {
+    let library = state.library.clone();
+    state
+        .database
+        .call(move |store| {
+            // Match the grant publication order: DB actor, then library lock.
+            let current = library.lock().map_err(|_| "INVALID_OPERATION")?;
+            if current.revision != library_revision
+                || current.root_for_path(&path).as_ref() != Some(&root)
+            {
+                return Ok(false);
+            }
+            store.mark_media_unavailable_at_path(&profile, &media, &path)
+        })
+        .await
+}
 
 #[derive(Clone)]
 pub struct PlaybackService {
@@ -854,13 +910,34 @@ async fn propose_transfer(
             "MEDIA_UNAVAILABLE",
         ))?;
     let settings = s.library.lock().map_err(|_| failure("MEDIA_BUSY"))?.clone();
-    let root = settings
-        .video_root
-        .clone()
-        .ok_or(ApiError(StatusCode::BAD_REQUEST, "ROOT_REQUIRED"))?;
+    let root = settings.root_for_path(&path).ok_or(ApiError(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "MEDIA_UNAVAILABLE",
+    ))?;
     let r = root.clone();
     let f = path.clone();
-    let (_, version) = io_job(&s.playback, move || open_indexed(&r, &f)).await?;
+    let opened = io_job(&s.playback, move || open_indexed_for_playback(&r, &f)).await?;
+    let (_, version) = match opened {
+        IndexedOpen::Opened(file, version) => (file, version),
+        IndexedOpen::MissingLeaf => {
+            if !persist_verified_missing(
+                &s,
+                profile.clone(),
+                target.media_id.clone(),
+                path.clone(),
+                root.clone(),
+                settings.revision,
+            )
+            .await?
+            {
+                return Err(failure("MEDIA_CHANGED"));
+            }
+            return Err(ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "MEDIA_FILE_MISSING",
+            ));
+        }
+    };
     if version.size == 0 {
         return Err(ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -1093,12 +1170,34 @@ async fn acquire(
             "MEDIA_UNAVAILABLE",
         ))?;
     let settings = s.library.lock().map_err(|_| failure("MEDIA_BUSY"))?.clone();
-    let root = settings
-        .video_root
-        .ok_or(ApiError(StatusCode::BAD_REQUEST, "ROOT_REQUIRED"))?;
+    let root = settings.root_for_path(&path).ok_or(ApiError(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "MEDIA_UNAVAILABLE",
+    ))?;
     let r = root.clone();
     let f = path.clone();
-    let (_, version) = io_job(&s.playback, move || open_indexed(&r, &f)).await?;
+    let opened = io_job(&s.playback, move || open_indexed_for_playback(&r, &f)).await?;
+    let (_, version) = match opened {
+        IndexedOpen::Opened(file, version) => (file, version),
+        IndexedOpen::MissingLeaf => {
+            if !persist_verified_missing(
+                &s,
+                profile.clone(),
+                body.media_id.clone(),
+                path.clone(),
+                root.clone(),
+                settings.revision,
+            )
+            .await?
+            {
+                return Err(failure("MEDIA_CHANGED"));
+            }
+            return Err(ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "MEDIA_FILE_MISSING",
+            ));
+        }
+    };
     if version.size == 0 {
         return Err(ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -1262,6 +1361,27 @@ async fn personal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_missing_leaf_under_an_open_indexed_parent_is_classified_as_absent() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let parent = root.join("Series");
+        std::fs::create_dir(&parent).unwrap();
+        let leaf = parent.join("Episode.mkv");
+        std::fs::write(&leaf, b"fixture").unwrap();
+        assert!(matches!(
+            open_indexed_for_playback(&root, &leaf).unwrap(),
+            IndexedOpen::Opened(_, _)
+        ));
+        std::fs::remove_file(&leaf).unwrap();
+        assert!(matches!(
+            open_indexed_for_playback(&root, &leaf).unwrap(),
+            IndexedOpen::MissingLeaf
+        ));
+        assert!(open_indexed_for_playback(&root, &root.join("gone/Episode.mkv")).is_err());
+        assert!(open_indexed_for_playback(&root.join("offline"), &leaf).is_err());
+    }
     fn prepared() -> (LeaseBook, Instant, AcquirePlayback, StreamLease) {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap();
@@ -1286,6 +1406,31 @@ mod tests {
                 version,
             },
         )
+    }
+
+    #[test]
+    fn an_extra_root_is_selected_for_lease_reads_and_cannot_open_primary_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let primary = temp.path().join("primary");
+        let extra = temp.path().join("extra");
+        std::fs::create_dir(&primary).unwrap();
+        std::fs::create_dir(&extra).unwrap();
+        let primary = primary.canonicalize().unwrap();
+        let extra = extra.canonicalize().unwrap();
+        let primary_file = primary.join("same.mp4");
+        let extra_file = extra.join("same.mp4");
+        std::fs::write(&primary_file, b"primary").unwrap();
+        std::fs::write(&extra_file, b"extra").unwrap();
+        let settings = crate::config::LibrarySettings {
+            video_root: Some(primary.clone()),
+            additional_video_roots: vec![extra.clone()],
+            revision: 1,
+        };
+        let selected = settings.root_for_path(&extra_file).unwrap();
+        assert_eq!(selected, extra);
+        assert!(open_indexed(&selected, &extra_file).is_ok());
+        // A lease for the extra library can never be redirected into primary.
+        assert!(open_indexed(&selected, &primary_file).is_err());
     }
     fn ctrl(l: &Lease) -> PlaybackControl {
         PlaybackControl {

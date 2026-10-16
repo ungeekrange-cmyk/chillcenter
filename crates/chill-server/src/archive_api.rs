@@ -284,6 +284,16 @@ async fn prepare_plan(
         .call(move |store| {
             let _work = actor_work;
             let library = library.lock().map_err(|_| "REQUEST_TIMEOUT")?;
+            // Existing primary-only archives remain usable with extra roots.
+            // An archive containing a virtual extra-root id needs an explicit
+            // root mapping UI; never reinterpret it under the primary mount.
+            if document
+                .media
+                .iter()
+                .any(|media| media.relative_path.starts_with(".chillcenter-locations/"))
+            {
+                return Err("IMPORT_MULTIPLE_LIBRARY_LOCATIONS_UNSUPPORTED".into());
+            }
             let root = library.video_root.as_ref().ok_or("IMPORT_ROOT_REQUIRED")?;
             Ok((
                 store.prepare_portable_import(document, &request, root)?,

@@ -260,4 +260,84 @@ mod tests {
             .unwrap();
         assert_eq!(page.items.len(), 2);
     }
+
+    #[test]
+    fn grouped_catalogue_reunites_case_and_accent_variants_but_not_a_remake() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("db.sqlite")).unwrap();
+        let profile = store.create_profile("A").unwrap().id;
+        let root = std::path::Path::new("/fixture");
+        let mut first = chill_catalog::scanner::parse_file(
+            root,
+            &root.join("Séries/Été Show/Season 01/E01.mkv"),
+        );
+        let mut variant = chill_catalog::scanner::parse_file(
+            root,
+            &root.join("series/ete   show/Season 01/E02.mkv"),
+        );
+        let mut remake = chill_catalog::scanner::parse_file(
+            root,
+            &root.join("series/ete show (2023)/Season 01/E01.mkv"),
+        );
+        for (item, name) in [
+            (&mut first, "Été Show"),
+            (&mut variant, "ete show"),
+            (&mut remake, "Été Show"),
+        ] {
+            item.category = "serie".into();
+            item.series = Some(name.into());
+        }
+        store.snapshot(vec![first, variant, remake]).unwrap();
+        // Simulate a binary upgrade from the former exact-spelling key.  The
+        // cache has the current catalogue revision but an obsolete rule, so a
+        // read must rebuild once instead of trusting stale groups forever.
+        let revision = store.common_revision().unwrap() as i64;
+        store
+            .personal
+            .execute_batch(
+                "CREATE TABLE cc_series_group_cache(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL,rule_version INTEGER NOT NULL);",
+            )
+            .unwrap();
+        store
+            .personal
+            .execute(
+                "INSERT INTO cc_series_group_cache(id,revision,rule_version) VALUES(1,?1,1)",
+                [revision],
+            )
+            .unwrap();
+        let page = store
+            .browse_catalog(
+                &profile,
+                &BrowserQuery {
+                    category: Some("serie".into()),
+                    grouped: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(
+            store
+                .personal
+                .query_row(
+                    "SELECT rule_version FROM cc_series_group_cache WHERE id=1",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            chill_catalog::database::SERIES_GROUP_RULE_VERSION
+        );
+        let reunited = page
+            .series_counters
+            .values()
+            .find(|counter| counter.episodes == 2)
+            .unwrap();
+        assert_eq!(
+            store.series(&profile, &reunited.series_key).unwrap().len(),
+            2
+        );
+        // The legacy title selector stays safely ambiguous in the presence of
+        // a remake; clients receive the opaque key from the grouped card.
+        assert!(store.series(&profile, "ete show").is_err());
+    }
 }

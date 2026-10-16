@@ -684,6 +684,62 @@ impl Store {
         self.profile_view(profile_id, self.catalogue.get(&legacy)?)
     }
 
+    /// Record a leaf file that disappeared after it was already indexed.  The
+    /// caller must have verified that exact condition at the descriptor layer;
+    /// this method never probes a path or starts a scan.  Keeping the row lets
+    /// the unavailable-library workflow preserve its history and later restore
+    /// it when a normal scan rediscovers the file.
+    pub fn mark_media_unavailable_at_path(
+        &mut self,
+        profile_id: &str,
+        stable_id: &str,
+        expected_path: &Path,
+    ) -> Result<bool, String> {
+        self.require_profile(profile_id)?;
+        let legacy = self.legacy_id(stable_id)?;
+        let expected_path = expected_path.to_string_lossy();
+        // The common `media` table and the personal revision table share this
+        // SQLite file.  Do both writes in one IMMEDIATE transaction: a failed
+        // revision bump must never leave an unversioned unavailable flag.
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.personal,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(db_error)?;
+        let data: String = tx
+            .query_row("SELECT data FROM media WHERE id=?1", [&legacy], |row| {
+                row.get(0)
+            })
+            .map_err(db_error)?;
+        let mut raw: Media = serde_json::from_str(&data)
+            .map_err(|_| "Catalogue local endommagé : aucune donnée remplacée.".to_owned())?;
+        if raw.path != expected_path || !raw.available {
+            tx.commit().map_err(db_error)?;
+            return Ok(false);
+        }
+        raw.available = false;
+        tx.execute(
+            "UPDATE media SET data=?1 WHERE id=?2",
+            params![
+                serde_json::to_string(&raw).map_err(|_| "Métadonnées invalides.")?,
+                legacy
+            ],
+        )
+        .map_err(db_error)?;
+        if tx
+            .execute(
+                "UPDATE cc_media_revision SET revision=revision+1 WHERE stable_id=?1",
+                [stable_id],
+            )
+            .map_err(db_error)?
+            != 1
+        {
+            return Err("Vidéo introuvable dans le catalogue.".into());
+        }
+        tx.commit().map_err(db_error)?;
+        Ok(true)
+    }
+
     pub fn series(&mut self, profile_id: &str, name: &str) -> Result<Vec<Media>, String> {
         self.require_profile(profile_id)?;
         if name.is_empty() || name.len() > 500 {
@@ -719,7 +775,15 @@ impl Store {
                 m.category == "serie"
                     && match selected_tmdb {
                         Some(id) => m.tmdb_id == Some(id),
-                        None => m.series.as_deref().unwrap_or(&m.title) == name,
+                        // Legacy selectors are display labels.  Treat harmless
+                        // casing/accent/spacing variants as one label, then
+                        // retain the existing ambiguity check below so a real
+                        // homonym still cannot select the wrong show.
+                        None => {
+                            chill_catalog::database::series_title_key(
+                                m.series.as_deref().unwrap_or(&m.title),
+                            ) == chill_catalog::database::series_title_key(name)
+                        }
                     }
             })
             .collect();
@@ -2363,17 +2427,20 @@ impl Store {
     }
     pub(crate) fn refresh_series_groups(&self) -> Result<(), String> {
         let revision = i64::try_from(self.common_revision()?).map_err(|_| "Révision invalide.")?;
-        self.personal.execute_batch("CREATE TABLE IF NOT EXISTS cc_series_group_state(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL);").map_err(db_error)?;
-        let cached: Option<i64> = self
+        // This is a derived, disposable index.  A dedicated rule marker makes
+        // the first read after an algorithm upgrade rebuild it once, while an
+        // unchanged catalogue never pays the rebuild cost on every page.
+        self.personal.execute_batch("CREATE TABLE IF NOT EXISTS cc_series_group_cache(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL,rule_version INTEGER NOT NULL);").map_err(db_error)?;
+        let cached: Option<(i64, i64)> = self
             .personal
             .query_row(
-                "SELECT revision FROM cc_series_group_state WHERE id=1",
+                "SELECT revision,rule_version FROM cc_series_group_cache WHERE id=1",
                 [],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(db_error)?;
-        if cached == Some(revision) {
+        if cached == Some((revision, chill_catalog::database::SERIES_GROUP_RULE_VERSION)) {
             return Ok(());
         }
         let media = self.catalogue.list()?;
@@ -2399,7 +2466,10 @@ impl Store {
                 .map_err(db_error)?;
             }
         }
-        tx.execute("INSERT INTO cc_series_group_state(id,revision) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision",[revision]).map_err(db_error)?;
+        tx.execute(
+            "INSERT INTO cc_series_group_cache(id,revision,rule_version) VALUES(1,?1,?2) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,rule_version=excluded.rule_version",
+            params![revision, chill_catalog::database::SERIES_GROUP_RULE_VERSION],
+        ).map_err(db_error)?;
         tx.commit().map_err(db_error)
     }
     pub(crate) fn stable_id(&self, legacy: &str) -> Result<String, String> {
@@ -3593,5 +3663,72 @@ mod tests {
             .unwrap();
         assert_eq!(page.items.len(), 1);
         assert!(page.has_more);
+    }
+
+    #[test]
+    fn verified_missing_file_marks_only_its_existing_catalogue_row_unavailable() {
+        let mut s = store();
+        let profile = s.create_profile("A").unwrap();
+        let before_epoch = s.catalog_revision().unwrap();
+        let item = s.catalog(&profile.id).unwrap().pop().unwrap();
+        let before_revision = s.media_revision(&item.id).unwrap();
+        assert!(
+            s.mark_media_unavailable_at_path(
+                &profile.id,
+                &item.id,
+                &s.media_path(&item.id).unwrap()
+            )
+            .unwrap()
+        );
+        assert!(!s.media(&profile.id, &item.id).unwrap().available);
+        assert_eq!(s.media_revision(&item.id).unwrap(), before_revision + 1);
+        assert!(s.catalog_revision().unwrap() > before_epoch);
+        // Replaying the confirmed signal is idempotent and does not manufacture
+        // a new revision or alter any path/source identity.
+        assert!(
+            !s.mark_media_unavailable_at_path(
+                &profile.id,
+                &item.id,
+                &s.media_path(&item.id).unwrap()
+            )
+            .unwrap()
+        );
+        assert_eq!(s.media_revision(&item.id).unwrap(), before_revision + 1);
+        assert_eq!(s.media(&profile.id, &item.id).unwrap().path, item.path);
+    }
+
+    #[test]
+    fn verified_missing_file_rejects_a_reassociated_path_without_mutation() {
+        let mut s = store();
+        let profile = s.create_profile("A").unwrap();
+        let item = s.catalog(&profile.id).unwrap().pop().unwrap();
+        let before = s.media_revision(&item.id).unwrap();
+        assert!(
+            !s.mark_media_unavailable_at_path(&profile.id, &item.id, Path::new("/other/file.mkv"))
+                .unwrap()
+        );
+        assert!(s.media(&profile.id, &item.id).unwrap().available);
+        assert_eq!(s.media_revision(&item.id).unwrap(), before);
+    }
+
+    #[test]
+    fn verified_missing_file_rolls_back_when_revision_update_fails() {
+        let mut s = store();
+        let profile = s.create_profile("A").unwrap();
+        let item = s.catalog(&profile.id).unwrap().pop().unwrap();
+        s.personal
+            .execute_batch(
+                "CREATE TRIGGER fail_missing_revision BEFORE UPDATE ON cc_media_revision BEGIN SELECT RAISE(ABORT,'fixture'); END;",
+            )
+            .unwrap();
+        assert!(
+            s.mark_media_unavailable_at_path(
+                &profile.id,
+                &item.id,
+                &s.media_path(&item.id).unwrap()
+            )
+            .is_err()
+        );
+        assert!(s.media(&profile.id, &item.id).unwrap().available);
     }
 }

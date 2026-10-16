@@ -63,6 +63,8 @@ Then le lecteur signale attente ou indisponibilité sans lancer une autre vidéo
 
 ## 5. Contraintes fonctionnelles de qualité
 
+Amendement16octobre2026, **US-016-AC-05** : une nouvelle vidéo attend sa première image sur fond noir, jamais la dernière image précédente. **AC-06** : reprise locale conserve position/tampon, affiche immédiatement pause et une roue si nécessaire ; erreur laisse un état cohérent. **AC-07** : contrôles masqués après2,5s sans activité souris en lecture, réapparition au mouvement ; focus clavier ou vrai menu préservés, pas de focus souris maintenant artificiellement les contrôles. BUG0097–0099 et ADR0022 ; aucune nouvelle garantie de débit réseau.
+
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.
 
 ## 6. Traçabilité et revue

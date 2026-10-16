@@ -5368,6 +5368,13 @@
               "null"
             ]
           },
+          "additional_video_roots": {
+            "description": "Ajout compatible : répertoires absolus supplémentaires, au plus 16 emplacements au total. Omission ou null conserve la liste existante ; [] la vide. Répertoires distincts sans chevauchement. Ne modifie aucun fichier vidéo.",
+            "type": ["array", "null"],
+            "maxItems": 16,
+            "uniqueItems": true,
+            "items": {"type": "string", "maxLength": 4096}
+          },
           "expected_revision": {
             "type": "integer",
             "minimum": 0
@@ -6403,6 +6410,13 @@
               "string",
               "null"
             ]
+          },
+          "additional_video_roots": {
+            "description": "Ajout facultatif pour les consommateurs : emplacements supplémentaires. Absent sur les anciens serveurs ; ordre sans effet sur l'identité de leurs vidéos.",
+            "type": "array",
+            "maxItems": 16,
+            "uniqueItems": true,
+            "items": {"type": "string", "maxLength": 4096}
           },
           "revision": {
             "type": "integer",

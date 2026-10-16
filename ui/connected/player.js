@@ -3,12 +3,14 @@ let playerState={stage:"closed"},playerBusy=false,playerTimer=null,playerResize=
 let nextKey=null,nextDeadline=null,nextTimer=null,nextCancelled=false,nextLaunching=null;
 let playerBackdropKey=null;
 let playerNavigationEpoch=0,completedPlayback=null;
+let playerLastError=null;
 const playbackScope=()=>typeof state==="undefined"?null:state.server_id+":"+state.profile_id;
-let playerIdleTimer=null,playerIdleAt=Date.now(),playerHover=false,playerFullscreenRequest=null,playerAutoFullscreen=false;
+let playerIdleTimer=null,playerIdleAt=Date.now(),playerHover=false,playerKeyboardFocus=false,playerFullscreenRequest=null,playerAutoFullscreen=false;
+let playerStartScroll=null;
 const playerIdleDelay=2500;
 function playerControlsPinned(){
   const n=playerState.native;
-  return playerState.stage!=="player"||!n?.loaded||n.paused||n.buffering||n.ended||Boolean(n.error)||playerHover||Boolean(document.activeElement?.closest?.("#player-overlay, .player-heading"));
+  return playerState.stage!=="player"||!n?.loaded||n.paused||n.buffering||n.ended||Boolean(n.error)||playerHover||playerKeyboardFocus&&Boolean(document.activeElement?.closest?.("#player-overlay, .player-heading"));
 }
 function updatePlayerControls(){
   clearTimeout(playerIdleTimer);playerIdleTimer=null;
@@ -54,13 +56,17 @@ async function playerCall(command,quiet=false){
       try{next=await window.__TAURI__.core.invoke("player_command",{command});break;}
       catch(e){if(e.code!=="CLIENT_BUSY"||quiet||attempt>=19)throw e;await new Promise(resolve=>setTimeout(resolve,80));}
     }
-    playerState=next;renderPlayer();return next;
+    playerLastError=null;playerState=next;renderPlayer();return next;
   }
-  catch(e){if(!quiet&&e.code!=="CLIENT_BUSY")message(e.message||String(e));return null;}
+  catch(e){playerLastError=e;if(!quiet&&e.code!=="CLIENT_BUSY")message(e.code==="MEDIA_FILE_MISSING"?"Le fichier n’est plus présent dans la bibliothèque. Cette vidéo est maintenant marquée indisponible.":e.message||String(e));return null;}
   finally{playerBusy=false;}
 }
 window.chillPlay=async (media_id,context=null)=>{
-  ++playerNavigationEpoch;completedPlayback=null;
+  const epoch=++playerNavigationEpoch,scope=playbackScope();completedPlayback=null;
+  // `player-open` temporarily removes the catalogue from layout.  Preserve
+  // its position for a failed asynchronous acquisition, but never restore it
+  // over a newer profile/navigation choice.
+  playerStartScroll={epoch,scope,x:window.scrollX||0,y:window.scrollY||0};
   clearNext();clearPlayerBackdrop();
   // Snapshot this Mac's preference for a new manual launch, not each status tick
   // or automatic episode. A confirmed transfer uses the same pending intent.
@@ -70,7 +76,11 @@ window.chillPlay=async (media_id,context=null)=>{
   $("player-panel").hidden=false;document.body.classList.add("player-open");$("player-note").textContent="Chargement de la vidéo…";
   showPlayerControls();
   const started=await playerCall({action:"start",media_id,rect:videoRect(),context});
-  if(!started){await playerCall({action:"stop"},true);hidePlayer();return;}
+  if(!started){const code=playerLastError?.code;await playerCall({action:"stop"},true);hidePlayer();
+    const snapshot=playerStartScroll;playerStartScroll=null;
+    if(snapshot&&snapshot.epoch===playerNavigationEpoch&&snapshot.scope===playbackScope())requestAnimationFrame(()=>window.scrollTo?.(snapshot.x,snapshot.y));
+    if(code==="MEDIA_FILE_MISSING"&&epoch===playerNavigationEpoch&&scope===playbackScope())window.catalogMediaUnavailable?.(media_id);return;}
+  playerStartScroll=null;
   clearInterval(playerTimer);playerTimer=setInterval(()=>playerCall({action:"status"},true),500);
 };
 function stopNextTimer(){clearTimeout(nextTimer);nextTimer=null;nextDeadline=null;}
@@ -91,7 +101,7 @@ function renderPlayerBackdrop(){
   }
   $("player-stage").classList.toggle("transition-visible",Boolean(ending));
 }
-function hidePlayer(){clearNext();clearPlayerBackdrop();clearInterval(playerTimer);clearTimeout(playerIdleTimer);playerIdleTimer=null;playerTimer=null;playerFullscreenRequest=null;playerAutoFullscreen=false;playerHover=false;$("player-panel").hidden=true;$("player-panel").classList.remove("controls-hidden");document.body.classList.remove("player-open","player-fullscreen");playerState={stage:"closed"};}
+function hidePlayer(){clearNext();clearPlayerBackdrop();clearInterval(playerTimer);clearTimeout(playerIdleTimer);playerIdleTimer=null;playerTimer=null;playerFullscreenRequest=null;playerAutoFullscreen=false;playerHover=false;playerKeyboardFocus=false;$("player-panel").hidden=true;$("player-panel").classList.remove("controls-hidden");document.body.classList.remove("player-open","player-fullscreen");playerState={stage:"closed"};}
 function applyPlayerPresentation(){
   if(!playerAutoFullscreen||playerState.stage!=="player")return;
   playerAutoFullscreen=false;
@@ -186,7 +196,7 @@ function renderPlayer(){
   }
   if(playerState.stage!=="player"){const error=playerState.error;hidePlayer();if(error)message(error);return;}
   $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
-  const n=playerState.native;$("player-panel").hidden=false;document.body.classList.add("player-open");
+  const n=playerState.native;$("player-panel").hidden=false;document.body.classList.add("player-open");$("player-panel").classList.toggle("player-loading",Boolean(n.resuming));
   renderPlayerBackdrop();
   applyPlayerPresentation();
   $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note||n.error||n.notice||(playerState.next?.order_unknown?"Ordre des épisodes indéterminé : renseignez les numéros depuis la fiche de la série. Aucun lancement automatique.":n.ended?"Lecture terminée.":!n.loaded?"Chargement de la vidéo…":n.buffering?"Mise en mémoire tampon…":"");
@@ -207,7 +217,15 @@ $("player-next-now").onclick=()=>launchNext();$("player-next-cancel").onclick=ca
 $("player-next-thumb").onclick=()=>{if($("player-next-thumb").getAttribute("aria-disabled")!=="true")launchNext();};$("player-next-thumb").onkeydown=event=>{if((event.key==="Enter"||event.key===" ")&&$("player-next-thumb").getAttribute("aria-disabled")!=="true"){event.preventDefault();launchNext();}};
 $("transfer-confirm").onclick=()=>playerCall({action:"confirm_transfer"});$("transfer-refuse").onclick=()=>playerCall({action:"refuse_transfer"});
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&(nextDeadline!==null||nextTimer!==null)&&!nextLaunching)cancelNext();});
-$("player-pause").onclick=()=>playerCall({action:playerState.native?.paused?"resume":"pause"});
+$("player-pause").onclick=async()=>{
+  const prior=playerState,paused=Boolean(prior.native?.paused),action=paused?"resume":"pause";
+  // Optimistically switch the glyph.  Resume keeps the last server snapshot's
+  // position while the existing decoder/cache is unpaused; an error restores
+  // that snapshot rather than briefly presenting 00:00.
+  playerState={...prior,native:{...prior.native,paused:!paused,resuming:true}};renderPlayer();
+  const result=await playerCall({action});
+  if(!result){playerState=prior;renderPlayer();}
+};
 $("player-back").onclick=()=>playerCall({action:"jump",seconds:-10});$("player-forward").onclick=()=>playerCall({action:"jump",seconds:30});
 $("player-speed").onchange=()=>playerCall({action:"speed",speed:Number($("player-speed").value)});
 $("player-progress").onchange=()=>playerCall({action:"seek",position:Number($("player-progress").value)});
@@ -232,7 +250,7 @@ async function stopPlayerForNavigation(current=null){
 const reposition=()=>{clearTimeout(playerResize);playerResize=setTimeout(()=>{if(!$("player-panel").hidden&&playerState.stage==="player"){if(playerBusy){reposition();return;}playerCall({action:"mount",rect:videoRect()},true);}},80);};
 new ResizeObserver(reposition).observe($("native-video"));window.addEventListener("resize",reposition);window.addEventListener("scroll",reposition,{passive:true});
 $("player-panel").addEventListener("pointermove",showPlayerControls);
-$("player-panel").addEventListener("pointerdown",showPlayerControls);
+$("player-panel").addEventListener("pointerdown",()=>{playerKeyboardFocus=false;showPlayerControls();});
 $("player-panel").addEventListener("focusin",showPlayerControls);
 $("player-panel").addEventListener("focusout",()=>setTimeout(updatePlayerControls,0));
 if($("player-overlay")){
@@ -241,7 +259,7 @@ if($("player-overlay")){
 }
 playerIcon("player-back","back","Revenir de dix secondes");playerIcon("player-forward","forward","Avancer de trente secondes");playerIcon("player-fullscreen","fullscreen","Plein écran");playerIcon("player-pause","pause","Mettre en pause");
 playerIcon("player-close","return","Revenir à la bibliothèque");
-document.addEventListener("keydown",e=>{if($("player-panel").hidden)return;showPlayerControls();
+document.addEventListener("keydown",e=>{if($("player-panel").hidden)return;playerKeyboardFocus=true;showPlayerControls();
   if(e.key==="Escape"&&document.body.classList.contains("player-fullscreen")){e.preventDefault();togglePlayerFullscreen(false);return;}
   if(["INPUT","SELECT","TEXTAREA","BUTTON"].includes(e.target.tagName)||e.target.isContentEditable)return;
   if(e.code==="Space"){e.preventDefault();$("player-pause").click();}else if(e.code==="ArrowRight"){e.preventDefault();$("player-forward").click();}else if(e.code==="ArrowLeft"){e.preventDefault();$("player-back").click();}else if(e.key.toLowerCase()==="f")$("player-fullscreen").click();

@@ -63,6 +63,8 @@ Then la reprise de B n'est pas écrasée
 
 ## 5. Contraintes fonctionnelles de qualité
 
+Amendement16octobre2026, **US-021-AC-05**, ADR0022 : Pause garde le moteur, le bail et le tampon, et continue l'anticipation bornée par le réglage Mio. Pas de crédit vu pendant la pause ; position synchronisée et heartbeat maintenu. Reprise normale sur la même instance ; autre appareil doit confirmer le transfert tant que le lecteur reste ouvert. Cette précision remplace la libération systématique à la pause, pas les protections de fermeture/transfert/échéance.
+
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.
 
 ## 6. Traçabilité et revue

@@ -1,19 +1,19 @@
 //! Private provider seam; production always uses the fixed-host TMDB client.
-use super::{AppState, JobStatus, TmdbJobService, bump, exact_candidate, provider};
+use super::{AppState, JobStatus, TmdbJobService, bump, provider};
 use chill_catalog::{
-    metadata::{Candidate, ProviderFailure, Tmdb},
+    metadata::{Candidate, CandidateSearch, ProviderFailure, Tmdb},
     model::Media,
 };
 use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc, time::Duration};
 
 type Request<'a, T> = Pin<Box<dyn Future<Output = Result<T, ProviderFailure>> + Send + 'a>>;
 pub(super) trait Provider: Send + Sync {
-    fn candidates(&self, media: Media) -> Request<'_, Vec<Candidate>>;
+    fn candidates(&self, media: Media) -> Request<'_, CandidateSearch>;
     fn enrich(&self, media: Media, candidate: Candidate, cache: PathBuf) -> Request<'_, Media>;
 }
 impl Provider for Tmdb {
-    fn candidates(&self, media: Media) -> Request<'_, Vec<Candidate>> {
-        Box::pin(async move { self.candidates_for_job(&media, "").await })
+    fn candidates(&self, media: Media) -> Request<'_, CandidateSearch> {
+        Box::pin(async move { self.candidates_for_job_with_context(&media, "").await })
     }
     fn enrich(&self, media: Media, candidate: Candidate, cache: PathBuf) -> Request<'_, Media> {
         Box::pin(async move {
@@ -220,7 +220,10 @@ pub(super) async fn run(
                 continue;
             }
         };
-        let Some(candidate) = exact_candidate(&snapshot.media, candidates) else {
+        let Some(candidate) = chill_catalog::metadata::exact_automatic_candidate(
+            &snapshot.media,
+            &candidates,
+        ) else {
             bump(&service, &id, |j| {
                 j.processed += 1;
                 j.ambiguous += 1;
@@ -402,7 +405,7 @@ mod tests {
         }
     }
     impl Provider for Fake {
-        fn candidates(&self, media: Media) -> Request<'_, Vec<Candidate>> {
+        fn candidates(&self, media: Media) -> Request<'_, CandidateSearch> {
             Box::pin(async move {
                 self.record("search", &media);
                 if self.fail(&self.search_failures) {
@@ -419,10 +422,13 @@ mod tests {
                     poster: Some("https://image.tmdb.org/t/p/w342/fake.jpg".into()),
                     kind: "movie".into(),
                 };
-                Ok(if self.ambiguous {
-                    vec![candidate.clone(), candidate]
-                } else {
-                    vec![candidate]
+                Ok(CandidateSearch {
+                    candidates: if self.ambiguous {
+                        vec![candidate.clone(), candidate]
+                    } else {
+                        vec![candidate]
+                    },
+                    fallback_used: false,
                 })
             })
         }

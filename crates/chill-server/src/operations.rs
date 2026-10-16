@@ -3,7 +3,7 @@
 //! This is deliberately separate from the portable household archive.  It is
 //! an operator tool for one configured data root and never reads the video root.
 
-use crate::config::{ServerConfig, prepare_data_dir};
+use crate::config::{LibrarySettings, ServerConfig, prepare_data_dir};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -428,10 +428,11 @@ fn safe_layout(config: &ServerConfig) -> Result<(), String> {
     {
         return Err("Le workspace ne peut pas être la racine de données.".into());
     }
-    if let Some(video) = &config.video_root
-        && root.starts_with(video)
-    {
-        return Err("La racine locale ne peut pas se trouver dans la racine vidéo/NAS.".into());
+    let library = LibrarySettings::load(config)?;
+    for video in library.roots() {
+        if root.starts_with(&video) || video.starts_with(root) {
+            return Err("La racine locale ne peut pas chevaucher un emplacement vidéo/NAS.".into());
+        }
     }
     Ok(())
 }
@@ -1092,6 +1093,28 @@ mod tests {
         assert!(safe_layout(&config).is_err());
         config.data_dir = PathBuf::from("/srv/video/chill");
         config.video_root = Some(PathBuf::from("/srv/video"));
+        assert!(safe_layout(&config).is_err());
+    }
+
+    #[test]
+    fn backup_layout_refuses_data_root_overlapping_an_extra_library_location() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        fs::create_dir(&data).unwrap();
+        let config = ServerConfig {
+            data_dir: data.clone(),
+            ..ServerConfig::default()
+        };
+        let settings = LibrarySettings {
+            video_root: None,
+            additional_video_roots: vec![data.join("videos")],
+            revision: 1,
+        };
+        fs::write(
+            data.join("library.json"),
+            serde_json::to_vec(&settings).unwrap(),
+        )
+        .unwrap();
         assert!(safe_layout(&config).is_err());
     }
 }

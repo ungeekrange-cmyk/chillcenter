@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR0021](ADR-0021-multiple-library-locations.md), [ADR0022](ADR-0022-paused-playback-retains-buffer.md), [ADR0023](ADR-0023-series-spelling-canonicalization.md),16octobre2026 : bibliothèques multiples/addition compatible, pause gardant moteur/tampon et canonicalisation des variantes de séries. Autorité : demandes utilisateur explicites ; preuves exactes dans le lot Configuration, pas une preuve de déploiement Pi.
+
 [ADR-0020](ADR-0020-local-title-recommendations.md), IMPLEMENTED_DETAIL,16octobre2026 : recommandations fiche/conseil en rails, séries regroupées par identité sans épisodes, correspondances genres/réalisation/distribution calculées dans le miroir ou fournies au CLI sur demande explicite ; API historique et web installé conservés.
 
 [ADR-0019](ADR-0019-explicit-series-selector.md), IMPLEMENTED_DETAIL,2026-10-15 : `selector=key` facultatif pour les nouvelles clés de séries ; titre historique par défaut sans préfixe réservé, aucune modification de l'ancien web. Remplace seulement la sélection implicite de l'ADR-0015-series-season-identity pour préserver l'API existante.

@@ -1655,6 +1655,17 @@ mod tests {
 
     struct MemoryFactory(Vec<u8>);
     struct MemorySource(Vec<u8>);
+    /// Deliberately throttled synthetic stream: it proves that libmpv keeps
+    /// consuming its bounded packet cache after `pause=yes`, without touching
+    /// a NAS, HTTP service or user media.
+    struct SlowMemoryFactory {
+        bytes: Vec<u8>,
+        reads: Arc<AtomicUsize>,
+    }
+    struct SlowMemorySource {
+        bytes: Vec<u8>,
+        reads: Arc<AtomicUsize>,
+    }
     impl MediaFactory for MemoryFactory {
         fn open(&self, _: &str) -> Result<Box<dyn MediaSource>, PlayerError> {
             Ok(Box::new(MemorySource(self.0.clone())))
@@ -1681,6 +1692,120 @@ mod tests {
         fn size(&self) -> Option<u64> {
             Some(self.0.len() as u64)
         }
+    }
+    impl MediaFactory for SlowMemoryFactory {
+        fn open(&self, _: &str) -> Result<Box<dyn MediaSource>, PlayerError> {
+            Ok(Box::new(SlowMemorySource {
+                bytes: self.bytes.clone(),
+                reads: self.reads.clone(),
+            }))
+        }
+    }
+    impl MediaSource for SlowMemorySource {
+        fn read_at(
+            &mut self,
+            offset: u64,
+            buffer: &mut [u8],
+            cancellation: &CancellationToken,
+        ) -> Result<usize, PlayerError> {
+            if cancellation.is_cancelled() {
+                return Err(PlayerError::Stream("cancelled".into()));
+            }
+            let offset = offset as usize;
+            if offset >= self.bytes.len() {
+                return Ok(0);
+            }
+            thread::sleep(Duration::from_millis(12));
+            self.reads.fetch_add(1, Ordering::Relaxed);
+            let count = buffer.len().min(self.bytes.len() - offset);
+            buffer[..count].copy_from_slice(&self.bytes[offset..offset + count]);
+            Ok(count)
+        }
+        fn size(&self) -> Option<u64> {
+            Some(self.bytes.len() as u64)
+        }
+    }
+
+    #[test]
+    fn libmpv_keeps_bounded_readahead_alive_while_paused_without_reloading() {
+        let ffmpeg = Path::new("/opt/homebrew/bin/ffmpeg");
+        if !ffmpeg.exists() || !controlled_library_paths().iter().any(|path| path.exists()) {
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let video = directory.path().join("paused-cache.mp4");
+        let status = Command::new(ffmpeg)
+            .args([
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=320x180:r=30:d=30",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=700:duration=30",
+                "-map",
+                "0:v",
+                "-map",
+                "1:a",
+                "-c:v",
+                "libx264",
+                "-b:v",
+                "2M",
+                "-c:a",
+                "aac",
+            ])
+            .arg(&video)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let reads = Arc::new(AtomicUsize::new(0));
+        let mut options = PlayerOptions::default();
+        options.extra.insert("vo".into(), "null".into());
+        options.extra.insert("ao".into(), "null".into());
+        let mut player = Player::new(options).unwrap();
+        player
+            .register_stream(
+                "chill-slow",
+                Arc::new(SlowMemoryFactory {
+                    bytes: fs::read(video).unwrap(),
+                    reads: reads.clone(),
+                }),
+            )
+            .unwrap();
+        player.load("chill-slow://paused-cache").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let mut loaded = false;
+        while Instant::now() < deadline {
+            if matches!(
+                player.poll_event(Duration::from_millis(50)),
+                PlayerEvent::FileLoaded
+            ) {
+                loaded = true;
+                break;
+            }
+        }
+        assert!(loaded, "libmpv did not load the synthetic stream");
+        player.pause(true).unwrap();
+        let before = reads.load(Ordering::Relaxed);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            let _ = player.poll_event(Duration::from_millis(25));
+        }
+        let after = reads.load(Ordering::Relaxed);
+        assert!(after > before, "paused libmpv stopped bounded readahead");
+        let cached = player.buffered_ahead_seconds().unwrap().unwrap_or(0.0);
+        assert!(
+            (0.0..=60.1).contains(&cached),
+            "cache duration escaped its 60s budget: {cached}"
+        );
+        // No second loadfile command is issued: the same Player instance is
+        // simply unpaused, preserving its established source and packet cache.
+        player.pause(false).unwrap();
+        assert!(reads.load(Ordering::Relaxed) >= after);
     }
 
     #[test]

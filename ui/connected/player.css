@@ -8,6 +8,8 @@ body.player-open .sidebar{background:var(--bg);z-index:1001}
 body.player-open .app-topbar,body.player-open main>:not(#player-panel){display:none!important}
 #player-stage{position:fixed;inset:0 0 0 var(--sidebar-width);isolation:isolate;overflow:hidden;color:#fff;background:transparent;z-index:1000;outline:none}
 #native-video{position:absolute;inset:0;width:100%;height:100%;background:transparent;overflow:hidden}
+#player-panel.player-loading #native-video:after{content:"";position:absolute;z-index:5;left:50%;top:50%;width:34px;height:34px;margin:-17px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:player-spin .75s linear infinite;pointer-events:none}
+@keyframes player-spin{to{transform:rotate(360deg)}}
 /* Only EOF may paint this layer: any opaque live DOM would hide libmpv. */
 #player-backdrop{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 65% 35%,#35443c,#111913 75%)}
 #player-backdrop img{position:absolute;inset:-32px;width:calc(100% + 64px);height:calc(100% + 64px);object-fit:cover;filter:blur(28px) brightness(.42);transform:scale(1.04)}

@@ -296,7 +296,7 @@ async fn enqueue_target(
                 .await;
             return;
         };
-        let Some(root) = settings.video_root.clone() else {
+        let Some(root) = settings.root_for_path(&target.path) else {
             let _ = state
                 .database
                 .call(move |store| store.mark_fingerprint_failed(&media))
@@ -389,7 +389,7 @@ async fn process_scan_target(state: &AppState, target: FingerprintTarget) -> boo
     let Some(settings) = state.library.lock().ok().map(|value| value.clone()) else {
         return false;
     };
-    let Some(root) = settings.video_root.clone() else {
+    let Some(root) = settings.root_for_path(&target.path) else {
         return false;
     };
     let root_revision = settings.revision;

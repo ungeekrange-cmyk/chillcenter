@@ -13,6 +13,14 @@ pub struct Candidate {
     pub kind: String,
 }
 
+/// Provider candidates together with the query path that produced them.
+/// This is internal job context, not part of the HTTP candidate response.
+#[derive(Debug, Clone)]
+pub struct CandidateSearch {
+    pub candidates: Vec<Candidate>,
+    pub fallback_used: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ArtworkCandidate {
     pub title: String,
@@ -153,6 +161,95 @@ fn search_query(media: &Media, query: &str) -> String {
     }
 }
 
+/// Plan at most one fallback lookup for automatic filename-derived queries.
+/// Manual text is intentional and must never be rewritten or retried.
+fn search_queries(media: &Media, query: &str) -> Vec<String> {
+    if !query.trim().is_empty() {
+        return vec![query.trim().to_owned()];
+    }
+    let label = if media.category == "serie" {
+        media.series.as_deref().unwrap_or(&media.title)
+    } else {
+        &media.title
+    };
+    let primary = search_query(media, query);
+    let fallback = crate::scanner::title_for_search_fallback(label);
+    let mut queries = vec![primary];
+    if let Some(fallback) = fallback.filter(|fallback| fallback != &queries[0]) {
+        queries.push(fallback);
+    }
+    queries
+}
+
+fn candidates_from_results(results: &Value, kind: &str) -> Vec<Candidate> {
+    results["results"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .take(10)
+        .filter_map(|r| {
+            Some(Candidate {
+                id: r["id"].as_i64()?,
+                title: text(r, if kind == "tv" { "name" } else { "title" }).into(),
+                year: text(
+                    r,
+                    if kind == "tv" {
+                        "first_air_date"
+                    } else {
+                        "release_date"
+                    },
+                )
+                .get(..4)
+                .and_then(|y| y.parse().ok()),
+                overview: text(r, "overview").into(),
+                poster: r["poster_path"]
+                    .as_str()
+                    .map(|p| format!("https://image.tmdb.org/t/p/w342{p}")),
+                kind: kind.into(),
+            })
+        })
+        .collect()
+}
+
+/// Select a provider candidate only on a unique exact automatic title match.
+/// If the provider reports that its bounded fallback query was used, the
+/// fallback label is considered only after there is no primary exact match.
+/// This keeps a duplicate or mismatched primary result ambiguous.
+pub fn exact_automatic_candidate(media: &Media, search: &CandidateSearch) -> Option<Candidate> {
+    let source_label = media.series.as_deref().unwrap_or(&media.title);
+    let primary = crate::scanner::title_for_search(source_label);
+    let kind = if media.category == "serie" { "tv" } else { "movie" };
+    let normalized = |value: &str| {
+        value
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
+    };
+    let matching = |label: &str| {
+        search
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.kind == kind
+                    && normalized(&candidate.title) == normalized(label)
+                    && media.year.is_none_or(|year| candidate.year == Some(year))
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let primary_matches = matching(&primary);
+    if !primary_matches.is_empty() {
+        return (primary_matches.len() == 1).then(|| primary_matches.into_iter().next().unwrap());
+    }
+    if !search.fallback_used {
+        return None;
+    }
+    let fallback = crate::scanner::title_for_search_fallback(source_label)?;
+    let matches = matching(&fallback);
+    (matches.len() == 1).then(|| matches.into_iter().next().unwrap())
+}
+
 fn names(values: impl Iterator<Item = String>) -> Vec<String> {
     let mut result = Vec::new();
     for name in values {
@@ -285,48 +382,50 @@ impl Tmdb {
         media: &Media,
         query: &str,
     ) -> Result<Vec<Candidate>, ProviderFailure> {
+        Ok(self
+            .candidates_for_job_with_context(media, query)
+            .await?
+            .candidates)
+    }
+    pub async fn candidates_for_job_with_context(
+        &self,
+        media: &Media,
+        query: &str,
+    ) -> Result<CandidateSearch, ProviderFailure> {
         let kind = if media.category == "serie" {
             "tv"
         } else {
             "movie"
         };
-        let query = search_query(media, query);
-        if query.is_empty() || query.len() > 500 {
+        let queries = search_queries(media, query);
+        if queries.iter().any(|query| query.is_empty() || query.len() > 500) {
             return Err("Recherche TMDB trop longue.".into());
         }
-        let results = self
-            .get_checked(
-                &format!("search/{kind}"),
-                &[("query", query.as_str()), ("include_adult", "false")],
-            )
-            .await?;
-        Ok(results["results"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .take(10)
-            .filter_map(|r| {
-                Some(Candidate {
-                    id: r["id"].as_i64()?,
-                    title: text(r, if kind == "tv" { "name" } else { "title" }).into(),
-                    year: text(
-                        r,
-                        if kind == "tv" {
-                            "first_air_date"
-                        } else {
-                            "release_date"
-                        },
-                    )
-                    .get(..4)
-                    .and_then(|y| y.parse().ok()),
-                    overview: text(r, "overview").into(),
-                    poster: r["poster_path"]
-                        .as_str()
-                        .map(|p| format!("https://image.tmdb.org/t/p/w342{p}")),
-                    kind: kind.into(),
-                })
-            })
-            .collect())
+        for (index, query) in queries.into_iter().enumerate() {
+            // Keep the fallback from bypassing the worker's provider spacing.
+            // It is one additional lookup at most, and only follows a valid
+            // empty response rather than a transient failure.
+            if index > 0 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            let results = self
+                .get_checked(
+                    &format!("search/{kind}"),
+                    &[("query", query.as_str()), ("include_adult", "false")],
+                )
+                .await?;
+            let candidates = candidates_from_results(&results, kind);
+            if !candidates.is_empty() {
+                return Ok(CandidateSearch {
+                    candidates,
+                    fallback_used: index > 0,
+                });
+            }
+        }
+        Ok(CandidateSearch {
+            candidates: Vec::new(),
+            fallback_used: false,
+        })
     }
 
     pub async fn artwork_candidates(&self, query: &str) -> Result<Vec<ArtworkCandidate>, String> {
@@ -531,13 +630,8 @@ impl Tmdb {
     }
 
     pub async fn best(&self, media: &Media) -> Result<Option<Candidate>, String> {
-        let query = media.series.as_deref().unwrap_or(&media.title);
-        let candidates = self.candidates(media, query).await?;
-        let normalized = crate::scanner::normalized(query);
-        Ok(candidates.into_iter().find(|c| {
-            crate::scanner::normalized(&c.title) == normalized
-                && (media.year.is_none() || media.year == c.year)
-        }))
+        let search = self.candidates_for_job_with_context(media, "").await?;
+        Ok(exact_automatic_candidate(media, &search))
     }
 
     /// Fetch only the TV series, never episode-specific data.
@@ -719,6 +813,37 @@ mod tests {
             assert_eq!(search_query(&media, ""), expected);
             assert_eq!(search_query(&media, dirty), dirty);
         }
+    }
+    #[test]
+    fn automatic_filename_lookup_has_one_conservative_fallback_but_manual_lookup_has_none() {
+        let mut media = movie();
+        media.title = "Attack the Block - - (2011) - - Audio - VOSTA".into();
+        assert_eq!(
+            search_queries(&media, ""),
+            [
+                "Attack the Block (2011)".to_owned(),
+                "Attack the Block".to_owned()
+            ]
+        );
+        assert_eq!(search_queries(&media, "Attack the Block"), ["Attack the Block"]);
+
+        media.title = "Spider-Man - No Way Home (2021) - 1080p".into();
+        assert_eq!(
+            search_queries(&media, ""),
+            ["Spider-Man - No Way Home (2021)"]
+        );
+    }
+    #[test]
+    fn candidates_keep_provider_years_for_exact_year_disambiguation() {
+        let candidates = candidates_from_results(
+            &serde_json::json!({"results":[
+                {"id": 1, "title":"Doctor Who", "release_date":"2005-03-26"},
+                {"id": 2, "title":"Doctor Who", "release_date":"2023-05-06"}
+            ]}),
+            "movie",
+        );
+        assert_eq!(candidates[0].year, Some(2005));
+        assert_eq!(candidates[1].year, Some(2023));
     }
     #[test]
     fn movie_presentation_reads_runtime_cast_and_only_directors() {

@@ -107,17 +107,83 @@ pub fn title_for_search(value: &str) -> String {
     tidy(release_prefix(&spaced))
 }
 
+/// A narrower second query for source labels which use repeated dashes as
+/// release-field separators.  It is deliberately not applied to the first
+/// lookup: a single dash can be part of a real title (for example
+/// "Spider-Man"), and complete parentheticals remain meaningful title text.
+///
+/// The caller may use this only after the normal query has no results.
+pub fn title_for_search_fallback(value: &str) -> Option<String> {
+    static REPEATED_DASH: OnceLock<Regex> = OnceLock::new();
+    // `--` and `- -` are both common release-field separators. A single
+    // spaced dash remains a title character, so it cannot trigger a retry.
+    let separator = REPEATED_DASH.get_or_init(|| Regex::new(r"--+|-\s+-").unwrap());
+    let primary = title_for_search(value);
+    for found in separator.find_iter(value) {
+        let prefix = value[..found.start()].trim();
+        let tail = &value[found.end()..];
+        let next = separator
+            .find(tail)
+            .map(|next| &tail[..next.start()])
+            .unwrap_or(tail)
+            .trim();
+        if prefix.is_empty() || !release_field(next) {
+            continue;
+        }
+        let fallback = tidy(prefix);
+        if !fallback.is_empty() && fallback != primary {
+            return Some(fallback);
+        }
+    }
+    None
+}
+
+/// A repeated dash alone is too weak: it may be intentional punctuation in a
+/// title. The immediately following field must look like a release year or a
+/// media/distribution marker before the fallback is considered.
+fn release_field(value: &str) -> bool {
+    static FIELD: OnceLock<Regex> = OnceLock::new();
+    static YEAR: OnceLock<Regex> = OnceLock::new();
+    let field = FIELD.get_or_init(|| {
+        Regex::new(r"(?i)^(?:audio|vid[eé]o|vost(?:fr|a|en)?|vff|vfq|vfi|vo|multi|(?:e[ ._-]?ac|ac)[ ._-]?3|ddp|dd\+|dts|true[ ._-]?hd|atmos|flac|opus|[xh][ ._-]?26[45]|hevc|avc|av1|xvid|divx|(?:2160|1080|720|576|480)[pi]?|4k|uhd|blu[ ._-]?ray|web[ ._-]?(?:rip|dl)|hdtv|dvdrip|remux)\b").unwrap()
+    });
+    let year = YEAR.get_or_init(|| Regex::new(r"^[\[(]?(?:18|19|20)\d{2}[\])]?$").unwrap());
+    // The explicit wrapper anchors a year field; an unwrapped year must be a
+    // whole field to avoid treating a title number as release metadata.
+    field.is_match(value) || year.is_match(value)
+}
+
 /// Extract a release year only when parsing source filenames, not stored titles.
 fn title_and_year(value: &str) -> (String, Option<i32>) {
+    // Keep source punctuation separately for year disambiguation while using
+    // the space-normalised form for release-token detection (an underscore is
+    // a regex word character and would otherwise hide VOST/DDP markers).
     let spaced = value.replace(['.', '_'], " ");
     let content = release_prefix(&spaced).to_owned();
     // A leading number may be the actual title (1917, 2001, 1899), not a date.
     let year = year_pattern()
         .captures_iter(&content)
         .filter(|c| {
-            content[..c.get(0).unwrap().start()]
+            let year = c.get(0).unwrap();
+            let before = value[..year.start()].chars().last();
+            let after = value[year.end()..].chars().next();
+            let before_marker = value[..year.start()]
                 .chars()
-                .any(char::is_alphanumeric)
+                .rev()
+                .find(|c| !c.is_whitespace());
+            let after_marker = value[year.end()..]
+                .chars()
+                .find(|c| !c.is_whitespace());
+            // A plain terminal number is frequently part of a title (Blade
+            // Runner 2049).  Treat a four-digit number as a release year only
+            // when the filename marks it with a release delimiter or wrapper.
+            let marked = matches!((before, after), (Some('('), Some(')')) | (Some('['), Some(']')))
+                || before_marker.is_some_and(|c| matches!(c, '.' | '_' | '-'))
+                    && after_marker.is_some_and(|c| matches!(c, '.' | '_' | '-'));
+            marked
+                && content[..year.start()]
+                    .chars()
+                    .any(char::is_alphanumeric)
         })
         .last();
     let (without_year, date) = if let Some(c) = year {
@@ -404,6 +470,31 @@ mod tests {
         }
     }
     #[test]
+    fn fallback_query_only_uses_repeated_release_separators() {
+        assert_eq!(
+            title_for_search_fallback("Attack the Block - - (2011) - - Audio - VOSTA"),
+            Some("Attack the Block".into())
+        );
+        assert_eq!(
+            title_for_search_fallback("Attack the Block--2011--VOSTA--1080p"),
+            Some("Attack the Block".into())
+        );
+        assert_eq!(
+            title_for_search_fallback("Spider-Man - No Way Home (2021) - 1080p"),
+            None,
+            "single title dashes must not trigger the retry"
+        );
+        assert_eq!(
+            title_for_search_fallback("Birdman (or The Unexpected Virtue of Ignorance)"),
+            None
+        );
+        assert_eq!(
+            title_for_search_fallback("Wallace -- Gromit"),
+            None,
+            "repeated title punctuation without a release field is not enough"
+        );
+    }
+    #[test]
     fn search_cleaning_ignores_orphaned_delimiters_but_keeps_complete_parentheticals() {
         assert_eq!(title_for_search("Baby (Part 1"), "Baby Part 1");
         assert_eq!(
@@ -463,6 +554,15 @@ mod tests {
         );
         assert_eq!(m.title, "2001 A Space Odyssey");
         assert_eq!(m.year, Some(1968));
+    }
+    #[test]
+    fn plain_terminal_title_numbers_are_not_mistaken_for_years() {
+        let m = parse_file(
+            Path::new("/nas"),
+            Path::new("/nas/Blade Runner 2049 - - VOSTA - - 1080p.mkv"),
+        );
+        assert_eq!(m.title, "Blade Runner 2049");
+        assert_eq!(m.year, None);
     }
     #[test]
     fn seasons_and_episodes() {

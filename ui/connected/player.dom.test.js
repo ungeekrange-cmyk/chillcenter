@@ -4,12 +4,12 @@ function harness(seconds,{available=true,error=null,terminal=false,context=null,
  function element(){const classes=new Set(),events={};return {hidden:false,disabled:false,textContent:'',value:'',dataset:{},events,attributes:{},classList:{add(...items){items.forEach(x=>classes.add(x));},remove(...items){items.forEach(x=>classes.delete(x));},contains:x=>classes.has(x),toggle(x,enabled){if(enabled)classes.add(x);else classes.delete(x);}},setAttribute(key,value){this.attributes[key]=value;},getAttribute(key){return this.attributes[key]??null;},addEventListener(type,fn){events[type]=fn;},append(){},replaceChildren(){},querySelector(){return null;},getBoundingClientRect(){return {x:0,y:0,width:320,height:180};}};}
  const get=id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);};
  const document={body:element(),hidden:false,activeElement:null,querySelector:get,querySelectorAll:()=>[],createElementNS:element,addEventListener:(type,fn)=>listeners[type]=fn};
- const sandbox={document,window:{addEventListener(){},__TAURI__:{core:{invoke:async(_,{command})=>{calls.push(command);return {stage:'closed'};}}}},$:get,node:element,message(){},Date:{now:()=>now},setTimeout:(fn,delay)=>{const id=++nextTimer;timers.set(id,{fn,at:now+delay});return id;},clearTimeout:id=>timers.delete(id),setInterval:()=>0,clearInterval(){},requestAnimationFrame:fn=>fn(),ResizeObserver:class{observe(){}},loadPage:async()=>{}};
+ const scroll=[];const sandbox={document,window:{scrollX:0,scrollY:1200,scrollTo:(x,y)=>scroll.push([x,y]),addEventListener(){},__TAURI__:{core:{invoke:async(_,{command})=>{calls.push(command);return {stage:'closed'};}}}},$:get,node:element,message(){},Date:{now:()=>now},setTimeout:(fn,delay)=>{const id=++nextTimer;timers.set(id,{fn,at:now+delay});return id;},clearTimeout:id=>timers.delete(id),setInterval:()=>0,clearInterval(){},requestAnimationFrame:fn=>fn(),ResizeObserver:class{observe(){}},loadPage:async()=>{}};
  vm.createContext(sandbox);vm.runInContext(fs.readFileSync(__dirname+'/player.js','utf8'),sandbox);
  sandbox.state={server_id:'server',profile_id:'profile'};
  const state={stage:'player',media_id:'a',context,native:{ended:true,error},autoplay_seconds:seconds,next:resolved?{available,new_season:true,media:terminal?null:{id:'b',title:'Episode suivant',available,poster:null}}:null};
  vm.runInContext('playerState='+JSON.stringify(state)+'; renderNext();',sandbox);
- return {calls,get,sandbox,timers,listeners,async advance(ms){const end=now+ms;for(let i=0;i<1000;i++){const entry=[...timers].filter(([,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!entry)break;const [id,t]=entry;timers.delete(id);now=t.at;await t.fn();}now=end;await Promise.resolve();}};
+ return {calls,get,sandbox,timers,listeners,scroll,async advance(ms){const end=now+ms;for(let i=0;i<1000;i++){const entry=[...timers].filter(([,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!entry)break;const [id,t]=entry;timers.delete(id);now=t.at;await t.fn();}now=end;await Promise.resolve();}};
 }
 for(const seconds of [0,5,10,15,20,30])test('shipped next controller launches exactly after '+seconds+' seconds',async()=>{
  const h=harness(seconds);assert.equal(h.get('player-next-season').textContent,'Nouvelle saison');
@@ -43,13 +43,13 @@ test('controls hide after 2.5 seconds of playing inactivity and pointer brings t
  h.get('player-panel').events.pointermove();assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
  await h.advance(2500);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),true);
 });
-test('pause, buffering, loading, ended, focus and menu hover pin native-overlay controls',async()=>{
+test('pause, buffering, loading, ended, keyboard focus and menu hover pin native-overlay controls',async()=>{
  for(const native of [{paused:true},{buffering:true},{loaded:false},{ended:true},{error:'failed'}]){
   const h=harness(null);playing(h,native);await h.advance(5000);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
  }
  for(const source of ['focus','hover']){
   const h=harness(null);playing(h);
-  if(source==='focus')h.sandbox.document.activeElement={closest:()=>h.get('player-overlay')};
+  if(source==='focus'){h.sandbox.document.activeElement={closest:()=>h.get('player-overlay')};vm.runInContext('playerKeyboardFocus=true;',h.sandbox);}
   else h.get('player-overlay').events.pointerenter();
   await h.advance(5000);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
   if(source==='focus'){h.sandbox.document.activeElement=null;h.get('player-panel').events.focusout();}
@@ -104,6 +104,21 @@ test('failed stop leaves the current page intact',async()=>{
  h.sandbox.window.__TAURI__.core.invoke=async()=>{throw Error('stop failed');};
  h.sandbox.window.catalogReturnFromPlayback=()=>returned++;
  await h.advance(0);await new Promise(resolve=>setImmediate(resolve));assert.equal(returned,0);
+});
+test('a server-confirmed missing leaf rolls back the player and updates only that card',async()=>{
+ const h=harness(null),updated=[];
+ h.sandbox.window.catalogMediaUnavailable=id=>updated.push(id);
+ h.sandbox.window.__TAURI__.core.invoke=async(_,{command})=>{
+  h.calls.push(command);
+  if(command.action==='start'){const error=Error('missing');error.code='MEDIA_FILE_MISSING';throw error;}
+  return {stage:'closed'};
+ };
+ await vm.runInContext('window.chillPlay("missing-id")',h.sandbox);
+ assert.deepEqual(h.calls.map(command=>command.action),['start','stop']);
+ assert.deepEqual(updated,['missing-id']);
+ assert.equal(h.get('player-panel').hidden,true);
+ assert.equal(h.sandbox.document.body.classList.contains('player-open'),false);
+ assert.deepEqual(h.scroll,[[0,1200]]);
 });
 for(const change of ['state.profile_id="other";','++playerNavigationEpoch;'])test('delayed completion cannot replace a newer profile or navigation: '+change,async()=>{
  const h=harness(20,{terminal:true}),returned=[];let resolveSync;

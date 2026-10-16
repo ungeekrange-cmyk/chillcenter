@@ -63,6 +63,8 @@ Then l'avancement est visible et une seconde actualisation concurrente n'est pas
 
 ## 5. Contraintes fonctionnelles de qualité
 
+Amendement16octobre2026, **US-006-AC-05** : Configuration › Bibliothèque accepte plusieurs emplacements (au plus16), sans modifier les montages/fichiers. Un scan rassemble toutes les sources puis publie une fois ; une source indisponible conserve l'ancien catalogue entier. Des fichiers homonymes de deux sources restent distincts ; les requêtes historiques conservent les sources supplémentaires omises. Voir ADR0021 et le lot Configuration.
+
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.
 
 ## 6. Traçabilité et revue

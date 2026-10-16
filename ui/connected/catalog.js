@@ -65,7 +65,7 @@ async function openMedia(id){
   const m=result.media;$("detail-title").textContent=m.title;$("detail-overview").textContent=m.overview||"Informations à compléter";
   $("detail-metadata").textContent=[m.year,m.runtime_minutes?m.runtime_minutes+" min":null,...m.genres,...m.directors.map(n=>"Réalisation : "+n),...m.cast].filter(Boolean).join(" · ");
   let sourcePath=$("detail-path");if(!sourcePath){sourcePath=node("code",undefined,"detail-path muted");sourcePath.id="detail-path";sourcePath.setAttribute("aria-label","Chemin relatif de la vidéo sur le serveur");$("detail-metadata").after(sourcePath);}sourcePath.textContent=m.path||"";sourcePath.hidden=!m.path;
-  $("detail-availability").textContent=m.available?"":"Indisponible";$("detail-availability").hidden=m.available;
+  renderMediaAvailability(m);
   $("detail-poster").replaceChildren(node("span",m.title.slice(0,1).toUpperCase()));if(m.poster)observeArtwork($("detail-poster"),m.id);
   $("detail-addlist").disabled=false;$("detail-addlist").onclick=()=>window.catalogPickCollection(m.id,m.category);
   const reload=async()=>{if(context===collectionScope())await syncAfterMutation();if(current())await openMedia(m.id);};
@@ -77,15 +77,29 @@ async function openMedia(id){
   loadRelatedMedia(m.id);
 }
 function renderRatingStars(target,rating,save){target.replaceChildren();target.setAttribute("aria-label","Ma note sur cinq");for(let value=1;value<=5;value++){const star=button(value<=(rating||0)?"★":"☆",async()=>{if(target.dataset.saving)return;target.dataset.saving="true";try{await save(value);}finally{delete target.dataset.saving;}},"rating-star");star.setAttribute("aria-label",value+" sur 5");star.setAttribute("aria-pressed",String(value<=(rating||0)));target.append(star);}}
+function renderMediaAvailability(media){
+ $("detail-availability").textContent=media.available?"":"Indisponible — le fichier n’est pas accessible. Retrouvez son emplacement ou gérez sa référence dans Configuration › Bibliothèque.";$("detail-availability").hidden=media.available;
+ let locate=$("detail-locate");if(!locate){locate=button("Retrouver ou gérer le fichier",async()=>{});locate.id="detail-locate";$("detail-play").parentElement.append(locate);}locate.hidden=media.available;
+ locate.onclick=async()=>{$("media-dialog").close();await $("admin-toggle").onclick();window.configurationShow?.("library");};
+}
+window.catalogDetailUnavailable=mediaId=>{
+ const media=collectionDetails.get(mediaId);if(media)collectionDetails.set(mediaId,{...media,available:false});
+ if(seriesView?.episodes)for(const episode of seriesView.episodes)if(episode.id===mediaId)episode.available=false;
+ const card=collectionCards.get(mediaId);if(card){retireArtwork(card.querySelector(".poster"));collectionCards.delete(mediaId);}
+ if(detailView?.media.id===mediaId){detailView.media.available=false;$("detail-play").disabled=true;renderMediaAvailability(detailView.media);}
+ if(collectionView&&collectionKind!=="series")renderCollectionMembers();
+};
 function renderTmdbPanel(target,media,scope,current,reload){
- target.replaceChildren(node("h3","TMDB"));const query=document.createElement("input"),results=node("div",undefined,"tmdb-candidates");query.type="search";query.maxLength=500;query.value=scope==="media"?media.title:media.series||media.title;query.setAttribute("aria-label","Titre à rechercher sur TMDB");let searchGeneration=0;
- async function mutate(candidate,action){const fresh=await libraryRead({action:"media_detail",media_id:media.id},current);if(!fresh)return;let revision=fresh.revision;
+ target.replaceChildren(node("h3","TMDB"));const query=document.createElement("input"),results=node("div",undefined,"tmdb-candidates"),association=node("p",media.tmdb_id?"Référence associée : "+(media.series||media.title)+" (TMDB "+media.tmdb_id+").":"","tmdb-association-status");association.setAttribute("role","status");association.setAttribute("aria-live","polite");query.type="search";query.maxLength=500;query.value=scope==="media"?media.title:media.series||media.title;query.setAttribute("aria-label","Titre à rechercher sur TMDB");let searchGeneration=0,mutating=false;
+ async function mutate(candidate,action){if(mutating||!current())return;mutating=true;searchGeneration++;const label=candidate?[candidate.title,candidate.year].filter(Boolean).join(" · "):media.series||media.title;results.replaceChildren();association.textContent=(candidate?"Association en cours avec ":"Actualisation en cours de ")+label+"…";association.className="tmdb-association-status is-working";association.setAttribute("aria-busy","true");query.disabled=search.disabled=refresh.disabled=true;let applied=false;
+  try{const fresh=await libraryRead({action:"media_detail",media_id:media.id},current);if(!fresh)return;let revision=fresh.revision;
   // A season is selected inside an identified parent show, never merged by title.
   if(scope==="season"&&candidate&&fresh.media.tmdb_id!==candidate.id){const parent=await libraryRead({action:"tmdb_select",media_id:media.id,expected_revision:revision,tmdb_id:candidate.id,kind:"tv",scope:"series"},current);if(!parent)return;await syncAfterMutation();const updated=await libraryRead({action:"media_detail",media_id:media.id},current);if(!updated)return;revision=updated.revision;}
   const command=candidate?{action:"tmdb_select",media_id:media.id,expected_revision:revision,tmdb_id:candidate.id,kind:candidate.kind,scope}:tmdbCommand(action,media.id,revision,scope);
-  if(await libraryRead(command,current)){await syncAfterMutation();if(current())await reload();}
+  const result=await libraryRead(command,current);if(result&&!result.discarded&&current()){applied=true;association.textContent="Association confirmée : "+label+".";association.className="tmdb-association-status";await syncAfterMutation();if(current())await reload();}
+  }finally{mutating=false;if(current()){association.className="tmdb-association-status";association.setAttribute("aria-busy","false");query.disabled=search.disabled=refresh.disabled=false;if(!applied)association.textContent="Association non confirmée avec "+label+". Consultez le message d’erreur puis relancez la recherche pour réessayer.";}}
  }
- target.append(query,button("Rechercher TMDB",async()=>{const generation=++searchGeneration;results.replaceChildren(node("p","Recherche…","muted"));const response=await libraryRead({action:"tmdb_candidates",media_id:media.id,query:query.value},()=>current()&&generation===searchGeneration);if(!response)return;results.replaceChildren();for(const candidate of response.candidates||[]){if(scope!=="media"&&candidate.kind!=="tv")continue;results.append(button([candidate.title,candidate.year].filter(Boolean).join(" · "),()=>mutate(candidate)));}if(!results.childElementCount)results.append(node("p","Aucune correspondance.","muted"));}),button("Actualiser les informations TMDB",()=>mutate(null,"refresh")),results);
+ const search=button("Rechercher TMDB",async()=>{if(mutating)return;const generation=++searchGeneration;results.replaceChildren(node("p","Recherche…","muted"));const automatic=query.value.trim()===(scope==="media"?media.title:media.series||media.title).trim();const response=await libraryRead({action:"tmdb_candidates",media_id:media.id,query:automatic?"":query.value},()=>current()&&generation===searchGeneration);if(!response)return;results.replaceChildren();for(const candidate of response.candidates||[]){if(scope!=="media"&&candidate.kind!=="tv")continue;results.append(button([candidate.title,candidate.year].filter(Boolean).join(" · "),()=>mutate(candidate)));}if(!results.childElementCount)results.append(node("p","Aucune correspondance.","muted"));}),refresh=button("Actualiser les informations TMDB",()=>mutate(null,"refresh"));target.append(query,search,refresh,association,results);
  if(scope!=="media")target.append(button("Importer une image",async()=>{const fresh=await libraryRead({action:"media_detail",media_id:media.id},current);if(fresh)await importArtwork({kind:scope,media_id:media.id,expected_revision:fresh.revision},async()=>{await syncAfterMutation();if(current())await reload();});}));
 }
 // A recommendation is a title-level object. Rust groups shows and sends
