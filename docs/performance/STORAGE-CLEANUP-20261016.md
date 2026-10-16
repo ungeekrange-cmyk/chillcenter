@@ -38,5 +38,5 @@ Les compilations du lot suivant recréent un cache distinct ; le gain ci-dessus 
 celui du nettoyage, pas une promesse de gain net après reconstruction.
 
 Après tests, Clippy et packaging, nouveau cache de compilation distinct
-`/private/tmp/chillcenter-playback-locale-target` : environ **1,65Gio** ; il ne s’agit
+`/private/tmp/chillcenter-playback-locale-target` : environ **1,7Gio** ; il ne s’agit
 pas d’un des huit chemins supprimés. Anciennes versions livrées toujours conservées.
