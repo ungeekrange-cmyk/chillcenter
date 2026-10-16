@@ -1,5 +1,11 @@
 # Contexte du projet
 
+## Séries / EOF / vidéos courtes — candidat local
+
+16 octobre 2026 : source **94495c1**, branche `codex/series-season-grid`. Première saison non vue ouverte, épisodes en grille ; affiche/synopsis/compteurs/note réunis, outils communs en bas. Retour à la série/saga/liste/fiche après dernier élément ; contexte conservé depuis la fiche d'un membre ; une synchro personnelle détachée par EOF confirmé, retours tardifs gardés. Exception <100s explicitement approuvée « Adapter la règle aux vidéos courtes » : fin après couverture réelle du dernier dixième dans le bail courant, seuil long inchangé. Source serveur modifiée mais **Pi/web/NAS non déployés ni touchés** ; bundle seul ne peut activer cette règle sur l'ancien serveur.
+
+[Remise et tests](implementation/SERIES-COMPLETION-20261016.md), [revues](reviews/series-completion-94495c1.md), BUG0085–0087. 43Node/65domaine/27serveur/1horloge/24web et vrai DOM connecté synthétique PASS ; revue finale indépendante APPROVED_SCOPED, deux révisions défavorables conservées. Pas de nouvelle lecture vidéo réelle ni de validation humaine native revendiquée. Bundle créé `artifacts/macos/Chill Center-test-94495c1.app`, interne0.5.1/build6, SHA **d642758aa39c12cca7aa8d6ed887a8b059897b956569c2f93e0b46dd65a343ba**, signature/48dylibs/API2.5 PASS, non lancé. Tags et anciens bundles figés conservés ; consulter la remise pour les limites et la suite serveur nécessaire.
+
 ## Blocage décor / vidéo — candidat de test, non déployé serveur
 
 16 octobre 2026 : source `bdce3a4`, deux lignes CSS désactivent le pseudo-fond Noël/Halloween pendant `body.player-open`. RED/GREEN sur le vrai DOM connecté avec pont synthétique, huit combinaisons et retour du décor ; revue indépendante APPROVED_SCOPED. Bundle séparé `artifacts/macos/Chill Center-test-bdce3a4.app`, interne0.5.1/build6, SHA exécutable `6aa696eeff5dcdafbdd9fc9c456f699c1e56ff24e4336fdd974163c72c1f5a5f`, 81Mio/48dylibs/signature/libmpv API2.5 PASS. **Pas une nouvelle release**, anciens bundles/tags inchangés ; rendu Tauri à confirmer humainement, aucune lecture/connexion Pi/NAS rejouée. [Remise](implementation/EVENT-PLAYER-CUTOUT-20261016.md).
