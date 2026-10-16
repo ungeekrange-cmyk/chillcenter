@@ -12,7 +12,7 @@ use chill_domain::{
     catalog_delta::{self, CatalogChanges},
     store::{PlaylistView, SagaView},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -77,7 +77,6 @@ struct Baseline {
     profile: String,
     revision: String,
     created: Instant,
-    /// The sole immutable image retained for an active paginated transfer.
     snapshot: Arc<SyncSnapshot>,
     serialized_bytes: usize,
 }
@@ -119,6 +118,32 @@ fn document(snapshot: &SyncSnapshot) -> SnapshotDocument {
         snapshot.series_revisions.clone(),
         snapshot.season_metadata.clone(),
     )
+}
+
+/// Keep the existing admission accounting exactly on the wire representation
+/// of the old retained `SyncSnapshot`, without first cloning that graph.
+fn retained_serialized_bytes(
+    items: &[SyncMedia],
+    snapshot: &SyncSnapshot,
+) -> Result<usize, ApiError> {
+    #[derive(Serialize)]
+    struct SnapshotRef<'a> {
+        items: &'a [SyncMedia],
+        sagas: &'a [SagaView],
+        playlists: &'a [PlaylistView],
+        series_revisions: &'a std::collections::BTreeMap<String, u64>,
+        season_metadata:
+            &'a std::collections::BTreeMap<String, chill_catalog::model::SeasonProvider>,
+    }
+    serde_json::to_vec(&SnapshotRef {
+        items,
+        sagas: &snapshot.sagas,
+        playlists: &snapshot.playlists,
+        series_revisions: &snapshot.series_revisions,
+        season_metadata: &snapshot.season_metadata,
+    })
+    .map(|encoded| encoded.len())
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "SYNC_INVALID"))
 }
 fn changed(
     old: &catalog_delta::SignatureCheckpoint,
@@ -226,29 +251,23 @@ async fn changes(
         _ => None,
     };
     let (server, revision, snapshot) = context(&state, profile.clone()).await?;
+    // The immutable full image is also the durable checkpoint input.  Sharing
+    // it across the actor hand-off avoids another catalogue-sized clone.
+    let snapshot = Arc::new(snapshot);
     let old = durable_old;
-    let (items, deleted_ids, reset) = if let Some(old) = old {
+    let (delta_items, deleted_ids, reset) = if let Some(old) = old {
         let (a, b) = changed(&old, &snapshot)?;
-        (a, b, false)
+        (Some(a), b, false)
     } else {
-        (snapshot.items.clone(), Vec::new(), true)
+        (None, Vec::new(), true)
     };
     let id = Uuid::new_v4().to_string();
-    let total = items.len();
-    let first = items[..total.min(catalog_delta::DELTA_PAGE)].to_vec();
-    let (sagas, playlists, series_revisions, season_metadata) = document(&snapshot);
-    let stored = Arc::new(SyncSnapshot {
-        items,
-        sagas: sagas.clone(),
-        playlists: playlists.clone(),
-        series_revisions: series_revisions.clone(),
-        season_metadata: season_metadata.clone(),
-        serialized_bytes: snapshot.serialized_bytes,
-        captured_revision: snapshot.captured_revision,
-    });
-    let serialized_bytes = serde_json::to_vec(&*stored)
-        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "SYNC_INVALID"))?
-        .len();
+    let page_items = delta_items.as_deref().unwrap_or(&snapshot.items);
+    let total = page_items.len();
+    let serialized_bytes = retained_serialized_bytes(page_items, &snapshot)?;
+    // The POST carries at most one page.  Clone only that response slice before
+    // moving the rest into the retained pageable baseline.
+    let first = page_items[..total.min(catalog_delta::DELTA_PAGE)].to_vec();
     if total > catalog_delta::DELTA_PAGE {
         let mut c = cache()
             .lock()
@@ -271,7 +290,18 @@ async fn changes(
                 profile: profile.clone(),
                 revision: revision.clone(),
                 created: Instant::now(),
-                snapshot: stored,
+                snapshot: match delta_items {
+                    Some(items) => Arc::new(SyncSnapshot {
+                        items,
+                        sagas: snapshot.sagas.clone(),
+                        playlists: snapshot.playlists.clone(),
+                        series_revisions: snapshot.series_revisions.clone(),
+                        season_metadata: snapshot.season_metadata.clone(),
+                        serialized_bytes: snapshot.serialized_bytes,
+                        captured_revision: snapshot.captured_revision,
+                    }),
+                    None => snapshot.clone(),
+                },
                 serialized_bytes,
             },
         );
@@ -293,6 +323,7 @@ async fn changes(
         }
         return Err(error);
     }
+    let (sagas, playlists, series_revisions, season_metadata) = document(&snapshot);
     Ok(Json(
         serde_json::to_value(CatalogChanges {
             revision,
@@ -379,6 +410,11 @@ async fn page(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        api::DatabaseActor,
+        config::{LibrarySettings, ServerConfig},
+    };
+    use sha2::Digest;
     fn item(id: &str, title: &str, revision: u64) -> SyncMedia {
         SyncMedia {
             media: serde_json::from_value(json!({
@@ -421,6 +457,97 @@ mod tests {
         assert_eq!(
             catalog_delta::revision("server", "profile", (9, 3)),
             catalog_delta::revision("server", "profile", (9, 3))
+        );
+    }
+    #[test]
+    fn retained_admission_accounting_matches_the_prior_snapshot_wire_shape() {
+        let value = snapshot(vec![item(
+            "00000000-0000-0000-0000-000000000001",
+            "wire shape",
+            1,
+        )]);
+        assert_eq!(
+            retained_serialized_bytes(&value.items, &value).unwrap(),
+            serde_json::to_vec(&value).unwrap().len()
+        );
+    }
+    /// Run in a fresh test process with `/usr/bin/time -l`; this deliberately
+    /// exercises the production handler, SQLite checkpoint and every page.
+    #[tokio::test]
+    #[ignore = "manual RSS comparison harness"]
+    async fn sync_memory_10k_production_route() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = ServerConfig {
+            data_dir: dir.path().to_owned(),
+            ..ServerConfig::default()
+        };
+        let certificates = crate::tls::ensure(&config, time::OffsetDateTime::now_utc()).unwrap();
+        let state = AppState {
+            playback: Default::default(),
+            tmdb_jobs: Arc::new(crate::tmdb_api::TmdbJobService::default()),
+            scan: Arc::new(Mutex::new(crate::catalog_api::ScanStatus::default())),
+            database: DatabaseActor::open(dir.path().join("catalog.sqlite")).unwrap(),
+            library: Arc::new(Mutex::new(LibrarySettings::load(&config).unwrap())),
+            config: Arc::new(config),
+            certificate: Arc::new(Mutex::new(certificates.schedule)),
+        };
+        let mut store = chill_domain::Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let profile = store.create_profile("RSS fixture").unwrap();
+        // 10k records are deliberately just below the 32 MiB DTO budget.
+        let overview = "x".repeat(2_500);
+        let media = (0..10_000)
+            .map(|i| {
+                serde_json::from_value(json!({
+                    "id": format!("fixture-{i:05}.mkv"), "path": format!("/fixture/{i:05}.mkv"),
+                    "title": format!("Fixture {i:05}"), "category":"film", "year":2026,
+                    "genres":[], "overview":overview, "poster":null, "saga":null,
+                    "watched":false, "rating":null, "available":true, "added_at":1, "tmdb_id":null
+                }))
+                .unwrap()
+            })
+            .collect();
+        store.snapshot(media).unwrap();
+        let Json(first) = changes(
+            State(state.clone()),
+            Path(profile.id.clone()),
+            Json(Request {
+                known_revision: None,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(first["total"], 10_000);
+        let snapshot_id = first["snapshot_id"].as_str().unwrap().to_owned();
+        let revision = first["revision"].as_str().unwrap().to_owned();
+        let mut checksum = first.to_string();
+        for offset in (100..10_000).step_by(100) {
+            let Json(value) = page(
+                State(state.clone()),
+                Path((profile.id.clone(), snapshot_id.clone())),
+                Query(Page {
+                    offset: Some(offset),
+                }),
+            )
+            .await
+            .unwrap();
+            checksum.push_str(&value.to_string());
+        }
+        let id = store.catalog(&profile.id).unwrap()[0].id.clone();
+        store.set_watched(&profile.id, &id, true).unwrap();
+        let Json(delta) = changes(
+            State(state),
+            Path(profile.id),
+            Json(Request {
+                known_revision: Some(revision),
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(delta["reset"], false);
+        assert_eq!(delta["total"], 1);
+        println!(
+            "sync_memory_10k checksum={:x} pages=100 delta=1",
+            sha2::Sha256::digest(checksum)
         );
     }
     #[test]
