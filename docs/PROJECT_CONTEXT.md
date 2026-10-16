@@ -1,14 +1,18 @@
 # Contexte du projet
 
-## Lot client en cours — sous-titres, retour grille, français/anglais
+## Lot client livré pour test — sous-titres, retour grille, français/anglais
 
-16 octobre2026 : branche `codex/playback-locale`, base0c49a8c. Corrections BUG0104/0105
+16 octobre2026 : source **15c2d63c2bca5058456a16c8ac7d0320d440ad4c**, branche `codex/playback-locale`, base0c49a8c. Corrections BUG0104/0105
 et préférence locale `auto/en/fr`, anglais de repli, français système. Vérifications
 locales ciblées exécutées, validations humaines natives restantes ; serveur/API/web/NAS
 inchangés. [Preuves](implementation/PLAYBACK-LANGUAGE-20261016.md).
 Huit sorties de compilation nettoyées sur autorisation explicite, **32,81Gio de disponible
 volume supplémentaires observés avant reconstruction**, sources/worktrees/historiques/
 versions livrées/web conservés : [mesure](performance/STORAGE-CLEANUP-20261016.md).
+Bundle **`artifacts/macos/Chill Center-test-15c2d63.app`**, exécutableSHA
+`d26d53034aa895a443fb8918a4e14e0294a1286f515859babbb678754a4a75b0`.
+Signature profonde/48dylibsARM64/libmpvAPI2.5 PASS, copie canonique vérifiée identique,
+ancien bundle conservé ; pas de lancement de la nouvelle app ni déploiement Pi.
 
 ## Ressources — livraison courante, sans changement du client web
 

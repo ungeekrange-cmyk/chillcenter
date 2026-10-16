@@ -3,6 +3,21 @@
 Date : 16 octobre 2026. Auteur : `/root`. Branche : `codex/playback-locale`.
 Base : `0c49a8caa9de5d370edd74f4d1f647fe2fa1932a` (produit précédent f980355).
 
+## Bundle de test livré
+
+Source exacte **15c2d63c2bca5058456a16c8ac7d0320d440ad4c** ; bundle canonique
+`artifacts/macos/Chill Center-test-15c2d63.app`, interne0.5.1/build6.
+SHA256 exécutable : `d26d53034aa895a443fb8918a4e14e0294a1286f515859babbb678754a4a75b0`.
+Reconstruction release verrouillée/hors ligne puis packaging : signature ad hoc
+profonde PASS,48bibliothèquesARM64 relocalisées PASS, chargement réel du libmpv
+embarqué API2.5 PASS. Publication par staging/rename exclusif sans remplacer un
+ancien bundle, copie canonique de même hash/signature vérifiée. Branche conservée
+dans le dépôt canonique sans changer son checkout ni celui du web, aucun push.
+Le bundle intermédiaire8a084f7 reste privé au worktree, pas la version à utiliser.
+
+Pas de lancement natif ni de données réelles modifiées par les tests. Quitter
+l’ancienne application avant d’ouvrir ce nouveau bundle. Aucun déploiement Pi.
+
 ## Périmètre et acceptation
 
 - BUG0104 : changer de sous-titre ne suspend/recharge pas la vidéo ; téléchargement
