@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Retours humains sur la proposition suivante — référencement seulement
+
+16 octobre2026 : utilisateur demande explicitement de **ne pas traiter** trois nouveaux points : contraste du bouton « Ne pas lancer » ([BUG0091](debug/BUG-0091-next-cancel-button-contrast.md)), message d'annulation à zéro suivi malgré tout du lancement ([BUG0092](debug/BUG-0092-next-countdown-false-cancellation.md)), fond blanc à remplacer par une transition aux tons de la série, éventuellement floutée et préparée quelques secondes avant EOF ([BUG0093](debug/BUG-0093-next-transition-white-background.md)). OPEN, sans diagnostic ni test/code/bundle/déploiement ; version de l'application ouverte non mesurée. La preuve API001→002 ci-dessous reste valide dans son périmètre, pas une validation de ces comportements visuels.
+
 ## Pi mis à jour — serveur seul df2870f, 16 octobre14:44UTC
 
 Connexion partagée rétablie et préflight conforme : bascule depuis d77e/f3 vers **14d84a0478b9f394bfe59b3b88588edb4a9305dfedfc0fb0b66449b39d034169**, source **df2870f**. Opérateur revu terminé **rc0**, sauvegarde privée exacte9b975f1e… et ancien binaire conservés ; service redémarré PID2326. Web installé, configuration/unité/TLS/montage NAS inchangés. [Exécution et rollback](releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001.md). [Vérification indépendante APPROVED_SCOPED](releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md) : service stable, sauvegarde exacte, API datée/v1 et cas réel001→002 PASS ; pas de nouvelle lecture vidéo ni test humain Tauri revendiqués. Bundle à utiliser **`artifacts/macos/Chill Center-test-df2870f.app`**. Le blocage SSH décrit ci-dessous est historique, désormais levé.
