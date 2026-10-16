@@ -1,6 +1,6 @@
 # CC-CONCEPT-20261016 · Filtres et ambiances événementielles
 
-Statut : **PENDING_USER_APPROVAL**, révision 2, 16 octobre 2026. Maquettes uniquement : aucune intégration Tauri/web, API, base, NAS, serveur ou livraison modifiée. Les documents et approbations précédents restent historiques et intacts. Retour utilisateur intégré : « un style un peu plus simple, un peu plus dessiné » ; les décors photographiques initiaux ont été remplacés par des illustrations aux aplats doux, sans modifier leur composition. Originaux photographiques et dessinés conservés dans le dossier de génération, hors livraison applicative.
+Statut : **PENDING_USER_APPROVAL** pour l'ensemble, révision 3, 16 octobre 2026. Maquettes uniquement : aucune intégration Tauri/web, API, base, NAS, serveur ou livraison modifiée. Les documents et approbations précédents restent historiques et intacts. Après la révision dessinée, l'utilisateur préfère finalement le premier rendu photographique, avec citrouille/sapin beaucoup plus proches et gros, sapin moins chargé. Ces deux nouveaux décors reçoivent « nickel », puis demande de voir la barre gauche et les filtres ; cet accord sur les images n'autorise pas encore l'intégration de l'ensemble. Originaux photographiques et dessinés préservés.
 
 ## Filtres interactifs
 
@@ -13,12 +13,12 @@ Statut : **PENDING_USER_APPROVAL**, révision 2, 16 octobre 2026. Maquettes uniq
 
 ## Ambiances
 
-`events.html` : Noël/Halloween, clair/sombre, largeur large/compacte/étroite, animation activable. Deux images originales générées, conservées sous `assets/`; originaux de génération préservés. Le logo réutilise les SVG événementiels approuvés.
+`events.html` : Noël/Halloween, clair/sombre, largeur large/compacte/étroite, animation activable. Les images photographiques courantes sont `assets/christmas-foreground.png` et `assets/halloween-foreground.png` ; les propositions dessinées antérieures sont conservées séparément. Le logo réutilise les SVG événementiels approuvés. `sidebar.fragment.html` et son enveloppe `sidebar-preview.html` montrent les deux barres gauches côte à côte, clair/sombre, animation désactivable, logos embarqués sans réseau ; il s'agit toujours de navigation illustrative.
 
 - Noël : salon, cadeaux et sapin au premier plan à droite ; neige discrète dans la barre latérale.
 - Halloween : salon décoré et grosses citrouilles aux visages éclairés à droite ; cinq chauves-souris s'envolent lentement dans la barre latérale.
 - Image limitée au panneau droit, `object-fit: cover; object-position: 100% 50%`. Le cadrage conserve le bord droit au redimensionnement, sans miroir ni déplacement du décor à gauche ; un recadrage partiel est normal en fenêtre très étroite.
-- Illustrations de salon dessinées, formes simples et arrondies, palette crème/bordeaux/ocre. Voile gradué opaque derrière les textes, plus transparent à droite. Décor non interactif, ignoré par les technologies d'assistance. Catalogue et navigation restent au premier plan.
+- Rendu photographique du salon approuvé, gros sujets au premier plan droit, palette chaude bordeaux/ocre. Voile gradué opaque derrière les textes, plus transparent à droite. Décor non interactif, ignoré par les technologies d'assistance. Catalogue et navigation restent au premier plan.
 - Ressources : une seule image visible, quatorze particules de neige ou cinq chauves-souris ; animations CSS transform/opacity, aucun canvas, filtre flou animé ou appel serveur. Arrêt si onglet masqué, désactivation manuelle, respect de `prefers-reduced-motion`. Budget réel RAM/GPU/Tauri **non mesuré** dans ce concept.
 
 ## Système visuel et accessibilité
@@ -33,6 +33,8 @@ Contrôles locaux du 16 octobre : `node docs/design/concepts/2026-10-16/check.cj
 
 Une première inspection a révélé un défaut de portée CSS dans le fragment de filtres (`@scope` avec racine répétée) ; corrigé avec `:scope`, puis vérification du style réellement calculé et nouvelle capture concluantes. Le contrôle du format étroit attend maintenant la largeur réelle après la transition, pas seulement une classe. Ces observations concernent la maquette seule, aucun nouveau bug produit revendiqué.
 
-Origines des décors finaux : génération `exec-75f31960-aa53-4f19-9a64-652b44a7edf4.png` (Noël) et `exec-9406616f-8520-4dc1-bb64-67b43baf8125.png` (Halloween), dans le répertoire de génération du chat. Brief : illustration éditoriale simple façon gouache, formes arrondies, aplats crème/bordeaux/ocre, salon calme à gauche, sujets festifs au premier plan à droite, ni texte ni personnes. Les originaux ne sont ni déplacés ni supprimés.
+Origines des décors dessinés r2 : génération `exec-75f31960-aa53-4f19-9a64-652b44a7edf4.png` (Noël) et `exec-9406616f-8520-4dc1-bb64-67b43baf8125.png` (Halloween), dans le répertoire de génération du chat. Brief : illustration éditoriale simple façon gouache, formes arrondies, aplats crème/bordeaux/ocre. Les originaux ne sont ni déplacés ni supprimés.
 
-L'utilisateur a demandé de voir avant intégration. Approbation non reçue ; aucun déploiement autorisé par ce lot. Après retour humain seulement : intégrer une tranche bornée aux clients concernés en préservant le travail web parallèle et les contrats API existants, puis tests ciblés sur ces changements. Aucun nouveau test lecteur nécessaire pour cette maquette.
+Décors photographiques rapprochés r3 : `exec-7c94a3ea-bb6b-4257-a64c-4f94b31fa64e.png` (Noël) et `exec-9a9cb539-37e8-43ae-998e-ceae7ae225c3.png` (Halloween), générateur intégré, retouches des premiers décors : sujet festif proche et agrandi à droite, sapin peu décoré, salon/couleurs conservés, sans texte ni personnes. Nouveaux tests PASS sur ces assets ; aperçu sidebar : logos chargés, mouvement CSS réel mesuré, clair/sombre, arrêt manuel/réduction des animations et largeur320px vérifiés ; captures inspectées. Les contrôles attendent le peuplement de l'iframe après chargement et rouvrent une page par largeur pour éviter les courses de redimensionnement du harnais. Aucune revendication de performance native ou d'intégration réelle.
+
+L'utilisateur a demandé de voir avant intégration. Approbation reçue pour la direction des deux images rapprochées uniquement ; validation des animations/filtres en attente, aucun déploiement autorisé par ce lot. Après retour humain seulement : intégrer une tranche bornée aux clients concernés en préservant le travail web parallèle et les contrats API existants, puis tests ciblés sur ces changements. Aucun nouveau test lecteur nécessaire pour cette maquette.
