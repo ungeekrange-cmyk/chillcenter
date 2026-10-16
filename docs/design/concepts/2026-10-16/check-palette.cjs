@@ -1,0 +1,14 @@
+// Palette-only proof: no catalog, player, API or server tests.
+const {chromium}=require('/private/tmp/marvin-cockpit.NmYyTL/package-manager/node_modules/playwright');
+const assert=require('node:assert/strict');const path=require('node:path');const {pathToFileURL}=require('node:url');
+const expected={christmas:{dark:'rgb(112, 16, 25)',light:'rgb(186, 48, 40)'},halloween:{dark:'rgb(53, 32, 20)',light:'rgb(245, 212, 167)'}};
+function lum(rgb){const c=rgb.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return c[0]*.2126+c[1]*.7152+c[2]*.0722}
+function contrast(a,b){const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)}
+(async()=>{const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--disable-background-networking','--no-first-run']});try{
+const page=await browser.newPage({viewport:{width:736,height:850}});page.setDefaultTimeout(6000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route('http://**/*',r=>r.abort());await page.route('https://**/*',r=>r.abort());
+await page.goto(pathToFileURL(path.join(__dirname,'sidebar-preview.html')).href);const frame=page.frameLocator('iframe');await frame.locator('.cc-snow i').first().waitFor({state:'attached'});
+for(const mode of ['dark','light']){await frame.locator('button[data-mode="'+mode+'"]').click();for(const event of ['christmas','halloween']){const selector=event==='christmas'?'.cc-panel:not(.cc-halloween)':'.cc-halloween';const panel=frame.locator(selector);assert.equal(await panel.evaluate(e=>getComputedStyle(e).backgroundColor),expected[event][mode]);const colors=await panel.evaluate(e=>({bg:getComputedStyle(e).backgroundColor,ink:getComputedStyle(e.querySelector('.cc-active')).color,muted:getComputedStyle(e.querySelector('.cc-label')).color,accent:getComputedStyle(e.querySelector('.cc-menu span')).color}));for(const key of ['ink','muted','accent'])assert(contrast(colors[key],colors.bg)>=4.5,event+'/'+mode+'/'+key);}
+await page.screenshot({path:path.join(__dirname,'evidence/sidebar-'+mode+'.png'),fullPage:true});}
+await page.goto(pathToFileURL(path.join(__dirname,'events.html')).href);for(const event of ['christmas','halloween'])for(const mode of ['dark','light']){await page.locator('[data-event-choice="'+event+'"]').click();await page.locator('[data-mode-choice="'+mode+'"]').click();assert.equal(await page.locator('.side').evaluate(e=>getComputedStyle(e).backgroundColor),expected[event][mode]);}
+assert.deepEqual(errors,[]);console.log('PASS: 4 sidebar palettes match standalone/inline; normal text and icon contrast >=4.5:1; no JS errors. No unrelated tests.');
+}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

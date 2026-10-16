@@ -1,5 +1,9 @@
 # CC-CONCEPT-20261016 · Filtres et ambiances événementielles
 
+### Révision 5 — Noël moins rose et Halloween orangé (validation en attente)
+
+Retour humain : Noël clair trop rose, sombre pas assez rouge Noël ; ajouter de l'orange à Halloween. Nouvelles barres gauches alignées dans les deux maquettes : Noël clair rouge franc `#ba3028`, textes ivoire `#fff8ed`/`#fff0df`, accent or `#ffe0a3` ; sombre rouge profond `#701019`, textes `#fff5e7`/`#efd3bb`, accent `#e8ca8b`. Halloween clair abricot `#f5d4a7`, textes `#432917`/`#6f492b`, accent `#8b3b0e` ; sombre brun-orangé `#352014`, textes `#fff1df`/`#dcc0a4`, accent `#ffae58`. Les photographies, logos, animations et filtres restent inchangés. Contrôle dédié `node docs/design/concepts/2026-10-16/check-palette.cjs` : rendu des quatre palettes, comparaison des deux maquettes et contraste des textes/icônes sur fond normal ; aucun test lecteur ni accès serveur. R4 ci-dessous conservée comme historique, remplacée seulement pour ces tokens. Toujours aucun changement applicatif ou déploiement.
+
 ### Révision 4 — panneau Noël rouge (validation visuelle en attente)
 
 Demande humaine du16octobre : panneau gauche rouge clair en mode clair et rouge très sombre en mode sombre. Maquette complète et aperçu de barre gauche alignés : clair fond `#f2c7c4`, texte `#411b1e`, secondaire `#74484c`, accent `#83343c` ; sombre fond `#240a0f`, texte `#fff0e6`, secondaire `#d6b8b2`, accent `#e3c28c`. Neige, photographies, logos, Halloween et filtres inchangés. Modification de concept seulement ; aucune intégration ou livraison autorisée par ce retour. Contrôles de rendu calculé Noël et non-régression Halloween ajoutés au harnais : PASS, captures inspectées en clair/sombre. Contrastes texte/secondaire/accent sur fond normal : clair9,81/4,95/5,45:1 ; sombre16,76/10,09/10,98:1 (sRGB, pas une certification de tous les états). Les sections r3 ci-dessous conservent le contexte.
