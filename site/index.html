@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Chill Center : votre vidéothèque sur votre réseau. Serveur Linux léger, client Mac Apple Silicon et lecture native sans transcodage serveur.">
+  <meta name="color-scheme" content="light dark">
+  <title>Chill Center — Votre cinéma, à la maison</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#contenu">Aller au contenu</a>
+  <header class="site-header wrap">
+    <a class="brand" href="index.html" aria-label="Chill Center, accueil"><img src="assets/logo.svg" width="88" height="88" alt="Chill Center"></a>
+    <nav aria-label="Navigation principale"><a href="#experience">L’expérience</a><a href="api.html">API</a><a class="button small" href="https://github.com/ungeekrange-cmyk/chillcenter">Le projet sur GitHub <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main id="contenu">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div>
+        <p class="eyebrow">Un canapé. Vos films. Votre rythme.</p>
+        <h1 id="hero-title">Le cinéma<br>commence <em>chez vous.</em></h1>
+        <p class="intro">Retrouvez vos films et séries dans une vidéothèque pensée pour le foyer. Un petit serveur Linux, votre Mac, et le plaisir de choisir quoi regarder.</p>
+        <div class="actions"><a class="button" href="#demarrer">Découvrir le projet <span aria-hidden="true">↓</span></a><a class="text-link" href="api.html">Explorer l’API</a></div>
+        <p class="caption">Projet en développement · Client Mac 0.5.1 · Apple Silicon</p>
+      </div>
+      <div class="library-demo" role="img" aria-label="Illustration d’une vidéothèque : trois affiches fictives, Horizon, Les heures bleues et À demain. Ce n’est pas une capture de l’application.">
+        <div class="demo-top"><span class="demo-dot"></span><span>Une soirée à vous</span><span aria-hidden="true">✦</span></div>
+        <p class="demo-heading">On regarde quoi ?</p>
+        <div class="posters" aria-hidden="true"><div class="poster horizon"><span>HORIZON</span><small>L’aventure commence ici</small></div><div class="poster blue"><span>LES HEURES<br>BLEUES</span><small>Une autre histoire</small></div><div class="poster tomorrow"><span>À DEMAIN</span><small>Les petits grands moments</small></div></div>
+        <p class="demo-footer">Films · Séries · Vos listes</p>
+      </div>
+    </section>
+    <section class="features wrap" id="experience" aria-labelledby="experience-title">
+      <p class="eyebrow">Moins de friction, plus de cinéma</p>
+      <h2 id="experience-title">Votre collection.<br>À chacun sa séance.</h2>
+      <div class="feature-grid">
+        <article><span class="feature-number">01</span><h3>Une place pour chacun</h3><p>Profils, notes et listes personnelles. Reprenez là où vous vous êtes arrêté, même sur un autre appareil.</p></article>
+        <article><span class="feature-number">02</span><h3>La bonne envie, au bon moment</h3><p>Films, séries, saisons et sagas. Croisez les genres et explorez une année ou une période, sans pagination.</p></article>
+        <article><span class="feature-number">03</span><h3>Un vrai lecteur côté Mac</h3><p>libmpv et FFmpeg assurent la lecture native : langues, sous-titres, vitesse, reprise et épisode suivant.</p></article>
+      </div>
+    </section>
+    <section class="local-section" aria-labelledby="local-title"><div class="wrap local-grid"><div><p class="eyebrow">Un serveur discret</p><h2 id="local-title">Vos médias restent<br>sur votre stockage.</h2></div><div><p>Le serveur Linux fournit les vidéos en HTTPS. Votre Mac les décode : aucun transcodage sur le serveur, aucun montage NAS nécessaire sur le client.</p><p>Le catalogue est conservé en local et synchronisé en arrière-plan. Rust est privilégié pour limiter la consommation de ressources.</p><p class="notice">Réseau du foyer uniquement : il n’y a pas encore d’authentification. Ne pas exposer le serveur sur Internet.</p></div></div></section>
+    <section class="wrap start-section" id="demarrer" aria-labelledby="start-title"><p class="eyebrow">Ouvert aux curieux</p><h2 id="start-title">Un projet à suivre,<br>et à construire ensemble.</h2><p class="intro">La priorité est au client Mac Apple Silicon et au serveur Linux, notamment Raspberry Pi 3. Le client web évolue dans un chantier distinct. La qualité de lecture dépend aussi de votre réseau et des fichiers.</p><div class="actions"><a class="button" href="https://github.com/ungeekrange-cmyk/chillcenter">Code et instructions <span aria-hidden="true">↗</span></a><a class="text-link" href="https://github.com/ungeekrange-cmyk/chillcenter/issues">Contribuer ou signaler un bug</a></div><p class="caption">TMDB et l’IA sont optionnels et nécessitent votre configuration. Aucun accès à votre vidéothèque depuis ce site.</p></section>
+  </main>
+  <footer class="wrap site-footer"><span>Chill Center · Fait pour les soirées chez soi.</span><div><a href="api.html">Documentation API</a><a href="LICENSE.txt">Licence du projet</a><span>Sans suivi publicitaire</span></div></footer>
+</body>
+</html>

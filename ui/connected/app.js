@@ -70,6 +70,7 @@ function catalogCommand(filters,at,grouped){return {action:"catalog",offset:at,c
 function catalogFilters(){return {category:$("category").value,q:$("search").value,genre:$("genre").value,year:$("year").value,watched:$("watched").value,sort:$("sort").value,available:$("available").value};}
 if(typeof module!=="undefined")module.exports={catalogCommand};
 let catalogItems=[],catalogCounters={},catalogGeneration=0,catalogWindowKey="",catalogFrame=null,catalogContext="",facetBase=null;
+// Facets belong to the current server/profile and non-facet filters, never a global cache.
 function invalidateFacetBase(){facetBase=null;}
 window.invalidateFacetBase=invalidateFacetBase;
 function clearCatalogContext(){catalogGeneration++;catalogItems=[];catalogCounters={};catalogWindowKey="";invalidateFacetBase();window.catalogFacets?.clear();$("media").replaceChildren();$("media").style.height="";window.resetArtwork?.();}
@@ -109,6 +110,7 @@ function renderCatalogWindow(){
 }
 function scheduleCatalogWindow(){if(catalogFrame)return;catalogFrame=requestAnimationFrame(()=>{catalogFrame=null;renderCatalogWindow();});}
 window.addEventListener("scroll",scheduleCatalogWindow,{passive:true});window.addEventListener("resize",()=>{catalogWindowKey="";scheduleCatalogWindow();});
+// A busy native bridge is retried only while this profile and request generation remain current.
 async function catalogRequest(command,generation,context){
  for(let attempt=0;attempt<50;attempt++){
   if(generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return null;
@@ -119,6 +121,8 @@ async function catalogRequest(command,generation,context){
  }
  message("Le serveur est occupé. Rechargez le catalogue depuis Administration.");return null;
 }
+// Stage the complete replacement before rendering: background refresh must not blank the grid.
+// Generation/context guards also discard replies from a previous filter, server or profile.
 async function loadPage(reuseFacetBase=false){
  const context=state.server_id+":"+state.profile_id;if(context!==catalogContext){clearCatalogContext();catalogContext=context;}const generation=++catalogGeneration;
  if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return false;}
@@ -177,6 +181,8 @@ $("confirm-delete").addEventListener("cancel",()=>{deleting=null;});
 $("confirm-delete-button").onclick=async()=>{if(!deleting)return;const p=deleting;$("confirm-delete").close();deleting=null;if(await run({action:"delete_profile",id:p.id,confirm_id:p.id})){$("media").replaceChildren();if(state.profile_id)await loadPage();}};
 let lastFocusRefresh=0;
 let syncPromise=null,syncContext=null;
+// Detached delta sync owns only its indicator, not the global UI busy state.
+// Keep native and web bridge contracts distinct; only web replies may require an ack ticket.
 async function syncCatalog(){
  if(state.stage!=="connected"||!state.profile_id)return;
  const requestedContext=state.server_id+":"+state.profile_id;if(syncPromise)return syncContext===requestedContext?syncPromise:syncPromise.then(()=>syncCatalog());syncContext=requestedContext;

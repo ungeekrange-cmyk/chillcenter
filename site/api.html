@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Intégrer Chill Center : contrat OpenAPI HTTPS et règles de compatibilité des clients."><meta name="color-scheme" content="light dark"><title>API — Chill Center</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css"></head>
+<body>
+  <a class="skip-link" href="#contenu">Aller au contenu</a>
+  <header class="site-header wrap"><a class="brand" href="index.html" aria-label="Chill Center, accueil"><img src="assets/logo.svg" width="88" height="88" alt="Chill Center"></a><nav aria-label="Navigation principale"><a href="index.html">Accueil</a><a href="https://github.com/ungeekrange-cmyk/chillcenter">GitHub</a></nav></header>
+  <main class="wrap documentation" id="contenu">
+    <p class="eyebrow">Pour les intégrations tierces</p><h1>Une API, des clients compatibles.</h1>
+    <p class="intro">Le contrat OpenAPI est la référence des routes, schémas, paramètres, réponses et erreurs. Cette page présente les principes d’intégration, pas un serveur de démonstration public.</p>
+    <a class="button" href="api/openapi-2026-10-14.json">Lire le contrat OpenAPI (JSON)</a>
+    <h2>Adresse et version</h2><p>L’API HTTPS du serveur configuré par l’utilisateur est sous <code>/api/2026-10-14</code>. Le port est configurable ; le contrat utilise <code>https://{host}:8443/api/2026-10-14</code>. Remplacer l’hôte par celui du serveur local. Utiliser le chemin versionné plutôt qu’un éventuel alias historique.</p>
+    <h2>Requêtes et réponses</h2><p>Les opérations JSON et leurs corps exacts sont décrits dans le contrat. Vidéos, images et échanges conditionnels n’ont pas tous une réponse JSON : respecter le type de contenu et les statuts de chaque route. Ne pas déduire la présence d’une fonction d’un seul numéro de version.</p>
+    <h2>Catalogue et lecture</h2><p>Les routes couvrent les profils, le catalogue, la synchronisation, les listes, les métadonnées et la lecture. Préférer les mécanismes de révision et de delta documentés à un rechargement complet du catalogue. Le serveur fournit les médias sans transcodage ; le décodage reste à la charge du client.</p>
+    <h2>Évolution sans rupture</h2><p>Des champs et opérations compatibles peuvent être ajoutés à cette version. Un client doit tolérer des champs de réponse inconnus. Une modification incompatible demande une nouvelle version et le maintien de celle utilisée par les clients existants, notamment le web. Tester sur le contrat et le serveur effectivement installés.</p>
+    <h2>Réseau de confiance seulement</h2><p class="notice">Aucune authentification actuellement. Les profils ne protègent pas les données contre un autre utilisateur du réseau. Ne pas exposer l’API sur Internet.</p><p>Le serveur utilise un certificat auto-généré. Une intégration doit prévoir sa politique de confiance après vérification du serveur ; désactiver globalement la validation TLS n’est pas une solution de production.</p>
+    <h2>Services externes</h2><p>TMDB et l’IA sont optionnels. Ne jamais incorporer de clé du foyer dans une application publique, un exemple, un journal ou un ticket. Ce site n’appelle ni votre serveur ni votre vidéothèque.</p>
+  </main>
+  <footer class="wrap site-footer"><a href="index.html">Retour à Chill Center</a><a href="LICENSE.txt">Licence du projet</a></footer>
+</body>
+</html>

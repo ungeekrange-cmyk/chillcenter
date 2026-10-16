@@ -1,36 +1,67 @@
 # Chill Center
 
-Vidéothèque familiale issue de Cinéfolio : serveur Linux économe, client Mac Apple Silicon, profils et lecteur intégré.
+Votre vidéothèque, sur votre réseau. Projet issu de Cinéfolio : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust.
 
-État au 14 octobre 2026 : serveur LinuxARM64 actif sur le Pi3B+/Debian13.7 à **192.168.1.42:8443**, NASlectureseule/HTTPSvérifiés, catalogue2496vidéosconservé. Client Tauri/libmpv/FFmpeg624f244, nouveau [tamponMio configurable parMac](docs/releases/REL-MAC-CACHE-001.md) dansAdministration :128/64Mioavant/arrièrepardéfaut,cible60savant/retourvariable≈30s,259Rust/27Node/clippy/revues/bundle75MioPASS. Serveur126da0a/R7inchangé,sans transcodage. Scan uniquementAdministration ; reprise/transfert/enchaînement/archives/IA/ambiancesraccordés. [EssaisNASréels](docs/releases/REL-PI-001-media-evidence.md) terminés : deuxHD30min, troisfluxDune/72030min **Dune2échoue**, puis2Dune10minPASSprogressionmaisstallsDune2début. Capacitéfluide3nonvalidée, pas133ACtousPASS. [Installation](docs/releases/REL-PI-001.md), [remiselogiciellehistorique126](docs/implementation/COMPLETION-EVIDENCE.md) conservéeavec réserves, aucunancienbundleécrasé.
+Version de référence du client Mac : **0.5.1**. Le projet est en développement ; les versions livrées sont suivies séparément des sources en cours.
 
-## Lire le projet
+## Fonctionnalités
 
-- [Contexte et étapes autorisées](docs/PROJECT_CONTEXT.md)
-- [Périmètre et décisions fonctionnelles](docs/discovery/SCOPE.md)
-- [Architecture](docs/architecture/ARCHITECTURE.md)
-- [Contrats, modèle de données et états de lecture](docs/architecture/CONTRACTS.md)
-- [Décisions techniques proposées](docs/architecture/decisions/INDEX.md)
-- [Traçabilité et validations](docs/TRACEABILITY.md)
-- [Journal des bugs et observations](docs/debug/INDEX.md)
-- [Vérification et exploitation prévues](docs/VERIFICATION.md)
-- [Sources et baseline Cinéfolio](docs/SOURCES.md)
-- [Backlog et ordre d'exécution](docs/BACKLOG.md)
-- [Couverture des exigences par les stories](docs/stories/TRACEABILITY.md)
-- [Validations du projet](docs/gates/INDEX.md)
+- Films, séries, saisons, sagas et listes de lecture.
+- Profils : reprise synchronisée, historique, vidéos vues et notes personnelles.
+- Lecteur natif libmpv/FFmpeg : audio, sous-titres, vitesse et épisode suivant.
+- Métadonnées TMDB avec votre clé, correction manuelle et import d’images.
+- Filtres par genres et années, thèmes clair/sombre et ambiances saisonnières.
+- Catalogue et images conservés côté client ; synchronisation différentielle en arrière-plan.
 
-Voir [l'état exact d'implémentation](docs/implementation/STATUS.md), [les preuves de raccordement](docs/implementation/INTERFACE-EVIDENCE.md), [les preuves historiques](docs/implementation/FOUNDATION-EVIDENCE.md) et [la configuration modifiable](docs/deployment/CONFIGURATION.md). Les manifestes historiques des remises documentaires restent dans `docs/manifests/` ; ils ne décrivent pas les fichiers modifiés après approbation.
+Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun transcodage serveur** : le client décode les vidéos sans monter le NAS. La cible inclut le Raspberry Pi 3 ; la fluidité dépend du réseau et des fichiers. Deux ou trois utilisateurs constituent un objectif, pas une garantie à tout débit.
 
-## Service de développement
+## Sécurité et confidentialité
+
+Usage prévu : **réseau local de confiance du foyer**. Les profils ne sont pas des comptes authentifiés. Ne pas exposer le serveur sur Internet. Le client Mac demande d’accepter le certificat auto-généré lors de la première connexion.
+
+TMDB et les fonctions IA optionnelles utilisent des services externes. Configurez vos propres clés ; ne les ajoutez jamais au dépôt ni aux tickets. Le client web évolue dans un chantier séparé : cette préparation ne le modifie ni ne le déploie.
+
+## Développer
+
+Prérequis : Rust indiqué par `rust-toolchain.toml`, outils de compilation de la plateforme et libmpv pour le lecteur. Le packaging Mac utilise les outils Xcode et une installation locale de mpv comme entrée.
 
 ```sh
 cargo test --workspace --all-targets --locked
-cargo run --locked -p chill-server -- --config /chemin/config.json
+cargo run --locked -p chill-server -- --config /chemin/vers/config.json
 cargo run --locked -p chillcenter-desktop
 ```
 
-Adapter `deploy/server.example.json` avant utilisation. Aucun montage NAS n'est nécessaire pour démarrer l'administration/profils. L'exemple Pi n'est jamais une adresse imposée par le programme. Le serveur par défaut écoute seulement loopback ; l'écoute LAN doit être configurée explicitement. Les essais serveur macOS sont des tests locaux, pas une nouvelle cible produit : serveur Linux uniquement.
+Adapter la configuration à votre environnement. Le programme n’impose ni adresse de serveur ni chemin NAS. Par défaut, le serveur écoute uniquement sur loopback ; l’écoute LAN se configure explicitement. La cible serveur du produit reste Linux.
 
-Le paquet Mac Silicon final embarque libmpv et ses dépendances (signature ad hoc, non notarized ; licences tierces incluses). Pour reconstruire avec Rust, les outils Xcode et mpv installé comme entrée de packaging : `bash scripts/package-macos.sh /chemin/absolu/nouveau.app`. Destination neuve obligatoire ; aucun ancien paquet écrasé. Les chemins/hashes du paquet courant sont dans [la remise](docs/implementation/COMPLETION-EVIDENCE.md). Le client conserve ses réglages dans le répertoire utilisateur Tauri, séparément pour chaque serveur. Le CLI `--verify-bundle` vérifie le libmpv embarqué sans ouvrir l'interface ou les réglages réseau.
+Construire une application Mac dans une destination **neuve**, sans écraser un bundle livré :
 
-Pour Linux/Pi : [construction et installation explicites](docs/implementation/LINUX-PACKAGING.md), configuration `deploy/linux/server.json.example`, unité systemd et procédures backup/restore/recover. L'adresse192.168.1.42 et `/srv/volumes/video` ne sont que des exemples modifiables. Aucun serveur installé automatiquement.
+```sh
+bash scripts/package-macos.sh /chemin/absolu/Chill-Center-test.app
+```
+
+Les bundles locaux sont signés ad hoc, non notariés. Les licences des bibliothèques embarquées doivent les accompagner.
+
+## API et documentation
+
+L’API HTTPS est versionnée : `/api/2026-10-14`. Les ajouts compatibles restent dans cette version ; une rupture nécessite une nouvelle version et le maintien de celle utilisée par les clients existants.
+
+- [Contrat OpenAPI](docs/api/openapi-2026-10-14.json)
+- [Contribuer](CONTRIBUTING.md) et [sécurité](SECURITY.md)
+- [Préparer et vérifier GitHub Pages](docs/publication/GITHUB-PAGES.md)
+
+Architecture, décisions et journaux de travail restent dans `docs/`. Ils ne sont **pas** inclus automatiquement dans le site public. Rendre le dépôt et son historique publics exige un audit distinct.
+
+## Site de présentation
+
+Site statique sans dépendance ni suivi, sans accès au serveur du foyer :
+
+```sh
+node --test scripts/test-public-site.mjs
+node scripts/build-public-site.mjs
+```
+
+Ouvrir `dist/public/index.html` pour la prévisualisation. Le workflow Pages est manuel : aucun déploiement lors d’un commit ou d’une pull request. Sa présence ne vaut pas autorisation de publication.
+
+## Licence
+
+Code sous [licence MIT](LICENSE). Les bibliothèques tierces, les images de médias et les services externes conservent leurs propres licences et conditions.
