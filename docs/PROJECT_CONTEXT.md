@@ -2,6 +2,8 @@
 
 ## Transition suivante — correctif local, validation humaine précédente enregistrée
 
+Remise : source **8be19f461712c1260db2b21c3d8aba1cb59c3064**, bundle **`artifacts/macos/Chill Center-test-8be19f4.app`**, SHA exécutabled94fa7adcf95edb4e483ff88bd7d338b1b730b077029097dc84d1be87e819716, interne0.5.1/build6, signature/48dylibs/API2.5 PASS. [Preuves et limites](implementation/NEXT-TRANSITION-20261016.md), [revue indépendante APPROVED_SCOPED](reviews/next-transition-8be19f4.md).32Node/24web et deux contrôles de rendu ciblés PASS, aucun nouveau lecteur réel ou déploiement ; transition Tauri à confirmer humainement. Le « bundle à préparer » ci-dessous conserve le checkpoint pré-compilation.
+
 16octobre2026 : utilisateur confirme **78,79/80,85/86/87 et88 corrigés** : sept fiches clôturées sur ce retour, sans rejouer leurs tests natifs. Il demande ensuite de corriger **91/92/93**, remplaçant sa consigne antérieure de référencement seul. Contraste local du bouton, séparation lancement/annulation et fond d'affiche floutée préparé8s avant EOF intégrés ;32Node ciblés et rendu DOM connecté synthétique PASS, bundle à préparer. Aucun Rust, API, serveurPi, NAS, asset web installé ni chantier web modifié ; pas de nouvelle lecture vidéo réelle.0081–0084 toujours ouverts.
 
 ## Retours humains sur la proposition suivante — référencement seulement
