@@ -2,6 +2,8 @@
 
 16 octobre 2026. **FIXED_LOCAL — fournisseur réel non sollicité.**
 
+Addendum16octobre14:44UTC : correctif serveur installé et binaire vérifié indépendamment dans la livraisondf2870f ([rapport](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md)). Statut actuel **DEPLOYED / tests de nettoyage PASS**, pas de validation fournisseur réelle ni de reconnaissance massive lancée.
+
 Inventaire demandé par l'utilisateur : miroir2496entrées parcouru en lecture seule (titres/chemins relatifs seulement),19titres avec ouvrante orpheline,90titres à parenthèses équilibrées. Des suffixes techniques tronqués et anciens titres indexés conservent un délimiteur qui fuite par `title_for_search` vers la requête automatique.
 
 Correction partagée dans `scanner::tidy` : supprimer les délimiteurs réellement sans partenaire, conserver le texte et les groupes complets faisant partie du titre (ex. Birdman et son sous-titre). Parenthèses/crochets vides et années déjà couverts restent traités ; parsing des nouveaux fichiers et nettoyage de recherche des titres déjà indexés partagent le correctif. Pas de suppression aveugle de tout texte entre parenthèses.

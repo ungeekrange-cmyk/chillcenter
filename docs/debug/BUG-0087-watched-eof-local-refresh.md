@@ -2,6 +2,8 @@
 
 16 octobre 2026. **CORRECTED_LOCAL — exception courte approuvée, serveur Pi non mis à jour.**
 
+Addendum16octobre14:44UTC : règle courte incluse dans le serveur df2870f désormais déployé et vérifié indépendamment ([rapport](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md)). Aucun nouveau visionnage ni état vu fabriqué pour le test : le marquage court réel reste à confirmer humainement. Les mentions non-déployé plus bas sont les checkpoints antérieurs.
+
 Signalement : premier épisode d'« Avez-vous déjà vu » non marqué vu. L'utilisateur confirme une durée inférieure à 1 min 40 ; fichier/durée exacts non sondés.
 
 Deux mécanismes distincts :

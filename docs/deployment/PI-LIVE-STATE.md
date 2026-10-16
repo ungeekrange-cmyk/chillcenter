@@ -1,5 +1,15 @@
 # État réel du Raspberry Pi et règles de coordination entre agents
 
+## Nouveau checkpoint — serveur seul df2870f, 16 octobre14:44UTC
+
+**Vérification distincte finale APPROVED_SCOPED** : [rapport](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md), PID2326/NRestarts0, binaire/processus14d84…, backup exact/SQLite, rollback, empreintes conservées, API datée/v1 et vrai001→002 PASS. Pas de nouvelle lecture physique ou validation Tauri déduite.
+
+Préflight lecture seule conforme au précédent binaired77e/f3. Mise à jour explicitement autorisée, opérateur privé revu2b9b7804… terminé **rc0** le16octobre2026 à14:44:03UTC. Source **df2870f5776d20213bcb8c6c88a5bcb967091e97**, installé/processus SHA **14d84a0478b9f394bfe59b3b88588edb4a9305dfedfc0fb0b66449b39d034169**, PID2326. [Exécution](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001.md).
+
+Web contenu/inodes/métadonnées07868e61…, configurationd6167cb1…, unité76f7d349…, SPKI3018fb4d… conservés, pas de fichiers web ou configuration livrés. Montage capturé avant/après4524c19a… identique ; l'ancien1935a8db… contenait les identifiants autofs du démarrage précédent, CIFS toujoursro. Aucun changement NAS/pare-feu/comptes. Sauvegarde privée exacte `/var/lib/chillcenter/data/backups/9b975f1e-1667-4565-aa87-a4e7e3da089e`, rollbackd77e `/root/chillcenter-rollback/chill-server-d77e9e166928` ; anciennes copies conservées. API2026-10-14/v1 maintenues ; `order_unknown` facultatif, aucun ancien champ obligatoire changé. Mac `artifacts/macos/Chill Center-test-df2870f.app`.
+
+Tout futur préflight doit désormais épingler **14d84…**, sans prendre les checkpointsf3/ffcc ci-dessous pour l'état courant. Ne pas toucher au client web ou à son worktree.
+
 ## État courant — serveur seul f3fdac5, 15 octobre22:20UTC
 
 Le serveur a été mis à jour sans modifier `/usr/lib/chillcenter/web` ni le worktree de développement web. Vérification indépendante APPROVED_SCOPED : [rapport](../releases/REL-SERVER-ONLY-F3FDAC5-verification.md), [release](../releases/REL-SERVER-ONLY-F3FDAC5.md). Les sections plus bas décrivent l'ancien checkpointffcc, pas le hash courant.

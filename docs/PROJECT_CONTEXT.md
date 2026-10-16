@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Pi mis à jour — serveur seul df2870f, 16 octobre14:44UTC
+
+Connexion partagée rétablie et préflight conforme : bascule depuis d77e/f3 vers **14d84a0478b9f394bfe59b3b88588edb4a9305dfedfc0fb0b66449b39d034169**, source **df2870f**. Opérateur revu terminé **rc0**, sauvegarde privée exacte9b975f1e… et ancien binaire conservés ; service redémarré PID2326. Web installé, configuration/unité/TLS/montage NAS inchangés. [Exécution et rollback](releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001.md). [Vérification indépendante APPROVED_SCOPED](releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md) : service stable, sauvegarde exacte, API datée/v1 et cas réel001→002 PASS ; pas de nouvelle lecture vidéo ni test humain Tauri revendiqués. Bundle à utiliser **`artifacts/macos/Chill Center-test-df2870f.app`**. Le blocage SSH décrit ci-dessous est historique, désormais levé.
+
 ## Suite numérotée / affiches / scroll / matching — candidat df2870f
 
 16 octobre 2026 : source **df2870f5776d20213bcb8c6c88a5bcb967091e97**, branche `codex/fix-next-posters-scroll-matching`. Le test humain du candidat94495c1 a invalidé l'enchaînement réel : 150 épisodes sans numéros structurés mais avec préfixes de fichiers uniques. Ordre plat explicite désormais reconnu sans modifier la base ; ordre inconnu distinct d'une fin. Affiche de fiche retirée avant chargement et anciens observers neutralisés ; cartes/images virtualisées conservées au scroll ; 19 titres à parenthèses orphelines nettoyés pour le matching automatique sur 2496 entrées parcourues en lecture seule.

@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+16octobre14:44UTC : serveur source **df2870f** déployé, sauvegarde exacte et rc0 ; blocage SSH levé, [exécution](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001.md). [Vérification indépendante APPROVED_SCOPED](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md), dont vrai001→002 PASS ; tests humains du lecteur court/enchaînement et rendu Tauri encore distincts. Les états « Pi en attente » ci-dessous conservent le checkpoint antérieur.
+
 16 octobre, candidat **df2870f**, Mac livré / Pi en attente SSH : [BUG0088 suite numérotée](BUG-0088-flat-numbered-series-next.md), [BUG0089 parenthèses](BUG-0089-parentheses-matching.md), [BUG0090 affiches au boot rapide](BUG-0090-fast-boot-artwork-hooks.md) FIXED_LOCAL. [BUG0079 affiche sans match](BUG-0079-unmatched-poster-regression.md) et [BUG0080 clipping](BUG-0080-catalog-scroll-clipping.md) désormais FIXED_LOCAL, régressions DOM ciblées PASS, validation humaine Tauri restante. [Preuves et limites actuelles](../implementation/NEXT-POSTERS-SCROLL-MATCHING-20261016.md). Les mentions OPEN antérieures ci-dessous sont historiques pour0079/0080 ;0081–0084 restent ouverts.
 
 Deux compléments visuels du 16 octobre, non bloquants et **OPEN** : [BUG0083 loupe trop petite](BUG-0083-search-magnifier-size.md), [BUG0084 rotation décentrée](BUG-0084-sync-icon-rotation-center.md). Captures utilisateur reçues ; aucun correctif revendiqué dans le lot limité au blocage vidéo.

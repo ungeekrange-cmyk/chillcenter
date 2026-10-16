@@ -2,6 +2,8 @@
 
 16 octobre 2026. **FIXED_LOCAL — déploiement Pi autorisé, non encore effectué.**
 
+Addendum16octobre14:44UTC : serveur df2870f déployé après sauvegarde privée. Vérification indépendante réelle de l'API **001→002 PASS**, [rapport](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md). Statut actuel **VERIFIED_API / validation visuelle Tauri restante** ; le checkpoint local ci-dessus est historique. Aucune nouvelle lecture vidéo exécutée.
+
 Retour humain : à la fin du premier épisode d'« Avez-vous déjà vu », le lecteur du candidat94495c1 se ferme au lieu de proposer le suivant. Cette preuve invalide la validation réelle de l'enchaînement, même si les tests de compte à rebours synthétiques avaient passé.
 
 H1 confirmée sans lire une vidéo : miroir local parcouru en lecture seule,150épisodes de cette série,150sans saison/épisode, un seul dossier,150préfixes ordinaux uniques dans les noms. Le serveur renvoyait `media:null` pour toute numérotation absente. La nouvelle fermeture terminale confondait ce résultat avec le dernier épisode.

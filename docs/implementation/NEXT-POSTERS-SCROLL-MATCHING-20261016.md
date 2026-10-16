@@ -1,5 +1,7 @@
 # Suite, affiches, défilement et matching — remise locale
 
+Mise à jour16octobre14:44UTC : connexion SSH rétablie, serveur seul installé avec sauvegarde privée et rc0 ; web/configuration/NAS inchangés. [Exécution et rollback](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001.md), [vérification indépendante APPROVED_SCOPED](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md) dont vrai001→002 PASS. Le blocage SSH décrit au checkpoint de compilation plus bas est conservé comme historique, pas l'état actuel.
+
 16 octobre 2026. Source produit **df2870f5776d20213bcb8c6c88a5bcb967091e97**, branche `codex/fix-next-posters-scroll-matching`, base99afef9. Aucun tag ni bundle antérieur remplacé.
 
 ## Corrections et preuves
@@ -26,7 +28,7 @@ Commande : `CARGO_HOME=/private/tmp/video-catalog-cargo CARGO_TARGET_DIR=/privat
 
 Bundle0.5.1 figé toujours SHA **815c2a0c76e70c533fa909fcd6fc9d23fe72e8eb0ca4cd1b5e978ff783e35799**,0.5 et tous les candidats précédents conservés. Retour arrière client : rouvrir le précédent bundle, pas de restauration de base. Pas de nouveau numéro de release implicite, aucun push GitHub ni changement de branche canonique active/chantier web.
 
-## Serveur : déploiement autorisé mais non exécuté
+## Checkpoint de compilation : déploiement alors bloqué par SSH
 
 Binaire immuable conservé dans `artifacts/linux/chill-server-only-df2870f/` du dépôt canonique, avec manifeste exact, sans assets web/configuration/unité. SHA256 **14d84a0478b9f394bfe59b3b88588edb4a9305dfedfc0fb0b66449b39d034169**, ELF64aarch64 validé. Reconstruction sur source figée : `cargo zigbuild --release --locked --offline -p chill-server --target aarch64-unknown-linux-gnu.2.28`, Rust/Cargo1.99 existants ; même hash après reconstruction. Avertissement existant du linker conservé. Pas d'installation induite par cette compilation.
 
