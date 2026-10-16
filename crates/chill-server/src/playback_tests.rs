@@ -357,6 +357,74 @@ async fn five_real_seconds_at_double_speed_accumulate_across_two_leases() {
     assert_eq!(other["final_watched_ms"], 0);
     assert_eq!(other["watched"], false);
 }
+
+#[tokio::test]
+async fn short_video_eof_works_with_unchanged_native_and_web_payloads_on_both_api_bases() {
+    for (base, via_release) in [("/api/v1", false), ("/api/2026-10-14", true)] {
+        let f = fixture().await;
+        let g = grant(&f, 0, 0).await;
+        let path = format!("{base}/profiles/{}/playback/progress", f.profiles[0]);
+        let mut e = event(&g, 1, 900);
+        e.duration_ms = 1_000;
+        e.playing = true;
+        e.seek = false;
+        assert_eq!(
+            json_reply(&f.app, "POST", &path, serde_json::to_value(&e).unwrap())
+                .await
+                .0,
+            StatusCode::OK
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(110)).await;
+        e.sequence = 2;
+        e.position_ms = 1_000;
+        // Native EOF reports playing; web EOF reports paused with zero credit.
+        e.playing = !via_release;
+        e.final_elapsed_ms = if via_release { 0 } else { 100 };
+        let (status, reply) = if via_release {
+            json_reply(
+                &f.app,
+                "POST",
+                &format!("{base}/profiles/{}/playback/release", f.profiles[0]),
+                serde_json::to_value(ReleasePlayback {
+                    lease: ctrl(&g),
+                    progress: Some(e),
+                })
+                .unwrap(),
+            )
+            .await
+        } else {
+            json_reply(&f.app, "POST", &path, serde_json::to_value(e).unwrap()).await
+        };
+        assert_eq!(status, StatusCode::OK, "{reply}");
+        let (_, saved) = json_reply(
+            &f.app,
+            "GET",
+            &format!(
+                "{base}/profiles/{}/media/{}/state",
+                f.profiles[0], f.media[0]
+            ),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(saved["watched"], true, "{base}: {saved}");
+        assert_eq!(
+            saved["final_watched_ms"],
+            if via_release { 0 } else { 100 },
+            "real-time counter is not inflated to ten seconds"
+        );
+        let (_, other) = json_reply(
+            &f.app,
+            "GET",
+            &format!(
+                "{base}/profiles/{}/media/{}/state",
+                f.profiles[1], f.media[0]
+            ),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(other["watched"], false);
+    }
+}
 fn ctrl(g: &PlaybackGrant) -> PlaybackControl {
     PlaybackControl {
         session_id: g.lease.session_id.clone(),

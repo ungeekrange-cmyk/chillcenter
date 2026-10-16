@@ -84,7 +84,7 @@ async function cancelNextAndClose(){
   cancelNext();
   await returnFromPlayback();
 }
-async function returnFromPlayback(completion=null){
+async function returnFromPlayback(completion=completedPlayback?.promise){
   const playback={media_id:playerState.media_id,context:playerState.context},scope=playbackScope();
   const epoch=++playerNavigationEpoch,current=()=>epoch===playerNavigationEpoch&&scope===playbackScope();
   if(!await stopPlayerForNavigation(current)||!current())return;

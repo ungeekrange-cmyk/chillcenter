@@ -1108,6 +1108,18 @@ impl Store {
         stable_id: &str,
         progress: &Progress,
     ) -> Result<PersonalState, String> {
+        self.save_validated_progress_with_short_tail(profile_id, stable_id, progress, false)
+    }
+
+    /// `completed_short_tail` is an internal server proof, never a client field:
+    /// the active lease observed the complete final tenth without a seek/gap.
+    pub fn save_validated_progress_with_short_tail(
+        &self,
+        profile_id: &str,
+        stable_id: &str,
+        progress: &Progress,
+        completed_short_tail: bool,
+    ) -> Result<PersonalState, String> {
         self.require_profile(profile_id)?;
         if progress.media_id != stable_id
             || progress.duration_ms == 0
@@ -1151,7 +1163,16 @@ impl Store {
         } else {
             0
         });
-        let watched = old.watched || final_watched_ms >= WATCHED_THRESHOLD_MS;
+        let short_video = progress.duration_ms < 100_000;
+        let watched = old.watched
+            || if short_video {
+                completed_short_tail
+                    && progress.position_ms == progress.duration_ms
+                    && !progress.seek
+                    && !progress.buffering
+            } else {
+                final_watched_ms >= WATCHED_THRESHOLD_MS
+            };
         upsert_state(
             &tx,
             profile_id,
@@ -3193,6 +3214,57 @@ mod tests {
         assert!(!state.watched);
         assert_eq!(state.final_watched_ms, 0);
         assert_eq!(state.position_ms, 95_000);
+    }
+    #[test]
+    fn short_watch_requires_server_tail_proof_at_end_and_manual_false_stays_effective() {
+        let mut s = store();
+        let p = s.create_profile("Short").unwrap();
+        let id = s.catalog(&p.id).unwrap()[0].id.clone();
+        let mut event = Progress {
+            media_revision: 1,
+            session_id: "short".into(),
+            generation: 1,
+            media_id: id.clone(),
+            sequence: 1,
+            position_ms: 59_000,
+            duration_ms: 60_000,
+            speed: 2.0,
+            final_elapsed_ms: 2_500,
+            playing: true,
+            buffering: false,
+            seek: false,
+        };
+        assert!(
+            !s.save_validated_progress_with_short_tail(&p.id, &id, &event, true)
+                .unwrap()
+                .watched
+        );
+        event.sequence += 1;
+        event.position_ms = 60_000;
+        event.final_elapsed_ms = 500;
+        assert!(
+            !s.save_validated_progress(&p.id, &id, &event)
+                .unwrap()
+                .watched
+        );
+        event.sequence += 1;
+        event.final_elapsed_ms = 0;
+        event.playing = false;
+        assert!(
+            s.save_validated_progress_with_short_tail(&p.id, &id, &event, true)
+                .unwrap()
+                .watched
+        );
+        s.set_watched(&p.id, &id, false).unwrap();
+        event.sequence += 1;
+        assert!(
+            !s.save_validated_progress_with_short_tail(&p.id, &id, &event, false)
+                .unwrap()
+                .watched
+        );
+        let saved = s.personal_state(&p.id, &id).unwrap();
+        assert_eq!(saved.position_ms, 60_000);
+        assert_eq!(saved.final_watched_ms, 0);
     }
 
     #[test]

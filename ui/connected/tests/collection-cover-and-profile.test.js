@@ -22,6 +22,7 @@ test("next-episode preferences include 15 seconds and cancelling closes the play
   assert.match(app,/new Option\("Après 15 secondes","15"\)/);
   const player=fs.readFileSync(__dirname+"/../player.js","utf8");
   assert.match(player,/async function cancelNextAndClose\(\)/);
-  assert.match(player,/await stopPlayerForNavigation\(\)/);
+  assert.match(player,/await returnFromPlayback\(\)/);
+  assert.match(player,/await stopPlayerForNavigation\(current\)/);
   assert.match(player,/\$\("player-next-cancel"\)\.onclick=cancelNextAndClose/);
 });

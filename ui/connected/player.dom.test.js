@@ -92,8 +92,11 @@ test('an unavailable next item, a decoder error or an unresolved EOF never close
 });
 test('cancel returns to the original series and does not launch another episode',async()=>{
  const h=harness(20,{context:{kind:'series',id:'series-key'}}),returned=[];
+ let synced=0;h.sandbox.syncAfterMutation=async()=>{synced++;};
  h.sandbox.window.catalogReturnFromPlayback=p=>returned.push(JSON.parse(JSON.stringify(p)));
+ await h.advance(0);
  await h.get('player-next-cancel').onclick();await h.advance(30000);
+ assert.equal(synced,1,'cancellation reuses the EOF sync instead of issuing a second delta request');
  assert.deepEqual(h.calls.map(c=>c.action),['stop']);assert.deepEqual(returned,[{media_id:'a',context:{kind:'series',id:'series-key'}}]);
 });
 test('failed stop leaves the current page intact',async()=>{

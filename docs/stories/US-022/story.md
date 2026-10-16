@@ -61,6 +61,18 @@ When je marque manuellement non vu ou consulte son état
 Then non vu réinitialise le compteur final sans effacer la reprise ; une durée inconnue ne déclenche pas de seuil inventé
 ```
 
+### US-022-AC-05 — Exception des vidéos courtes, approuvée le 16 octobre 2026
+
+Trace : F-08 amendée, réponse explicite « Adapter la règle aux vidéos courtes ».
+
+```gherkin
+Given une vidéo connue de moins de cent secondes, non vue pour mon profil
+When je lis réellement tout son dernier dixième et atteins la fin dans le même bail
+Then elle devient vue, y compris aux vitesses autorisées, sans attendre dix secondes réelles
+And un simple saut final, buffering ou événement périmé ne suffit pas
+And le compteur de temps réel n'est pas gonflé ; les vidéos d'au moins cent secondes gardent la règle initiale
+```
+
 ## 5. Contraintes fonctionnelles de qualité
 
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.

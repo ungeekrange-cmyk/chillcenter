@@ -84,7 +84,61 @@ struct Entry {
     deadline: Instant,
     sequence: u64,
     sample: Option<(Progress, Instant)>,
+    short_tail_contiguous: bool,
     pending: Option<PendingTransfer>,
+}
+
+/// Short videos must reach their end after continuously covering the final tenth.
+/// This bounded, volatile proof belongs to the validated lease, not the wire DTO
+/// or the persisted real-time credit (which stays in milliseconds, at every speed).
+fn short_tail_continues(entry: &Entry, event: &Progress, now: Instant) -> bool {
+    if event.duration_ms == 0 || event.duration_ms >= 100_000 {
+        return false;
+    }
+    if event.position_ms <= chill_domain::final_tenth_start(event.duration_ms) {
+        return true;
+    }
+    let Some((last, at)) = &entry.sample else {
+        return false;
+    };
+    if !entry.short_tail_contiguous
+        || last.duration_ms != event.duration_ms
+        || event.seek
+        || last.seek
+        || event.position_ms < last.position_ms
+    {
+        return false;
+    }
+    // A stationary pause/buffer/speed change preserves already covered media.
+    if event.position_ms == last.position_ms {
+        return true;
+    }
+    // Web clients report EOF paused; the final advancing interval still began
+    // playing. Other paused/buffering advances must not supply coverage.
+    let ended = event.position_ms == event.duration_ms;
+    let elapsed = now.saturating_duration_since(*at).as_millis() as f64;
+    last.playing
+        && !last.buffering
+        && !event.buffering
+        && (event.playing || ended)
+        && last.speed == event.speed
+        && elapsed > 0.0
+        && (event.position_ms - last.position_ms) as f64 <= elapsed * event.speed + 1000.0
+}
+
+fn save_progress(
+    store: &chill_domain::Store,
+    service: &PlaybackService,
+    profile: &str,
+    event: &Progress,
+    now: Instant,
+) -> Result<PersonalState, String> {
+    let complete = service
+        .book
+        .lock()
+        .map_err(|_| "INVALID_OPERATION")?
+        .completed_short_tail(profile, event, now);
+    store.save_validated_progress_with_short_tail(profile, &event.media_id, event, complete)
 }
 #[allow(dead_code)]
 #[derive(Clone)]
@@ -167,6 +221,7 @@ impl LeaseBook {
                 deadline: now + LEASE_TIME,
                 sequence: 0,
                 sample: None,
+                short_tail_contiguous: false,
                 pending: None,
             },
         );
@@ -267,9 +322,18 @@ impl LeaseBook {
     }
     fn record(&mut self, p: &str, event: Progress, now: Instant) {
         if let Some(e) = self.entries.get_mut(p) {
+            e.short_tail_contiguous = short_tail_continues(e, &event, now);
             e.sequence = event.sequence;
             e.sample = Some((event, now));
         }
+    }
+
+    fn completed_short_tail(&self, p: &str, event: &Progress, now: Instant) -> bool {
+        event.position_ms == event.duration_ms
+            && self
+                .entries
+                .get(p)
+                .is_some_and(|e| short_tail_continues(e, event, now))
     }
 
     fn offer(
@@ -865,9 +929,7 @@ async fn transfer_ack(
                 Ok(event) => event,
                 Err(error) => return Ok(Err(error.1)),
             };
-            if let Err(error) =
-                store.save_validated_progress(&p, &final_event.media_id, &final_event)
-            {
+            if let Err(error) = save_progress(store, &service, &p, &final_event, Instant::now()) {
                 let _ = service.abort_transfer_ack(&token);
                 return Err(error);
             }
@@ -1109,7 +1171,7 @@ async fn progress(
             {
                 return Ok(Err(code));
             }
-            let saved = store.save_validated_progress(&p, &e.media_id, &e)?;
+            let saved = save_progress(store, &service, &p, &e, now)?;
             service
                 .book
                 .lock()
@@ -1162,7 +1224,7 @@ async fn release(
                 {
                     return Ok(Err(code));
                 }
-                store.save_validated_progress(&p, &e.media_id, &e)?;
+                save_progress(store, &service, &p, &e, now)?;
             }
             service.revoke_profile(&p);
             Ok(Ok(()))
@@ -1228,6 +1290,95 @@ mod tests {
         assert!(service.fingerprint_should_pause());
         service.revoke_profile("profile");
         assert!(!service.fingerprint_should_pause());
+    }
+    #[test]
+    fn short_tail_requires_complete_continuous_final_window_at_each_speed() {
+        for speed in [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0] {
+            for paused_eof in [false, true] {
+                let (mut b, t, request, stream) = prepared();
+                let lease = b.acquire("p".into(), request, stream, t).unwrap();
+                let mut first = event(&lease, 1, 53_000, 0);
+                first.duration_ms = 60_000;
+                first.speed = speed;
+                b.record("p", first.clone(), t);
+                let mut middle = first.clone();
+                middle.sequence = 2;
+                middle.position_ms = 57_000;
+                middle.final_elapsed_ms = (3_000.0 / speed) as u64;
+                let mid = t + Duration::from_secs_f64(4.0 / speed);
+                assert!(b.validate_progress("p", &middle, mid).is_ok());
+                assert!(!b.completed_short_tail("p", &middle, mid));
+                b.record("p", middle.clone(), mid);
+                let mut end = middle;
+                end.sequence = 3;
+                end.position_ms = 60_000;
+                end.playing = !paused_eof;
+                end.final_elapsed_ms = if paused_eof {
+                    0
+                } else {
+                    (3_000.0 / speed) as u64
+                };
+                let now = mid + Duration::from_secs_f64(3.0 / speed);
+                assert!(b.validate_progress("p", &end, now).is_ok());
+                assert!(
+                    b.completed_short_tail("p", &end, now),
+                    "speed {speed}, paused EOF {paused_eof}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn short_tail_rejects_seek_gaps_buffered_advances_and_new_lease() {
+        for defect in ["seek", "buffer", "jump", "duration", "unanchored"] {
+            let (mut b, t, request, stream) = prepared();
+            let lease = b.acquire("p".into(), request, stream, t).unwrap();
+            let mut start = event(&lease, 1, 53_000, 0);
+            start.duration_ms = 60_000;
+            if defect != "unanchored" {
+                b.record("p", start.clone(), t);
+            }
+            let mut end = start;
+            end.sequence = 2;
+            end.position_ms = 60_000;
+            end.seek = defect == "seek";
+            end.buffering = defect == "buffer";
+            if defect == "duration" {
+                end.duration_ms = 59_000;
+                end.position_ms = 59_000;
+            }
+            let now = if defect == "jump" {
+                t
+            } else {
+                t + Duration::from_secs(7)
+            };
+            assert!(!b.completed_short_tail("p", &end, now), "{defect}");
+        }
+    }
+    #[test]
+    fn short_tail_pause_can_preserve_coverage_but_never_supply_it() {
+        let (mut b, t, request, stream) = prepared();
+        let lease = b.acquire("p".into(), request, stream, t).unwrap();
+        let mut sample = event(&lease, 1, 54_000, 0);
+        sample.duration_ms = 60_000;
+        b.record("p", sample.clone(), t);
+        sample.sequence += 1;
+        sample.position_ms = 57_000;
+        b.record("p", sample.clone(), t + Duration::from_secs(3));
+        sample.sequence += 1;
+        sample.playing = false;
+        b.record("p", sample.clone(), t + Duration::from_secs(4));
+        sample.sequence += 1;
+        sample.playing = true;
+        b.record("p", sample.clone(), t + Duration::from_secs(5));
+        sample.sequence += 1;
+        sample.position_ms = 60_000;
+        assert!(b.completed_short_tail("p", &sample, t + Duration::from_secs(8)));
+        sample.duration_ms = 100_000;
+        sample.position_ms = 100_000;
+        assert!(
+            !b.completed_short_tail("p", &sample, t + Duration::from_secs(48)),
+            "100s keeps the existing ten-real-seconds rule"
+        );
     }
     fn event(l: &Lease, sequence: u64, position: u64, credit: u64) -> Progress {
         Progress {
