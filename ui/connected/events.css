@@ -2,6 +2,7 @@
 .app-shell{--event-sidebar-width:235px}
 .workspace{position:relative;isolation:isolate}
 .workspace::before{content:none}
+:root:is([data-ambiance=christmas],[data-ambiance=halloween]) .app-topbar{background:transparent}
 :root:is([data-ambiance=christmas],[data-ambiance=halloween]) .workspace::before{content:"";position:fixed;inset:0 0 0 var(--event-sidebar-width);z-index:-1;pointer-events:none;background-image:linear-gradient(90deg,var(--bg),color-mix(in srgb,var(--bg) 96%,transparent) 28%,color-mix(in srgb,var(--bg) 74%,transparent) 56%,color-mix(in srgb,var(--bg) 28%,transparent)),var(--event-art);background-size:cover;background-position:right center;background-repeat:no-repeat}
 :root[data-ambiance=christmas]{--event-art:url("branding/events/christmas.png")}
 :root[data-ambiance=halloween]{--event-art:url("branding/events/halloween.png")}
