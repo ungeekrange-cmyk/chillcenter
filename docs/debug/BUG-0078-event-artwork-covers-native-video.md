@@ -1,5 +1,7 @@
 # BUG-0078 — Le décor événementiel masque la vidéo native
 
+**CLOSED — confirmation utilisateur du 16 octobre 2026 : « bugs 78, 79/80, 85/86/87 et 88 corrigés ».** Clôture sur ce retour humain après la remise df2870f ; aucune nouvelle exécution de test revendiquée pour cette clôture. Les statuts et limites ci-dessous conservent les checkpoints précédents.
+
 - Signalement utilisateur : 16 octobre 2026, **BLOQUANT**. Noël ou Halloween recouvre la vidéo pendant la lecture.
 - Attendu : image native visible, contrôles web au-dessus ; décor absent du panneau de lecture puis restauré au retour au catalogue.
 - Source diagnostiquée : branche `codex/fix-player-event-overlay`, base `fd2b7a961f7fc9212c3208377cb9f4e61d306e27`. Version exacte de l’application du signalement non fournie ; pas de supposition sur le bundle lancé.

@@ -1,5 +1,7 @@
 # BUG-0088 — Une série numérotée seulement par ses fichiers ferme le lecteur
 
+**CLOSED — confirmation utilisateur du 16 octobre 2026 : « bugs 78, 79/80, 85/86/87 et 88 corrigés ».** Clôture sur ce retour humain après la remise df2870f ; aucune nouvelle exécution de test revendiquée pour cette clôture. Les statuts et limites ci-dessous conservent les checkpoints précédents.
+
 16 octobre 2026. **FIXED_LOCAL — déploiement Pi autorisé, non encore effectué.**
 
 Addendum16octobre14:44UTC : serveur df2870f déployé après sauvegarde privée. Vérification indépendante réelle de l'API **001→002 PASS**, [rapport](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md). Statut actuel **VERIFIED_API / validation visuelle Tauri restante** ; le checkpoint local ci-dessus est historique. Aucune nouvelle lecture vidéo exécutée.

@@ -123,3 +123,55 @@ test('unknown series order is not a terminal EOF and never closes or auto-launch
  // The deferred EOF task must recheck the resolved state, not a guessed absence.
  await h.advance(30000);assert.equal(h.calls.length,0);assert.equal(h.get('player-next').hidden,true);
 });
+test('expiry reports launching, never cancellation, while the next command is pending',async()=>{
+ const h=harness(5);let finish;
+ h.sandbox.window.__TAURI__.core.invoke=async(_,{command})=>{h.calls.push(command);return new Promise(resolve=>{finish=resolve;});};
+ await h.advance(5000);
+ assert.match(h.get('player-next-count').textContent,/Lancement de/);
+ assert.doesNotMatch(h.get('player-next-count').textContent,/annul/i);
+ assert.equal(h.get('player-next-cancel').disabled,true);
+ await vm.runInContext('launchNext();',h.sandbox);assert.equal(h.calls.length,1);
+ finish({stage:'closed'});await new Promise(resolve=>setImmediate(resolve));
+});
+test('a launch queued behind status cannot survive cancellation',async()=>{
+ const h=harness(5);vm.runInContext('playerBusy=true;',h.sandbox);
+ await h.advance(5000);assert.equal(h.calls.length,0);
+ vm.runInContext('cancelNext();playerBusy=false;',h.sandbox);
+ await h.advance(1000);assert.equal(h.calls.length,0);
+});
+test('an old queued launch cannot launch a replacement proposal',async()=>{
+ const h=harness(5);vm.runInContext('playerBusy=true;',h.sandbox);await h.advance(5000);
+ vm.runInContext('playerState.next.media.id="c";playerState.autoplay_seconds=null;renderNext();playerBusy=false;',h.sandbox);
+ await h.advance(1000);assert.equal(h.calls.length,0);
+});
+test('backgrounding also cancels a launch waiting for the status lock',async()=>{
+ const h=harness(5);vm.runInContext('playerBusy=true;',h.sandbox);await h.advance(5000);
+ h.sandbox.document.hidden=true;h.listeners.visibilitychange();
+ vm.runInContext('playerBusy=false;',h.sandbox);await h.advance(1000);assert.equal(h.calls.length,0);
+});
+test('transition artwork is prepared eight seconds before EOF but never covers live video',()=>{
+ const h=harness(null),observed=[],retired=[];
+ h.sandbox.window.chillArtwork=(target,id)=>observed.push({target,id});
+ h.sandbox.window.retireArtwork=target=>retired.push(target);
+ vm.runInContext('playerState={stage:"player",media_id:"current",position:91,duration:100,native:{loaded:true,ended:false}};renderPlayerBackdrop();',h.sandbox);
+ assert.equal(observed.length,0);
+ vm.runInContext('playerState.position=92;renderPlayerBackdrop();renderPlayerBackdrop();',h.sandbox);
+ assert.deepEqual(observed.map(x=>x.id),['current']);
+ assert.equal(h.get('player-stage').classList.contains('transition-visible'),false);
+ vm.runInContext('playerState.native.ended=true;renderPlayerBackdrop();',h.sandbox);
+ assert.equal(h.get('player-stage').classList.contains('transition-visible'),true);
+ vm.runInContext('hidePlayer();',h.sandbox);
+ assert.equal(h.get('player-stage').classList.contains('transition-visible'),false);
+ assert.ok(retired.includes(h.get('player-backdrop')));
+});
+test('transition artwork is reset for another media or profile, with a dark EOF fallback without an image',()=>{
+ const h=harness(null),observed=[];
+ h.sandbox.window.chillArtwork=(target,id)=>observed.push(id);
+ vm.runInContext('playerState={stage:"player",media_id:"a",position:99,duration:100,native:{loaded:true,ended:false}};renderPlayerBackdrop();playerState.media_id="b";playerState.position=1;renderPlayerBackdrop();',h.sandbox);
+ assert.deepEqual(observed,['a']);
+ vm.runInContext('playerState.native.ended=true;renderPlayerBackdrop();',h.sandbox);
+ assert.deepEqual(observed,['a','b']);
+ assert.equal(h.get('player-stage').classList.contains('transition-visible'),true);
+ vm.runInContext('state.profile_id="other";renderPlayerBackdrop();',h.sandbox);
+ assert.deepEqual(observed,['a','b','b']);
+});

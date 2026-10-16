@@ -1,6 +1,7 @@
 "use strict";
 let playerState={stage:"closed"},playerBusy=false,playerTimer=null,playerResize=null;
-let nextKey=null,nextDeadline=null,nextTimer=null,nextCancelled=false;
+let nextKey=null,nextDeadline=null,nextTimer=null,nextCancelled=false,nextLaunching=null;
+let playerBackdropKey=null;
 let playerNavigationEpoch=0,completedPlayback=null;
 const playbackScope=()=>typeof state==="undefined"?null:state.server_id+":"+state.profile_id;
 let playerIdleTimer=null,playerIdleAt=Date.now(),playerHover=false,playerFullscreenRequest=null,playerAutoFullscreen=false;
@@ -60,7 +61,7 @@ async function playerCall(command,quiet=false){
 }
 window.chillPlay=async (media_id,context=null)=>{
   ++playerNavigationEpoch;completedPlayback=null;
-  clearNext();
+  clearNext();clearPlayerBackdrop();
   // Snapshot this Mac's preference for a new manual launch, not each status tick
   // or automatic episode. A confirmed transfer uses the same pending intent.
   playerAutoFullscreen=typeof state==="undefined"||state.player_presentation?.fullscreen_on_start!==false;
@@ -72,14 +73,31 @@ window.chillPlay=async (media_id,context=null)=>{
   if(!started){await playerCall({action:"stop"},true);hidePlayer();return;}
   clearInterval(playerTimer);playerTimer=setInterval(()=>playerCall({action:"status"},true),500);
 };
-function clearNext(){clearTimeout(nextTimer);nextTimer=null;nextKey=null;nextDeadline=null;nextCancelled=false;$("player-next").hidden=true;}
-function hidePlayer(){clearNext();clearInterval(playerTimer);clearTimeout(playerIdleTimer);playerIdleTimer=null;playerTimer=null;playerFullscreenRequest=null;playerAutoFullscreen=false;playerHover=false;$("player-panel").hidden=true;$("player-panel").classList.remove("controls-hidden");document.body.classList.remove("player-open","player-fullscreen");playerState={stage:"closed"};}
+function stopNextTimer(){clearTimeout(nextTimer);nextTimer=null;nextDeadline=null;}
+function clearNext(){stopNextTimer();nextKey=null;nextCancelled=false;nextLaunching=null;$("player-next").hidden=true;}
+function clearPlayerBackdrop(){
+  const backdrop=$("player-backdrop");
+  window.retireArtwork?.(backdrop);backdrop.replaceChildren();playerBackdropKey=null;
+  $("player-stage").classList.remove("transition-visible");
+}
+function renderPlayerBackdrop(){
+  const n=playerState.native,key=playbackScope()+":"+playerNavigationEpoch+":"+playerState.media_id;
+  // Prepare one cached poster near EOF, without painting over the native cutout.
+  // Retirement shares the artwork loader's token guards against late old images.
+  if(playerBackdropKey!==null&&playerBackdropKey!==key)clearPlayerBackdrop();
+  const ending=n?.ended,nearEnd=n?.loaded&&playerState.duration>0&&playerState.position>=Math.max(0,playerState.duration-8);
+  if(playerState.media_id&&(ending||nearEnd)&&playerBackdropKey!==key){
+    playerBackdropKey=key;window.chillArtwork?.($("player-backdrop"),playerState.media_id);
+  }
+  $("player-stage").classList.toggle("transition-visible",Boolean(ending));
+}
+function hidePlayer(){clearNext();clearPlayerBackdrop();clearInterval(playerTimer);clearTimeout(playerIdleTimer);playerIdleTimer=null;playerTimer=null;playerFullscreenRequest=null;playerAutoFullscreen=false;playerHover=false;$("player-panel").hidden=true;$("player-panel").classList.remove("controls-hidden");document.body.classList.remove("player-open","player-fullscreen");playerState={stage:"closed"};}
 function applyPlayerPresentation(){
   if(!playerAutoFullscreen||playerState.stage!=="player")return;
   playerAutoFullscreen=false;
   requestAnimationFrame(()=>{if(playerState.stage==="player"&&!playerState.native?.fullscreen)togglePlayerFullscreen(true);});
 }
-function cancelNext(){clearTimeout(nextTimer);nextTimer=null;nextDeadline=null;nextCancelled=true;$("player-next-count").textContent="Lancement automatique annulé.";}
+function cancelNext(){stopNextTimer();nextCancelled=true;$("player-next-count").textContent="Lancement automatique annulé.";}
 async function cancelNextAndClose(){
   cancelNext();
   await returnFromPlayback();
@@ -112,13 +130,18 @@ function observePlaybackCompletion(){
     if(!next.media&&!next.order_unknown)void returnFromPlayback(completion.promise);
   },0);
 }
-async function launchNext(){
-  if(playerBusy){nextTimer=setTimeout(launchNext,100);return;}
-  const id=playerState.next?.media?.id;if(!id||!playerState.next.available)return;
-  cancelNext();$("player-next-now").disabled=true;
+async function launchNext(key=nextKey){
+  if(!key||key!==nextKey||nextLaunching===key)return;
+  if(playerBusy){clearTimeout(nextTimer);nextTimer=setTimeout(()=>{if(!nextCancelled)void launchNext(key);},100);return;}
+  const id=playerState.next?.media?.id;if(!id||!playerState.next.available||!playerState.next.media.available)return;
+  stopNextTimer();nextCancelled=true;nextLaunching=key;
+  $("player-next-count").textContent="Lancement de la vidéo suivante…";
+  $("player-next-now").disabled=true;$("player-next-cancel").disabled=true;$("player-next-thumb").setAttribute("aria-disabled","true");
   const started=await playerCall({action:"next",expected_id:id});
+  if(nextKey!==key)return;
+  nextLaunching=null;
   if(!started)$("player-next-count").textContent="Pas de lancement. Vérifiez la disponibilité ou le lecteur déjà actif sur un autre appareil.";
-  $("player-next-now").disabled=false;
+  $("player-next-now").disabled=false;$("player-next-cancel").disabled=false;$("player-next-thumb").setAttribute("aria-disabled","false");
 }
 function countdownNext(){
   if(nextCancelled||nextDeadline===null)return;
@@ -131,12 +154,12 @@ function renderNext(){
   observePlaybackCompletion();
   const next=playerState.next,media=next?.media;
   if(!playerState.native?.ended||playerState.native.error||!media){clearNext();return;}
-  const key=playerState.media_id+":"+media.id;
+  const key=playbackScope()+":"+playerNavigationEpoch+":"+playerState.media_id+":"+media.id;
   if(nextKey!==key){clearNext();nextKey=key;$("player-next").hidden=false;
     $("player-next-title").textContent=media.title;$("player-next-season").textContent=next.new_season?"Nouvelle saison":"À suivre";
     $("player-next-thumb").textContent=media.title.slice(0,1).toUpperCase();
     if(media.poster&&window.chillArtwork)window.chillArtwork($("player-next-thumb"),media.id);
-    $("player-next-now").disabled=!next.available||!media.available;
+    $("player-next-now").disabled=!next.available||!media.available;$("player-next-cancel").disabled=false;
     const thumb=$("player-next-thumb"),playable=Boolean(next.available&&media.available);thumb.tabIndex=playable?0:-1;thumb.setAttribute("role","button");thumb.setAttribute("aria-label",playable?"Lancer "+media.title:"Vidéo suivante indisponible");thumb.setAttribute("aria-disabled",String(!playable));
     if(!next.available||!media.available){$("player-next-count").textContent="Vidéo suivante indisponible.";nextCancelled=true;}
     else if(playerState.autoplay_seconds===null){$("player-next-count").textContent="Lancement automatique désactivé.";}
@@ -153,7 +176,7 @@ function tracksSelect(id,tracks,selected,off){
 }
 function renderPlayer(){
   if(playerState.stage==="transfer"){
-    $("player-panel").hidden=false;document.body.classList.add("player-open");clearNext();
+    $("player-panel").hidden=false;document.body.classList.add("player-open");clearNext();clearPlayerBackdrop();
     $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note;
     $("native-video").hidden=true;document.querySelector(".player-controls").hidden=true;document.querySelector(".player-seek").hidden=true;$("player-decoder").textContent="";
     $("player-transfer").hidden=false;$("transfer-confirm").hidden=playerState.confirmed;$("transfer-refuse").hidden=playerState.confirmed;
@@ -164,6 +187,7 @@ function renderPlayer(){
   if(playerState.stage!=="player"){const error=playerState.error;hidePlayer();if(error)message(error);return;}
   $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
   const n=playerState.native;$("player-panel").hidden=false;document.body.classList.add("player-open");
+  renderPlayerBackdrop();
   applyPlayerPresentation();
   $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note||n.error||n.notice||(playerState.next?.order_unknown?"Ordre des épisodes indéterminé : renseignez les numéros depuis la fiche de la série. Aucun lancement automatique.":n.ended?"Lecture terminée.":!n.loaded?"Chargement de la vidéo…":n.buffering?"Mise en mémoire tampon…":"");
   playerIcon("player-pause",n.paused?"play":"pause",n.paused?"Reprendre la lecture":"Mettre en pause");$("player-speed").value=String(n.speed);
@@ -179,10 +203,10 @@ function renderPlayer(){
   $("player-decoder").textContent=n.hardware_decoder&&n.hardware_decoder!=="no"?"Décodage matériel · "+n.hardware_decoder:"Décodage logiciel · "+(n.decoder||"initialisation");
   renderNext();
 }
-$("player-next-now").onclick=launchNext;$("player-next-cancel").onclick=cancelNextAndClose;
+$("player-next-now").onclick=()=>launchNext();$("player-next-cancel").onclick=cancelNextAndClose;
 $("player-next-thumb").onclick=()=>{if($("player-next-thumb").getAttribute("aria-disabled")!=="true")launchNext();};$("player-next-thumb").onkeydown=event=>{if((event.key==="Enter"||event.key===" ")&&$("player-next-thumb").getAttribute("aria-disabled")!=="true"){event.preventDefault();launchNext();}};
 $("transfer-confirm").onclick=()=>playerCall({action:"confirm_transfer"});$("transfer-refuse").onclick=()=>playerCall({action:"refuse_transfer"});
-document.addEventListener("visibilitychange",()=>{if(document.hidden&&nextDeadline!==null)cancelNext();});
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&(nextDeadline!==null||nextTimer!==null)&&!nextLaunching)cancelNext();});
 $("player-pause").onclick=()=>playerCall({action:playerState.native?.paused?"resume":"pause"});
 $("player-back").onclick=()=>playerCall({action:"jump",seconds:-10});$("player-forward").onclick=()=>playerCall({action:"jump",seconds:30});
 $("player-speed").onchange=()=>playerCall({action:"speed",speed:Number($("player-speed").value)});

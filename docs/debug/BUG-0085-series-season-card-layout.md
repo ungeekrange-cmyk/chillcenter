@@ -1,5 +1,7 @@
 # BUG-0085 — Navigation et disposition de la fiche série
 
+**CLOSED — confirmation utilisateur du 16 octobre 2026 : « bugs 78, 79/80, 85/86/87 et 88 corrigés ».** Clôture sur ce retour humain après la remise df2870f ; aucune nouvelle exécution de test revendiquée pour cette clôture. Les statuts et limites ci-dessous conservent les checkpoints précédents.
+
 16 octobre 2026. **CORRECTED_LOCAL**, validation humaine Tauri à faire.
 
 Symptômes : toutes les saisons sont repliées à l'entrée, épisodes empilés ; résumé, compteurs et note ne sont pas à côté de l'affiche. L'utilisateur demande la première saison contenant du non-vu ouverte et des cartes en grille.

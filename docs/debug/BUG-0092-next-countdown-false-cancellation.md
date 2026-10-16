@@ -1,5 +1,7 @@
 # BUG-0092 — Message d'annulation erroné à l'expiration du compte à rebours
 
+**FIXED_LOCAL — traitement demandé ensuite le16octobre, test Tauri humain restant.** H1 confirmée : `launchNext` appelle `cancelNext`, qui affiche « Lancement automatique annulé. » avant la requête de lancement. RED déterministe sur le message pendant requête retardée. Correction : arrêt de minuterie séparé de l'annulation, état « Lancement de la vidéo suivante… », une commande en vol, commandes désactivées durant cet appel. Relances derrière le slot de statut gardées par identité de proposition/serveur/profil/navigation et annulables ; pas de lancement périmé. Tests ciblés du message, double clic, annulation/arrière-plan pendant attente et changement de proposition PASS. API et moteur natif inchangés.
+
 16 octobre 2026. **OPEN — référencement uniquement, traitement explicitement différé par l'utilisateur.**
 
 ## Signalement et reproduction rapportée

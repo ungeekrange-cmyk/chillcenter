@@ -1,5 +1,7 @@
 # BUG-0079 — Ancienne affiche sur une fiche sans match TMDB
 
+**CLOSED — confirmation utilisateur du 16 octobre 2026 : « bugs 78, 79/80, 85/86/87 et 88 corrigés ».** Clôture sur ce retour humain après la remise df2870f ; aucune nouvelle exécution de test revendiquée pour cette clôture. Les statuts et limites ci-dessous conservent les checkpoints précédents.
+
 **FIXED_LOCAL — revue et remise en cours, test Tauri humain restant.** 16 octobre 2026. Régression utilisateur du comportement suivi par [BUG-0065](BUG-0065-stale-detail-and-artwork.md) ; les anciennes preuves de correction ne valent pas validation du présent cas.
 
 Reproduction rapportée : ouvrir une fiche avec match/affiche, puis une fiche sans match TMDB ; cette dernière montre l’ancienne affiche. Attendu : image propre à la nouvelle fiche ou placeholder, jamais celle de la fiche précédente.

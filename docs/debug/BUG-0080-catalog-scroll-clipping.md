@@ -1,5 +1,7 @@
 # BUG-0080 — Clipping pendant le défilement du catalogue
 
+**CLOSED — confirmation utilisateur du 16 octobre 2026 : « bugs 78, 79/80, 85/86/87 et 88 corrigés ».** Clôture sur ce retour humain après la remise df2870f ; aucune nouvelle exécution de test revendiquée pour cette clôture. Les statuts et limites ci-dessous conservent les checkpoints précédents.
+
 **FIXED_LOCAL — mécanismes corrigés, validation humaine Tauri restante.** 16 octobre 2026, client Mac ; signalement réitéré après le bundle94495c1.
 
 L’utilisateur observe des découpes visuelles au scroll dans « Toute la collection » ; extension aux autres vues suspectée mais **non confirmée**. Attendu : vignettes et contenu stables, sans coupure ni espace intempestif pendant le défilement.

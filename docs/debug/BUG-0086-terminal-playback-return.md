@@ -1,5 +1,7 @@
 # BUG-0086 — Le lecteur reste ouvert à la fin du dernier élément
 
+**CLOSED — confirmation utilisateur du 16 octobre 2026 : « bugs 78, 79/80, 85/86/87 et 88 corrigés ».** Clôture sur ce retour humain après la remise df2870f ; aucune nouvelle exécution de test revendiquée pour cette clôture. Les statuts et limites ci-dessous conservent les checkpoints précédents.
+
 16 octobre 2026. **CORRECTED_LOCAL**, restitution native Tauri à confirmer.
 
 Cause confirmée : `renderNext()` masquait la proposition lorsque `next.media` était nul, sans fermer le lecteur ni revenir à l'origine. De plus, « Lire » dans la fiche d'un membre ne transmettait pas le contexte saga/liste, contrairement à sa carte.

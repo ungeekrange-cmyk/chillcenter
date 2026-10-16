@@ -1,5 +1,7 @@
 # BUG-0093 — Fond blanc du lecteur entre deux épisodes
 
+**FIXED_LOCAL — traitement demandé ensuite le16octobre, test Tauri humain restant.** H1 confirmée : surface native fermée à EOF, découpes DOM transparentes et aucune couche de transition ; le fond clair apparaît autour de la proposition. Un calque dédié prépare une seule affiche courante via le cache existant dans les huit dernières secondes, reste transparent pendant la lecture et devient visible uniquement à EOF. Affiche floutée/assombrie ; repli dégradé sombre si absente ou retardée. Aucun préchargement vidéo, nouvelle route ou calcul serveur ; invalidation via les gardes d'images existantes au changement de média/profil/navigation/fermeture.32tests Node du contrôleur et vrai DOM connecté : anticipation, absence de peinture avant EOF, nettoyage/repli, clair/sombre, fenêtre/plein écran, redimensionnement PASS ; non-régression du décor événementiel PASS. Aucun lecteur réel ou accès Pi/NAS lancé.
+
 16 octobre 2026. **OPEN — référencement uniquement, traitement explicitement différé par l'utilisateur.**
 
 ## Signalement et preuve

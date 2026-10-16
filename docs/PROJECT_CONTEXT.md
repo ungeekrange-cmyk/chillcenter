@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Transition suivante — correctif local, validation humaine précédente enregistrée
+
+16octobre2026 : utilisateur confirme **78,79/80,85/86/87 et88 corrigés** : sept fiches clôturées sur ce retour, sans rejouer leurs tests natifs. Il demande ensuite de corriger **91/92/93**, remplaçant sa consigne antérieure de référencement seul. Contraste local du bouton, séparation lancement/annulation et fond d'affiche floutée préparé8s avant EOF intégrés ;32Node ciblés et rendu DOM connecté synthétique PASS, bundle à préparer. Aucun Rust, API, serveurPi, NAS, asset web installé ni chantier web modifié ; pas de nouvelle lecture vidéo réelle.0081–0084 toujours ouverts.
+
 ## Retours humains sur la proposition suivante — référencement seulement
 
 16 octobre2026 : utilisateur demande explicitement de **ne pas traiter** trois nouveaux points : contraste du bouton « Ne pas lancer » ([BUG0091](debug/BUG-0091-next-cancel-button-contrast.md)), message d'annulation à zéro suivi malgré tout du lancement ([BUG0092](debug/BUG-0092-next-countdown-false-cancellation.md)), fond blanc à remplacer par une transition aux tons de la série, éventuellement floutée et préparée quelques secondes avant EOF ([BUG0093](debug/BUG-0093-next-transition-white-background.md)). OPEN, sans diagnostic ni test/code/bundle/déploiement ; version de l'application ouverte non mesurée. La preuve API001→002 ci-dessous reste valide dans son périmètre, pas une validation de ces comportements visuels.

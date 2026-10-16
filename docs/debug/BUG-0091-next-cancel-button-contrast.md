@@ -1,5 +1,7 @@
 # BUG-0091 — Contraste insuffisant du bouton « Ne pas lancer »
 
+**FIXED_LOCAL — traitement demandé ensuite le16octobre, test Tauri humain restant.** H1 confirmée par la cascade : `button.secondary` prend `var(--text)` sombre en clair, tandis que la carte suivante reste sombre. Correction ciblée de la couleur/bordure/fond du bouton et du libellé « À suivre ». Test du vrai DOM connecté synthétique : contraste du bouton ≥4,5 en clair/sombre, fenêtre/plein écran. Pas de changement global de palette ou de fournisseur.
+
 16 octobre 2026. **OPEN — référencement uniquement, traitement explicitement différé par l'utilisateur.**
 
 ## Signalement et preuve

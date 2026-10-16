@@ -1,5 +1,7 @@
 # BUG-0087 — État vu à EOF non actualisé et cas des vidéos courtes
 
+**CLOSED — confirmation utilisateur du 16 octobre 2026 : « bugs 78, 79/80, 85/86/87 et 88 corrigés ».** Clôture sur ce retour humain après la remise df2870f ; aucune nouvelle exécution de test revendiquée pour cette clôture. Les statuts et limites ci-dessous conservent les checkpoints précédents.
+
 16 octobre 2026. **CORRECTED_LOCAL — exception courte approuvée, serveur Pi non mis à jour.**
 
 Addendum16octobre14:44UTC : règle courte incluse dans le serveur df2870f désormais déployé et vérifié indépendamment ([rapport](../releases/REL-NEXT-POSTERS-SCROLL-MATCHING-001-verification.md)). Aucun nouveau visionnage ni état vu fabriqué pour le test : le marquage court réel reste à confirmer humainement. Les mentions non-déployé plus bas sont les checkpoints antérieurs.
