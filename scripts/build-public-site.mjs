@@ -59,6 +59,9 @@ async function validateExistingOutput(root, output) {
         await walk(path.join(directory, entry.name), name + '/');
       } else if (!entry.isFile() || !allowed.has(name)) {
         throw new Error(`Unmanaged output file: ${name}`);
+      } else if ((await lstat(path.join(directory, entry.name))).nlink > 1) {
+        // An in-place write must never modify a user file sharing this inode.
+        throw new Error(`Output hard link refused: ${name}`);
       }
     }
   }

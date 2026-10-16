@@ -15,7 +15,7 @@
 
 Un manifeste SHA-256 est généré. Aucun autre fichier du dépôt, configuration, base, journal ou document de travail n’est copié. Les affiches du site sont des illustrations CSS fictives, pas des médias du foyer ni des images TMDB.
 
-La construction refuse les liens symboliques dans les chemins inspectés, les fichiers non gérés déjà présents dans la destination, les chemins personnels, les adresses réseau privées et certains formats de clés connus. Elle ne supprime rien récursivement et ne révèle pas les valeurs rejetées dans ses diagnostics. Le contrôle est un garde-fou, **pas un audit exhaustif de secrets ou de l’historique Git**. Les fichiers dérivés autorisés sont remplacés à chaque construction ; ne pas les éditer manuellement.
+La construction refuse les liens symboliques dans les chemins inspectés, les liens physiques multiples sur les fichiers de sortie, les fichiers non gérés déjà présents dans la destination, les chemins personnels, les adresses réseau privées et certains formats de clés connus. Elle ne supprime rien récursivement et ne révèle pas les valeurs rejetées dans ses diagnostics. Le contrôle est un garde-fou, **pas un audit exhaustif de secrets ou de l’historique Git**. Les fichiers dérivés autorisés sont remplacés à chaque construction ; ne pas les éditer manuellement. Ne pas modifier les chemins de sortie en parallèle pendant une construction.
 
 ## Prévisualiser et vérifier
 

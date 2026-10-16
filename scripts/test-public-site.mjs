@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +67,18 @@ test('unmanaged output is preserved and prevents accidental publication', async 
   await writeFile(unexpected, 'keep me');
   await assert.rejects(buildPublicSite(directory), /Unmanaged output/);
   assert.equal(await readFile(unexpected, 'utf8'), 'keep me');
+});
+
+test('hard-linked output cannot overwrite another user-owned file', async t => {
+  const directory = await fixture(t);
+  const outside = path.join(directory, 'user-owned.txt');
+  const target = path.join(directory, 'dist/public/index.html');
+  await writeFile(outside, 'Preserve the original user file');
+  await mkdir(path.dirname(target), { recursive: true });
+  await link(outside, target);
+  await assert.rejects(buildPublicSite(directory), /Output hard link refused/);
+  assert.equal(await readFile(outside, 'utf8'), 'Preserve the original user file');
+  assert.equal(await readFile(target, 'utf8'), 'Preserve the original user file');
 });
 
 test('symlinks in sources and output ancestors are refused', async t => {
