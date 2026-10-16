@@ -1,5 +1,9 @@
 # CC-CONCEPT-20261016 · Filtres et ambiances événementielles
 
+### Révision 4 — panneau Noël rouge (validation visuelle en attente)
+
+Demande humaine du16octobre : panneau gauche rouge clair en mode clair et rouge très sombre en mode sombre. Maquette complète et aperçu de barre gauche alignés : clair fond `#f2c7c4`, texte `#411b1e`, secondaire `#74484c`, accent `#83343c` ; sombre fond `#240a0f`, texte `#fff0e6`, secondaire `#d6b8b2`, accent `#e3c28c`. Neige, photographies, logos, Halloween et filtres inchangés. Modification de concept seulement ; aucune intégration ou livraison autorisée par ce retour. Contrôles de rendu calculé Noël et non-régression Halloween ajoutés au harnais : PASS, captures inspectées en clair/sombre. Contrastes texte/secondaire/accent sur fond normal : clair9,81/4,95/5,45:1 ; sombre16,76/10,09/10,98:1 (sRGB, pas une certification de tous les états). Les sections r3 ci-dessous conservent le contexte.
+
 Statut : **PENDING_USER_APPROVAL** pour l'ensemble, révision 3, 16 octobre 2026. Maquettes uniquement : aucune intégration Tauri/web, API, base, NAS, serveur ou livraison modifiée. Les documents et approbations précédents restent historiques et intacts. Après la révision dessinée, l'utilisateur préfère finalement le premier rendu photographique, avec citrouille/sapin beaucoup plus proches et gros, sapin moins chargé. Ces deux nouveaux décors reçoivent « nickel », puis demande de voir la barre gauche et les filtres ; cet accord sur les images n'autorise pas encore l'intégration de l'ensemble. Originaux photographiques et dessinés préservés.
 
 ## Filtres interactifs
