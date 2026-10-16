@@ -20,6 +20,8 @@
 
 ## Livraison / gel
 
+Delta de revue avant gel : la paire de tokens génériques accent/bouton de la barre Noël clair est rendue cohérente (`--button:#701019`). La première attribution à l'avatar était erronée : ce dernier est dans le panneau droit et n'hérite pas de ces tokens locaux ; aucun défaut visible de l'avatar n'est revendiqué. Tests de contraste calculé ajoutés pour la paire locale et l'avatar réel, sur les quatre combinaisons. Le bundle candidat cef6 reste non livré, remplacé par un build au nouveau SHA.
+
 Source finale, revue indépendante, chemin du bundle, versions/signature/hash, tag local et lancement à compléter après exécution réelle. Ne pas remplacer un ancien bundle ni utiliser la maquette comme application. Repli : relancer `Chill Center-f3fdac5.app`, conservé ; aucune migration de données ou changement serveur dans ce lot.
 
 Après lancement, restent à vérifier humainement dans Tauri : apparence/filtres sur la bibliothèque du foyer, rendu et fluidité du décor sur Mac, consommation réelle ; pas de nouveau benchmark Pi/NAS nécessaire pour ce delta client seul. Le fonctionnement physique Pi/NAS/Wi-Fi et les réserves de la release précédente ne sont pas requalifiés par ces tests locaux.
