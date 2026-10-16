@@ -15,6 +15,8 @@
  background-position:right center;
  background-repeat:no-repeat
 }
+/* The native player sits below the WebView, so its cutout cannot retain event pixels. */
+:root:is([data-ambiance=christmas],[data-ambiance=halloween]) body.player-open .workspace::before{content:none;background-image:none}
 :root[data-ambiance=christmas]{--event-art:url("branding/events/christmas.png")}
 :root[data-ambiance=halloween]{--event-art:url("branding/events/halloween.png")}
 :root[data-ambiance=christmas][data-tone=dark]{--bg:#151b18;--panel:#1a211c;--raised:#242c25;--text:#f0eee4;--muted:#bbbeb1;--accent:#d9c48b}

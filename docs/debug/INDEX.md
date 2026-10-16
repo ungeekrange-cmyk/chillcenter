@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+Signalements du 16 octobre : [BUG0078 décor sur vidéo](BUG-0078-event-artwork-covers-native-video.md), BLOQUANT corrigé dans les sources / VERIFIED_DOM, essai Tauri humain restant. À traiter séparément, statuts OPEN : [BUG0079 affiche sans match](BUG-0079-unmatched-poster-regression.md), [BUG0080 clipping au scroll](BUG-0080-catalog-scroll-clipping.md), [BUG0081 retour de validation TMDB](BUG-0081-tmdb-apply-feedback.md), [BUG0082 récupération des conflits](BUG-0082-conflict-recovery-guidance.md). Aucun de ces quatre défauts n’est annoncé corrigé.
+
 Préparation GitHub publique, non publiée : [BUG0075 page 404](BUG-0075-public-404-relative-assets.md) et [BUG0076 liens physiques](BUG-0076-public-build-hardlink.md), VERIFIED_LOCAL. [BUG0077 adresses du foyer](BUG-0077-household-addresses-in-public-source.md) : version de travail assainie, historique privé conservé ; aucun déploiement ou changement de visibilité. Voir la [stratégie de publication du dépôt](../publication/GITHUB-REPOSITORY.md).
 
 [BUG0074](BUG-0074-event-header-opaque-background.md), FIXED/VERIFIED_LOCAL0.5.1 : bandeau opaque masquant l'image pleine hauteur, règle événementielle transparente ; RED/GREEN Noël/Halloween clair/sombre et hors événement, correctif livré séparément sans modifierv0.5 figée. [Release](../releases/REL-V0.5.1.md).

@@ -1,5 +1,7 @@
 # BUG-0065 — Fiche et image d’un autre média
 
+16 octobre 2026 : comportement de nouveau signalé par l’utilisateur ; suivi **OPEN** dans [BUG-0079](BUG-0079-unmatched-poster-regression.md). Les preuves historiques ci-dessous sont conservées, pas présentées comme validation de cette réapparition.
+
 Auteur `/root`, 2026-10-15 ; client livré c610ea9.
 
 Causes confirmées : lecture ignorée par `run` occupé, réponses sans génération de fiche, file d’images vérifiant le profil mais pas l’identité de son élément réutilisé.
