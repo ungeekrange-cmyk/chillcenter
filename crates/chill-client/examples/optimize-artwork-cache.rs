@@ -7,11 +7,10 @@ fn main() {
     };
     match chill_client::artwork_cache::optimize_closed_cache(Path::new(&root)) {
         Ok(r) => println!(
-            "ARTWORK_CACHE_OPTIMIZED logical_bytes={} before_unique_allocated_bytes={} after_unique_allocated_bytes={} unique_blob_bytes={} references={} hash_verified={}",
+            "ARTWORK_CACHE_OPTIMIZED logical_bytes={} before_unique_allocated_bytes={} after_unique_allocated_bytes={} references={} hash_verified={}",
             r.logical_bytes,
             r.before_unique_allocated_bytes,
             r.after_unique_allocated_bytes,
-            r.unique_bytes,
             r.references,
             r.verified
         ),

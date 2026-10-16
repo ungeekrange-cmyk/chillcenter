@@ -20,7 +20,6 @@ pub struct OptimizeReport {
     pub logical_bytes: u64,
     pub before_unique_allocated_bytes: u64,
     pub after_unique_allocated_bytes: u64,
-    pub unique_bytes: u64,
     pub references: u64,
     pub verified: u64,
 }
@@ -304,6 +303,7 @@ fn measure(base: &Path) -> std::io::Result<(u64, u64, u64)> {
 /// does not open, create, or alter SQLite/WAL/SHM files. New pool orphans are
 /// intentionally retained until a future closed maintenance run.
 pub fn optimize_closed_cache(root: &Path) -> std::io::Result<OptimizeReport> {
+    safe_directory(root)?;
     let base = root.join("catalog-cache");
     safe_directory(&base)?;
     let (logical, before, refs) = measure(&base)?;
@@ -332,7 +332,6 @@ pub fn optimize_closed_cache(root: &Path) -> std::io::Result<OptimizeReport> {
         logical_bytes: logical,
         before_unique_allocated_bytes: before,
         after_unique_allocated_bytes: after,
-        unique_bytes: after,
         references: refs,
         verified,
     })

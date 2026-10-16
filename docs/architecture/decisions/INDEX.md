@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR0024](ADR-0024-artwork-content-deduplication.md), PROPOSED,16octobre2026 : pool privé d'affiches à liens physiques, chemins/cache hors ligne/budget logique historiques conservés ; migration explicite et réversible, pas de SQLite ou web modifié. Revue indépendante avant migration réelle.
+
 [ADR0021](ADR-0021-multiple-library-locations.md), [ADR0022](ADR-0022-paused-playback-retains-buffer.md), [ADR0023](ADR-0023-series-spelling-canonicalization.md),16octobre2026 : bibliothèques multiples/addition compatible, pause gardant moteur/tampon et canonicalisation des variantes de séries. Autorité : demandes utilisateur explicites ; preuves exactes dans le lot Configuration, pas une preuve de déploiement Pi.
 
 [ADR-0020](ADR-0020-local-title-recommendations.md), IMPLEMENTED_DETAIL,16octobre2026 : recommandations fiche/conseil en rails, séries regroupées par identité sans épisodes, correspondances genres/réalisation/distribution calculées dans le miroir ou fournies au CLI sur demande explicite ; API historique et web installé conservés.

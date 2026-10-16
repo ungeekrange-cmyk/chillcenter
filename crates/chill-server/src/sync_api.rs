@@ -519,7 +519,26 @@ mod tests {
         assert_eq!(first["total"], 10_000);
         let snapshot_id = first["snapshot_id"].as_str().unwrap().to_owned();
         let revision = first["revision"].as_str().unwrap().to_owned();
-        let mut checksum = first.to_string();
+        // Hash only deterministic media content, incrementally. Opaque IDs,
+        // snapshot tokens and generation-bound cursors intentionally differ
+        // across fresh databases and are checked by the contract tests.
+        fn account(hash: &mut sha2::Sha256, page: &Value) {
+            for entry in page["items"].as_array().unwrap() {
+                let media = &entry["media"];
+                hash.update(
+                    serde_json::to_vec(&json!([
+                        media["title"],
+                        media["overview"],
+                        media["year"],
+                        media["watched"],
+                        entry["revision"]
+                    ]))
+                    .unwrap(),
+                );
+            }
+        }
+        let mut checksum = sha2::Sha256::new();
+        account(&mut checksum, &first);
         for offset in (100..10_000).step_by(100) {
             let Json(value) = page(
                 State(state.clone()),
@@ -530,7 +549,7 @@ mod tests {
             )
             .await
             .unwrap();
-            checksum.push_str(&value.to_string());
+            account(&mut checksum, &value);
         }
         let id = store.catalog(&profile.id).unwrap()[0].id.clone();
         store.set_watched(&profile.id, &id, true).unwrap();
@@ -547,7 +566,7 @@ mod tests {
         assert_eq!(delta["total"], 1);
         println!(
             "sync_memory_10k checksum={:x} pages=100 delta=1",
-            sha2::Sha256::digest(checksum)
+            checksum.finalize()
         );
     }
     #[test]
