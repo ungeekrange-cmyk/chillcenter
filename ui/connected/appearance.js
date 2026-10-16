@@ -1,6 +1,22 @@
 "use strict";
 const appearanceLabels={spring:"Printemps",summer:"Été",autumn:"Automne",winter:"Hiver",christmas:"Noël",halloween:"Halloween"};
 const systemTone=window.matchMedia("(prefers-color-scheme: dark)");let appearanceTimer=null,appearanceRetry=null;
+// Decoration is local, non-interactive and bounded. No animation loop on the JS thread.
+(() => {
+ const sidebar=document.querySelector(".sidebar");if(!sidebar)return;
+ const weather=node("div",undefined,"ambiance-weather");weather.setAttribute("aria-hidden","true");
+ for(const [kind,count]of [["snow",14],["bat",5]])for(let i=0;i<count;i++){
+  const particle=node("span",undefined,"ambiance-"+kind);
+  particle.style.setProperty("--particle-x",((i*37+8)%90)+"%");
+  particle.style.setProperty("--particle-size",(2+i%3)+"px");
+  particle.style.setProperty("--particle-duration",(kind==="snow"?14+i%7:17+i*2)+"s");
+  particle.style.setProperty("--particle-delay",(-i*3.7-2)+"s");
+  if(kind==="bat")particle.append(node("i"));weather.append(particle);
+ }
+ sidebar.prepend(weather);
+ const visibility=()=>document.documentElement.dataset.ambiancePaused=String(document.hidden);
+ document.addEventListener("visibilitychange",visibility);visibility();
+})();
 window.refreshAppearance=async()=>{
  clearTimeout(appearanceRetry);const date=new Date();
  try{const r=await invoke({action:"resolve_appearance",year:date.getFullYear(),month:date.getMonth()+1,day:date.getDate()});

@@ -70,3 +70,10 @@ test("late catalogue response cannot replace a newer query on the same profile",
  const old=f.load();f.get("search").value="wanted";await f.load();finishOld({items:media(48),has_more:true});await old;
  assert.deepEqual(f.ids(),["filtered-0"]);assert.deepEqual(calls,[null,"wanted"]);assert.deepEqual(f.messages,[]);
 });
+test("warm facet base is reused locally and invalidated after a catalogue mutation",async()=>{
+ const items=media(103),calls=[];const f=fixture(async command=>{calls.push(command.offset);return {items:items.slice(command.offset,command.offset+48),has_more:command.offset+48<items.length};});
+ await f.load();assert.deepEqual(calls,[0,48,96]);
+ await vm.runInContext("loadPage(true)",f.sandbox);assert.deepEqual(calls,[0,48,96],"a local facet redraw must not invoke UiClient again");
+ vm.runInContext("invalidateFacetBase()",f.sandbox);await f.load();
+ assert.deepEqual(calls,[0,48,96,0,48,96]);
+});

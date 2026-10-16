@@ -10,7 +10,7 @@ async function run(command, update=true, progress="") {
   let result;try { result=await invoke(command);if(update)state=result; }
   catch(error){$("profile-switch").value=state.profile_id||"";message(error?.message||String(error));if(error?.status===404)setTimeout(async()=>{if(await run({action:"refresh"})){if(!state.profile_id)$("media").replaceChildren();}},0);return null;}
   finally{busy=false;document.body.removeAttribute("aria-busy");for(const [n,disabled] of disabledBefore)if(n.isConnected)n.disabled=disabled;if(update&&result)render();pager();}
-  if(result&&/^(create_playlist|rename_playlist|delete_playlist|add_playlist|remove_playlist_member|reorder_playlist|create_saga|rename_saga|delete_saga|add_saga|remove_saga_member|reorder_saga|saga_member_artwork|set_watched|set_rating|group_rating|edit_media|edit_series|forget_unavailable)$/.test(command.action))await syncAfterMutation();return result;
+  if(result&&/^(create_playlist|rename_playlist|delete_playlist|add_playlist|remove_playlist_member|reorder_playlist|create_saga|rename_saga|delete_saga|add_saga|remove_saga_member|reorder_saga|saga_member_artwork|set_watched|set_rating|group_rating|edit_media|edit_series|forget_unavailable)$/.test(command.action)){invalidateFacetBase();await syncAfterMutation();}return result;
 }
 function render(){
   if(window.adminContextChanged)window.adminContextChanged();
@@ -69,8 +69,10 @@ function pager(){} // API batches remain internal; no page-navigation UI.
 function catalogCommand(filters,at,grouped){return {action:"catalog",offset:at,category:filters.category||null,q:filters.q||null,genre:filters.genre||null,year:filters.year===""?null:Number(filters.year),watched:filters.watched===""?null:filters.watched==="true",sort:filters.sort||null,grouped,available:filters.available===""?null:filters.available==="true"};}
 function catalogFilters(){return {category:$("category").value,q:$("search").value,genre:$("genre").value,year:$("year").value,watched:$("watched").value,sort:$("sort").value,available:$("available").value};}
 if(typeof module!=="undefined")module.exports={catalogCommand};
-let catalogItems=[],catalogCounters={},catalogGeneration=0,catalogWindowKey="",catalogFrame=null,catalogContext="";
-function clearCatalogContext(){catalogGeneration++;catalogItems=[];catalogCounters={};catalogWindowKey="";$("media").replaceChildren();$("media").style.height="";window.resetArtwork?.();}
+let catalogItems=[],catalogCounters={},catalogGeneration=0,catalogWindowKey="",catalogFrame=null,catalogContext="",facetBase=null;
+function invalidateFacetBase(){facetBase=null;}
+window.invalidateFacetBase=invalidateFacetBase;
+function clearCatalogContext(){catalogGeneration++;catalogItems=[];catalogCounters={};catalogWindowKey="";invalidateFacetBase();window.catalogFacets?.clear();$("media").replaceChildren();$("media").style.height="";window.resetArtwork?.();}
 function renderCatalogWindow(){
  const target=$("media");if(!target||!catalogItems.length||$("catalog-panel").hidden)return;
  const rect=target.getBoundingClientRect(),list=$("view-mode").value==="list",size=Number($("poster-size").value)||200;
@@ -117,13 +119,17 @@ async function catalogRequest(command,generation,context){
  }
  message("Le serveur est occupé. Rechargez le catalogue depuis Administration.");return null;
 }
-async function loadPage(){
+async function loadPage(reuseFacetBase=false){
  const context=state.server_id+":"+state.profile_id;if(context!==catalogContext){clearCatalogContext();catalogContext=context;}const generation=++catalogGeneration;
  if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return false;}
- const filters=catalogFilters(),ids=new Set(),staged=[],counters={};let at=0;
+ const filters=catalogFilters(),baseFilters={...filters,genre:"",year:""},baseKey=context+"\u0000"+JSON.stringify(baseFilters);
+ let staged,counters;
+ if(reuseFacetBase&&facetBase?.key===baseKey){staged=facetBase.items;counters=facetBase.counters;}
+ else{
+  const ids=new Set();staged=[];counters={};let at=0;
  if(!catalogItems.length)$("catalog-count").textContent="Chargement du catalogue…";
  for(;;){
-  const page=await catalogRequest(catalogCommand(filters,at,true),generation,context);
+  const page=await catalogRequest(catalogCommand(baseFilters,at,true),generation,context);
   if(!page||generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return false;
   if(!Array.isArray(page.items)||page.items.length>CATALOG_PAGE_SIZE||page.has_more&&page.items.length===0){message("Réponse catalogue incohérente.");return false;}
   let added=0;for(const item of page.items){if(!ids.has(item.id)){ids.add(item.id);staged.push(item);added++;}}
@@ -132,8 +138,11 @@ async function loadPage(){
   if(!added||staged.length>=30000){message("Catalogue trop volumineux ou modifié pendant le chargement. Rechargez depuis Administration.");return false;}
   at+=page.items.length;
  }
- catalogItems=staged;catalogCounters=counters;catalogWindowKey="";$("catalog-count").textContent=catalogItems.length+" titres";
- if(catalogItems.length)renderCatalogWindow();else{$("media").style.height="";$("media").replaceChildren(node("p","Aucun titre ne correspond. Configurez puis scannez la bibliothèque dans Administration.","muted"));}
+  facetBase={key:baseKey,items:staged,counters};
+ }
+ if(generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return false;
+ window.catalogFacets?.draw(staged);catalogItems=window.catalogFacets?.filter(staged)||staged;catalogCounters=counters;catalogWindowKey="";$("catalog-count").textContent=catalogItems.length+" titres";
+ if(catalogItems.length)renderCatalogWindow();else{$("media").style.height="";$("media").replaceChildren(node("p","Aucun titre ne correspond à ces filtres. Les fiches sans année ne sont pas incluses dans un filtre d’année.","muted"));}
  return true;
 }
 $("connect-form").onsubmit=e=>{e.preventDefault();connect($("address").value);};
@@ -150,6 +159,7 @@ $("theme").onchange=()=>run({action:"theme",theme:$("theme").value});
 $("filter-form").onsubmit=e=>{e.preventDefault();offset=0;loadPage();};$("refresh-catalog").onclick=()=>syncCatalog();
 $("view-mode").onchange=()=>{catalogWindowKey="";renderCatalogWindow();};
 $("poster-size").oninput=()=>{document.documentElement.style.setProperty("--poster-size",$("poster-size").value+"px");catalogWindowKey="";renderCatalogWindow();};
+window.catalogFacets?.init({onChange:()=>{if(state.profile_id)loadPage(true);}});
 $("scan").onclick=async()=>{if(await run({action:"start_scan"},false))await pollScan();};
 async function unavailableAdmin(at=0){
   let panel=$("unavailable-admin");if(!panel){panel=document.createElement("section");panel.id="unavailable-admin";panel.append(node("h2","Vidéos indisponibles"),node("p","Retirer une entrée efface son historique de reprise, vu et notes. Aucun fichier NAS ne sera supprimé.","muted"));$("admin-panel").querySelector(".admin-grid").append(panel);}
@@ -174,6 +184,7 @@ async function syncCatalog(){
  syncPromise=(async()=>{try{
   const result=await invoke({action:"sync_catalog"});if(context!==state.server_id+":"+state.profile_id)return;
   if(result.changed){
+   if(typeof window!=="undefined")window.invalidateFacetBase?.();
    if(!await loadPage())throw new Error("Actualisation du catalogue incomplète");
    if(context!==state.server_id+":"+state.profile_id)return;
    // Only the web bridge issues a ticket; existing native clients need no new command.
