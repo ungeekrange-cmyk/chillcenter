@@ -6,7 +6,7 @@ const helpers=vm.runInNewContext(source.slice(start,end)+";({seriesEditCommand,r
 assert.deepEqual(JSON.parse(JSON.stringify(helpers.seriesEditCommand("Une série",7,{name:"Nouveau nom",year:0,genres:["Drame"],overview:"Commun",cast:[],directors:[]}))),{action:"edit_series",series:"Une série",expected_revision:7,patch:{name:"Nouveau nom",year:0,genres:["Drame"],overview:"Commun",cast:[],directors:[]}});
 assert.deepEqual(JSON.parse(JSON.stringify(helpers.relatedMediaCommand("00000000-0000-4000-8000-000000000000"))),{action:"related_media",media_id:"00000000-0000-4000-8000-000000000000"});
 const ratingStart=source.indexOf("function ratingSummary"),ratingEnd=source.indexOf("\nfunction appendGroupRating",ratingStart);
-const ratingSummary=vm.runInNewContext(source.slice(ratingStart,ratingEnd)+";ratingSummary");
+const ratingSummary=vm.runInNewContext(source.slice(ratingStart,ratingEnd)+";ratingSummary",{uiText:text=>text});
 assert.equal(ratingSummary([{rating:4},{rating:4}]),"Ma note : ★★★★");
 assert.equal(ratingSummary([{rating:null},{rating:null}]),"Sans note");
 assert.equal(ratingSummary([{rating:4},{rating:2}]),"Notes différentes");

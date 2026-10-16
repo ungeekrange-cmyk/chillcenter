@@ -1,5 +1,15 @@
 # Contexte du projet
 
+## Lot client en cours — sous-titres, retour grille, français/anglais
+
+16 octobre2026 : branche `codex/playback-locale`, base0c49a8c. Corrections BUG0104/0105
+et préférence locale `auto/en/fr`, anglais de repli, français système. Vérifications
+locales ciblées exécutées, validations humaines natives restantes ; serveur/API/web/NAS
+inchangés. [Preuves](implementation/PLAYBACK-LANGUAGE-20261016.md).
+Huit sorties de compilation nettoyées sur autorisation explicite, **32,81Gio de disponible
+volume supplémentaires observés avant reconstruction**, sources/worktrees/historiques/
+versions livrées/web conservés : [mesure](performance/STORAGE-CLEANUP-20261016.md).
+
 ## Ressources — livraison courante, sans changement du client web
 
 16 octobre2026 : demande explicite d'appliquer les pistes RAM/stockage, mesurer, reconstruire Mac et mettre à jour Pi. Source **f9803557a452f59cbbe3cbf5b1c4bf1b48a9aa67**, branche `codex/resource-optimizations`, base228c4c6. Client : publication par déplacement sans copie complète ; serveur : Arc partagé reset/checkpoint complet, protocole/admission/TTL inchangés ; affiches : CAS privé par serveur et liens physiques vers les anciens chemins, budget logique/hors-ligne conservés. Aucun UI/web/API/dépendance/SQLschema/tampon changé. [ADR0024](architecture/decisions/ADR-0024-artwork-content-deduplication.md) accepté après revue indépendante, rollback ancien bundle compatible.

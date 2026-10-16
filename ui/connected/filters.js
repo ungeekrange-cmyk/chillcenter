@@ -1,4 +1,5 @@
 "use strict";
+var uiText=globalThis.chillI18n?.t||((text)=>text);
 
 (function(root){
  function normalizeGenres(items){
@@ -21,7 +22,7 @@
  }
  function describe(genres,years){
   const parts=[];
-  if(genres.length)parts.push(genres.length===1?genres[0]:genres.length+" genres");
+  if(genres.length)parts.push(genres.length===1?genres[0]:genres.length+uiText(" genres"));
   if(years.length===1)parts.push(String(years[0]));
   if(years.length===2)parts.push(Math.min(...years)+"–"+Math.max(...years));
   return parts;

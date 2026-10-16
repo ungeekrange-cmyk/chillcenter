@@ -1887,6 +1887,99 @@ mod tests {
     }
 
     #[test]
+    fn subtitle_changes_keep_the_current_playing_or_paused_state() {
+        let ffmpeg = Path::new("/opt/homebrew/bin/ffmpeg");
+        if !ffmpeg.exists() || !controlled_library_paths().iter().any(|path| path.exists()) {
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let subtitle = directory.path().join("switch.srt");
+        let video = directory.path().join("switch.mp4");
+        fs::write(
+            &subtitle,
+            "1\n00:00:00,000 --> 00:00:04,000\nSubtitle fixture\n",
+        )
+        .unwrap();
+        assert!(
+            Command::new(ffmpeg)
+                .args([
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=black:s=160x90:r=10:d=4",
+                    "-i"
+                ])
+                .arg(&subtitle)
+                .args([
+                    "-map", "0:v", "-map", "1:s", "-c:v", "libx264", "-c:s", "mov_text"
+                ])
+                .arg(&video)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let mut options = PlayerOptions::default();
+        options.extra.insert("vo".into(), "null".into());
+        options.extra.insert("ao".into(), "null".into());
+        let mut player = Player::new(options).unwrap();
+        player
+            .register_stream(
+                "chill-memory",
+                Arc::new(MemoryFactory(fs::read(video).unwrap())),
+            )
+            .unwrap();
+        player.load("chill-memory://subtitle-switch").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            assert!(Instant::now() < deadline, "fixture failed to load");
+            if matches!(
+                player.poll_event(Duration::from_millis(50)),
+                PlayerEvent::FileLoaded
+            ) {
+                break;
+            }
+        }
+        player.pause(false).unwrap();
+        let track = player
+            .tracks()
+            .unwrap()
+            .iter()
+            .find(|t| t.kind == TrackKind::Subtitle)
+            .unwrap()
+            .id;
+        for choice in [None, Some(track), None] {
+            let before = player.position_seconds().unwrap().unwrap_or(0.0);
+            player.select_subtitle(choice).unwrap();
+            std::thread::sleep(Duration::from_millis(250));
+            assert!(!property_bool(player.property("pause").unwrap()));
+            assert!(
+                player.position_seconds().unwrap().unwrap() > before + 0.1,
+                "subtitle selection interrupted video time"
+            );
+        }
+        let before = player.position_seconds().unwrap().unwrap();
+        player
+            .add_subtitle(
+                subtitle.to_str().unwrap(),
+                Some("External fixture"),
+                Some("en"),
+            )
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(!property_bool(player.property("pause").unwrap()));
+        assert!(player.position_seconds().unwrap().unwrap() > before + 0.1);
+        player.pause(true).unwrap();
+        player.select_subtitle(Some(track)).unwrap();
+        assert!(
+            property_bool(player.property("pause").unwrap()),
+            "changing subtitles must not resume an intentionally paused video"
+        );
+    }
+
+    #[test]
     fn libmpv_reads_seeks_and_lists_fixture_tracks_through_stream_cb() {
         let ffmpeg = Path::new("/opt/homebrew/bin/ffmpeg");
         if !ffmpeg.exists() || !controlled_library_paths().iter().any(|path| path.exists()) {

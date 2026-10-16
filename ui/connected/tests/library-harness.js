@@ -10,7 +10,7 @@ class NameInput{constructor(){this.value='';}focus(){}}
 function fixture(read){
  const nodes=new Map(),calls=[];const get=id=>{if(!nodes.has(id)){const e=new Element();e.id=id;e.elements.q=new NameInput();nodes.set(id,e);}return nodes.get(id);};
  const sandbox={$:get,node:(...a)=>new Element(...a),state:{server_id:'s',profile_id:'p'},busy:false,playerBusy:false,shellSection:'catalog',CATALOG_PAGE_SIZE:48,catalogWindow,innerHeight:800,
-  document:{createElement:tag=>new Element(tag),activeElement:new Element()},window:{addEventListener(){}},scrollTo(){},stopPlayerForNavigation:async()=>true,message(){},
+  document:{body:new Element(),createElement:tag=>new Element(tag),activeElement:new Element()},window:{addEventListener(){}},scrollTo(){},stopPlayerForNavigation:async()=>true,message(){},
   invoke:async c=>{calls.push(c);return read(c);},run:async c=>{calls.push(c);return read(c);},setTimeout,clearTimeout,requestAnimationFrame:fn=>{fn();return 1;},IntersectionObserver:class{constructor(callback){sandbox.artworkObserverCallback=callback;}observe(){}unobserve(){}disconnect(){}}};
  sandbox.shellShow=section=>{sandbox.shellSection=section;for(const [id,name]of [['collections-panel','collections'],['collection-panel','collection'],['picker-panel','picker']])get(id).hidden=name!==section;};
  vm.createContext(sandbox);const app=fs.readFileSync(__dirname+'/../app.js','utf8');vm.runInContext(app.slice(app.indexOf('function catalogCommand'),app.indexOf('\nfunction catalogFilters')),sandbox);vm.runInContext(fs.readFileSync(__dirname+'/../catalog.js','utf8'),sandbox);

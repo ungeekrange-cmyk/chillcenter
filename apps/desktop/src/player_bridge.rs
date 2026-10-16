@@ -114,6 +114,7 @@ struct Session {
     external_task: Option<tokio::task::JoinHandle<Result<DiscoveredSubtitles, UiError>>>,
 }
 struct DiscoveredSubtitles {
+    manual: bool,
     external: Vec<ExternalSubtitle>,
     selected_before: Option<String>,
     preferred: Option<(ExternalSubtitle, Result<Vec<u8>, UiError>)>,
@@ -488,9 +489,10 @@ impl PlayerHost {
         {
             let task = s.external_task.take().unwrap();
             match task.await {
-                Ok(Ok(found)) if s.lease.is_some() && !s.snapshot.paused => {
+                Ok(Ok(found)) if found.manual || s.lease.is_some() && !s.snapshot.paused => {
                     s.external = found.external;
-                    if s.subtitle_override.is_none() && s.selected_external == found.selected_before
+                    if (found.manual || s.subtitle_override.is_none())
+                        && s.selected_external == found.selected_before
                     {
                         if let Some((candidate, bytes)) = found.preferred {
                             let applied = match bytes {
@@ -811,6 +813,9 @@ impl PlayerHost {
                 s.audio_override = Some(track_id);
             }
             PlayerCommand::Subtitle { track_id } => {
+                if let Some(task) = s.external_task.take() {
+                    task.abort();
+                }
                 s.selected_external = None;
                 if track_id.is_some_and(|id| {
                     !s.snapshot
@@ -847,26 +852,7 @@ impl PlayerHost {
                 if !s.snapshot.loaded {
                     return Err(error("Attendez le chargement de la vidéo."));
                 }
-                if s.lease.is_some() {
-                    add_external(s, w, &id).await?;
-                } else {
-                    let g = s
-                        .transport
-                        .acquire_playback(
-                            &s.profile,
-                            &AcquirePlayback {
-                                media_id: s.info.media.id.clone(),
-                                device_id: s.device.clone(),
-                                context: s.context.clone(),
-                            },
-                        )
-                        .await?;
-                    s.lease = Some(g.lease);
-                    let added = add_external(s, w, &id).await;
-                    let released = release(s).await;
-                    added?;
-                    released?;
-                }
+                queue_external(s, w, &id).await?;
             }
             _ => return Err(error("Commande de lecture invalide.")),
         }
@@ -1026,13 +1012,18 @@ pub(crate) fn language_key(s: &str) -> Option<String> {
         .to_owned(),
     )
 }
-async fn add_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<(), UiError> {
+async fn queue_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<(), UiError> {
     let candidate = s
         .external
         .iter()
         .find(|t| t.id == id && !t.unavailable)
         .cloned()
         .ok_or_else(|| error("Sous-titre absent."))?;
+    // Cancel before checking the local cache too: a late older download must
+    // not replace a newer cached or integrated subtitle choice.
+    if let Some(task) = s.external_task.take() {
+        task.abort();
+    }
     if let Some((_, path)) = s.subtitle_cache.iter().find(|(key, _)| key == id) {
         s.snapshot = native_player::action(
             w,
@@ -1054,10 +1045,28 @@ async fn add_external(s: &mut Session, w: &WebviewWindow, id: &str) -> Result<()
     }
     let lease = s
         .lease
-        .as_ref()
+        .clone()
         .ok_or_else(|| error("Bail de lecture absent."))?;
-    let bytes = s.transport.download_subtitle(&s.profile, lease, id).await?;
-    apply_downloaded_external(s, w, candidate, bytes).await
+    let transport = s.transport.clone();
+    let profile = s.profile.clone();
+    let external = s.external.clone();
+    s.selected_external = Some(id.into());
+    let selected_before = s.selected_external.clone();
+    // Never await network I/O while owning PlayerHost. Its heartbeat and native
+    // lease guard must keep running even if this optional subtitle is slow.
+    s.external_task = Some(tokio::spawn(async move {
+        let bytes = transport
+            .download_subtitle(&profile, &lease, &candidate.id)
+            .await
+            .map_err(UiError::from);
+        Ok(DiscoveredSubtitles {
+            manual: true,
+            external,
+            selected_before,
+            preferred: Some((candidate, bytes)),
+        })
+    }));
+    Ok(())
 }
 
 fn matching_external<'a>(
@@ -1114,6 +1123,7 @@ fn discover_external(s: &mut Session) {
             None
         };
         Ok(DiscoveredSubtitles {
+            manual: false,
             external,
             selected_before,
             preferred,

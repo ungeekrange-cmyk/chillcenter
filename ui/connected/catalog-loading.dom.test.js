@@ -9,8 +9,8 @@ function fixture(invoke){
   setAttribute(){},addEventListener(){},getBoundingClientRect(){return this.rect;},closest(){return null;},focus(){}};}
  const get=id=>{if(!nodes.has(id)){const n=element();n.id=id;nodes.set(id,n);}return nodes.get(id);};
  get("poster-size").value="200";
- const sandbox={$:get,node:element,invoke,message:m=>messages.push(m),catalogWindow,state:{server_id:"server",profile_id:"profile"},innerHeight:800,CATALOG_PAGE_SIZE:48,
-  document:{activeElement:element()},window:{addEventListener(){}},requestAnimationFrame(){},setTimeout,clearTimeout};
+ const sandbox={uiText:text=>text,$:get,node:element,invoke,message:m=>messages.push(m),catalogWindow,state:{server_id:"server",profile_id:"profile"},innerHeight:800,CATALOG_PAGE_SIZE:48,
+  document:{body:{classList:{contains:()=>false}},activeElement:element()},window:{addEventListener(){}},requestAnimationFrame(){},setTimeout,clearTimeout};
  vm.createContext(sandbox);
  vm.runInContext(source.slice(source.indexOf("function catalogCommand"),source.indexOf("if(typeof module"))+source.slice(source.indexOf("let catalogItems="),source.indexOf('\n$("connect-form")')),sandbox);
  return {sandbox,get,cardCounts,messages,load:()=>vm.runInContext("loadPage()",sandbox),ids:()=>JSON.parse(vm.runInContext("JSON.stringify(catalogItems.map(m=>m.id))",sandbox))};

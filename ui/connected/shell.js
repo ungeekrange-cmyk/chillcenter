@@ -1,6 +1,7 @@
 "use strict";
+var uiText=globalThis.chillI18n?.t||((text)=>text);
 let shellSection="catalog",shellSearchTimer=null;
-const categoryNames={"":"Toute la collection",film:"Films",serie:"Séries",spectacle:"Spectacles",documentaire:"Documentaires"};
+const categoryNames={"":uiText("Toute la collection"),film:uiText("Films"),serie:uiText("Séries"),spectacle:uiText("Spectacles"),documentaire:uiText("Documentaires")};
 window.renderShell=()=>{
  const connected=state.stage==="connected",active=connected&&Boolean(state.profile_id);
  $("advice-toggle").hidden=!active;document.querySelector(".global-search").hidden=!active;
@@ -15,7 +16,7 @@ window.renderShell=()=>{
  if(shellSection!=="admin")$("admin-panel").hidden=true;
  document.querySelectorAll("[data-category]").forEach(button=>button.classList.toggle("active",shellSection==="catalog"&&button.dataset.category===$("category").value));
  $("admin-toggle").classList.toggle("active",shellSection==="admin");$("advice-toggle").classList.toggle("active",shellSection==="advice");
- $("catalog-title").textContent=categoryNames[$("category").value]||"Toute la collection";
+ $("catalog-title").textContent=categoryNames[$("category").value]||uiText("Toute la collection");
 };
 function shellShow(section){if(!["collections","collection","picker"].includes(section))window.leaveCollectionPages?.();shellSection=section;window.renderShell();}
 document.querySelectorAll("[data-category]").forEach(button=>button.onclick=async()=>{

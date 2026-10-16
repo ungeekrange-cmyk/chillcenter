@@ -1,15 +1,16 @@
 "use strict";
+var uiText=globalThis.chillI18n?.t||((text)=>text);
 const configurationCategories=[
- ["all","Tout"],["general","Général"],["server","Serveur"],["library","Bibliothèque"],
- ["profiles","Profils"],["playback","Lecture"],["appearance","Apparence"],
- ["metadata","Fiches et matching"],["ai","Intelligence artificielle"],["archives","Archives"]
+ ["all",uiText("Tout")],["general",uiText("Général")],["server",uiText("Serveur")],["library",uiText("Bibliothèque")],
+ ["profiles",uiText("Profils")],["playback",uiText("Lecture")],["appearance",uiText("Apparence")],
+ ["metadata",uiText("Fiches et matching")],["ai",uiText("Intelligence artificielle")],["archives",uiText("Archives")]
 ];
 function configurationText(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();}
 function configurationMatches(category,query,cardCategory,text){return (category==="all"||category===cardCategory)&&configurationText(query).split(" ").every(term=>configurationText(text).includes(term));}
 function buildLibraryConfigurationCommand(primary,additional,previous){
  const roots=additional.map(path=>path.trim()).filter(Boolean),first=primary.trim()||null;
- if(roots.length+(first?1:0)>16)throw Error("La bibliothèque est limitée à 16 emplacements.");
- if(new Set([first,...roots].filter(Boolean)).size!==roots.length+(first?1:0))throw Error("Chaque emplacement doit être unique.");
+ if(roots.length+(first?1:0)>16)throw Error(uiText("La bibliothèque est limitée à 16 emplacements."));
+ if(new Set([first,...roots].filter(Boolean)).size!==roots.length+(first?1:0))throw Error(uiText("Chaque emplacement doit être unique."));
  const command={action:"save_library",video_root:first,expected_revision:previous.revision};
  // An old server still accepts the historical one-root request. Never silently
  // drop extra locations when the user is explicitly adding/removing them.
@@ -27,21 +28,21 @@ if(typeof window!=="undefined"&&typeof document!=="undefined")(()=>{
   for(const card of grid.children){
    if(card.tagName!=="SECTION")continue;
    const category=card.dataset.settingsCategory||groups[card.id]||"general";card.dataset.settingsCategory=category;
-   const label=configurationCategories.find(([key])=>key===category)?.[1]||"Général";
+   const label=configurationCategories.find(([key])=>key===category)?.[1]||uiText("Général");
    // Values of inputs (notably provider secrets) are never search material.
    const text=[label,...[...card.querySelectorAll("h2,h3,label,button,summary")].map(element=>element.textContent)].join(" ");
    card.hidden=!configurationMatches(selected,search.value,category,text)||(card.id==="personal-settings"&&!state.profile_id);
    if(!card.hidden)count++;
   }
   for(const option of navigation.children){option.setAttribute("aria-current",option.dataset.category===selected?"page":"false");option.classList.toggle("active",option.dataset.category===selected);}
-  $("configuration-empty").hidden=count!==0;$("configuration-count").textContent=count+" rubrique"+(count===1?"":"s");
+  $("configuration-empty").hidden=count!==0;$("configuration-count").textContent=count+uiText(" rubrique")+(count===1?"":"s");
  }
  search.oninput=()=>{selected="all";refresh();};
  // Modules append their settings cards lazily. Observe only the grid's direct
  // children: status text and filtering must not trigger a mutation/render loop.
  new MutationObserver(refresh).observe(grid,{childList:true});
  function addLocation(path=""){
-  const row=node("div",undefined,"library-location-row"),label=node("label","Localisation supplémentaire"),input=node("input"),remove=node("button","Retirer","secondary");
+  const row=node("div",undefined,"library-location-row"),label=node("label",uiText("Localisation supplémentaire")),input=node("input"),remove=node("button",uiText("Retirer"),"secondary");
   input.value=path;input.autocomplete="off";input.maxLength=4096;input.placeholder="/autre/bibliotheque";label.append(input);remove.type="button";
   remove.onclick=()=>{row.remove();updateAddButton();};row.append(label,remove);$("additional-library-locations").append(row);updateAddButton();return input;
  }

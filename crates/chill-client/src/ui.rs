@@ -252,6 +252,9 @@ pub enum UiCommand {
     Theme {
         theme: String,
     },
+    SaveLanguage {
+        language: UiLanguage,
+    },
     SaveAppearance {
         appearance: crate::appearance::Appearance,
     },
@@ -396,11 +399,22 @@ struct Settings {
     last_profiles: BTreeMap<String, String>,
     last_address: Option<String>,
     theme: String,
+    language: UiLanguage,
     trust: TrustStore,
     device_id: Option<String>,
     appearance: crate::appearance::Appearance,
     playback_cache: crate::playback_cache::PlaybackCache,
     player_presentation: PlayerPresentation,
+}
+
+/// Device-local interface language; never changes media, audio or API fields.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UiLanguage {
+    #[default]
+    Auto,
+    En,
+    Fr,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -1062,7 +1076,7 @@ impl UiClient {
     fn view(&mut self) -> Result<Value, UiError> {
         if self.connected.is_none() {
             return Ok(
-                json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation}),
+                json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation}),
             );
         }
         let profiles = self.request(HttpMethod::GET, "/api/v1/profiles", None, &[], &[])?;
@@ -1126,7 +1140,7 @@ impl UiClient {
         }
         let cache_status=self.catalog_cache.as_ref().filter(|c|Some(&c.profile)==active.as_ref()).map(|c|json!({"revision":c.document.as_ref().map(|d|&d["revision"]),"offline":c.notice.is_some(),"notice":c.notice}));
         Ok(
-            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"catalog_cache":cache_status,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation,"notice":self.connected.as_ref().unwrap().notice}),
+            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"catalog_cache":cache_status,"language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation,"notice":self.connected.as_ref().unwrap().notice}),
         )
     }
     fn theme(&self) -> &str {
@@ -1163,7 +1177,7 @@ impl UiClient {
             return self.finish_connect(address, known_id.unwrap());
         }
         let token = uuid::Uuid::new_v4().to_string();
-        let result = json!({"stage":"trust","address":address,"fingerprint":certificate.fingerprint_hex(),"expires_at":certificate.not_after_unix(),"replacement":known.is_some(),"token":token,"theme":self.theme()});
+        let result = json!({"stage":"trust","address":address,"fingerprint":certificate.fingerprint_hex(),"expires_at":certificate.not_after_unix(),"replacement":known.is_some(),"token":token,"language":self.settings.language,"theme":self.theme()});
         self.pending = Some(Pending {
             address,
             certificate,
@@ -2157,6 +2171,15 @@ impl UiClient {
                     return Err(e);
                 }
                 Ok(json!({"appearance":self.settings.appearance}))
+            }
+            UiCommand::SaveLanguage { language } => {
+                let previous = self.settings.language;
+                self.settings.language = language;
+                if let Err(error) = self.save() {
+                    self.settings.language = previous;
+                    return Err(error);
+                }
+                Ok(json!({"language": language}))
             }
             UiCommand::ResolveAppearance { year, month, day } => Ok(
                 json!({"ambiance":self.settings.appearance.resolve(year,month,day).map_err(|e|invalid(&e))?,"appearance":self.settings.appearance}),
@@ -3289,6 +3312,26 @@ mod tests {
                 .dispatch(UiCommand::Boot)
                 .unwrap()["theme"],
             "dark"
+        );
+    }
+    #[test]
+    fn language_is_local_persisted_and_legacy_settings_default_to_auto() {
+        let legacy: Settings = serde_json::from_value(json!({"theme":"dark"})).unwrap();
+        assert_eq!(legacy.language, UiLanguage::Auto);
+        let dir = tempfile::tempdir().unwrap();
+        for language in [UiLanguage::Fr, UiLanguage::En, UiLanguage::Auto] {
+            let mut client = UiClient::open(dir.path()).unwrap();
+            client
+                .dispatch(UiCommand::SaveLanguage { language })
+                .unwrap();
+            assert_eq!(
+                UiClient::open(dir.path()).unwrap().settings.language,
+                language
+            );
+        }
+        assert!(
+            serde_json::from_value::<UiCommand>(json!({"action":"save_language","language":"de"}))
+                .is_err()
         );
     }
 }

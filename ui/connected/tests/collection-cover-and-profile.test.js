@@ -19,7 +19,7 @@ test("profile header keeps the name beside an initial avatar and exposes change/
 });
 
 test("next-episode preferences include 15 seconds and cancelling closes the player",()=>{
-  assert.match(app,/new Option\("Après 15 secondes","15"\)/);
+  assert.match(app,/new Option\(uiText\("Après 15 secondes"\),"15"\)/);
   const player=fs.readFileSync(__dirname+"/../player.js","utf8");
   assert.match(player,/async function cancelNextAndClose\(\)/);
   assert.match(player,/await returnFromPlayback\(\)/);

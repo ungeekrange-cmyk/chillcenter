@@ -1,6 +1,7 @@
 "use strict";
+var uiText=globalThis.chillI18n?.t||((text)=>text);
 
-const appearanceLabels={spring:"Printemps",summer:"Été",autumn:"Automne",winter:"Hiver",christmas:"Noël",halloween:"Halloween"};
+const appearanceLabels={spring:uiText("Printemps"),summer:uiText("Été"),autumn:uiText("Automne"),winter:uiText("Hiver"),christmas:uiText("Noël"),halloween:uiText("Halloween")};
 const systemTone=window.matchMedia("(prefers-color-scheme: dark)");
 let appearanceTimer=null,appearanceRetry=null;
 
@@ -40,7 +41,7 @@ window.refreshAppearance=async()=>{
   $("ambiance-mode").value=r.appearance.mode;
   $("ambiance-choice").value=r.appearance.manual;
   $("ambiance-choice-label").hidden=r.appearance.mode!=="manual";
-  $("ambiance-status").textContent=r.ambiance?"Ambiance "+appearanceLabels[r.ambiance]+" · sur ce Mac uniquement":"Sans ambiance · thème conservé";
+  $("ambiance-status").textContent=r.ambiance?uiText("Ambiance ")+appearanceLabels[r.ambiance]+uiText(" · sur ce Mac uniquement"):uiText("Sans ambiance · thème conservé");
  }catch(e){
   if(e.code==="CLIENT_BUSY")appearanceRetry=setTimeout(refreshAppearance,500);
  }
