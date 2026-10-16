@@ -25,7 +25,7 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?path.join(proces
     if(c.action==="resolve_appearance")return {ambiance:null,appearance:{mode:"off"}};
     if(c.action==="media_detail")return {media:c.media_id==="source"?source:window.recommendations.find(m=>m.id===c.media_id),revision:1};
     if(c.action==="related_media")return {items:[...window.recommendations,{...shows[0],id:"duplicate"},{...shows[0],id:"raw-episode",episode:3,title:"Forbidden episode"}]};
-    if(c.action==="artwork")return {src:image};
+    if(c.action==="artwork"){if(window.deferArtwork&&c.media_id==="show-new")return await new Promise(resolve=>{window.resolveArtwork=()=>resolve({src:image});});return {src:image};}
     if(c.action==="series"){const show=shows.find(m=>m.series_key===c.name);return {name:c.name,episodes:[{...show,season:1,episode:1}],metadata:{name:show.title},season_metadata:{},revision:1,counters:{unwatched:1},tmdb_id:show.tmdb_id};}
     throw Error("Unexpected fixture action "+c.action);
    }}};
@@ -46,9 +46,21 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?path.join(proces
    await rail.evaluate(e=>e.scrollLeft=e.scrollWidth);await cards.last().scrollIntoViewIfNeeded();assert.ok(await cards.last().isVisible());
    await page.locator(selector+' button[aria-label="Voir les recommandations précédentes"]').click();
   }
-  const before=await page.evaluate(()=>window.calls.length);await page.locator("#advice-results .recommendation-card").first().click();
+  // A hidden advice panel must reject a late poster response, without losing
+  // its recommendations or requiring another provider call on return.
+  await page.evaluate(()=>{window.deferArtwork=true;});await page.locator("#advice-start").click();
+  await page.waitForFunction(()=>Boolean(window.resolveArtwork));
+  const before=await page.evaluate(()=>{window.advicePosters=[...$("advice-results").querySelectorAll(".recommendation-poster")];return window.calls.length;});await page.locator("#advice-results .recommendation-card").first().click();
   await page.waitForFunction(before=>window.calls.slice(before).some(c=>c.action==="series"&&c.name==="tmdb:tv:2"),before);
+  assert.equal(await page.evaluate(()=>window.advicePosters.some(p=>artworkTargets.has(p)||artworkQueue.some(item=>item.target===p))),false);
+  await page.evaluate(()=>{window.deferArtwork=false;window.resolveArtwork();});
+  await page.waitForFunction(()=>!artworkLoading);
+  assert.equal(await page.locator("#advice-results .recommendation-card").first().locator("img").count(),0,"Late hidden response discarded");
+  const providerStarts=await page.evaluate(()=>window.aiCalls.filter(c=>c.action==="start").length);
+  await page.locator("#advice-toggle").click();await page.locator("#advice-results .recommendation-card").first().locator("img").waitFor();
+  assert.equal(await page.locator("#advice-results .recommendation-card").count(),20);
+  assert.equal(await page.evaluate(()=>window.aiCalls.filter(c=>c.action==="start").length),providerStarts,"Return uses preserved selection");
   assert.deepEqual(errors,[]);
-  console.log("PASS recommendation rails: related+advice, 20 single-row cards, all reachable by horizontal scroll, no episodes, distinct homonymous shows, provider ranking and series navigation. No provider/server/video.");
+  console.log("PASS recommendation rails: related+advice, 20 single-row cards, horizontal scroll, no episodes, distinct shows, ranking, series navigation, hidden artwork retired/late response rejected and selection resumed. No provider/server/video.");
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

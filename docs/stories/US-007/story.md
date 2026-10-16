@@ -71,6 +71,18 @@ When je consulte sa présentation
 Then des vidéos en relation du catalogue sont proposées sans inventer une fiche absente, sans démarrer la lecture et sans changer mon état vu
 ```
 
+### US-007-AC-06 — Recommandations regroupées en rail
+
+Complément demandé le16octobre2026, [ADR0020](../../architecture/decisions/ADR-0020-local-title-recommendations.md). Pour le client Mac, ce critère précise AC05 : une année proche ou une saga seule ne suffit plus.
+
+```gherkin
+Given une fiche et un catalogue local avec genres, réalisateurs ou acteurs communs
+When je consulte les vidéos en relation
+Then les correspondances sont classées et présentées sur une ligne de vignettes défilante gauche/droite
+And une série apparaît une seule fois, sans épisode individuel, avec son identité propre même si une autre série porte le même nom
+And cliquer ouvre la fiche du film ou la série complète, sans démarrage de lecture ni modification du profil
+```
+
 ## 5. Contraintes fonctionnelles de qualité
 
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.

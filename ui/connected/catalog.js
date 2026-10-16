@@ -118,7 +118,7 @@ function catalogRecommendationRail(items,{label="",beforeOpen}={}){
   const displayTitle=typeof item.title==="string"&&item.title?item.title:"Sans titre",card=document.createElement("button"),poster=node("div",displayTitle.slice(0,1).toUpperCase(),"poster recommendation-poster"),title=node("span",displayTitle,"recommendation-title"),reasons=Array.isArray(item.matches)&&item.matches.length?node("span",item.matches.join(" · "),"recommendation-reasons"):null;
   card.type="button";card.className="recommendation-card";card.append(poster,title,node("span",[({film:"Film",serie:"Série",documentaire:"Documentaire",spectacle:"Spectacle"})[item.category],item.year].filter(Boolean).join(" · "),"recommendation-meta"));if(reasons)card.append(reasons);
   card.onclick=async()=>{if(!card.isConnected||context!==collectionScope()||beforeOpen&&beforeOpen(item)===false)return;if(item.category==="serie"){if($("media-dialog").open)$("media-dialog").close();await openSeries(item.series_key);}else await openMedia(item.id);};
-  viewport.append(card);if(item.poster)observeArtwork(poster,item.id);
+  viewport.append(card);if(item.poster){poster.dataset.recommendationMediaId=item.id;observeArtwork(poster,item.id);}
  }
  return rail;
 }
@@ -128,6 +128,14 @@ function retireRecommendationRail(target){
 }
 window.catalogRecommendationRail=catalogRecommendationRail;
 window.catalogRetireRecommendationRail=retireRecommendationRail;
+window.catalogSetRecommendationRailVisible=(target,visible)=>{
+ if(!visible){retireRecommendationRail(target);return;}
+ // Keep the selection and decoded posters when returning; only resume pending
+ // artwork. Retiring a hidden rail invalidates any response already in flight.
+ for(const poster of target?.querySelectorAll(".recommendation-poster")||[]){
+  if(poster.dataset.recommendationMediaId&&!poster.dataset.mediaId&&!poster.querySelector("img"))observeArtwork(poster,poster.dataset.recommendationMediaId);
+ }
+};
 async function loadRelatedMedia(mediaId){
   let section=$("related-media");if(!section){section=document.createElement("section");section.id="related-media";$("media-dialog").append(section);}retireRecommendationRail(section);section.replaceChildren(node("h3","Vidéos en relation"));section.hidden=true;
   const generation=detailGeneration,context=collectionScope();const result=await libraryRead(relatedMediaCommand(mediaId),()=>detailCurrent(generation,context,mediaId));if(!result||!detailView||detailView.media.id!==mediaId)return;

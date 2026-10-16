@@ -8,6 +8,7 @@ window.renderShell=()=>{
  $("connected-address").textContent=state.address||"";
  if(!connected)shellSection="catalog";
  $("advice-panel").hidden=!active||shellSection!=="advice";
+ window.aiAdviceVisibilityChanged?.(!$("advice-panel").hidden);
  $("catalog-panel").hidden=!active||shellSection!=="catalog";
  for(const [id,section] of [["collections-panel","collections"],["collection-panel","collection"],["picker-panel","picker"]])$(id).hidden=!active||shellSection!==section;
  for(const [id,kind] of [["show-sagas","saga"],["show-playlists","playlist"]])$(id).classList.toggle("active",active&&["collections","collection","picker"].includes(shellSection)&&collectionKind===kind);

@@ -61,6 +61,18 @@ When je demande ou confirme une proposition
 Then un message explique le problème sans modification partielle ; la recherche et l'organisation manuelles restent disponibles
 ```
 
+### US-030-AC-05 — Conseil par titres regroupés et métadonnées
+
+Complément demandé le16octobre2026, précision « en fait les deux » et [ADR0020](../../architecture/decisions/ADR-0020-local-title-recommendations.md).
+
+```gherkin
+Given le miroir local du profil actif et ses filtres de conseil
+When je lance explicitement une demande de conseil
+Then le fournisseur reçoit uniquement le contexte autorisé, regroupé en films et séries, avec genres, réalisateurs et acteurs connus
+And les suggestions validées conservent son classement dans une ligne de vignettes défilante, sans épisodes individuels ni fusion des homonymes
+And aucun changement n'est applicable et quitter/revenir conserve la sélection sans relancer le fournisseur
+```
+
 ## 5. Contraintes fonctionnelles de qualité
 
 Interface française, erreurs explicites, commandes accessibles au clavier et confirmations visibles. Aucun état du profil précédent ne doit apparaître après changement. Les budgets ressources et vérifications physiques sont ceux de l'architecture et de VERIFICATION ; aucune performance non mesurée n'est revendiquée.
