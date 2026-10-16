@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+[BUG0074](BUG-0074-event-header-opaque-background.md), FIXED/VERIFIED_LOCAL0.5.1 : bandeau opaque masquant l'image pleine hauteur, règle événementielle transparente ; RED/GREEN Noël/Halloween clair/sombre et hors événement, correctif livré séparément sans modifierv0.5 figée. [Release](../releases/REL-V0.5.1.md).
+
 [BUG0073](BUG-0073-event-animation-pause.md), FIXED/VERIFIED_LOCAL v0.5 : spécificité CSS de pause des décorations corrigée, RED/GREEN dans le vrai DOM connecté synthétique ; pas une preuve de lecture native. Voir [release v0.5](../releases/REL-V0.5.md) pour la source1e16ee2, le bundle et les limites de validation.
 
 [BUG0071](BUG-0071-legacy-series-api-compatibility.md) FIXED/VERIFIED : compatibilité des titres historiques, collisions titre/clé et sélecteur explicite ; sourcef3fdac5 livrée serveur seul, web intact. [BUG0072](BUG-0072-deployment-session-observation.md) : surveillance de commande distante et redémarrage prématuré pendant sauvegarde, incident terminé, état final vérifié indépendamment ; preuve du code retour opérateur indisponible conservée. [Release courante](../releases/REL-SERVER-ONLY-F3FDAC5.md) / [vérification APPROVED_SCOPED](../releases/REL-SERVER-ONLY-F3FDAC5-verification.md). Les mentionsffcc/non-déployé ci-dessous sont les checkpoints antérieurs.

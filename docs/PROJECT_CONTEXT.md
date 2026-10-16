@@ -1,5 +1,9 @@
 # Contexte du projet
 
+## Correctif Mac0.5.1 — fond du bandeau événementiel
+
+16octobre2026 : [BUG0074](debug/BUG-0074-event-header-opaque-background.md), [release](releases/REL-V0.5.1.md). Source375ec6b, tag localv0.5.1, bundle `artifacts/macos/Chill Center-v0.5.1.app`, version0.5.1/build6/SHA815c2a0c76e70c533fa909fcd6fc9d23fe72e8eb0ca4cd1b5e978ff783e35799. Une seule règle CSS produit : fond de la barre supérieure transparent pour Noël/Halloween, clair/sombre, image déjà pleine hauteur. RED/GREEN sur interface connectée synthétique/recherche visible et fond normal conservé hors événement ; packaging/signature/dépendances PASS, lancéPID36612 à10:27:13UTC. Pas de nouveau test lecteur ni revue indépendante revendiquée. Tag et bundle0.5 préservés, Pi/API/web inchangés. Test visuel natif humain à faire.
+
 ## Mac v0.5 — filtres et ambiances intégrés, Pi/web inchangés
 
 16octobre2026 : approbation « validé. Lance la version et on la fige en v0.5 ». Source **1e16ee2**, tag local **v0.5**, application **0.5.0/build5**, bundle à utiliser `artifacts/macos/Chill Center-v0.5.app`, exécutableSHA169ac5126ea4369174db35ad00f12ea5029bf51e686c0cf4ae2283c5fd604a84. Filtres genres OU/années exacte ou intervalle inclusif locaux instantanés, cache de base réutilisé et invalidé ; décor sapin/citrouille rapprochés ancrés à droite, panneaux Noël rouge/Halloween orangé et animations bornées/réduction/pause/off. API2026-10-14, serveur, chantier web et NAS **non modifiés**, aucune nouvelle sonde Pi.
