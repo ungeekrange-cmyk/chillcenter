@@ -187,6 +187,13 @@ pub struct NextVideo {
     pub media: Option<chill_catalog::model::Media>,
     pub new_season: bool,
     pub available: bool,
+    /// Additive response hint: no successor could be ordered, NOT a confirmed end.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub order_unknown: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub fn valid_speed(speed: f64) -> bool {
@@ -201,6 +208,19 @@ pub fn final_tenth_start(duration_ms: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn next_video_legacy_response_remains_compatible_and_hint_is_additive() {
+        let legacy = serde_json::json!({"media":null,"new_season":false,"available":false});
+        let mut response: NextVideo = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(!response.order_unknown);
+        assert_eq!(serde_json::to_value(&response).unwrap(), legacy);
+        response.order_unknown = true;
+        assert_eq!(
+            serde_json::to_value(&response).unwrap()["order_unknown"],
+            true
+        );
+    }
 
     #[test]
     fn final_tenth_boundary_handles_large_durations() {

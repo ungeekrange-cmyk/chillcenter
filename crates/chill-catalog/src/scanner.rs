@@ -61,12 +61,43 @@ fn tidy(value: &str) -> String {
     let spaced = value.replace(['.', '_'], " ");
     let emptied = empty.replace_all(&spaced, " ");
     let separated = dashes.replace_all(&emptied, " ");
-    separated
+    let trimmed = separated
         .trim_start_matches(|c: char| c.is_whitespace() || is_dash(c) || c == ']' || c == ')')
         .trim_end_matches(|c: char| c.is_whitespace() || is_dash(c) || c == '[' || c == '(')
         .split_whitespace()
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" ");
+    discard_orphaned_delimiters(&trimmed)
+}
+
+/// Keep complete title parentheticals, but remove delimiter characters that
+/// have no partner. Older indexed labels can contain an opening parenthesis
+/// left after a release suffix was cut, which otherwise leaks into TMDB query.
+fn discard_orphaned_delimiters(value: &str) -> String {
+    let mut result = Vec::with_capacity(value.chars().count());
+    let mut openings = Vec::new();
+    for c in value.chars() {
+        match c {
+            '(' | '[' => {
+                openings.push((c, result.len()));
+                result.push(Some(c));
+            }
+            ')' | ']' => {
+                let expected = if c == ')' { '(' } else { '[' };
+                if openings.last().is_some_and(|(open, _)| *open == expected) {
+                    openings.pop();
+                    result.push(Some(c));
+                } else {
+                    result.push(None);
+                }
+            }
+            _ => result.push(Some(c)),
+        }
+    }
+    for (_, index) in openings {
+        result[index] = None;
+    }
+    result.into_iter().flatten().collect()
 }
 
 /// Clean technical release suffixes from a label without treating numbers in an
@@ -371,6 +402,36 @@ mod tests {
             let m = parse_file(Path::new("/nas"), &Path::new("/nas").join(name));
             assert_eq!(m.title, title, "{name}");
         }
+    }
+    #[test]
+    fn search_cleaning_ignores_orphaned_delimiters_but_keeps_complete_parentheticals() {
+        assert_eq!(title_for_search("Baby (Part 1"), "Baby Part 1");
+        assert_eq!(
+            title_for_search("Un Ange-Grenouille (Inédit"),
+            "Un Ange-Grenouille Inédit"
+        );
+        assert_eq!(
+            title_for_search("Birdman (or The Unexpected Virtue of Ignorance)"),
+            "Birdman (or The Unexpected Virtue of Ignorance)"
+        );
+        let orphaned_source = parse_file(
+            Path::new("/nas"),
+            Path::new("/nas/Un Ange-Grenouille (Inédit).avi"),
+        );
+        assert_eq!(orphaned_source.title, "Un Ange-Grenouille (Inédit)");
+        let malformed_source = parse_file(
+            Path::new("/nas"),
+            Path::new("/nas/Un Ange-Grenouille (Inédit.avi"),
+        );
+        assert_eq!(malformed_source.title, "Un Ange-Grenouille Inédit");
+        let episode = parse_file(
+            Path::new("/nas"),
+            Path::new(
+                "/nas/Séries/Malcolm in the Middle (2000) - S04E20 - Baby (Part 1) (1080p AMZN WEB-DL x265 Silence).mkv",
+            ),
+        );
+        assert_eq!(episode.series.as_deref(), Some("Malcolm in the Middle"));
+        assert_eq!(episode.title, "Baby (Part 1)");
     }
     #[test]
     fn release_cleaning_keeps_series_numbering_and_episode_titles() {

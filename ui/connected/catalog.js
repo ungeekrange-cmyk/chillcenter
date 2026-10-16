@@ -2,11 +2,11 @@
 // Catalogue and personal collections share the allowlisted Rust bridge. No URLs or
 // filesystem paths from media metadata are evaluated by this interface.
 let catalogProfile=typeof state==="undefined"?null:state.server_id+":"+state.profile_id,collectionView=null,collectionKind="playlist",detailView=null,seriesView=null;
-let collectionFilter="",collectionDetails=new Map(),collectionLoaded=0;
+let collectionFilter="",collectionDetails=new Map(),collectionLoaded=0,collectionCards=new Map(),collectionCardsOrder=[];
 let collectionEpoch=0,collectionContext="",detailGeneration=0,detailId=null;
 function detailCurrent(generation,context,id){return generation===detailGeneration&&context===collectionScope()&&detailId===id&&$("media-dialog").open;}
 function invalidateDetail(){detailGeneration++;detailId=null;detailView=null;}
-$("media-dialog").addEventListener("close",()=>{if(!$("media-dialog").open)invalidateDetail();});
+$("media-dialog").addEventListener("close",()=>{if(!$("media-dialog").open){retireArtwork($("detail-poster"));invalidateDetail();}});
 $("media-dialog").addEventListener("click",event=>{if(event.target!==$("media-dialog"))return;const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.target.close();});
 function collectionScope(){return state.server_id+":"+state.profile_id;}
 function collectionCurrent(epoch,context){return epoch===collectionEpoch&&context===collectionScope();}
@@ -18,7 +18,7 @@ async function libraryRead(command,current){
   if(current())message("Le client est occupé. Réessayez dans un instant.");return null;
 }
 function showCollectionPage(section){shellShow(section);scrollTo({top:0,behavior:"instant"});}
-window.leaveCollectionPages=()=>{collectionEpoch++;pickerGeneration++;collectionView=null;seriesView=null;collectionDetails=new Map();};
+window.leaveCollectionPages=()=>{collectionEpoch++;pickerGeneration++;collectionView=null;seriesView=null;collectionDetails=new Map();discardCollectionCards();};
 // Reordering a filtered playlist must still be a permutation of the canonical
 // membership. Swap the two visible positions in that complete list so hidden
 // members remain present and keep their relative order.
@@ -56,7 +56,10 @@ async function importArtwork(target,reload){try{const result=await window.__TAUR
 async function openMedia(id){
   const same=detailId===id&&$("media-dialog").open,scroll=same?$("media-dialog").scrollTop:0,generation=++detailGeneration,context=collectionScope();detailId=id;detailView=null;
   const current=()=>detailCurrent(generation,context,id);
-  if(!same){$("detail-title").textContent="Chargement…";$("detail-overview").textContent="";$("detail-metadata").textContent="";$("detail-availability").textContent="";$("detail-path")?.replaceChildren();$("detail-tmdb")?.replaceChildren();$("detail-stars")?.replaceChildren();$("related-media")?.replaceChildren();$("detail-poster").replaceChildren();invalidateArtwork($("detail-poster"));$("detail-play").disabled=true;$("detail-addlist").disabled=true;if($("detail-artwork"))$("detail-artwork").disabled=true;$("metadata-form").hidden=true;}
+  // Even a same-media refresh may remove its poster. Retire the old observer
+  // identity before awaiting metadata, not just the current image child/token.
+  retireArtwork($("detail-poster"));$("detail-poster").replaceChildren();
+  if(!same){$("detail-title").textContent="Chargement…";$("detail-overview").textContent="";$("detail-metadata").textContent="";$("detail-availability").textContent="";$("detail-path")?.replaceChildren();$("detail-tmdb")?.replaceChildren();$("detail-stars")?.replaceChildren();$("related-media")?.replaceChildren();$("detail-play").disabled=true;$("detail-addlist").disabled=true;if($("detail-artwork"))$("detail-artwork").disabled=true;$("metadata-form").hidden=true;}
   if(!$("media-dialog").open)$("media-dialog").showModal();
   const result=await libraryRead({action:"media_detail",media_id:id},current);if(!result||!current())return;detailView=result;
   const m=result.media;$("detail-title").textContent=m.title;$("detail-overview").textContent=m.overview||"Informations à compléter";
@@ -172,6 +175,7 @@ function collectionMosaic(poster,collection,kind,epoch,context){
 }
 async function openCollections(kind="playlist"){
   if(!await stopPlayerForNavigation())return;
+  discardCollectionCards();
   const epoch=++collectionEpoch,context=collectionScope(),result=await libraryRead({action:kind==="playlist"?"playlists":"sagas"},()=>collectionCurrent(epoch,context));if(!result)return;
   collectionView=null;seriesView=null;collectionKind=kind;collectionContext=context;
   const title=kind==="playlist"?"Listes de lecture":"Sagas";
@@ -219,7 +223,7 @@ async function openCollection(id,kind="playlist"){
   const r=await libraryRead({action:kind==="playlist"?"playlist":"saga",id},()=>collectionCurrent(epoch,context));if(!r)return;collectionKind=kind;collectionView=r.playlist||r.saga;collectionContext=context;
   $("series-common")?.remove();$("series-tools")?.remove();seriesView=null;
   $("collection-title").textContent=collectionView.name;$("collection-counts").textContent=collectionView.media_ids.length+" vidéos";$("collection-counts").hidden=false;
-  $("collection-name").value=collectionView.name;$("collection-admin").hidden=false;$("collection-admin").open=false;$("collection-add").hidden=false;$("collection-members").replaceChildren();$("collection-members").classList.remove("series-members");
+  $("collection-name").value=collectionView.name;$("collection-admin").hidden=false;$("collection-admin").open=false;$("collection-add").hidden=false;discardCollectionCards();$("collection-members").replaceChildren();$("collection-members").classList.remove("series-members");
   $("collection-admin").querySelector("summary").textContent=kind==="playlist"?"Gérer la liste":"Gérer la saga";
   $("collection-delete-confirm").hidden=true;
   let artwork=$("collection-artwork"),preview=$("saga-artwork-preview");if(!artwork){artwork=button("Importer une image",()=>{});artwork.id="collection-artwork";$("collection-admin").append(artwork);}if(!preview){preview=document.createElement("div");preview.id="saga-artwork-preview";$("collection-admin").append(preview);}artwork.hidden=false;preview.hidden=false;const view=collectionView;artwork.textContent=kind==="playlist"?"Importer une image de liste":"Importer une image de saga";artwork.onclick=()=>importArtwork({kind,id:view.id,expected_revision:view.revision},async()=>await openCollection(view.id,kind));void loadCollectionArtwork(view,kind);
@@ -249,19 +253,24 @@ async function collectionPage(id,start){
   collectionLoaded=Math.max(collectionLoaded,start+ids.length);renderCollectionMembers();if(collectionView===view&&collectionLoaded<view.media_ids.length)await collectionPage(id,collectionLoaded);
 }
 function visibleCollectionIds(){return collectionView.media_ids.filter(id=>{const m=collectionDetails.get(id);return m&&(!collectionFilter||m.title.toLocaleLowerCase().includes(collectionFilter));});}
+function discardCollectionCards(){for(const card of collectionCards.values())retireArtwork(card.querySelector(".poster"));collectionCards.clear();collectionCardsOrder=[];}
 function renderCollectionMembers(){
   if(!collectionView||collectionKind==="series"||$("collection-panel").hidden)return;
   const target=$("collection-members"),visibleIds=visibleCollectionIds(),rect=target.getBoundingClientRect();
+  // Scroll keeps the same cards; changed membership/filter must renew action
+  // closures and their move-button bounds, not retain an earlier visible order.
+  if(visibleIds.length!==collectionCardsOrder.length||visibleIds.some((id,index)=>id!==collectionCardsOrder[index])){discardCollectionCards();collectionCardsOrder=visibleIds;}
   const view=catalogWindow(visibleIds.length,Math.max(1,rect.width),200,-rect.top,innerHeight);
   const focused=document.activeElement?.closest?.(".collection-media-card")?.dataset.mediaId;
   target.style.height=view.height+"px";
-  const grid=node("div",undefined,"virtual-window");grid.style.top=view.top+"px";grid.style.gridTemplateColumns="repeat("+view.columns+",minmax(0,1fr))";
-  for(const id of visibleIds.slice(view.start,view.end))appendCollectionMember(collectionDetails.get(id),visibleIds,grid);
+  const grid=node("div",undefined,"virtual-window"),wanted=new Set();grid.style.top=view.top+"px";grid.style.gridTemplateColumns="repeat("+view.columns+",minmax(0,1fr))";grid.style.gridAutoRows=view.gridRowHeight+"px";
+  for(const id of visibleIds.slice(view.start,view.end)){wanted.add(id);let card=collectionCards.get(id);if(!card){card=collectionMemberCard(collectionDetails.get(id),visibleIds);collectionCards.set(id,card);}grid.append(card);}
+  for(const [id,card] of collectionCards)if(!wanted.has(id)){retireArtwork(card.querySelector(".poster"));collectionCards.delete(id);}
   target.replaceChildren(grid);
   if(!visibleIds.length)target.append(node("p",collectionLoaded<collectionView.media_ids.length?"Chargement des vidéos…":"Aucune vidéo. Utilisez + pour en ajouter ou modifiez le filtre.","muted"));
   if(focused)[...grid.children].find(card=>card.dataset.mediaId===focused)?.focus({preventScroll:true});
 }
-function appendCollectionMember(m,visibleIds,target=$("collection-members")){
+function collectionMemberCard(m,visibleIds){
   const view=collectionView,kind=collectionKind,scope=collectionScope();
   const row=node("article",undefined,"media-card collection-media-card"),poster=node("div",m.title.slice(0,1).toUpperCase(),"poster"),copy=node("div",undefined,"info member-copy"),actions=node("div",undefined,"actions");row.dataset.mediaId=m.id;row.tabIndex=0;
   copy.append(button([m.season!=null?"S"+m.season:null,m.episode!=null?"E"+m.episode:null,m.title].filter(Boolean).join(" · "),()=>openMedia(m.id),"member-title"),node("p",[m.watched?"✓ Vu":"Non vu",!m.available?"Indisponible":null].filter(Boolean).join(" · "),"muted"));row.append(poster,copy);copy.append(actions);
@@ -274,8 +283,9 @@ function appendCollectionMember(m,visibleIds,target=$("collection-members")){
     actions.append(button("Retirer",async()=>{if(collectionView!==view||scope!==collectionScope())return;if(await run({action:kind==="playlist"?"remove_playlist_member":"remove_saga_member",id:view.id,media_id:m.id,expected_revision:view.revision},false))await openCollection(view.id,kind);}));
     if(collectionKind==="saga"&&m.poster){const view=collectionView,server=state.server_id,profile=state.profile_id,label=m.poster_custom?"Utiliser l’affiche personnelle du film":m.tmdb_id?"Utiliser l’affiche TMDB du film":"Utiliser l’affiche du film";actions.append(button(label,async()=>{if(collectionView!==view||scope!==collectionScope())return;const updated=await run(sagaMemberArtworkCommand(view.id,view.revision,m.id),false);if(updated&&collectionView===view&&server===state.server_id&&profile===state.profile_id)await openCollection(view.id,"saga");}));}
   }
-  target.append(row);if(m.poster)observeArtwork(poster,m.id);
+  if(m.poster)observeArtwork(poster,m.id);return row;
 }
+function appendCollectionMember(m,visibleIds,target=$("collection-members")){target.append(collectionMemberCard(m,visibleIds));}
 async function loadCollectionArtwork(view,kind){
   const preview=$("saga-artwork-preview"),server=state.server_id,profile=state.profile_id;
   if(!preview)return;
@@ -350,15 +360,20 @@ $("show-playlists").onclick=()=>openCollections();$("show-sagas").onclick=()=>op
 for(const id of ["media-dialog","playlist-target-dialog"]){const m=node("p",undefined,"dialog-message");m.setAttribute("role","status");m.setAttribute("aria-live","polite");$(id).prepend(m);$(id).querySelector(".dialog-close").onclick=()=>$(id).close();}
 let artworkQueue=[],artworkLoading=false,artworkGeneration=0;
 function invalidateArtwork(target){target.dataset.artworkToken=String(++artworkGeneration);delete target.dataset.loaded;delete target.dataset.queued;artworkQueue=artworkQueue.filter(item=>item.target!==target);}
+function retireArtwork(target){
+ if(!target)return;
+ artworkObserver.unobserve(target);artworkTargets.delete(target);invalidateArtwork(target);
+ delete target.dataset.mediaId;delete target.dataset.artworkKind;delete target.dataset.initial;
+}
 function artworkCurrent(item){return item.target.isConnected&&item.context===collectionScope()&&item.token===item.target.dataset.artworkToken;}
 const artworkTargets=new Set();
 function discardDetachedArtwork(){for(const target of artworkTargets){if(!target.isConnected){artworkObserver.unobserve(target);artworkTargets.delete(target);}}artworkQueue=artworkQueue.filter(item=>item.target.isConnected);}
-window.resetArtwork=()=>{for(const target of artworkTargets){if(!target.isConnected||$("media").contains(target)){artworkObserver.unobserve(target);artworkTargets.delete(target);}}artworkQueue=artworkQueue.filter(item=>item.target.isConnected&&!$("media").contains(item.target));};
+window.resetArtwork=()=>{for(const target of [...artworkTargets])if(!target.isConnected||$("media").contains(target))retireArtwork(target);artworkQueue=artworkQueue.filter(item=>item.target.isConnected&&!$("media").contains(item.target));};
 const artworkObserver=new IntersectionObserver(entries=>{
   // The callback runs after a whole virtual grid has been inserted. Pruning in
   // observeArtwork would unobserve earlier siblings still in its detached grid.
   discardDetachedArtwork();
-  for(const e of entries){if(!e.target.isConnected)continue;if(e.isIntersecting){if(!e.target.dataset.loaded&&!e.target.dataset.queued){e.target.dataset.queued="true";artworkQueue.push({target:e.target,id:e.target.dataset.mediaId,kind:e.target.dataset.artworkKind,token:e.target.dataset.artworkToken,context:collectionScope()});}}else{invalidateArtwork(e.target);e.target.replaceChildren(node("span",e.target.dataset.initial||""));}}
+ for(const e of entries){if(!artworkTargets.has(e.target)||!e.target.isConnected)continue;if(e.isIntersecting){if(!e.target.dataset.loaded&&!e.target.dataset.queued){e.target.dataset.queued="true";artworkQueue.push({target:e.target,id:e.target.dataset.mediaId,kind:e.target.dataset.artworkKind,token:e.target.dataset.artworkToken,context:collectionScope()});}}}
   drainArtwork();
 },{rootMargin:"100px"});
 function observeArtwork(target,id,kind="media"){invalidateArtwork(target);target.dataset.mediaId=id;target.dataset.artworkKind=kind;target.dataset.initial=target.textContent;artworkTargets.add(target);artworkObserver.unobserve(target);artworkObserver.observe(target);}
@@ -377,4 +392,4 @@ async function drainArtwork(){
   }
   artworkLoading=false;
 }
-window.chillArtwork=observeArtwork;
+window.chillArtwork=observeArtwork;window.retireArtwork=retireArtwork;

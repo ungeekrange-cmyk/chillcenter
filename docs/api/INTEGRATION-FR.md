@@ -101,6 +101,10 @@ Pour la vidéo, ne demandez jamais le fichier complet. Envoyez une seule plage, 
 
 ## Entiers 64 bits et prototype Python sûr
 
+### Ordre du prochain élément
+
+`NextVideo` conserve `media`, `new_season` et `available`. Extension facultative : `order_unknown:true` signifie que les numéros ne permettent pas d'établir la suite ; `media:null` ne signifie alors **pas** fin de série. Présentez une explication sans lancement ni fermeture automatique. Champ absent = false pour les anciennes réponses. Les dossiers plats numérotés explicitement par leurs fichiers sont ordonnés si les ordinaux sont uniques et tous les épisodes du même groupe sont dans un seul dossier sans saisons déclarées ; aucun numéro n'est écrit en base. Autres ordres ambigus non devinés. Les sagas et listes gardent leur ordre explicite existant. Pas de nouvelle version API, requête ou paramètre obligatoire.
+
 `media_revision` est un entier non signé 64 bits (`uint64`) opaque : il doit être conservé exactement dans `Lease`, `PlaybackControl` et `Progress`. Python et Rust le font nativement. Un client JavaScript ne doit pas passer par `JSON.parse`/`Number` lorsqu’il est susceptible de recevoir une valeur supérieure à `2^53 - 1` : utilisez un parseur JSON sans perte, conservez la valeur en `BigInt` ou en texte, puis réémettez le même **nombre JSON** exactement. Une chaîne JSON n’est pas substituable sans accord du contrat, et `JSON.stringify` ne gère pas directement `BigInt` : employez un sérialiseur sans perte adapté. Une valeur arrondie est refusée avec `LEASE_INVALID`.
 
 Ce prototype Python standard-library n’appelle aucun fournisseur externe. Remplacez les UUID factices et le certificat public approuvé ; il acquiert un bail, demande une plage, renouvelle, puis libère le bail. Il ne désactive jamais TLS.

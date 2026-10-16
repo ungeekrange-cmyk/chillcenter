@@ -21,6 +21,44 @@ use uuid::Uuid;
 
 const EXPORT_FORMAT_VERSION: u64 = 1;
 const WATCHED_THRESHOLD_MS: u64 = 10_000;
+
+/// Legacy flat episode folders may use `001 Title.avi` without SxxExx metadata.
+/// Resolve their existing source order without inventing a season or mutating
+/// titles. Require one folder, explicit unique ordinals, and no numbered seasons.
+fn flat_series_order(members: &[Media]) -> Option<Vec<&Media>> {
+    let parent = Path::new(&members.first()?.path).parent()?;
+    let mut numbers = HashSet::new();
+    let mut ordered = Vec::with_capacity(members.len());
+    for member in members {
+        if member.season.is_some() || Path::new(&member.path).parent()? != parent {
+            return None;
+        }
+        let number = member
+            .episode
+            .filter(|number| *number > 0)
+            .map(|v| v as u32)
+            .or_else(|| {
+                let stem = Path::new(&member.path).file_stem()?.to_str()?;
+                let digits = stem.bytes().take_while(u8::is_ascii_digit).count();
+                if !(1..=4).contains(&digits) {
+                    return None;
+                }
+                let rest = &stem[digits..];
+                if !rest.is_empty() && !rest.starts_with([' ', '-', '_', '.']) {
+                    return None;
+                }
+                let number = stem[..digits].parse::<u32>().ok()?;
+                // A leading release year is not evidence of an episode ordinal.
+                (number > 0 && !(digits == 4 && (1800..=2099).contains(&number))).then_some(number)
+            })?;
+        if !numbers.insert(number) {
+            return None;
+        }
+        ordered.push((number, member));
+    }
+    ordered.sort_by_key(|(number, _)| *number);
+    Some(ordered.into_iter().map(|(_, media)| media).collect())
+}
 const MAX_IN_MEMORY_EXPORT_BYTES: usize = 1024 * 1024;
 pub const MAX_CATALOG_PAGE: usize = 100;
 pub const MAX_EXPORT_POSTER_BYTES: u64 = 8 * 1024 * 1024;
@@ -782,6 +820,7 @@ impl Store {
     ) -> Result<NextVideo, String> {
         self.validate_playback_context(profile, media, context)?;
         let current = self.media(profile, media)?;
+        let mut order_unknown = false;
         let next = match (context.kind.as_str(), context.id.as_deref()) {
             ("playlist", Some(id)) => {
                 let p = self.playlist(profile, id)?;
@@ -803,16 +842,31 @@ impl Store {
                         .cloned()
                 }),
             ("series", _) => {
+                let members = self.series(profile, &format!("media:{}", current.id))?;
                 if current.category != "serie"
                     || current.season.is_none()
                     || current.episode.is_none()
                 {
-                    None
+                    if let Some(ordered) = flat_series_order(&members) {
+                        ordered
+                            .iter()
+                            .position(|m| m.id == media)
+                            .and_then(|index| ordered.get(index + 1))
+                            .map(|m| m.id.clone())
+                    } else {
+                        order_unknown = true;
+                        None
+                    }
                 } else {
-                    self.series(profile, &format!("media:{}", current.id))?
-                        .into_iter()
+                    let next = members
+                        .iter()
                         .find(|m| (m.season, m.episode) > (current.season, current.episode))
-                        .map(|m| m.id)
+                        .map(|m| m.id.clone());
+                    order_unknown = next.is_none()
+                        && members
+                            .iter()
+                            .any(|m| m.season.is_none() || m.episode.is_none());
+                    next
                 }
             }
             _ => None,
@@ -829,6 +883,7 @@ impl Store {
             media: item,
             new_season,
             available,
+            order_unknown,
         })
     }
 
@@ -3174,6 +3229,92 @@ mod tests {
         assert_eq!(next.media.unwrap().id, id("new.mp4"));
         assert!(next.new_season);
         assert!(next.available);
+    }
+    #[test]
+    fn next_flat_numbered_series_uses_source_ordinals_without_rewriting_metadata() {
+        let mut s = store();
+        let items = ["010 Last.avi", "001 First.avi", "002 Second.avi"].map(|file| {
+            let mut item = media(file, &format!("/nas/Flat/{file}"));
+            item.category = "serie".into();
+            item.series = Some("Flat".into());
+            item.tmdb_id = Some(1234);
+            item
+        });
+        s.snapshot(items.to_vec()).unwrap();
+        let p = s.create_profile("Flat").unwrap();
+        let found = s.catalog(&p.id).unwrap();
+        let id = |name: &str| found.iter().find(|m| m.title == name).unwrap().id.clone();
+        let context = PlaybackContext {
+            kind: "series".into(),
+            id: Some("tmdb:tv:1234".into()),
+        };
+        let next = s.next_video(&p.id, &id("001 First.avi"), &context).unwrap();
+        assert_eq!(next.media.unwrap().id, id("002 Second.avi"));
+        assert!(!next.order_unknown);
+        assert!(!next.new_season);
+        assert_eq!(
+            s.next_video(&p.id, &id("002 Second.avi"), &context)
+                .unwrap()
+                .media
+                .unwrap()
+                .id,
+            id("010 Last.avi")
+        );
+        let last = s.next_video(&p.id, &id("010 Last.avi"), &context).unwrap();
+        assert!(last.media.is_none());
+        assert!(!last.order_unknown);
+        assert!(
+            s.catalog(&p.id)
+                .unwrap()
+                .iter()
+                .all(|m| m.season.is_none() && m.episode.is_none())
+        );
+        // Preserve a missing successor rather than silently skipping it.
+        s.snapshot(vec![items[0].clone(), items[1].clone()])
+            .unwrap();
+        let next = s.next_video(&p.id, &id("001 First.avi"), &context).unwrap();
+        assert_eq!(next.media.unwrap().id, id("002 Second.avi"));
+        assert!(!next.available);
+    }
+    #[test]
+    fn next_ambiguous_numbering_is_not_a_confirmed_end_of_series() {
+        for files in [
+            vec!["001 First.avi", "001 Duplicate.avi"],
+            vec!["First.avi", "Second.avi"],
+            vec!["2020 Film.avi", "2021 Film.avi"],
+        ] {
+            let mut s = store();
+            let items = files
+                .into_iter()
+                .map(|file| {
+                    let mut item = media(file, &format!("/nas/Ambiguous/{file}"));
+                    item.category = "serie".into();
+                    item.series = Some("Ambiguous".into());
+                    item
+                })
+                .collect();
+            s.snapshot(items).unwrap();
+            let p = s.create_profile("Ambiguous").unwrap();
+            let id = s
+                .catalog(&p.id)
+                .unwrap()
+                .into_iter()
+                .find(|m| m.category == "serie")
+                .unwrap()
+                .id;
+            let next = s
+                .next_video(
+                    &p.id,
+                    &id,
+                    &PlaybackContext {
+                        kind: "series".into(),
+                        id: Some(format!("media:{id}")),
+                    },
+                )
+                .unwrap();
+            assert!(next.media.is_none());
+            assert!(next.order_unknown);
+        }
     }
     #[test]
     fn watch_threshold_and_manual_reset_preserve_resume() {

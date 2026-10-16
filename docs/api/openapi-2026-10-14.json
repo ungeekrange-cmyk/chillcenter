@@ -4984,6 +4984,11 @@
           },
           "available": {
             "type": "boolean"
+          },
+          "order_unknown": {
+            "type": "boolean",
+            "default": false,
+            "description": "Optional additive hint: true means episode order is unresolved, not that the series has ended. Do not auto-launch or auto-close. Usually omitted when false; old responses without it remain valid."
           }
         },
         "additionalProperties": true

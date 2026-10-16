@@ -109,7 +109,7 @@ function observePlaybackCompletion(){
   setTimeout(()=>{
     if(epoch!==playerNavigationEpoch||scope!==playbackScope()||completedPlayback!==completion)return;
     completion.promise=typeof syncAfterMutation==="function"?Promise.resolve(syncAfterMutation()).catch(()=>{}):Promise.resolve();
-    if(!next.media)void returnFromPlayback(completion.promise);
+    if(!next.media&&!next.order_unknown)void returnFromPlayback(completion.promise);
   },0);
 }
 async function launchNext(){
@@ -165,7 +165,7 @@ function renderPlayer(){
   $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
   const n=playerState.native;$("player-panel").hidden=false;document.body.classList.add("player-open");
   applyPlayerPresentation();
-  $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note||n.error||n.notice||(n.ended?"Lecture terminée.":!n.loaded?"Chargement de la vidéo…":n.buffering?"Mise en mémoire tampon…":"");
+  $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note||n.error||n.notice||(playerState.next?.order_unknown?"Ordre des épisodes indéterminé : renseignez les numéros depuis la fiche de la série. Aucun lancement automatique.":n.ended?"Lecture terminée.":!n.loaded?"Chargement de la vidéo…":n.buffering?"Mise en mémoire tampon…":"");
   playerIcon("player-pause",n.paused?"play":"pause",n.paused?"Reprendre la lecture":"Mettre en pause");$("player-speed").value=String(n.speed);
   if($("player-volume")&&document.activeElement!==$("player-volume"))$("player-volume").value=String(n.volume??100);
   syncPlayerFullscreen();updatePlayerControls();

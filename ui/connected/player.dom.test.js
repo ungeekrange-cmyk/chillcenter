@@ -117,3 +117,9 @@ test('a completion scheduled before a newer launch cannot stop it',async()=>{
  const h=harness(20,{terminal:true});vm.runInContext('++playerNavigationEpoch;',h.sandbox);
  await h.advance(0);assert.equal(h.calls.length,0);
 });
+test('unknown series order is not a terminal EOF and never closes or auto-launches',async()=>{
+ const h=harness(0,{terminal:true,context:{kind:'series',id:'flat'}});
+ vm.runInContext('playerState.next.order_unknown=true;',h.sandbox);
+ // The deferred EOF task must recheck the resolved state, not a guessed absence.
+ await h.advance(30000);assert.equal(h.calls.length,0);assert.equal(h.get('player-next').hidden,true);
+});
