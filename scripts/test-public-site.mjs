@@ -105,6 +105,18 @@ test('HTML local links resolve inside the artifact; no tracking or active extern
   }
 });
 
+test('404 assets and home link remain valid at nested missing URLs', async () => {
+  const html = await readFile(path.join(root, 'site/404.html'), 'utf8');
+  assert.match(html, /<style>/);
+  assert.doesNotMatch(html, /<link\b|<script\b|\burl\s*\(/i);
+  for (const missing of ['/chillcenter/missing/deep', '/chillcenter/missing/', '/chillcenter/a/b/c/']) {
+    for (const [, value] of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
+      assert.equal(new URL(value, 'https://ungeekrange-cmyk.github.io' + missing).href,
+        'https://ungeekrange-cmyk.github.io/chillcenter/');
+    }
+  }
+});
+
 test('workflow remains manual, opt-in, default-branch-only and uploads only dist/public', async () => {
   const workflow = await readFile(path.join(root, '.github/workflows/pages.yml'), 'utf8');
   assert.match(workflow, /workflow_dispatch:/);

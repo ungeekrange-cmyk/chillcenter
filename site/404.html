@@ -1,2 +1,26 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Page introuvable — Chill Center</title><link rel="stylesheet" href="styles.css"></head><body><main class="wrap documentation"><p class="eyebrow">Chill Center · 404</p><h1>Cette séance n’existe pas.</h1><p>La page demandée est introuvable.</p><a class="button" href="https://ungeekrange-cmyk.github.io/chillcenter/">Retour à l’accueil</a></main></body></html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page introuvable — Chill Center</title>
+  <!-- Pages serves this at the requested missing URL, possibly many folders deep.
+       Keep the small error page self-contained: relative assets would break there. -->
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fff7eb; color: #342523; line-height: 1.6; }
+    body { margin: 0; }
+    main { max-width: 800px; padding: 3rem 1.5rem; margin: auto; }
+    .eyebrow { color: #833b39; font-weight: 700; }
+    h1 { font: 500 clamp(2rem, 6vw, 3rem)/1.1 Georgia, serif; }
+    a { display: inline-block; background: #833b39; color: #fff9ef; border-radius: 99px; padding: .85rem 1.3rem; font-weight: 700; }
+    a:focus-visible { outline: 3px solid #004e83; outline-offset: 5px; }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #211c1b; color: #f6e9d9; }
+      .eyebrow { color: #edb390; }
+      a { background: #edb390; color: #36211c; }
+      a:focus-visible { outline-color: #8fd0ff; }
+    }
+  </style>
+</head>
+<body><main><p class="eyebrow">Chill Center · 404</p><h1>Cette séance n’existe pas.</h1><p>La page demandée est introuvable.</p><a href="https://ungeekrange-cmyk.github.io/chillcenter/">Retour à l’accueil</a></main></body>
+</html>
