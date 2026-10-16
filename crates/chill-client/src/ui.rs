@@ -469,7 +469,9 @@ pub struct CatalogSyncResult(crate::catalog_cache::SyncResult);
 /// the desktop host on a blocking worker after HTTPS has completed.
 pub struct CatalogPublishTask {
     task: CatalogSyncTask,
-    result: CatalogSyncResult,
+    // Consumed by the detached worker. Completion only needs task metadata,
+    // not a second full catalogue retained alongside the SQLite publication.
+    result: Option<CatalogSyncResult>,
     directory: PathBuf,
     artwork_gate: Arc<tokio::sync::Semaphore>,
 }
@@ -550,14 +552,19 @@ impl CatalogSyncTask {
 }
 impl CatalogPublishTask {
     pub fn publish_owned(
-        self,
+        mut self,
         context_epoch: Arc<AtomicU64>,
         expected_epoch: u64,
     ) -> Result<(Self, crate::catalog_cache::CatalogPublication), UiError> {
+        let result = self
+            .result
+            .take()
+            .ok_or_else(|| invalid("Publication déjà consommée."))?
+            .0;
         // The overwhelmingly common revision-only check must not reopen a
         // database, walk cached images, or rewrite a mirror.
-        if !self.result.0.changed {
-            let revision = self.result.0.revision.clone();
+        if !result.changed {
+            let revision = result.revision;
             return Ok((self, Some((Value::Null, false, revision))));
         }
         let published = crate::catalog_cache::LocalCatalog::publish_sync_detached(
@@ -571,7 +578,7 @@ impl CatalogPublishTask {
             self.task.mutation_generation,
             context_epoch,
             expected_epoch,
-            self.result.0.clone(),
+            result,
         )?;
         Ok((self, published))
     }
@@ -748,7 +755,7 @@ impl UiClient {
         }
         Ok(CatalogPublishTask {
             task,
-            result,
+            result: Some(result),
             directory: self.directory.clone(),
             artwork_gate: self.artwork_gate.clone(),
         })
@@ -2559,16 +2566,26 @@ mod tests {
         }).collect();
         CatalogPublishTask {
             task: CatalogSyncTask {
-                server, profile, base_revision: None, mutation_generation: 0,
+                server,
+                profile,
+                base_revision: None,
+                mutation_generation: 0,
                 mutation_guard: Arc::new(AtomicU64::new(0)),
-                publish_gate: Arc::new(std::sync::Mutex::new(())), task: None,
+                publish_gate: Arc::new(std::sync::Mutex::new(())),
+                task: None,
             },
             result: CatalogSyncResult(crate::catalog_cache::SyncResult {
-                changed: true, reset: true, revision: "fixture-r1".into(), items,
-                deleted_ids: vec![], document: serde_json::json!({"revision":"fixture-r1",
+                changed: true,
+                reset: true,
+                revision: "fixture-r1".into(),
+                items,
+                deleted_ids: vec![],
+                document: serde_json::json!({"revision":"fixture-r1",
                     "sagas":[],"playlists":[],"series_revisions":{},"season_metadata":{}}),
-            }).into(),
-            directory: PathBuf::new(), artwork_gate: Arc::new(tokio::sync::Semaphore::new(1)),
+            })
+            .into(),
+            directory: PathBuf::new(),
+            artwork_gate: Arc::new(tokio::sync::Semaphore::new(1)),
         }
     }
     /// Run this exact ignored test in a fresh process under /usr/bin/time -l.
@@ -2586,10 +2603,21 @@ mod tests {
         assert!(changed);
         assert_eq!(revision, "fixture-r1");
         assert_eq!(document["revision"], "fixture-r1");
-        let mut cache = crate::catalog_cache::LocalCatalog::open(root.path(), &completed.task.server,
-            &completed.task.profile, completed.artwork_gate.clone()).unwrap();
-        assert_eq!(cache.store.catalog(&completed.task.profile).unwrap().len(), 10_000);
-        println!("client_publication_fixture=10000 overview_bytes=2048 elapsed_ms={} rows=10000 revision=fixture-r1", started.elapsed().as_millis());
+        let mut cache = crate::catalog_cache::LocalCatalog::open(
+            root.path(),
+            &completed.task.server,
+            &completed.task.profile,
+            completed.artwork_gate.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            cache.store.catalog(&completed.task.profile).unwrap().len(),
+            10_000
+        );
+        println!(
+            "client_publication_fixture=10000 overview_bytes=2048 elapsed_ms={} rows=10000 revision=fixture-r1",
+            started.elapsed().as_millis()
+        );
         std::hint::black_box(completed);
     }
     #[test]
@@ -2599,11 +2627,28 @@ mod tests {
             let mut task = publication_fixture(2, 16);
             task.directory = root.path().to_owned();
             let epoch = super::Arc::new(super::AtomicU64::new(if stale_context { 2 } else { 1 }));
-            if !stale_context { task.task.mutation_guard.store(1, super::Ordering::Release); }
+            if !stale_context {
+                task.task.mutation_guard.store(1, super::Ordering::Release);
+            }
             let (_, publication) = task.publish_owned(epoch, 1).unwrap();
             assert!(publication.is_none());
             assert!(!root.path().join("catalog-cache").exists());
         }
+    }
+    #[test]
+    fn unchanged_publication_is_single_use_and_never_opens_a_cache() {
+        let root = tempfile::tempdir().unwrap();
+        let mut task = publication_fixture(0, 0);
+        task.directory = root.path().join("intentionally-absent");
+        task.result.as_mut().unwrap().0.changed = false;
+        let epoch = super::Arc::new(super::AtomicU64::new(1));
+        let (completed, publication) = task.publish_owned(epoch.clone(), 1).unwrap();
+        assert_eq!(
+            publication.unwrap(),
+            (serde_json::Value::Null, false, "fixture-r1".into())
+        );
+        assert!(!completed.directory.exists());
+        assert!(completed.publish_owned(epoch, 1).is_err());
     }
     #[test]
     fn legacy_library_update_does_not_send_the_new_optional_field() {
