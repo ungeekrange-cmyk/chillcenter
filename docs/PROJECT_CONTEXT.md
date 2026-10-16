@@ -1,5 +1,11 @@
 # Contexte du projet
 
+## Suite numérotée / affiches / scroll / matching — candidat df2870f
+
+16 octobre 2026 : source **df2870f5776d20213bcb8c6c88a5bcb967091e97**, branche `codex/fix-next-posters-scroll-matching`. Le test humain du candidat94495c1 a invalidé l'enchaînement réel : 150 épisodes sans numéros structurés mais avec préfixes de fichiers uniques. Ordre plat explicite désormais reconnu sans modifier la base ; ordre inconnu distinct d'une fin. Affiche de fiche retirée avant chargement et anciens observers neutralisés ; cartes/images virtualisées conservées au scroll ; 19 titres à parenthèses orphelines nettoyés pour le matching automatique sur 2496 entrées parcourues en lecture seule.
+
+[Remise et limites](implementation/NEXT-POSTERS-SCROLL-MATCHING-20261016.md), [revue indépendante favorable](reviews/next-posters-scroll-matching-df2870f.md). Nouveau bundle `artifacts/macos/Chill Center-test-df2870f.app`, interne0.5.1/build6, SHA exécutable20316cb655d45327c283184fab3c1675c3c0f9d99a6fb2a3b423c7e61e47d182 ; signature/48dylibs/API2.5 PASS. **Pi non mis à jour : socket SSH absent**, dernier état vérifié f3fdac5 historique, pas une nouvelle sonde. Web installé, NAS et configuration non touchés ; API datée et v1 préservées. Tests ciblés et vrai DOM synthétique PASS, validation native humaine restante. Les paragraphes suivants restent des checkpoints historiques, non l'état de ces correctifs.
+
 ## Séries / EOF / vidéos courtes — candidat local
 
 16 octobre 2026 : source **94495c1**, branche `codex/series-season-grid`. Première saison non vue ouverte, épisodes en grille ; affiche/synopsis/compteurs/note réunis, outils communs en bas. Retour à la série/saga/liste/fiche après dernier élément ; contexte conservé depuis la fiche d'un membre ; une synchro personnelle détachée par EOF confirmé, retours tardifs gardés. Exception <100s explicitement approuvée « Adapter la règle aux vidéos courtes » : fin après couverture réelle du dernier dixième dans le bail courant, seuil long inchangé. Source serveur modifiée mais **Pi/web/NAS non déployés ni touchés** ; bundle seul ne peut activer cette règle sur l'ancien serveur.
