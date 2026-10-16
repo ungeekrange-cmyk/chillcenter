@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+Deux compléments visuels du 16 octobre, non bloquants et **OPEN** : [BUG0083 loupe trop petite](BUG-0083-search-magnifier-size.md), [BUG0084 rotation décentrée](BUG-0084-sync-icon-rotation-center.md). Captures utilisateur reçues ; aucun correctif revendiqué dans le lot limité au blocage vidéo.
+
 Signalements du 16 octobre : [BUG0078 décor sur vidéo](BUG-0078-event-artwork-covers-native-video.md), BLOQUANT corrigé dans les sources / VERIFIED_DOM, essai Tauri humain restant. À traiter séparément, statuts OPEN : [BUG0079 affiche sans match](BUG-0079-unmatched-poster-regression.md), [BUG0080 clipping au scroll](BUG-0080-catalog-scroll-clipping.md), [BUG0081 retour de validation TMDB](BUG-0081-tmdb-apply-feedback.md), [BUG0082 récupération des conflits](BUG-0082-conflict-recovery-guidance.md). Aucun de ces quatre défauts n’est annoncé corrigé.
 
 Préparation GitHub publique, non publiée : [BUG0075 page 404](BUG-0075-public-404-relative-assets.md) et [BUG0076 liens physiques](BUG-0076-public-build-hardlink.md), VERIFIED_LOCAL. [BUG0077 adresses du foyer](BUG-0077-household-addresses-in-public-source.md) : version de travail assainie, historique privé conservé ; aucun déploiement ou changement de visibilité. Voir la [stratégie de publication du dépôt](../publication/GITHUB-REPOSITORY.md).

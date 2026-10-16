@@ -1,5 +1,11 @@
 # Contexte du projet
 
+## Blocage décor / vidéo — candidat de test, non déployé serveur
+
+16 octobre 2026 : source `bdce3a4`, deux lignes CSS désactivent le pseudo-fond Noël/Halloween pendant `body.player-open`. RED/GREEN sur le vrai DOM connecté avec pont synthétique, huit combinaisons et retour du décor ; revue indépendante APPROVED_SCOPED. Bundle séparé `artifacts/macos/Chill Center-test-bdce3a4.app`, interne0.5.1/build6, SHA exécutable `6aa696eeff5dcdafbdd9fc9c456f699c1e56ff24e4336fdd974163c72c1f5a5f`, 81Mio/48dylibs/signature/libmpv API2.5 PASS. **Pas une nouvelle release**, anciens bundles/tags inchangés ; rendu Tauri à confirmer humainement, aucune lecture/connexion Pi/NAS rejouée. [Remise](implementation/EVENT-PLAYER-CUTOUT-20261016.md).
+
+Six autres défauts suivis OPEN, non corrigés : ancienne affiche sans match, clipping au scroll, retour de validation TMDB, conflit non actionnable, loupe trop petite, rotation de synchronisation décentrée (BUG0079–0084). L’ancienne preuve BUG0065 n’est pas une validation de la réapparition actuelle.
+
 ## Préparation du dépôt GitHub public — non publié
 
 Nettoyage lisible/commenté des modules filtres et ambiances, invariants de synchronisation documentés ; README, licence, contribution, sécurité et formulaire de bug préparés. La priorité demandée est le dépôt GitHub, pas un nouveau site applicatif ; Pages reste facultatif et manuel. Les exemples ne ciblent plus une installation du foyer, les outils exigent leurs adresses à l’exécution, port `8443` conservé. Les adresses des comptes rendus ont été anonymisées sans réécrire l’historique. Les anciens hashes et gates restent historiques, à revalider avant réutilisation.
