@@ -211,7 +211,7 @@ fn for_each_legacy<F>(base: &Path, mut visit: F) -> std::io::Result<()>
 where
     F: FnMut(&Path, &Path, bool, usize) -> std::io::Result<()>,
 {
-    for server in fs::read_dir(&base)? {
+    for server in fs::read_dir(base)? {
         let server = server?;
         let sid = server.file_name();
         let Some(sid) = sid.to_str() else { continue };
@@ -299,6 +299,35 @@ fn measure(base: &Path) -> std::io::Result<(u64, u64, u64)> {
     }
     Ok((logical, allocated, refs))
 }
+fn require_same_reference(before: &fs::Metadata, after: &fs::Metadata) -> std::io::Result<()> {
+    if !before.is_file()
+        || before.file_type().is_symlink()
+        || !after.is_file()
+        || after.file_type().is_symlink()
+        || (before.dev(), before.ino(), before.len(), before.modified()?)
+            != (after.dev(), after.ino(), after.len(), after.modified()?)
+    {
+        return Err(io_error(
+            "artwork reference changed; close all clients before retrying",
+        ));
+    }
+    Ok(())
+}
+
+fn require_complete(
+    logical: u64,
+    refs: u64,
+    verified: u64,
+    after: (u64, u64, u64),
+) -> std::io::Result<()> {
+    if verified != refs || after.0 != logical || after.2 != refs {
+        return Err(io_error(
+            "artwork migration incomplete; close all clients before retrying",
+        ));
+    }
+    Ok(())
+}
+
 /// Explicit closed-cache migration. It only examines legacy image leaves and
 /// does not open, create, or alter SQLite/WAL/SHM files. New pool orphans are
 /// intentionally retained until a future closed maintenance run.
@@ -310,24 +339,18 @@ pub fn optimize_closed_cache(root: &Path) -> std::io::Result<OptimizeReport> {
     let mut verified = 0;
     for_each_legacy(&base, |pool, path, jpeg, max| {
         let before_file = fs::symlink_metadata(path)?;
-        let identity = (
-            before_file.dev(),
-            before_file.ino(),
-            before_file.len(),
-            before_file.modified()?,
-        );
         let bytes = bounded_regular(path, max)?;
         let after = fs::symlink_metadata(path)?;
-        if after.is_file()
-            && !after.file_type().is_symlink()
-            && (after.dev(), after.ino(), after.len(), after.modified()?) == identity
-        {
-            publish(pool, path, &bytes, jpeg)?;
-            verified += 1;
-        }
+        // Never turn a detected concurrent change into a silent partial success.
+        // Already-linked references retain their bytes and are safe to retry.
+        require_same_reference(&before_file, &after)?;
+        publish(pool, path, &bytes, jpeg)?;
+        verified += 1;
         Ok(())
     })?;
-    let (_, after, _) = measure(&base)?;
+    let after_measure = measure(&base)?;
+    require_complete(logical, refs, verified, after_measure)?;
+    let after = after_measure.1;
     Ok(OptimizeReport {
         logical_bytes: logical,
         before_unique_allocated_bytes: before,
@@ -342,6 +365,21 @@ mod tests {
     use super::*;
     fn leaf(dir: &Path, suffix: &str) -> PathBuf {
         dir.join(format!("{}.{suffix}", "a".repeat(64)))
+    }
+    #[test]
+    fn changed_reference_and_partial_migration_cannot_report_success() {
+        let d = tempfile::tempdir().unwrap();
+        let a = d.path().join("before");
+        let b = d.path().join("replacement");
+        publish_copy(&a, b"same").unwrap();
+        publish_copy(&b, b"same").unwrap();
+        let before = fs::symlink_metadata(&a).unwrap();
+        assert!(require_same_reference(&before, &before).is_ok());
+        assert!(require_same_reference(&before, &fs::symlink_metadata(&b).unwrap()).is_err());
+        assert!(require_complete(8, 2, 1, (8, 4096, 2)).is_err());
+        assert!(require_complete(8, 2, 2, (9, 4096, 2)).is_err());
+        assert!(require_complete(8, 2, 2, (8, 4096, 1)).is_err());
+        assert!(require_complete(8, 2, 2, (8, 4096, 2)).is_ok());
     }
     #[test]
     fn identical_bytes_share_blob_and_distinct_do_not() {
@@ -391,7 +429,7 @@ mod tests {
         assert_eq!(fs::read(&reference).unwrap(), b"old");
         let target = d.path().join("target");
         publish_copy(&target, b"x").unwrap();
-        fs::remove_dir_all(&pool.join("raw")).unwrap();
+        fs::remove_dir_all(pool.join("raw")).unwrap();
         std::os::unix::fs::symlink(&target, pool.join("raw")).unwrap();
         assert!(publish(&pool, &leaf(d.path(), "image"), b"wanted", false).is_err());
     }
