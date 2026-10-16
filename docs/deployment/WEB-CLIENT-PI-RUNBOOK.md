@@ -32,9 +32,9 @@ Même convention que les livraisons précédentes ([REL-PI-001](../releases/REL-
 
 ```bash
 CPDIR="$(mktemp -d /private/tmp/chillcenter-ssh.XXXXXX)" && chmod 700 "$CPDIR"
-ssh -MNf -o StrictHostKeyChecking=yes -o ControlPersist=2h -S "$CPDIR/control" admin@192.168.1.42
+ssh -MNf -o StrictHostKeyChecking=yes -o ControlPersist=2h -S "$CPDIR/control" admin@chillcenter.local
 echo "SOCKET=$CPDIR/control"
-ssh -O check -S "$CPDIR/control" admin@192.168.1.42
+ssh -O check -S "$CPDIR/control" admin@chillcenter.local
 ```
 
 Attendu : une ligne `SOCKET=/private/tmp/chillcenter-ssh.XXXXXX/control` et `Master running (pid=…)`. **Si l'authentification échoue** (agent qui ne signe plus, clé d'hôte inconnue ou changée), **arrête-toi** : ne contourne ni la vérification de clé d'hôte ni l'agent ; dis-moi le message. Si tu m'autorises à exécuter, donne-moi la ligne `SOCKET=…` (je vérifie qu'elle est dans un dossier `0700`, que le socket est `0600` et à toi).
@@ -44,7 +44,7 @@ Pour le reste des blocs, une fois dans le même Terminal :
 ```bash
 CP="$CPDIR/control"                     # ou colle ici le chemin SOCKET=… ci-dessus
 R=/Users/ghillaumesoubigou/Documents/Dev/Perso/ChillCenter/.claude/worktrees/web-pwa
-pi()     { ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ControlMaster=no -o ControlPath="$CP" admin@192.168.1.42 "$@"; }
+pi()     { ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ControlMaster=no -o ControlPath="$CP" admin@chillcenter.local "$@"; }
 pi_scp() { scp -o BatchMode=yes -o StrictHostKeyChecking=yes -o ControlMaster=no -o ControlPath="$CP" "$@"; }
 ```
 
@@ -94,8 +94,8 @@ Les lignes `config_sha256` et `unit_sha256` sont à noter : le script les revér
 
 ```bash
 cd "$R"
-pi_scp target/aarch64-unknown-linux-gnu/release/chill-server admin@192.168.1.42:/var/tmp/chill-server-web.new
-pi_scp artifacts/web-pi/chillcenter-web.tar                   admin@192.168.1.42:/var/tmp/chillcenter-web.tar
+pi_scp target/aarch64-unknown-linux-gnu/release/chill-server admin@chillcenter.local:/var/tmp/chill-server-web.new
+pi_scp artifacts/web-pi/chillcenter-web.tar                   admin@chillcenter.local:/var/tmp/chillcenter-web.tar
 pi 'chmod 600 /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar; sha256sum /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar'
 ```
 
@@ -103,12 +103,12 @@ Les deux hashes affichés par le Pi doivent être **exactement** `ffcc634923f637
 
 ## Étape 5 — exécution du script V8, **par stdin** (le déploiement)
 
-Relire à voix haute avant de coller : l'URL est `https://192.168.1.42:8443` (le script ne vérifie que le **port**, LOW-1), les deux hashes sont ceux de l'étape 4.
+Relire à voix haute avant de coller : l'URL est `https://chillcenter.local:8443` (le script ne vérifie que le **port**, LOW-1), les deux hashes sont ceux de l'étape 4.
 
 ```bash
 cd "$R"
 [ "$(shasum -a 256 scripts/pi-update-web-operator.sh | cut -d' ' -f1)" = dcf1866111ef756b53113adce323f90960f5edbf00835204da78097fd6528e29 ] && echo "script V8 conforme" || echo "SCRIPT MODIFIÉ : STOP"
-pi "sudo -n env OLD_BINARY_SHA256=a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527 NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7 WEB_ARCHIVE_SHA256=24839b3d81f21632818903c5c097471a98086748303ac304477f23e480d00df2 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://192.168.1.42:8443 /bin/bash -s --" < scripts/pi-update-web-operator.sh
+pi "sudo -n env OLD_BINARY_SHA256=a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527 NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7 WEB_ARCHIVE_SHA256=24839b3d81f21632818903c5c097471a98086748303ac304477f23e480d00df2 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://chillcenter.local:8443 /bin/bash -s --" < scripts/pi-update-web-operator.sh
 echo "code de sortie : $?"
 ```
 
@@ -133,18 +133,18 @@ Lecture seule, depuis le Mac (TLS strict avec le certificat public du Pi ; l'emp
 cd "$R"
 pi 'sudo -n sha256sum /usr/lib/chillcenter/chill-server; systemctl is-active chillcenter; ls -la /usr/lib/chillcenter/web | head -5'
 # Certificat public lu par TLS (aucune clé privée), empreinte à comparer :
-openssl s_client -connect 192.168.1.42:8443 </dev/null 2>/dev/null | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256
+openssl s_client -connect chillcenter.local:8443 </dev/null 2>/dev/null | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256
 # Nettoyage des deux fichiers entrants (ils t'appartiennent, pas besoin de sudo) :
 pi 'rm -f /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar; ls /var/tmp/chill-server-web.new /var/tmp/chillcenter-web.tar 2>&1 | head -2'
 ```
 
 Attendu : hash binaire `a7ab7b07…`, `active`, un dossier `web` root, empreinte `3018fb4d…`, deux fichiers absents. Je peux ensuite refaire la sonde Node en lecture seule (catalogue, Range MKV/MP4/AVI, décodeur) contre le serveur réel.
 
-**Voir l'interface** : ouvre `https://192.168.1.42:8443/` dans le navigateur. Le certificat est auto-signé : une page d'avertissement apparaît. Deux options, à ton choix :
+**Voir l'interface** : ouvre `https://chillcenter.local:8443/` dans le navigateur. Le certificat est auto-signé : une page d'avertissement apparaît. Deux options, à ton choix :
 - **Exception ponctuelle** pour cette adresse : la page se charge ; **Service Worker et installation PWA seront probablement refusés**.
 - **Faire confiance au certificat dans le trousseau macOS** (Trousseaux d'accès → certificat → « Toujours approuver » pour SSL) : la PWA est installable. Cela modifie la confiance **système** pour ce certificat : à ne faire que si tu as vérifié son empreinte (`3018fb4d…`) ; c'est un geste à faire par toi.
 
-Fermer la connexion maître quand tout est fini : `ssh -O exit -S "$CP" admin@192.168.1.42`.
+Fermer la connexion maître quand tout est fini : `ssh -O exit -S "$CP" admin@chillcenter.local`.
 
 ## Étape 7 — retour arrière **manuel** (seulement en cas de besoin)
 
@@ -169,24 +169,24 @@ Comportement sur Debian 13 réel avec systemd réel, durée réelle d'interrupti
 
 Ne se fait qu'une fois le déploiement des étapes 4 à 6 réussi (le nouveau binaire accepte `Host` sans port ; l'ancien le refuse). Le script ne touche ni le service, ni sa configuration, ni `/etc/nftables.conf`.
 
-Contrôle préalable **lecture seule** (condition C1 de la [revue n° 5](../reviews/web-pi-redirect-443-review-5.md)) : `redirect to :8443` vise l'adresse **primaire** de l'interface d'entrée ; si `192.168.1.42` était une adresse secondaire de `wlan0`, le script annoncerait un succès faux.
+Contrôle préalable **lecture seule** (condition C1 de la [revue n° 5](../reviews/web-pi-redirect-443-review-5.md)) : `redirect to :8443` vise l'adresse **primaire** de l'interface d'entrée ; si `chillcenter.local` était une adresse secondaire de `wlan0`, le script annoncerait un succès faux.
 
 ```bash
-pi 'ip -4 -o addr show dev wlan0'     # doit montrer 192.168.1.42/24 SANS le mot « secondary »
+pi 'ip -4 -o addr show dev wlan0'     # doit montrer chillcenter.local/24 SANS le mot « secondary »
 ```
 
-(Le relevé du 15 octobre 15:22 UTC montrait une seule adresse globale, `wlan0=192.168.1.42/24`.) Le test de bout en bout ci-dessous est **obligatoire** : s'il échoue, lancer `--remove` aussitôt.
+(Le relevé du 15 octobre 15:22 UTC montrait une seule adresse globale, `wlan0=chillcenter.local/24`.) Le test de bout en bout ci-dessous est **obligatoire** : s'il échoue, lancer `--remove` aussitôt.
 
 ```bash
 cd "$R"
 [ "$(shasum -a 256 scripts/pi-redirect-443-operator.sh | cut -d' ' -f1)" = 170f41a787167c882973f45eef8d374fb530143b3aaa38cfb04041d1a585f821 ] && echo "script redirection conforme" || echo "SCRIPT MODIFIÉ : STOP"
 pi 'sudo -n /bin/bash -s -- --self-test' < scripts/pi-redirect-443-operator.sh          # redirect_self_test=PASS
-pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s --' < scripts/pi-redirect-443-operator.sh
+pi 'sudo -n env CHILLCENTER_LAN_IP=chillcenter.local /bin/bash -s --' < scripts/pi-redirect-443-operator.sh
 ```
 
-Succès : `redirect=192.168.1.42:443->8443`, `unit_state=enabled/active`, `service_active=active`. Ensuite, depuis le Mac : `openssl s_client -connect 192.168.1.42:443` doit montrer l'empreinte `3018fb4d…`, et `https://192.168.1.42/` s'ouvre dans le navigateur.
+Succès : `redirect=chillcenter.local:443->8443`, `unit_state=enabled/active`, `service_active=active`. Ensuite, depuis le Mac : `openssl s_client -connect chillcenter.local:443` doit montrer l'empreinte `3018fb4d…`, et `https://chillcenter.local/` s'ouvre dans le navigateur.
 
-**Retour arrière** : `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s -- --remove' < scripts/pi-redirect-443-operator.sh`. Le serveur continue de répondre sur `:8443`. Le trafic émis par le Pi lui-même n'est pas redirigé (sondes locales sur `:8443`).
+**Retour arrière** : `pi 'sudo -n env CHILLCENTER_LAN_IP=chillcenter.local /bin/bash -s -- --remove' < scripts/pi-redirect-443-operator.sh`. Le serveur continue de répondre sur `:8443`. Le trafic émis par le Pi lui-même n'est pas redirigé (sondes locales sur `:8443`).
 
 **Risques résiduels acceptés (revue n° 5)** :
 - Activer plus tard `nftables.service`, ou lancer `nft -f /etc/nftables.conf` / `systemctl restart nftables`, exécute le `flush ruleset` du fichier par défaut : la table `chillcenter_web` disparaît alors que l'unité reste « active » (`RemainAfterExit`). Remède : `systemctl restart chillcenter-redirect`.
@@ -208,12 +208,12 @@ Chaque étape exige : une revue indépendante **des octets exacts** (les revues 
 | `scripts/pi-redirect-80-operator.sh` | `9577ad88bdbe1c0b668db5d0344e19d91676a2de5a999f48bec410fb66f51dd7` |
 
 9. **Nouveau binaire et archive** : étapes 2 à 6 ci-dessus (déjà mises à jour avec ces valeurs), script V8, `OLD_BINARY_SHA256=a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527` (binaire actuellement installé), `NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7`, `WEB_ARCHIVE_SHA256=24839b3d81f21632818903c5c097471a98086748303ac304477f23e480d00df2`. Le nouveau binaire sans `http_listen` se comporte comme l'actuel.
-10. **Activer le listener** : d'abord `[ "$(shasum -a 256 scripts/pi-enable-http-operator.sh | cut -d' ' -f1)" = 26a8df5832c83a2fbc659ddc8ab08ff41a55a59395e2e2fb43348ca82d938e57 ] && echo conforme` puis `pi 'sudo -n /bin/bash -s -- --self-test' < scripts/pi-enable-http-operator.sh` (`enable_http_self_test=PASS`), puis `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7 CONFIG_SHA256=ea24f2f0a98db2b0a080ab70113a2fbe8eb1006a20e2eae646d115448f3783f9 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem /bin/bash -s --' < scripts/pi-enable-http-operator.sh`. Refuse (42) si un client est connecté. Sauvegarde privée : `/root/chillcenter-rollback/server.json.ea24f2f0a98d`. Récupération automatique en cas d'échec. **Retour arrière** : même commande avec `CONFIG_SHA256=<hash affiché après activation> PREVIOUS_CONFIG_SHA256=ea24f2f0…3783f9` et `-s -- --revert`.
-11. **Rediriger le port 80** : contrôle `pi 'ip -4 -o addr show dev wlan0'` (adresse primaire, sans `secondary`), hash `[ "$(shasum -a 256 scripts/pi-redirect-80-operator.sh | cut -d' ' -f1)" = 9577ad88bdbe1c0b668db5d0344e19d91676a2de5a999f48bec410fb66f51dd7 ] && echo conforme`, auto-test `-s -- --self-test`, puis `pi 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s --' < scripts/pi-redirect-80-operator.sh` (table `chillcenter_http`, unité `chillcenter-redirect-http.service`) ; retrait : `-s -- --remove`.
-12. **Tests Mac → Pi** : `http://192.168.1.42/` depuis le Mac et un téléphone du Wi-Fi ; lecture d'un film MP4, MKV et AVI ; `https://192.168.1.42:8443` pour le client Mac inchangé.
+10. **Activer le listener** : d'abord `[ "$(shasum -a 256 scripts/pi-enable-http-operator.sh | cut -d' ' -f1)" = 26a8df5832c83a2fbc659ddc8ab08ff41a55a59395e2e2fb43348ca82d938e57 ] && echo conforme` puis `pi 'sudo -n /bin/bash -s -- --self-test' < scripts/pi-enable-http-operator.sh` (`enable_http_self_test=PASS`), puis `pi 'sudo -n env CHILLCENTER_LAN_IP=chillcenter.local NEW_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7 CONFIG_SHA256=ea24f2f0a98db2b0a080ab70113a2fbe8eb1006a20e2eae646d115448f3783f9 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem /bin/bash -s --' < scripts/pi-enable-http-operator.sh`. Refuse (42) si un client est connecté. Sauvegarde privée : `/root/chillcenter-rollback/server.json.ea24f2f0a98d`. Récupération automatique en cas d'échec. **Retour arrière** : même commande avec `CONFIG_SHA256=<hash affiché après activation> PREVIOUS_CONFIG_SHA256=ea24f2f0…3783f9` et `-s -- --revert`.
+11. **Rediriger le port 80** : contrôle `pi 'ip -4 -o addr show dev wlan0'` (adresse primaire, sans `secondary`), hash `[ "$(shasum -a 256 scripts/pi-redirect-80-operator.sh | cut -d' ' -f1)" = 9577ad88bdbe1c0b668db5d0344e19d91676a2de5a999f48bec410fb66f51dd7 ] && echo conforme`, auto-test `-s -- --self-test`, puis `pi 'sudo -n env CHILLCENTER_LAN_IP=chillcenter.local /bin/bash -s --' < scripts/pi-redirect-80-operator.sh` (table `chillcenter_http`, unité `chillcenter-redirect-http.service`) ; retrait : `-s -- --remove`.
+12. **Tests Mac → Pi** : `http://chillcenter.local/` depuis le Mac et un téléphone du Wi-Fi ; lecture d'un film MP4, MKV et AVI ; `https://chillcenter.local:8443` pour le client Mac inchangé.
 
 Après un `--revert` de l'étape 10, la redirection du port 80 (étape 11) pointe vers un port fermé : la retirer aussi (`--remove`). L'exécution de l'étape 10 est réservée à une fenêtre où tu as un accès console au Pi (un redémarrage du service y est fait).
 
-**Ordre impératif** : 9, 10, 11 (le script de redirection exige que le service écoute déjà sur `192.168.1.42:8080`). Un retour du binaire (étape 7) vers un build sans `http_listen` exige d'abord le `--revert` de l'étape 10.
+**Ordre impératif** : 9, 10, 11 (le script de redirection exige que le service écoute déjà sur `chillcenter.local:8080`). Un retour du binaire (étape 7) vers un build sans `http_listen` exige d'abord le `--revert` de l'étape 10.
 
 Si l'étape 10 se termine par un code non nul **sans** le résumé (sortie standard morte après l'activation), l'état est en général correct : contrôle `sha256sum /etc/chillcenter/server.json` et `ss -ltn` avant de relancer quoi que ce soit (revue n° 8, constat 5).

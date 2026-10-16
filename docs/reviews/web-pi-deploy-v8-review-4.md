@@ -154,7 +154,7 @@ Fichiers : `api.rs` (+166/−11), `lib.rs` (+1), `web_static.rs` (+194, nouveau)
 ## 8. Runbook : cohérence
 
 - Étape 2 : les 4 hashes (`dcf18661…`, `b80408da…`, `894fbe95…`, `2ee4a5a9…`) et la taille 17916 sont corrects. Étape 4 : copie vers `/var/tmp`, hashes attendus abrégés corrects.
-- Étape 5 : `sudo -n env OLD_BINARY_SHA256=cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3 NEW_BINARY_SHA256=b80408da… WEB_ARCHIVE_SHA256=894fbe95… CHILLCENTER_TLS_CERT_PATH=… CHILLCENTER_BASE_URL=https://192.168.1.42:8443 /bin/bash -s --` : les trois hashes sont corrects et complets, aucun `$` ni guillemet imbriqué ; le script est envoyé par stdin. La sortie listée (7 lignes) correspond au `printf` final.
+- Étape 5 : `sudo -n env OLD_BINARY_SHA256=cef54cd0e8baf45f70ee0f57584001521c7dcd705d4f8ab351eb8074f524b3c3 NEW_BINARY_SHA256=b80408da… WEB_ARCHIVE_SHA256=894fbe95… CHILLCENTER_TLS_CERT_PATH=… CHILLCENTER_BASE_URL=https://chillcenter.local:8443 /bin/bash -s --` : les trois hashes sont corrects et complets, aucun `$` ni guillemet imbriqué ; le script est envoyé par stdin. La sortie listée (7 lignes) correspond au `printf` final.
 - Étape 7 : retour arrière correct, avec le nom dérivé `chill-server-cef54cd0e8ba`, mais voir MEDIUM-1 pour l'étape 6.
 - Le tableau préflight attend `cef54cd0…b3c3` : cohérent avec le préflight et la simulation.
 - Résiduels : MEDIUM-1, LOW-2 ci-dessus. Plus `1eb24e97` uniquement dans le plan (LOW-1) et dans `pi-operator-simulation.sh` L187, où il sert volontairement de « mauvais hash » du scénario P.

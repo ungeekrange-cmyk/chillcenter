@@ -2,7 +2,6 @@
 # Apply only the BUG-0043 WorkingDirectory drop-in to the documented r7 install.
 set -euo pipefail
 
-readonly TARGET_HOST="admin@192.168.1.42"
 readonly EXPECTED_BINARY_SHA="9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6"
 readonly EXPECTED_HELPER_SHA="d508cfdf964c5d68497f426413226cbca4d70abdca807dbb16cc058bad0521df"
 readonly EXPECTED_VENDOR_UNIT_SHA="76f7d34921ff344e344ba2bffa51263248ec6118dad9e15a39ef7078877d72e2"
@@ -39,6 +38,9 @@ done
 [[ "$explicit_go" == true && -f "$dropin" && -f "$integration_gate" && -n "$ssh_control" ]] || { usage; exit 2; }
 [[ "$dropin" = /* && "$integration_gate" = /* && "$ssh_control" = /* ]] || { echo "All paths must be absolute." >&2; exit 2; }
 [[ "$expected_dropin_sha" =~ ^[[:xdigit:]]{64}$ && "$expected_vendor_unit_sha" =~ ^[[:xdigit:]]{64}$ ]] || { echo "Invalid SHA-256." >&2; exit 2; }
+: "${CHILLCENTER_TARGET_HOST:?set the explicit SSH target user@host}"
+[[ "$CHILLCENTER_TARGET_HOST" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "Invalid CHILLCENTER_TARGET_HOST." >&2; exit 2; }
+readonly TARGET_HOST="$CHILLCENTER_TARGET_HOST"
 actual_dropin_sha=$(shasum -a 256 "$dropin" | awk '{print $1}')
 test "$actual_dropin_sha" = "$expected_dropin_sha"
 test "$expected_vendor_unit_sha" = "$EXPECTED_VENDOR_UNIT_SHA"

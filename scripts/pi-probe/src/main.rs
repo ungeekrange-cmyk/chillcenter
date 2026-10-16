@@ -14,7 +14,6 @@ use std::{
     time::{Duration, Instant},
 };
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
-const ADDRESS: &str = "https://192.168.1.42:8443";
 
 fn catalog_path(profile: &str) -> String {
     format!("/api/v1/profiles/{profile}/catalog")
@@ -32,12 +31,14 @@ fn main() -> Result<()> {
                 .into(),
         );
     }
-    let cert = inspect_certificate(ADDRESS, Duration::from_secs(8))?;
+    let address = std::env::var("CHILLCENTER_SERVER_URL")
+        .map_err(|_| "CHILLCENTER_SERVER_URL is required; no default target is allowed")?;
+    let cert = inspect_certificate(&address, Duration::from_secs(8))?;
     let normalize = |s: &str| s.replace(':', "").to_ascii_lowercase();
     if normalize(&cert.fingerprint_hex()) != normalize(&args[2]) {
         return Err("SSH-verified public certificate SPKI mismatch".into());
     }
-    let endpoint = ServerEndpoint::parse("pi-operator-test", ADDRESS)?;
+    let endpoint = ServerEndpoint::parse("pi-operator-test", &address)?;
     let mut trust = TrustStore::default();
     trust.approve_initial("pi-operator-test", endpoint.host(), cert);
     let transport = Transport::new(endpoint, Arc::new(RwLock::new(trust)), None)?;

@@ -8,9 +8,9 @@
 
 ## Contexte
 
-Demande utilisateur (15 octobre 2026) : le client web doit être joignable sur le port « normal », `https://192.168.1.42`, pas sur `:8443`. Le serveur écoute sur `192.168.1.42:8443` ; les clients Mac enregistrés pointent sur ce port et ne doivent pas être touchés.
+Demande utilisateur (15 octobre 2026) : le client web doit être joignable sur le port « normal », `https://chillcenter.local`, pas sur `:8443`. Le serveur écoute sur `chillcenter.local:8443` ; les clients Mac enregistrés pointent sur ce port et ne doivent pas être touchés.
 
-Contraintes lues dans le code : `check_browser_origin_and_host` (`crates/chill-server/src/api.rs`) refuse tout `Host` dont le nom n'est pas dans `tls_names` **ou dont le port (défaut 443 si absent) diffère du port `listen`**. Un navigateur qui ouvre `https://192.168.1.42` envoie `Host: 192.168.1.42` sans port ; une redirection de port réseau 443 → 8443 produirait donc `HOST_REFUSED`. L'unité systemd retire toute capacité (`CapabilityBoundingSet=`, `AmbientCapabilities=` vides) : le service ne peut pas lier un port < 1024.
+Contraintes lues dans le code : `check_browser_origin_and_host` (`crates/chill-server/src/api.rs`) refuse tout `Host` dont le nom n'est pas dans `tls_names` **ou dont le port (défaut 443 si absent) diffère du port `listen`**. Un navigateur qui ouvre `https://chillcenter.local` envoie `Host: chillcenter.local` sans port ; une redirection de port réseau 443 → 8443 produirait donc `HOST_REFUSED`. L'unité systemd retire toute capacité (`CapabilityBoundingSet=`, `AmbientCapabilities=` vides) : le service ne peut pas lier un port < 1024.
 
 ## Options examinées
 
@@ -31,7 +31,7 @@ Option **C**.
 
 ## Conséquences
 
-- Le client web : `https://192.168.1.42` ; le client Mac : inchangé sur `:8443`.
+- Le client web : `https://chillcenter.local` ; le client Mac : inchangé sur `:8443`.
 - Le trafic local du Pi vers lui-même (loopback) n'est pas redirigé : les sondes locales restent sur `:8443`.
 - Le certificat reste auto-signé : l'avertissement du navigateur et les limites du Service Worker décrites dans WEB-CLIENT demeurent.
 - Retour arrière : supprimer la table nftables ; le serveur continue de répondre sur `:8443`. Un binaire plus ancien refuserait `Host` sans port, donc le web sur 443 cesserait de fonctionner mais rien d'autre.

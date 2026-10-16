@@ -11,7 +11,7 @@ REVUE INDÉPENDANTE N°5 (lecture seule, worktree web-pwa, HEAD 02c5b84). Aucun 
 - Delta Rust / binaire aarch64 SHA-256 a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527 (14765736 octets, vérifié) : APPROVED. Réserve : je n'ai pas recompilé, donc je ne prouve pas que ces octets proviennent du source 02c5b84.
 
 ### Conditions (à traiter avant le feu vert Pi pour l'étape 8)
-- C1 (MEDIUM-1) Ajouter à l'étape 8 un contrôle lecture seule que 192.168.1.42 est l'adresse primaire de wlan0, c'est-à-dire sans le mot `secondary` : `ip -4 -o addr show dev wlan0`. Ou bien exécuter obligatoirement le test de bout en bout `openssl s_client -connect 192.168.1.42:443` et lancer `--remove` s'il échoue. Voir finding 1.
+- C1 (MEDIUM-1) Ajouter à l'étape 8 un contrôle lecture seule que chillcenter.local est l'adresse primaire de wlan0, c'est-à-dire sans le mot `secondary` : `ip -4 -o addr show dev wlan0`. Ou bien exécuter obligatoirement le test de bout en bout `openssl s_client -connect chillcenter.local:443` et lancer `--remove` s'il échoue. Voir finding 1.
 - C2 (LOW-1) Corriger la ligne 124 du runbook (hash périmé `b804…`).
 - C3 (LOW-2) Documenter les risques résiduels des findings 3, 4 et 5.
 
@@ -31,7 +31,7 @@ REVUE INDÉPENDANTE N°5 (lecture seule, worktree web-pwa, HEAD 02c5b84). Aucun 
   - Ensuite `curl http://10.98.0.1:443/` donne `secondary-443:000` (exit 7). Le trafic est redirigé vers 10.98.0.9:8443, où personne n'écoute.
 - La précondition ligne 73 vérifie seulement que l'adresse appartient à l'hôte. La vérification finale (lignes 92-96) ne teste aucune connexion réelle.
 - Sur le Pi, c'est probablement sans effet : wlan0 en DHCP avec une seule IPv4. Ce n'est pas prouvé, d'où la condition C1.
-- Correction possible, non requise sur ces octets : `dnat to 192.168.1.42:8443`, ou refuser l'adresse marquée `secondary`.
+- Correction possible, non requise sur ces octets : `dnat to chillcenter.local:8443`, ou refuser l'adresse marquée `secondary`.
 
 ### 2. LOW-1 : hash périmé dans le runbook
 - Fichier `docs/deployment/WEB-CLIENT-PI-RUNBOOK.md`, ligne 124 : « préflight : si `installed_binary_sha256=b804…` ». C'est l'ancien hash b80408da…, alors que le nouveau binaire est a7ab….
@@ -60,7 +60,7 @@ REVUE INDÉPENDANTE N°5 (lecture seule, worktree web-pwa, HEAD 02c5b84). Aucun 
 ### 6. Point positif : script (tâche 1), validation d'IP et robustesse, tout exécuté
 - `--self-test` dans la VM : `redirect_self_test=PASS`.
 - Le regex est ancré et sans zéros initiaux (`^(0|[1-9][0-9]{0,2})...$`). Octets ≤255 contrôlés. Rejetés : 0.x, 127.x, ≥224, nouvelle ligne, espaces, `;`, `192.168.01.42`.
-- Un appel non-root avec une adresse se terminant par une nouvelle ligne répond `invalid LAN address` ; avec `192.168.1.42` propre, `must run as root`. Avec des chiffres arabes (`١٩٢.168.1.42`) : `invalid LAN address`.
+- Un appel non-root avec une adresse se terminant par une nouvelle ligne répond `invalid LAN address` ; avec `chillcenter.local` propre, `must run as root`. Avec des chiffres arabes (`١٩٢.168.1.42`) : `invalid LAN address`.
 - Injection de règle nft ou d'unité : impossible, car seuls des chiffres et des points passent, et `${lan_ip//./\\.}` n'est utilisé qu'après validation. Un `printf` est utilisé pour le rendu.
 - Link-local (169.254.x.x) et adresses publiques sont acceptés par la validation ; seule la précondition « adresse locale » les borne. LOW, sans conséquence.
 - Aucune modification avant toutes les préconditions : la première écriture est `mktemp` (ligne 79). Ordre : IP, root, outils, nft, symlinks, service actif, écoute 8443 sur l'IP, rien sur 443, adresse locale, table absente, fichiers absents, unité non activée.
@@ -92,7 +92,7 @@ REVUE INDÉPENDANTE N°5 (lecture seule, worktree web-pwa, HEAD 02c5b84). Aucun 
 | m13 : `enable` sans `--now` | Détecté (11 FAIL) |
 | m14 : retire `[Install]` | Détecté (1 FAIL) |
 | m18 : `failed` ne supprime pas fichiers/unité | Détecté (2 FAIL) |
-| m8 : regex d'IP sans ancre de fin | NON DÉTECTÉ (40 PASS), masqué par les préconditions suivantes. Détecté par `--self-test` : `accepted what must be refused ... 192.168.1.42.1`. |
+| m8 : regex d'IP sans ancre de fin | NON DÉTECTÉ (40 PASS), masqué par les préconditions suivantes. Détecté par `--self-test` : `accepted what must be refused ... chillcenter.local.1`. |
 | m9 : retire le contrôle de symlinks | NON DÉTECTÉ (40 PASS) |
 | m10 : retire le contrôle « table existe déjà » | NON DÉTECTÉ (40 PASS), masqué par le contrôle des fichiers existants |
 | m11 : retire l'interdiction loopback/0/≥224 | NON DÉTECTÉ (40 PASS), masqué par « rien n'écoute ». Détecté par `--self-test` (`accepted ... 127.0.0.1`). |
@@ -105,7 +105,7 @@ REVUE INDÉPENDANTE N°5 (lecture seule, worktree web-pwa, HEAD 02c5b84). Aucun 
 ### 8. Delta Rust : APPROVED
 - `git diff 623a768 02c5b84 -- crates/chill-server` : une condition dans `check_browser_origin_and_host` (port de `listen` OU 443, nom toujours exigé dans `tls_names`, comparaison insensible à la casse) et un nouveau test.
 - Tests exécutés : `cargo test --locked --offline -p chill-server --lib` donne `test result: ok. 105 passed; 0 failed` (le nouveau test `default_https_port_is_accepted_for_a_redirected_443_but_names_and_other_ports_are_not` est `ok`). Dossier cible supprimé.
-- Origin : comparé textuellement à `https://{Host}`. Donc `Host: 192.168.1.42` avec `Origin: https://192.168.1.42:8443`, ou l'inverse, donne 403. Le test le couvre pour `localhost`. Ce cas précis (IP + 8443) est conclu par lecture du code, non rejoué en direct.
+- Origin : comparé textuellement à `https://{Host}`. Donc `Host: chillcenter.local` avec `Origin: https://chillcenter.local:8443`, ou l'inverse, donne 403. Le test le couvre pour `localhost`. Ce cas précis (IP + 8443) est conclu par lecture du code, non rejoué en direct.
 - DNS rebinding : un nom hors de `tls_names` reste refusé, quel que soit le port (`attacker.example:443` est testé).
 - Comportement de `http::uri::Authority` (http 1.5.0), exécuté dans un petit programme scratch hors dépôt :
   - `localhost:` donne port_u16=None, donc accepté comme 443.
@@ -137,7 +137,7 @@ REVUE INDÉPENDANTE N°5 (lecture seule, worktree web-pwa, HEAD 02c5b84). Aucun 
 
 | Constat | Traitement |
 | --- | --- |
-| C1 / MEDIUM-1 (adresse secondaire) | runbook étape 8 : contrôle lecture seule `ip -4 -o addr show dev wlan0` (sans `secondary`) et test de bout en bout obligatoire avec `--remove` en cas d'échec ; le relevé du 15 oct. 15:22 UTC montrait une seule adresse globale `wlan0=192.168.1.42/24` |
+| C1 / MEDIUM-1 (adresse secondaire) | runbook étape 8 : contrôle lecture seule `ip -4 -o addr show dev wlan0` (sans `secondary`) et test de bout en bout obligatoire avec `--remove` en cas d'échec ; le relevé du 15 oct. 15:22 UTC montrait une seule adresse globale `wlan0=chillcenter.local/24` |
 | C2 / LOW-1 (hash `b804…` ligne 124) | corrigé : `a7ab…` |
 | C3 / LOW-2, LOW-3, LOW-4 | listés comme risques résiduels acceptés dans le runbook, étape 8 ; octets du script **non modifiés** (conforme au verdict) |
 | Mutants non détectés m1c et m16 | harnais renforcé : R3b (autre adresse locale non redirigée) et R9 (service arrêté : refus) ; simulation **43 PASS, 0 FAIL** ; mutant m1c refait fidèlement (commentaire nft contenant le texte attendu) : détecté par R3b (attendu 000, obtenu 403). Restent non détectés par la simulation et **acceptés** : m8, m11 (détectés par `--self-test`), m9, m10, m17, m19 (masqués par d'autres contrôles) |

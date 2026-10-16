@@ -156,7 +156,7 @@ Mutants du script d'activation, exécutés dans la VM contre la simulation :
 - La reproductibilité du binaire à partir de la source (non reconstruit).
 - Les cas CRLF, tabulations et accolade non seule : raisonnés, non exécutés (voir section 3).
 - Les scénarios de coupure par signal (finding 3) et d'échec de restauration (finding 2) : raisonnés, non démontrés.
-- Le comportement des navigateurs mobiles et des appareils de la maison sur http://192.168.1.42 (non prouvé par ce que j'ai exécuté ; l'ADR le reconnaît).
+- Le comportement des navigateurs mobiles et des appareils de la maison sur http://chillcenter.local (non prouvé par ce que j'ai exécuté ; l'ADR le reconnaît).
 - La suite complète des tests Rust hors `--lib`, clippy, et les tests Node de l'archive déployée sur la cible.
 
 ---

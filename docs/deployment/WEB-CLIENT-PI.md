@@ -74,10 +74,10 @@ Tout ce qui suit a réellement été exécuté, via la connexion maître de l'ut
 | Préflight après déploiement (lecture seule) | binaire `a7ab7b07…`, service actif (PID 9457, `NRestarts=0`), `web_dir` présent, configuration `ea24f2f0…`, unité `76f7d349…` et certificat `3018fb4d…` **inchangés**, 6 sauvegardes |
 | Nettoyage | `/var/tmp/chill-server-web.new` et `/var/tmp/chillcenter-web.tar` supprimés |
 | Vérification depuis le Mac, TLS strict (certificat du Pi comme seule ancre, empreinte `3018fb4d…` vérifiée) | `/` 200 `text/html` 19 604 o ; `/api/2026-10-14/server` 200 ; cross-site 403 ; décodeur `.wasm` 200 `application/wasm` 652 895 o ; `sw.js` 200 ; profils lus (`server_id` `885f7713…`) |
-| Redirection 443 (`pi-redirect-443-operator.sh` `3e7f6d4f…`) | contrôles préalables : `wlan0` n'a que `192.168.1.42/24` (primaire), `/etc/chillcenter` `750 root:chillcenter` ; `--self-test` PASS sur le Pi ; installation **code 0** à 15:45:51 UTC, `unit_state=enabled/active`, `rules_sha256=d3da7f4f…`, `unit_sha256=c3bf9e7d…`, service toujours actif |
-| Vérification de bout en bout sur 443 depuis le Mac | certificat servi : empreinte `3018fb4d…` ; `https://192.168.1.42/` 200 ; API same-origin 200 (profils lus) ; cross-site 403 ; `:8443` répond toujours 200 |
+| Redirection 443 (`pi-redirect-443-operator.sh` `3e7f6d4f…`) | contrôles préalables : `wlan0` n'a que `chillcenter.local/24` (primaire), `/etc/chillcenter` `750 root:chillcenter` ; `--self-test` PASS sur le Pi ; installation **code 0** à 15:45:51 UTC, `unit_state=enabled/active`, `rules_sha256=d3da7f4f…`, `unit_sha256=c3bf9e7d…`, service toujours actif |
+| Vérification de bout en bout sur 443 depuis le Mac | certificat servi : empreinte `3018fb4d…` ; `https://chillcenter.local/` 200 ; API same-origin 200 (profils lus) ; cross-site 403 ; `:8443` répond toujours 200 |
 
-**Non vérifié** : ouverture dans un vrai navigateur (le navigateur intégré à l'application a refusé la navigation vers `https://192.168.1.42/` ; installation en PWA et Service Worker sur certificat auto-signé non testés) ; lecture réelle d'un média depuis un navigateur ; comportement de la règle après un **redémarrage réel** du Pi (l'unité est activée ; la persistance n'a été prouvée qu'en VM) ; test de bascule/retour arrière sur le Pi (non nécessaire, non exécuté).
+**Non vérifié** : ouverture dans un vrai navigateur (le navigateur intégré à l'application a refusé la navigation vers `https://chillcenter.local/` ; installation en PWA et Service Worker sur certificat auto-signé non testés) ; lecture réelle d'un média depuis un navigateur ; comportement de la règle après un **redémarrage réel** du Pi (l'unité est activée ; la persistance n'a été prouvée qu'en VM) ; test de bascule/retour arrière sur le Pi (non nécessaire, non exécuté).
 
 ## Écoute HTTP non chiffrée (15 octobre 2026) : ADR-0018
 
@@ -105,9 +105,9 @@ Après les revues n° 6 à 8 (n° 8 : APPROVED sur les octets déployés) et le 
 | Préflight lecture seule (20:18 UTC) | binaire `a7ab7b07…`, service actif (redémarré à 21:03 IST), configuration `ea24f2f0…`, unité `76f7d349…`, certificat `3018fb4d…` inchangés, aucune connexion cliente ; la redirection 443 avait survécu au redémarrage (vérifié depuis le Mac) |
 | Copie + V8 (`dcf18661…`) | hashes identiques sur le Pi ; **code 0** à 20:21:47 UTC ; `installed_hash=ffcc6349…`, `rollback_hash=a7ab7b07…`, `web_previous=/root/chillcenter-rollback/web-20261015T202141Z`, sauvegarde `/var/lib/chillcenter/data/backups/4a43cede-1c75-4125-b406-6385b87c8e40` ; fichiers entrants supprimés |
 | Activation (`pi-enable-http-operator.sh` `26a8df58…`, auto-test PASS sur le Pi) | **code 0** à 20:22:11 UTC ; configuration `d6167cb1…`, sauvegarde `server.json.ea24f2f0a98d`, service actif |
-| Redirection 80 (`pi-redirect-80-operator.sh` `9577ad88…`, auto-test PASS, `wlan0` n'a que `192.168.1.42/24`) | **code 0** à 20:22:34 UTC ; `unit_state=enabled/active` |
-| Vérifications depuis le Mac | `http://192.168.1.42/` 200 (19 604 o), API 200, `:8080` 200, `Origin` propre 200 / étrangère 403, `/admin/tmdb` et `/admin/exports/x` **403 en HTTP** et TMDB **200 en HTTPS**, `.wasm` 200 `application/wasm` (652 895 o), `https://192.168.1.42` 200, `:8443` 200 |
-| Navigateur réel (intégré à l'application), `http://192.168.1.42/` | page chargée, `isSecureContext` faux, pas de Service Worker, `crypto.randomUUID` absent (repli utilisé), profil réel lu par l'API ; **aucune lecture lancée** dans l'interface (elle écrirait la progression du vrai profil) |
+| Redirection 80 (`pi-redirect-80-operator.sh` `9577ad88…`, auto-test PASS, `wlan0` n'a que `chillcenter.local/24`) | **code 0** à 20:22:34 UTC ; `unit_state=enabled/active` |
+| Vérifications depuis le Mac | `http://chillcenter.local/` 200 (19 604 o), API 200, `:8080` 200, `Origin` propre 200 / étrangère 403, `/admin/tmdb` et `/admin/exports/x` **403 en HTTP** et TMDB **200 en HTTPS**, `.wasm` 200 `application/wasm` (652 895 o), `https://chillcenter.local` 200, `:8443` 200 |
+| Navigateur réel (intégré à l'application), `http://chillcenter.local/` | page chargée, `isSecureContext` faux, pas de Service Worker, `crypto.randomUUID` absent (repli utilisé), profil réel lu par l'API ; **aucune lecture lancée** dans l'interface (elle écrirait la progression du vrai profil) |
 | Sonde de lecture réelle, port 80 puis 8443 (bail volatil libéré sans progression) | **21 fichiers réels ouverts, 0 échec** sur les deux ports (MKV 12, MP4 4, AVI 5 ; débit identique) |
 
 **Non vérifié** : lecture complète d'un film dans un navigateur sur le Pi (PWA, téléphones, autres navigateurs) ; comportement après un redémarrage **provoqué** par nous (celui-ci était subi : la redirection 443 a survécu, la redirection 80 et `http_listen` n'ont pas été éprouvées au redémarrage) ; la cause de la coupure de 4 heures (aucune action de notre part sur le Pi à ce moment).
@@ -238,7 +238,7 @@ scp -o ControlPath="$CP" target/aarch64-unknown-linux-gnu/release/chill-server "
 scp -o ControlPath="$CP" artifacts/web-pi/chillcenter-web.tar "$HOST":/var/tmp/chillcenter-web.tar
 # c) Exécution du script revu, par stdin
 ssh -S "$CP" "$HOST" "sudo -n env NEW_BINARY_SHA256=<hash> WEB_ARCHIVE_SHA256=<hash> \
-  CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://192.168.1.42:8443 \
+  CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://chillcenter.local:8443 \
   /bin/bash -s --" < scripts/pi-update-web-operator.sh
 # d) Nettoyage des deux fichiers /var/tmp (après vérification)
 ```
@@ -249,7 +249,7 @@ Le script imprime seulement : date UTC, PID, hashes, chemin de sauvegarde, dossi
 
 Automatique dans le script (TLS strict, depuis le Pi) : `/api/2026-10-14/server` → 200 sans en-tête (clients natifs), 200 avec `Sec-Fetch-Site: same-origin`, **403** avec `cross-site` et avec un `Origin` étranger ; `/` contient `<title>Chill Center</title>` ; `vendor/mpeg4/mpeg4-decoder.wasm` servi en `application/wasm` ; `/.env` → 404 ; traversée `/../etc/passwd` ≠ 200.
 
-Par moi ensuite (Mac, lecture seule, bail volatil libéré) : sonde Node déjà éprouvée (certificat, `/server`, catalogue, Range MKV/MP4/AVI, démuxeurs, décodeur WASM sur de vrais fichiers) — et, pour **voir l'interface dans un navigateur**, il faut que le navigateur accepte le certificat auto-signé : soit une exception pour `192.168.1.42:8443`, soit l'ajout du certificat public du foyer au trousseau macOS (modification de la confiance système : **geste à faire par toi**). Sans confiance système, Service Worker et installation PWA seront refusés par plusieurs navigateurs ; la page elle-même fonctionnera avec l'exception.
+Par moi ensuite (Mac, lecture seule, bail volatil libéré) : sonde Node déjà éprouvée (certificat, `/server`, catalogue, Range MKV/MP4/AVI, démuxeurs, décodeur WASM sur de vrais fichiers) — et, pour **voir l'interface dans un navigateur**, il faut que le navigateur accepte le certificat auto-signé : soit une exception pour `chillcenter.local:8443`, soit l'ajout du certificat public du foyer au trousseau macOS (modification de la confiance système : **geste à faire par toi**). Sans confiance système, Service Worker et installation PWA seront refusés par plusieurs navigateurs ; la page elle-même fonctionnera avec l'exception.
 
 ## 7. Retour arrière
 
@@ -293,7 +293,7 @@ Conditions du reviewer et décisions :
 | --- | --- |
 | Ligne périmée « 34 PASS » du plan | corrigée dans ce document |
 | `openssl` et `runuser` à vérifier avant exécution | ajoutés au préflight manuel §5a ; le script les exige de toute façon avant tout arrêt (sortie 2) |
-| **LOW-1** le contrôle d'URL ne compare que le **port**, pas l'hôte : une URL mal saisie vers un autre hôte du LAN présentant le même certificat passerait la sonde | **risque accepté** (un seul hôte cible, le Pi ; la sonde TLS stricte vérifie déjà le certificat). Ne pas se fier à l'URL seule : relire `CHILLCENTER_BASE_URL` avant l'exécution (`https://192.168.1.42:8443`) |
+| **LOW-1** le contrôle d'URL ne compare que le **port**, pas l'hôte : une URL mal saisie vers un autre hôte du LAN présentant le même certificat passerait la sonde | **risque accepté** (un seul hôte cible, le Pi ; la sonde TLS stricte vérifie déjà le certificat). Ne pas se fier à l'URL seule : relire `CHILLCENTER_BASE_URL` avant l'exécution (`https://chillcenter.local:8443`) |
 | **LOW-2** code de sortie 1 après un déploiement **réussi** si stdout est fermé (le `printf` final échoue) | **risque accepté, à connaître** : un code 1 avec « RECOVERY » absent de la sortie et un service actif sur le nouveau hash signifie « installé, résumé non imprimé » ; vérifier l'état par la sonde du §6, ne pas relancer à l'aveugle |
 | **LOW-3** binaire dans un état tiers (ni ancien ni nouveau) non signalé pendant la récupération | accepté (hérité de V6 ; improbable : `mv -f` atomique suivi d'un contrôle de hash) |
 | INFO-1 `is-active` avant `stop` dans le gestionnaire (unité en `activating (auto-restart)`) ; INFO-2 `BASH_ENV` honoré (seul root via `sudo env` peut le fournir) ; INFO-3 quelques outils coreutils non listés | acceptés |

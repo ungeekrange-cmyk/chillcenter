@@ -62,7 +62,7 @@ if [[ "${1:-}" == '--self-test' ]]; then
   printf 'parser_self_test=PASS\n'; exit 0
 fi
 
-: "${OLD_BINARY_SHA256:?hash of the binary currently installed}" "${NEW_BINARY_SHA256:?}" "${WEB_ARCHIVE_SHA256:?}" "${CHILLCENTER_TLS_CERT_PATH:?set absolute public certificate path}" "${CHILLCENTER_BASE_URL:?e.g. https://192.168.1.42:8443}"
+: "${OLD_BINARY_SHA256:?hash of the binary currently installed}" "${NEW_BINARY_SHA256:?}" "${WEB_ARCHIVE_SHA256:?}" "${CHILLCENTER_TLS_CERT_PATH:?set absolute public certificate path}" "${CHILLCENTER_BASE_URL:?set the explicit HTTPS base URL}"
 [[ "$OLD_BINARY_SHA256" =~ ^[0-9a-f]{64}$ && "$NEW_BINARY_SHA256" =~ ^[0-9a-f]{64}$ && "$WEB_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ && "$NEW_BINARY_SHA256" != "$OLD_BINARY_SHA256" ]] || { echo 'invalid expected hashes' >&2; exit 2; }
 [[ "$CHILLCENTER_BASE_URL" =~ ^https://([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]{1,5}$ ]] || { echo 'invalid base url' >&2; exit 2; }
 new_expected="$NEW_BINARY_SHA256"

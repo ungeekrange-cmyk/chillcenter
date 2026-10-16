@@ -8,7 +8,7 @@
 
 Bundle neuf : `artifacts/macos/Chill Center-574d255.app`. ARM64,75Mio,48dylibs autonomes dont libmpv/FFmpeg, signature ad-hoc deep/strict et fermeture du loader vérifiées. Exécutable SHA256 `f35a30f68f50b59e8cb469b5c54cfbbcbedda0a69349d3c502cf8e1c6ad4678e`. Copie publiée atomiquement sans écrasement, hash signé identique source/destination ; `--verify-bundle` charge libmpv API2.5 sans ouvrir AppSupport. Ancien bundle9277 intact, pas d'installation /Applications ou de lancement sur les réglages réels de l'utilisateur.
 
-Le HTML ouvert via `file://.../ui/connected/index.html` ne peut pas se connecter : il nécessite le pont Rust Tauri. C'est un aperçu, **pas une application web livrée**. Aucun essai utilisateur n'est requis dans cette page. L'essai connecté se fait dans la `.app`, serveur `https://192.168.1.42:8443`.
+Le HTML ouvert via `file://.../ui/connected/index.html` ne peut pas se connecter : il nécessite le pont Rust Tauri. C'est un aperçu, **pas une application web livrée**. Aucun essai utilisateur n'est requis dans cette page. L'essai connecté se fait dans la `.app`, serveur `https://chillcenter.local:8443`.
 
 ## Preuves exécutées
 

@@ -3,7 +3,7 @@
 - **Mode** : `DEV_STANDARD`, politique `INTEGRATION_AND_RELEASE`
 - **Source compilée approuvée** : `9277ac4d51281b3e6d72475294b1e7822cb8e913`
 - **Carrier documentaire cible** : `d25744102c9b2ff3fe69669c482bd561b2b5dff4`
-- **Environnement visé** : remise locale Mac/Linux puis Pi DEV `192.168.1.42`
+- **Environnement visé** : remise locale Mac/Linux puis Pi DEV `chillcenter.local`
 - **Deployer** : `/root/ux_api_delivery`
 - **Verifier** : `/root/ux_api_post_verify`, distinct du deployer, builder, debugger et des trois reviewers
 - **Revue UTC** : `2026-10-14T17:45:49Z`
@@ -52,7 +52,7 @@ Contrôle UTC `2026-10-14T17:44:30Z`, via le master SSH utilisateur existant, la
 | Chemins systemd | `ReadWritePaths=/var/lib/chillcenter`, `ReadOnlyPaths=/srv/volumes/video` | PASS ancien service |
 | Montage NAS | ligne autofs `rw` superposée et ligne CIFS `ro,nosuid,nodev,noexec` | PASS borné ; **aucune affirmation de host globalement RO** |
 | Configuration/état | config présente `0640` root:GID983 ; state `0700` UID997:GID983 ; DB et certificat public présents `0600` | PASS présence/droits ; contenu non dumpé |
-| TLS ancien service | SAN IP `192.168.1.42`, SPKI `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df` | PASS |
+| TLS ancien service | SAN IP `chillcenter.local`, SPKI `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df` | PASS |
 | Requête stricte | certificat public récupé via SSH, `curl --cacert`, sans `-k`, `/api/v1/server` | PASS, `api_version=1` sur ancien R7 |
 
 La clé TLS privée n'a été ni lue, ni copiée, ni affichée. La base et la configuration n'ont pas été ouvertes. L'absence de déploiement et le hash actif ancien empêchent toute revendication de préservation byte-for-byte après mise à jour : cette mise à jour n'a pas eu lieu.

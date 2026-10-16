@@ -10,7 +10,7 @@ Canonical verdict: APPROVED
 - Binary SHA256: `9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6`.
 - Installer SHA256: `3bda4aa4d392924ae93cdd20b5726a97aa669206bc06f2cff3b31efed0e13629`.
 - Regression SHA256: `c842677a8e2b08960f5431d93cce8b81f79627dd5ede93029a6df3911a69e35d`.
-- Authorized target: admin@192.168.1.42 Debian13.7aarch64 Pi3B+, group984 marvin-admin approved by user; CIFS //192.168.1.92/Video RO at /srv/volumes/video, LANbind8443.
+- Authorized target: admin@chillcenter.local Debian13.7aarch64 Pi3B+, group984 marvin-admin approved by user; CIFS //nas.local/Video RO at /srv/volumes/video, LANbind8443.
 
 Review evidence: reproduced hashes; unique safe18-member archive; r2/r3 only manifest-script-hash differs; binary/unit/config/lock unchanged; shell syntax and regressions PASS. Oldregex fails roinitial; newguard has2 positive/7 negative fixtures and passes realPiROmetadata. Both preflight and privileged guards demand one exact CIFS record with ro token and no rw. SEC-PI-002 resolved; SEC-PI-001 LOW lexical gate mitigated by deployer inspecting canonical verdict + exact hashes.
 

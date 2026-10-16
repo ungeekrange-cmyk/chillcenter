@@ -29,7 +29,7 @@ Cette disposition n'est pas une preuve de lancement du bundle, d'interface nativ
 
 Le handoff du coordinateur indique qu'une première tentative opérateur s'est arrêtée avant le remplacement prévu, puis que la tentative suivante a refusé son préflight avant arrêt. Aucun nouveau backup ni rollback attribuable à cette livraison n'a été annoncé. Le contrôle indépendant suivant est strictement en lecture seule.
 
-| Contrôle | Attendu pour `11aa529` | Observé sur `192.168.1.42` | Résultat |
+| Contrôle | Attendu pour `11aa529` | Observé sur `chillcenter.local` | Résultat |
 | :--- | :--- | :--- | :--- |
 | Service | artefact attendu actif | `active/running`, PID `9457`, `NRestarts=0`, démarré `2026-10-15T15:44:44Z` | disponibilité seulement |
 | Fichier installé | `de98776d…98eb0` | `a7ab7b07633c916c358f1656aa8f154b207185d5ac306c374d2a7a52b0c7d527` | **FAIL** |

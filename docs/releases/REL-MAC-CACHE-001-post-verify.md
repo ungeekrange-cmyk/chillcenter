@@ -11,9 +11,9 @@
 | libmpv embarquée | SHA-256 `a548453541616ee85970fd31da1aeafd7c7bf501a552e63502f6d69abbac31d7` | PASS |
 | Signature bundle | `codesign --verify --deep --strict` : valide sur disque et respecte la designated requirement | PASS |
 | Chargeur exécutable | dépendances macOS système inspectées par `otool -L`; aucune erreur de chargement rapportée par cette inspection statique | PASS_SCOPED |
-| Serveur Pi | `active/running`, PID 3016, `NRestarts=0`; écoute uniquement `192.168.1.42:8443` | PASS |
-| NAS | montage CIFS `//192.168.1.92/Video` toujours `ro,nosuid,nodev,noexec` | PASS |
-| TLS Pi | certificat public conserve SAN `192.168.1.42`, validité 2026-10-14 → 2028-04-14 | PASS |
+| Serveur Pi | `active/running`, PID 3016, `NRestarts=0`; écoute uniquement `chillcenter.local:8443` | PASS |
+| NAS | montage CIFS `//nas.local/Video` toujours `ro,nosuid,nodev,noexec` | PASS |
+| TLS Pi | certificat public conserve SAN `chillcenter.local`, validité 2026-10-14 → 2028-04-14 | PASS |
 | Transcodage côté serveur | aucun processus `ffmpeg`, `ffprobe`, HandBrake ou VLC observé | PASS |
 
 ## Limites obligatoires

@@ -210,7 +210,7 @@ Lu intégralement. `web_static.rs` : 182 lignes ; garde dans `api.rs` ; `mod web
 ## Risques résiduels et non vérifié
 
 - Comportement réel sur le Pi (Debian 13) : GNU `tar -tvf` et `--no-same-permissions`, `mv -T`, `find -printf`, `du -sb`, `stat -c`, `ss -Htnp`, versions de `curl` et d'`openssl`, sudoers pour `env`.
-- Validité TLS par `--cacert` sur le certificat auto-signé réel et présence de `192.168.1.42` dans les SAN et dans `tls_names` ; le flux `/api/2026-10-14/server` n'a pas été testé depuis le Pi.
+- Validité TLS par `--cacert` sur le certificat auto-signé réel et présence de `chillcenter.local` dans les SAN et dans `tls_names` ; le flux `/api/2026-10-14/server` n'a pas été testé depuis le Pi.
 - Compatibilité de la CSP avec la lecture réelle (MSE, wasm, EventSource) dans un navigateur.
 - `ProtectSystem=strict` n'empêche pas la lecture de `/usr/lib/chillcenter/web` (logique, non testé).
 - La provenance du binaire repose sur les mtime et les chaînes, pas sur une reproduction du build.

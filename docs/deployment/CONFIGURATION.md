@@ -1,6 +1,8 @@
 # Configuration modifiable
 
-L'adresse `192.168.1.42` et la racine `/srv/volumes/video` indiquées dans ce chat sont les valeurs prévues pour le foyer, **pas des constantes du logiciel**.
+L’adresse du serveur et la racine vidéo sont propres à chaque installation, **pas des constantes du logiciel**. `chillcenter.local` est un nom d’exemple à remplacer ou à configurer dans votre DNS ; il ne désigne pas automatiquement un serveur existant.
+
+Les exemples distribués écoutent uniquement sur `127.0.0.1:8443`. Pour l’accès LAN, renseigner explicitement l’adresse privée d’écoute dans votre configuration locale non commitée et les noms/IP utilisés par les clients dans `tls_names`. Le champ `listen` attend une adresse numérique avec port (pas un nom DNS). Le port `8443` reste le défaut ; ne pas remplacer l’écoute par une adresse wildcard.
 
 Le fichier [server.example.json](../../deploy/server.example.json) est un exemple à adapter avant installation. `listen` choisit une adresse LAN explicite/loopback et le port d'écoute, `tls_names` les IP/DNS contenus dans le certificat HTTPS, `data_dir` le stockage local de la base et de la configuration. Sans authentification, les écoutes wildcard (`0.0.0.0`, `::`) et les adresses publiques sont refusées. Changer l'écoute ou les noms HTTPS demande un redémarrage du service. Une modification des noms renouvelle le certificat avec la même clé ; les clients continuent à vérifier le nom utilisé.
 

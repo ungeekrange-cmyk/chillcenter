@@ -10,7 +10,7 @@
 - Tests/intégration : [APPROVED](../reviews/server-only-integration-f3fdac5.md), `/root/server_only_integration_gate`.
 - Coordinateur :296Rust (75catalogue/40client/64domaine/117serveur), Clippy workspace/all-targets `-D warnings`, contrat76 chemins PASS ;59Node de l'interface inchangée réutilisés.70 chemins/89 opérations hérités conservés,95 opérations locales ;2026-10-14/v1 préservés, paramètre de sélection facultatif.
 - Opérateur exact SHA `62081da7b574c4cd04c0ed3d09e238ea88dca4b4d4ba293b6963bc31a9d7f06e`, sauvegarde/rollback/health bornés. AncienSHAffcc6349 attendu obligatoirement ; refus si état changé/connexion active.
-- Cible : admin@192.168.1.42, servicechillcenter, TLS8443 et HTTP8080, redirections externes443/80 conservées. Web `/usr/lib/chillcenter/web` interdit en écriture ; contenu/métadonnées/inodes comparés avant/après.
+- Cible : admin@chillcenter.local, servicechillcenter, TLS8443 et HTTP8080, redirections externes443/80 conservées. Web `/usr/lib/chillcenter/web` interdit en écriture ; contenu/métadonnées/inodes comparés avant/après.
 - Préflightlecture seule21:43Z : PID1634/actif/NRestarts0,ffcc6349, configd6167cb1, unité76f7d349, pas de connexion lecteur.22h : disque commun `/dev/mmcblk0p2`,9Go libres, données85Mio horsbackups. Refaire immédiatement avant arrêt.
 - Déployeur distinct : `/root/deploy_server_only_f3fdac5`. Vérificateur post-déploiement distinct à désigner, sans mutation du Pi.
 

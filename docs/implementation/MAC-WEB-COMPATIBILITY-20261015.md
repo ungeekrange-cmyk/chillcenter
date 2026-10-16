@@ -13,7 +13,7 @@ ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7
 Identique au binaire Linux ARM64 du worktree `codex/web-pwa` ; sources/documents inspectés à `aad34cec60974782df959cf44c668e470fc4c658`. Le serveur n'embarque pas de SHA Git public : correspondance d'artefact vérifiée, pas preuve d'une compilation reproductible de ce commit.
 
 - API : `/api/2026-10-14`, alias `/api/v1`, package0.1.0 ; OpenAPI actif70 chemins, identique au contrat du worktree web.
-- HTTPS192.168.1.42:8443 et HTTP192.168.1.42:8080 actifs ; pages web via443/80 accessibles. Redirections et répertoire statique existants conservés.
+- HTTPSchillcenter.local:8443 et HTTPchillcenter.local:8080 actifs ; pages web via443/80 accessibles. Redirections et répertoire statique existants conservés.
 - SHA configuration : `d6167cb1624b6d5888473af76d5470102afedce25b2e29ddbaa032730cd0ceb1`.
 - SHA unité : `76f7d34921ff344e344ba2bffa51263248ec6118dad9e15a39ef7078877d72e2`.
 - TLS SPKI : `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`.

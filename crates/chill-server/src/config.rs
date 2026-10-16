@@ -359,6 +359,20 @@ mod tests {
     }
 
     #[test]
+    fn distributed_examples_default_to_loopback_not_a_household_target() {
+        for source in [
+            include_str!("../../../deploy/server.example.json"),
+            include_str!("../../../deploy/linux/server.json.example"),
+        ] {
+            let example: ServerConfig = serde_json::from_str(source).unwrap();
+            assert!(example.listen.ip().is_loopback());
+            assert_eq!(example.listen.port(), 8443);
+            assert_eq!(example.tls_names, ["localhost", "127.0.0.1"]);
+            example.validate().unwrap();
+        }
+    }
+
+    #[test]
     fn http_listener_is_optional_local_and_on_another_port() {
         let base = ServerConfig::default();
         assert!(base.validate().is_ok());
@@ -388,10 +402,10 @@ mod tests {
                 .contains("http_listen")
         );
         let with: ServerConfig = serde_json::from_str(
-            r#"{"http_listen":"192.168.1.42:8080","listen":"192.168.1.42:8443"}"#,
+            r#"{"http_listen":"192.168.50.9:8080","listen":"192.168.50.9:8443"}"#,
         )
         .unwrap();
-        assert_eq!(with.http_listen, Some("192.168.1.42:8080".parse().unwrap()));
+        assert_eq!(with.http_listen, Some("192.168.50.9:8080".parse().unwrap()));
     }
 
     #[test]

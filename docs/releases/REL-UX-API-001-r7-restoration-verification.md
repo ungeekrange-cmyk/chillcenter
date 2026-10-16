@@ -3,7 +3,7 @@
 - **Mode** : `DEV_STANDARD`, `INTEGRATION_AND_RELEASE`
 - **Verifier** : `/root/ux_api_post_verify`, distinct du deployer
 - **Entrée opérateur** : `/private/tmp/chillcenter-ux-pi-deployment-authorized.md`
-- **Cible** : Pi DEV `192.168.1.42`, après tentative autorisée interrompue avant remplacement
+- **Cible** : Pi DEV `chillcenter.local`, après tentative autorisée interrompue avant remplacement
 - **Revue UTC** : `2026-10-14T18:51:55Z`
 - **Verdict du périmètre restauration/backup-metadata** : **APPROVED**
 - **Déploiement source `9277ac4d`** : **NOT_DEPLOYED / non certifié par ce rapport**

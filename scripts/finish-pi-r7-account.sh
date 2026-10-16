@@ -2,7 +2,6 @@
 # Complete only the documented r7 partial install; never creates the account.
 set -euo pipefail
 
-readonly TARGET_HOST="admin@192.168.1.42"
 readonly EXPECTED_SOURCE_COMMIT="126da0af167ee62588d92d90297f2dfc51962676"
 readonly EXPECTED_BINARY_SHA="9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6"
 readonly EXPECTED_HELPER_SHA="d508cfdf964c5d68497f426413226cbca4d70abdca807dbb16cc058bad0521df"
@@ -39,6 +38,11 @@ done
 [[ "$explicit_go" == true && -f "$archive" && -f "$integration_gate" && -n "$ssh_control" ]] || { usage; exit 2; }
 [[ "$archive" = /* && "$integration_gate" = /* && "$ssh_control" = /* ]] || { echo "All paths must be absolute." >&2; exit 2; }
 [[ "$expected_archive_sha" =~ ^[[:xdigit:]]{64}$ ]] || { echo "Invalid archive SHA-256." >&2; exit 2; }
+: "${CHILLCENTER_TARGET_HOST:?set the explicit SSH target user@host}" "${CHILLCENTER_NAS_SOURCE:?set the explicit CIFS NAS source}"
+[[ "$CHILLCENTER_TARGET_HOST" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "Invalid CHILLCENTER_TARGET_HOST." >&2; exit 2; }
+[[ "$CHILLCENTER_NAS_SOURCE" =~ ^//[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || { echo "Invalid CHILLCENTER_NAS_SOURCE." >&2; exit 2; }
+readonly TARGET_HOST="$CHILLCENTER_TARGET_HOST"
+readonly NAS_SOURCE="$CHILLCENTER_NAS_SOURCE"
 actual_archive_sha=$(shasum -a 256 "$archive" | awk '{print $1}')
 test "$actual_archive_sha" = "$expected_archive_sha"
 test "$(shasum -a 256 "$SCRIPT_DIR/helpers/validate-ssh-control.py" | awk '{print $1}')" = "$EXPECTED_HELPER_SHA"
@@ -61,10 +65,11 @@ ssh_options=(
 )
 remote_stage="/tmp/chillcenter-first-install-$actual_archive_sha"
 
-ssh "${ssh_options[@]}" "$TARGET_HOST" "bash -s -- '$remote_stage' '$actual_archive_sha'" <<'REMOTE_FINISH'
+ssh "${ssh_options[@]}" "$TARGET_HOST" "bash -s -- '$remote_stage' '$actual_archive_sha' '$NAS_SOURCE'" <<'REMOTE_FINISH'
 set -euo pipefail
 stage=$1
 expected_archive_sha=$2
+nas_source=$3
 test "$(sha256sum "$stage/archive.tar.gz" | awk '{print $1}')" = "$expected_archive_sha"
 root="$stage"/unpacked/chillcenter-server-0.1.0-aarch64-unknown-linux-gnu
 test -d "$root"
@@ -105,12 +110,13 @@ test "$(sha256sum "$root/usr/lib/chillcenter/chill-server" | awk '{print $1}')" 
 grep -Fq '"source_commit": "126da0af167ee62588d92d90297f2dfc51962676"' "$root/usr/share/doc/chillcenter/build-manifest.json"
 grep -Fq '"binary_sha256": "9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6"' "$root/usr/share/doc/chillcenter/build-manifest.json"
 
-sudo -n bash -s -- "$root" <<'SUDO_FINISH'
+sudo -n bash -s -- "$root" "$nas_source" <<'SUDO_FINISH'
 set -euo pipefail
 root=$1
+nas_source=$2
 validate_nas_mount() {
   findmnt -rn -T /srv/volumes/video -o TARGET,SOURCE,FSTYPE,OPTIONS |
-    awk -v target='/srv/volumes/video' -v source='//192.168.1.92/Video' '
+    awk -v target='/srv/volumes/video' -v source="$nas_source" '
       $1 == target && $2 == source && $3 == "cifs" {
         matching_records++
         count = split($4, options, ",")

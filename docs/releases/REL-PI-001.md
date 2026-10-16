@@ -8,15 +8,15 @@ ArtefactR7immuable remis dans `artifacts/linux/chillcenter-server-126da0a-pi64-r
 
 - Produit/source revue : `126da0af167ee62588d92d90297f2dfc51962676`, carrier local `16cf62c8602319e7cd645161310dab1ba5a9c7ad` ; version0.1.0. Code/test/sécurité dans COMPLETION-FINAL-126da0a ; source255 testsPASS, bundleMac déjà livré.
 - G-04 : approuvé avec réserves. Demande explicite de l'utilisateur : « Passe à l’installation de Chill Center sur le Pi et aux tests avec le NAS. »
-- Cible vérifiée : admin@192.168.1.42, Raspberry Pi3 B+Rev1.3, Debian13.7 ARM64, RAM905MiB, glibc2.41, réseau Wi-Fi wlan0. Horloge synchronisée, Europe/Dublin. Sudo non interactif disponible.
+- Cible vérifiée : admin@chillcenter.local, Raspberry Pi3 B+Rev1.3, Debian13.7 ARM64, RAM905MiB, glibc2.41, réseau Wi-Fi wlan0. Horloge synchronisée, Europe/Dublin. Sudo non interactif disponible.
 - Service/configuration/données Chill Center absents avant installation ; ne pas remplacer un éventuel état apparu depuis sans nouvel inventaire.
 - Déploiement : seule une version Linux ARM64 identifiable, sans pile Tauri/libmpv/transcodeur. Compte système non privilégié, données locales, HTTPS bindLAN explicite et montage NAS laissé intact. Pas de découverte cloud/expositionInternet.
 
 ## Pré-vérification réelle
 
-Connexion SSH directe réussie après le refus d'agent historique ; aucune authentification contournée. CIFS automount : `/srv/volumes/video`, source `//192.168.1.92/Video`, ro/nosuid/nodev/noexec. Permissions0750, uid999/gid984 (`marvin-admin`), fichiers0640. Lecture admin échoue, lecture sudo réussit. Choix utilisateur demandé pour permettre au compte Chill Center de lire sans root ; aucun groupe/remontage modifié jusque-là.149fichiers vidéo /513753167933octets à profondeur2 ; ce n'est pas le nombre final du scan récursif. Services Cockpit/SSH/rpcbind préexistants préservés ; le port Chill Center sera vérifié libre avant choix.
+Connexion SSH directe réussie après le refus d'agent historique ; aucune authentification contournée. CIFS automount : `/srv/volumes/video`, source `//nas.local/Video`, ro/nosuid/nodev/noexec. Permissions0750, uid999/gid984 (`marvin-admin`), fichiers0640. Lecture admin échoue, lecture sudo réussit. Choix utilisateur demandé pour permettre au compte Chill Center de lire sans root ; aucun groupe/remontage modifié jusque-là.149fichiers vidéo /513753167933octets à profondeur2 ; ce n'est pas le nombre final du scan récursif. Services Cockpit/SSH/rpcbind préexistants préservés ; le port Chill Center sera vérifié libre avant choix.
 
-Choix reçu : « Oui, utiliser ce groupe existant » à la question explicitant le possible accès à d'autres fichiers de ce groupe. L'utilisateur autorise le nouveau compte `chillcenter` à rejoindre `marvin-admin` (gid984), pas à modifier le montage, changer les autres comptes, lire/copier les identifiants NAS ou tourner enroot. Le bind prévu est192.168.1.42:8443, libre lors de l'inventaire. Cette configuration d'installation exacte fera partie des gates du livrable Linux.
+Choix reçu : « Oui, utiliser ce groupe existant » à la question explicitant le possible accès à d'autres fichiers de ce groupe. L'utilisateur autorise le nouveau compte `chillcenter` à rejoindre `marvin-admin` (gid984), pas à modifier le montage, changer les autres comptes, lire/copier les identifiants NAS ou tourner enroot. Le bind prévu estchillcenter.local:8443, libre lors de l'inventaire. Cette configuration d'installation exacte fera partie des gates du livrable Linux.
 
 ## Artefact et gates
 
@@ -48,11 +48,11 @@ R4 ajoute `--ssh-control`; r4/r5 BLOCKED pour tokensOpenSSH/parentdu socket, r6 
 
 ```sh
 ssh -MNf -o StrictHostKeyChecking=yes -o ControlPersist=2h \
-  -S /private/tmp/chillcenter-ssh.UAjtlb/control admin@192.168.1.42
+  -S /private/tmp/chillcenter-ssh.UAjtlb/control admin@chillcenter.local
 ```
 
 Reprise effectivementexécutée : r6binaryELF/ldd et usageexit1 confirmés surPi, arrêt avantprivilèges [BUG0041](../debug/BUG-0041-pi-help-smoke-exit.md). R7corrige contratCLIexact, créecompte997:983+984 puistestNAScwd/home/adminfail ; mêmefindde/cwd/exit0 confirme [BUG0042](../debug/BUG-0042-pi-nas-check-cwd.md). Complémentr7gated vérifiecompteexact+absentspaths et5fichiersidentiques àarchive avantcopie/enable, exit0. Auto-restartensuite9fois, cwd/contreprotectionworkspace [BUG0043](../debug/BUG-0043-systemd-workspace-cwd.md) : stop/disableonlyChill par déployeur, préserveaccount/bin/config/state ; nouvelleinstance `/root/pi_restoration_verifier` APPROVED_RESTORATION. OverlaygatedWorkingDirectory=/usr/lib/chillcenter ajoutéroot0644sansreplacevendor/core ; enable/start exit0, après6s serviceactive/MainPID3016/NRestarts0/cwdséparé. Aucun service tiers/montage supprimé/redémarré.
 
-Première vérificationrootRO11:07UTC : active/NRestarts0 maintenus, certificatpublicSAN192.168.1.42, notBefore14oct2026 11:01:41GMT/notAfter14avr2028 11:06:41GMT, empreinteSPKI SHA256 `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`. Cléprivée jamaislue. Ces métadonnées ne remplacent pas le GETHTTPS/client et la vérificationindépendante. Le contrôlegateverdictlexicalLOW ethelperexterne sont mitigés par inspectionexacte verdict/hashsavantsactions ; les étatsratés/précédentsgatesconservés, aucune erreur masquée enPASS.
+Première vérificationrootRO11:07UTC : active/NRestarts0 maintenus, certificatpublicSANchillcenter.local, notBefore14oct2026 11:01:41GMT/notAfter14avr2028 11:06:41GMT, empreinteSPKI SHA256 `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`. Cléprivée jamaislue. Ces métadonnées ne remplacent pas le GETHTTPS/client et la vérificationindépendante. Le contrôlegateverdictlexicalLOW ethelperexterne sont mitigés par inspectionexacte verdict/hashsavantsactions ; les étatsratés/précédentsgatesconservés, aucune erreur masquée enPASS.
 
 Harnais Rust headless contrôlé dans `scripts/pi-probe` : buildoffline/lockedPASS, refus sans consentementPASS ; aucun test NAS/vidéo exécuté. ProfilQAuniquement, TLSépinglé auSPKIcertificatpublicSSH, vidéo HTTPS sans stockage client, septvitesses/pistes/seek/heartbeat/reprise seconddevice/refus bail libéré. Exiger vrais échantillons720p/1080p, deux puis trois flux30min et métriques, pas extrapoler les trois premiers items ni la compilation. Voir README du harnais pour limites et nettoyage des profils de test uniquement.

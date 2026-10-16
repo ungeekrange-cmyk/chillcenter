@@ -17,7 +17,7 @@ Chill Center est prévu pour le réseau local du foyer, sans authentification. T
 À la première connexion, un client doit présenter l'adresse et l'empreinte SPKI du certificat au propriétaire, puis enregistrer l'identité du serveur. Le certificat est renouvelé annuellement et reste valide 18 mois. N'utilisez jamais `curl -k`, `--insecure`, ni une désactivation globale de TLS. Pour un client en ligne de commande, fournissez le certificat public approuvé :
 
 ```sh
-BASE='https://192.168.1.42:8443/api/2026-10-14'
+BASE='https://chillcenter.local:8443/api/2026-10-14'
 curl --fail-with-body --cacert ./chill-center-public.pem "$BASE/server"
 ```
 
@@ -108,7 +108,7 @@ import json
 import ssl
 import urllib.request
 
-base = "https://192.168.1.42:8443/api/2026-10-14"
+base = "https://chillcenter.local:8443/api/2026-10-14"
 profile = "11111111-1111-4111-8111-111111111111"
 media = "22222222-2222-4222-8222-222222222222"
 device = "33333333-3333-4333-8333-333333333333"

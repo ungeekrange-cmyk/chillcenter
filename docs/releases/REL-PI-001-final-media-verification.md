@@ -15,7 +15,7 @@
 | Serveur / bibliothèque | API v1 0.1.0, racine `/srv/volumes/video`, révision 0 | PASS |
 | Persistance catalogue | comptage SQLite sous l’UID de service, sans titre lu : `media = 2496` | PASS |
 | Données et clé TLS | état `0700`, SQLite `0600`, clé privée seulement inspectée par métadonnée `0600` (jamais lue) | PASS |
-| NAS | CIFS `//192.168.1.92/Video`, `ro,nosuid,nodev,noexec` | PASS |
+| NAS | CIFS `//nas.local/Video`, `ro,nosuid,nodev,noexec` | PASS |
 | Transcodage serveur | aucun processus encodeur observé | PASS |
 
 ## Revue des preuves de lecture

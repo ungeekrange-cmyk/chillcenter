@@ -1,0 +1,26 @@
+name: Signaler un bug
+description: Un problème reproductible dans Chill Center, avec des données anonymisées.
+title: '[Bug] '
+body:
+  - type: markdown
+    attributes:
+      value: 'Ne joignez aucun mot de passe, jeton, certificat, adresse réelle, base utilisateur ni configuration privée. Pour une vulnérabilité, consultez SECURITY.md et utilisez un canal privé.'
+  - type: input
+    id: version
+    attributes:
+      label: Version ou commit
+      description: Version du client et du serveur concernés, sans adresse réseau.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Plateforme
+      placeholder: macOS Apple Silicon / Linux ARM64 / navigateur et version
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction et résultat
+      description: Étapes minimales, résultat attendu et observé. Utilisez des noms et chemins fictifs.
+    validations:
+      required: true

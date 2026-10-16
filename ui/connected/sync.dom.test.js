@@ -15,7 +15,7 @@ test('manual connection and certificate approval start a detached warm-cache che
   let loaded=0,checked=0;const control={};
   const sandbox={state:{theme:'dark',token:'token'},render(){},run:async()=>({profile_id:'A'}),loadPage:async()=>loaded++,syncCatalog:()=>{checked++;return new Promise(()=>{});},$:()=>control};
   vm.createContext(sandbox);
-  if(mode==='connect'){vm.runInContext(source.slice(source.indexOf('async function connect('),source.indexOf('\nasync function selectProfile')),sandbox);await vm.runInContext('connect("192.168.1.42")',sandbox);}
+  if(mode==='connect'){vm.runInContext(source.slice(source.indexOf('async function connect('),source.indexOf('\nasync function selectProfile')),sandbox);await vm.runInContext('connect("chillcenter.local")',sandbox);}
   else{vm.runInContext(source.split('\n').find(line=>line.startsWith('$("approve-trust").onclick=')),sandbox);await control.onclick();}
   assert.equal(loaded,1);assert.equal(checked,1,'Synchronization starts without awaiting network completion');
  }

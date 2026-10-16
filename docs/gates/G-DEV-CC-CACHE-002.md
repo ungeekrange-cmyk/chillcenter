@@ -1,6 +1,6 @@
 # G-DEV-CC-CACHE-002 — Tampon configurable local
 
-2026-10-14 ; statut APPROVED_SCOPED pour remiseMac624f244, pas pour capacitéPi3flux/all133AC. ModeDEV_FAST, source exacte624f2447b5c0ede6b4a053ea3fa7b82db85c0121, basec58da7e614b54890e0ef0207f4679d9b02cfca0e. Intégrateur/root ; cibleMacAppleSilicon personnelle, serveurPi192.168.1.42:8443 inchangé126da0a/R7+overlay. Aucun main/pushcloud/expositionInternet/migrationNAS.
+2026-10-14 ; statut APPROVED_SCOPED pour remiseMac624f244, pas pour capacitéPi3flux/all133AC. ModeDEV_FAST, source exacte624f2447b5c0ede6b4a053ea3fa7b82db85c0121, basec58da7e614b54890e0ef0207f4679d9b02cfca0e. Intégrateur/root ; cibleMacAppleSilicon personnelle, serveurPichillcenter.local:8443 inchangé126da0a/R7+overlay. Aucun main/pushcloud/expositionInternet/migrationNAS.
 
 Autorité : utilisateur « vise plutôt1minute d'avance.et30secondes deback » puis « metuneoptiondeconfigurationdutamponenMiodansleclient » ; demandes de changement explicites, anciennes quatre étapes déjà validées. Pas d'approbation utilisateur d'une mesure de performance inventée. Contrat complémentaire [ADR0010](../architecture/decisions/ADR-0010-client-playback-cache.md), budget§10remplacé/provesclientRSSSTALERSS, pasarchitectureTLS/moteur/baux remplacée.
 

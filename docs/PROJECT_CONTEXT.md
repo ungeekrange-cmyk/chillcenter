@@ -1,5 +1,11 @@
 # Contexte du projet
 
+## Préparation du dépôt GitHub public — non publié
+
+Nettoyage lisible/commenté des modules filtres et ambiances, invariants de synchronisation documentés ; README, licence, contribution, sécurité et formulaire de bug préparés. La priorité demandée est le dépôt GitHub, pas un nouveau site applicatif ; Pages reste facultatif et manuel. Les exemples ne ciblent plus une installation du foyer, les outils exigent leurs adresses à l’exécution, port `8443` conservé. Les adresses des comptes rendus ont été anonymisées sans réécrire l’historique. Les anciens hashes et gates restent historiques, à revalider avant réutilisation.
+
+[Préparer le dépôt](publication/GITHUB-REPOSITORY.md), [option Pages](publication/GITHUB-PAGES.md), [défauts de préparation](debug/BUG-0077-household-addresses-in-public-source.md). Audit local des commits et objets Git : aucun secret réel identifié, alertes TMDB classées fixtures de tests indépendamment. Les anciens commits contiennent encore des informations du foyer : aucun accord de visibilité publique du dépôt complet, aucun push, réécriture d’historique ou déploiement. Pi, NAS, bundles figés et autre chantier web inchangés.
+
 ## Correctif Mac0.5.1 — fond du bandeau événementiel
 
 16octobre2026 : [BUG0074](debug/BUG-0074-event-header-opaque-background.md), [release](releases/REL-V0.5.1.md). Source375ec6b, tag localv0.5.1, bundle `artifacts/macos/Chill Center-v0.5.1.app`, version0.5.1/build6/SHA815c2a0c76e70c533fa909fcd6fc9d23fe72e8eb0ca4cd1b5e978ff783e35799. Une seule règle CSS produit : fond de la barre supérieure transparent pour Noël/Halloween, clair/sombre, image déjà pleine hauteur. RED/GREEN sur interface connectée synthétique/recherche visible et fond normal conservé hors événement ; packaging/signature/dépendances PASS, lancéPID36612 à10:27:13UTC. Pas de nouveau test lecteur ni revue indépendante revendiquée. Tag et bundle0.5 préservés, Pi/API/web inchangés. Test visuel natif humain à faire.
@@ -75,7 +81,7 @@ Nouvelle demande UI : sidebar et recherche Cinéfolio, administration basse/serv
 
 G-01/02/03 et G-04 sont approuvés. L'utilisateur a accepté la remise logicielle avec réserves, puis autorisé explicitement l'installation sur le Pi et les tests NAS ; il a aussi approuvé le compte système dans le groupe existant marvin-admin984 après avertissement. Ne pas relancer discovery ou ajouter de l'authentification, un serveur Mac, du cloud ou du transcodage.
 
-Chill Center est désormais installé et actif sur **192.168.1.42:8443**, Pi3B+Rev1.3/Debian13.7 ARM64/905MiB/Wi-Fi. Source fonctionnelle126da0a, binaire13MiB9a17ffe…36a6 ; archive immuable R7 et overlay WorkingDirectory corrigent le démarrage, compte997:983+984/nologin, configurationroot0640 et données0700. NAS //192.168.1.92/Video monté RO sur /srv/volumes/video, inchangé. SSH/Cockpit préservés. L'accès SSH se fait par le master privé /private/tmp/chillcenter-ssh.UAjtlb/control établi par l'utilisateur ; pas de clé ou mot de passe à copier, ne pas contourner un échec d'agent.
+Chill Center est désormais installé et actif sur **chillcenter.local:8443**, Pi3B+Rev1.3/Debian13.7 ARM64/905MiB/Wi-Fi. Source fonctionnelle126da0a, binaire13MiB9a17ffe…36a6 ; archive immuable R7 et overlay WorkingDirectory corrigent le démarrage, compte997:983+984/nologin, configurationroot0640 et données0700. NAS //nas.local/Video monté RO sur /srv/volumes/video, inchangé. SSH/Cockpit préservés. L'accès SSH se fait par le master privé /private/tmp/chillcenter-ssh.UAjtlb/control établi par l'utilisateur ; pas de clé ou mot de passe à copier, ne pas contourner un échec d'agent.
 
 Revues indépendantes code/test/sécurité des scripts et overlay APPROVED, vérification post-installation distincte APPROVED_SCOPED (TLS strict, identité, confinement, service stable, repos≈11MiB, pas d'encodeur). [REL-PI-001](releases/REL-PI-001.md) lie chaque hash, étape, rollback sûr et bug0040–0044 ; la première installation a nécessité des corrections opérateur, pas de changement du CoreRust. Garder les rapports/versions antérieurs, pas de reset/suppression de NAS.
 
@@ -103,7 +109,7 @@ Serveur Linux uniquement, matériel de référence Raspberry Pi 3 B (éventuelle
 
 ## État des capacités
 
-Lecture des sources et archive Git vérifiées ; documentation primaire consultée le 2026-10-13. Accès GitHub initial par connecteur : 404, puis CLI autorisée : succès, dépôt vide à l'intake. Implémentation sur branches isolées `codex/`, source Cinéfolio préservée. Lot actuel : 124 tests, revues indépendantes code/test/sécurité r3 approuvées pour son SHA, vraie webview/HTTPS loopback et paquet de développement arm64 vérifiés ; détails dans INTERFACE-EVIDENCE. Aucun push distant, accès NAS ou déploiement Pi effectué. Pi déclaré non prêt, IP prévue `192.168.1.42` et montage `/srv/volumes/video` : exemples configurables, jamais des constantes imposées.
+Lecture des sources et archive Git vérifiées ; documentation primaire consultée le 2026-10-13. Accès GitHub initial par connecteur : 404, puis CLI autorisée : succès, dépôt vide à l'intake. Implémentation sur branches isolées `codex/`, source Cinéfolio préservée. Lot actuel : 124 tests, revues indépendantes code/test/sécurité r3 approuvées pour son SHA, vraie webview/HTTPS loopback et paquet de développement arm64 vérifiés ; détails dans INTERFACE-EVIDENCE. Aucun push distant, accès NAS ou déploiement Pi effectué. Pi déclaré non prêt, IP prévue `chillcenter.local` et montage `/srv/volumes/video` : exemples configurables, jamais des constantes imposées.
 
 Correction UI utilisateur du 2026-10-13 (capture de la barre Cinéfolio) : scan réservé à Administration. Implémenté dans `ui/connected` ; le bouton Actualiser du catalogue ne fait aucun scan. Aucun nouvel examen de périmètre nécessaire.
 

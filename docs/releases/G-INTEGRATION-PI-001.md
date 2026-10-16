@@ -11,7 +11,7 @@ Superseded by r3 following BUG-0040 and independent SEC-PI-002 correction. No se
 - Archive SHA256: `67645c79a1544cb9c00ff2408c6f89df12699b9f299fe749e6944aaa54739c2a`.
 - Binary SHA256: `9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6`.
 - Installer SHA256: `ef3bbfcb8e1762af3262b9f0c9136572512f2bb7b2d574f2bc7897217ed70a82`.
-- Target: `admin@192.168.1.42`, Debian13.7 ARM64 Pi3B+, glibc2.41. NAS `/srv/volumes/video`, CIFS `//192.168.1.92/Video`, RO, supplementary group984 explicitly approved by user.
+- Target: `admin@chillcenter.local`, Debian13.7 ARM64 Pi3B+, glibc2.41. NAS `/srv/volumes/video`, CIFS `//nas.local/Video`, RO, supplementary group984 explicitly approved by user.
 
 Evidence: reviewers reproduced hashes/source equivalence, archive18 members unique root/no links/traversal/special files/secrets, package config/unit/lock exact, ELF64 PIE AArch64 glibc2.28. Integration reviewer ran4 packaging tests PASS; both bash syntax PASS; independent SSH preflight confirmed account/unit/files absent,8443free, NASmountRO, group984 and runtime tools present.
 

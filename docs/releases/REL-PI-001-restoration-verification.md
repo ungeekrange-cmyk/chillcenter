@@ -1,6 +1,6 @@
 # Independent restoration verification — Chill Center Pi
 
-- **Environment:** household Raspberry Pi 3 B+ (`192.168.1.42`), Debian 13
+- **Environment:** household Raspberry Pi 3 B+ (`chillcenter.local`), Debian 13
 - **Release / artifact:** R7, source `126da0af167ee62588d92d90297f2dfc51962676`; ARM64 binary SHA-256 `9a17ffe55e3d4128b9d483d170f5d2ede71382cef42d8637917c8f31e63b36a6`
 - **Verifier instance:** `/root/pi_restoration_verifier` (independent restoration verifier; not builder, deployer, or prior reviewer)
 - **Checked at UTC:** 2026-10-14T10:58:58Z, with a second stability sample immediately afterwards
@@ -18,7 +18,7 @@
 | Service account | non-login account with approved NAS group only | `uid=997`, primary `gid=983`, supplementary `gid=984 (marvin-admin)`, shell `/usr/sbin/nologin` | PASS |
 | Local state protection | state is private to service account | `/var/lib/chillcenter` is `chillcenter:chillcenter`, mode `0700` | PASS |
 | Configuration protection | configuration is readable by server group, not public | `/etc/chillcenter/server.json` is `root:chillcenter`, mode `0640` | PASS |
-| NAS mount | original NAS remains a read-only CIFS mount | `//192.168.1.92/Video`, `cifs`, including `ro,nosuid,nodev,noexec` | PASS |
+| NAS mount | original NAS remains a read-only CIFS mount | `//nas.local/Video`, `cifs`, including `ro,nosuid,nodev,noexec` | PASS |
 | Existing services | SSH and Cockpit remain available | `ssh.service=active`; `cockpit.socket=active` | PASS |
 
 ## Scope and follow-up

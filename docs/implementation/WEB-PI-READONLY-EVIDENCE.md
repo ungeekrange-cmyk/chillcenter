@@ -1,6 +1,6 @@
 # Preuve — essai en lecture seule du client web sur le Pi
 
-Date : 14 octobre 2026 (≈21 h 45 locale). Branche `codex/web-pwa`. Cible : Pi `192.168.1.42:8443`, serveur **inchangé** (aucun déploiement, aucun scan, aucune écriture persistante). Demande explicite de l'utilisateur ; une opération parallèle de l'utilisateur sur le serveur a été signalée pendant l'essai (aucune interruption observée).
+Date : 14 octobre 2026 (≈21 h 45 locale). Branche `codex/web-pwa`. Cible : Pi `chillcenter.local:8443`, serveur **inchangé** (aucun déploiement, aucun scan, aucune écriture persistante). Demande explicite de l'utilisateur ; une opération parallèle de l'utilisateur sur le serveur a été signalée pendant l'essai (aucune interruption observée).
 
 ## Ce qui a été fait
 

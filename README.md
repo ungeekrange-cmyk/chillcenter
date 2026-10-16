@@ -31,7 +31,7 @@ cargo run --locked -p chill-server -- --config /chemin/vers/config.json
 cargo run --locked -p chillcenter-desktop
 ```
 
-Adapter la configuration à votre environnement. Le programme n’impose ni adresse de serveur ni chemin NAS. Par défaut, le serveur écoute uniquement sur loopback ; l’écoute LAN se configure explicitement. La cible serveur du produit reste Linux.
+Adapter la configuration à votre environnement et la conserver hors Git (par exemple `server.local.json`, ignoré). Le programme n’impose ni adresse de serveur ni chemin NAS. Par défaut, le serveur écoute uniquement sur loopback, port `8443` ; l’écoute LAN se configure explicitement. La cible serveur du produit reste Linux.
 
 Construire une application Mac dans une destination **neuve**, sans écraser un bundle livré :
 
@@ -47,13 +47,14 @@ L’API HTTPS est versionnée : `/api/2026-10-14`. Les ajouts compatibles resten
 
 - [Contrat OpenAPI](docs/api/openapi-2026-10-14.json)
 - [Contribuer](CONTRIBUTING.md) et [sécurité](SECURITY.md)
+- [Préparer le dépôt GitHub public](docs/publication/GITHUB-REPOSITORY.md)
 - [Préparer et vérifier GitHub Pages](docs/publication/GITHUB-PAGES.md)
 
 Architecture, décisions et journaux de travail restent dans `docs/`. Ils ne sont **pas** inclus automatiquement dans le site public. Rendre le dépôt et son historique publics exige un audit distinct.
 
-## Site de présentation
+## GitHub Pages (optionnel)
 
-Site statique sans dépendance ni suivi, sans accès au serveur du foyer :
+Le livrable principal est le dépôt GitHub et son README. Un site de présentation statique peut être hébergé ultérieurement sur GitHub Pages, sans dépendance ni suivi applicatif et sans accès au serveur du foyer :
 
 ```sh
 node --test scripts/test-public-site.mjs

@@ -4,7 +4,7 @@
 - **Source immuable** : `f3fdac503c4b845571981c1fd1bc00bd0b13ec21`, arbre `f88ae4d26c07f72cb150b948e58fa0c08b904bfa`.
 - **Carrier documentaire** : `0d0d9517fe7f336325ad3cb4d49807ac143de1ab` ; le diff depuis la source ajoute uniquement les cinq rapports/gates de cette livraison.
 - **Artefact déployé** : `d77e9e1669287a6d10f279c17f33d7f776efe7e194acc01cd542bcea33511c90`.
-- **Cible** : `admin@192.168.1.42`, unité `chillcenter`.
+- **Cible** : `admin@chillcenter.local`, unité `chillcenter`.
 - **Déployeur** : `/root/deploy_server_only_f3fdac5`.
 - **Vérificateur indépendant** : `/root/verify_server_only_f3fdac5` (distinct du constructeur, des reviewers et du déployeur).
 - **Observé** : `2026-10-15T22:18:01Z` à `2026-10-15T22:20:30Z`.
@@ -17,7 +17,7 @@
 | Archive publiée | archive liée à `f3fdac5`, sans web | SHA archive `35310c439f54fc0b45cbd4342c9154ec7302d8a86148fc7a4975252beb2ccd6f` ; manifeste source/target/glibc/API conforme ; binaire embarqué `d77e…`; opérateur embarqué `62081…`; `included_web_assets=false` | PASS |
 | Service / version | actif, nouveau binaire, aucun restart | PID `3117`, `active`, `NRestarts=0`; installé **et** `/proc/3117/exe` = `d77e9e…e194`; démarrage `2026-10-15T22:14:29Z` | PASS |
 | Stabilité après smoke | même PID/hash, aucun restart | à `22:20:30Z` : PID `3117`, `NRestarts=0`, process `d77e9e…e194` | PASS |
-| Listeners | serveur sur `8080/8443` | `192.168.1.42:8080` et `:8443`, tous deux détenus par PID `3117` | PASS |
+| Listeners | serveur sur `8080/8443` | `chillcenter.local:8080` et `:8443`, tous deux détenus par PID `3117` | PASS |
 | Web interdit en écriture | empreinte complète inchangée | contenu + inode/mode/uid/gid/taille/mtime : `07868e61cd75dc36d5bf62eefd258b7409b6ed264bde726cdcf626d45b57fe2b` | PASS |
 | Configuration / unité | empreintes inchangées | config `d6167cb1624b6d5888473af76d5470102afedce25b2e29ddbaa032730cd0ceb1`; unité `76f7d34921ff344e344ba2bffa51263248ec6118dad9e15a39ef7078877d72e2` | PASS |
 | TLS / NAS | SPKI et montage inchangés | SPKI `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`; montage `1935a8db9901c414782eaa05dc5ee81f6ec092a499755034e90e562f8dee0d37` | PASS |

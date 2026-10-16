@@ -47,6 +47,6 @@ R1 CHANGES_REQUESTED conservées ; EOF et capacité reproduits RED puis GREEN. R
 
 ## Remise et retour
 
-Remise locale uniquement au dépôt ChillCenter, contrôle préalable clean + HEAD84b08b attendu, fast-forward codex/player-streaming ; aucune réinitialisation, pushGitHub ou opération NAS/Cinéfolio. Serveurs loopback temporaires arrêtés après vérification. IP192.168.1.42 et racine/srv/volumes/video restent des exemples configurables ; Pi déclaré non prêt.
+Remise locale uniquement au dépôt ChillCenter, contrôle préalable clean + HEAD84b08b attendu, fast-forward codex/player-streaming ; aucune réinitialisation, pushGitHub ou opération NAS/Cinéfolio. Serveurs loopback temporaires arrêtés après vérification. IPchillcenter.local et racine/srv/volumes/video restent des exemples configurables ; Pi déclaré non prêt.
 
 Rollback réversible : nouvelle branche à84b08b, utiliser ancien serveur/client ; arrêter lecteurs incompatibles. Baux volatils oubliés au restart, schéma compatible sans migration destructive. Sauvegarder données/réglages avant futures migrations. Les LOW précédents UISEC002/SRVSEC005 ne sont pas corrigés par ce lot.

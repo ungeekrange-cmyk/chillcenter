@@ -3,8 +3,8 @@
 # in a dedicated nftables table loaded by a dedicated systemd unit. Mechanically derived from pi-redirect-443-operator.sh (reviewed in
 # review 5): same structure, other names and ports. Requires the service to already listen on <LAN_IP>:8080 (http_listen). DO NOT EXECUTE before an independent reviewer has approved THESE EXACT BYTES (sha256 of
 # this file) and the user has given explicit go for the Pi. Runs as root on the Pi, fed through stdin:
-#   install: ssh <strict batch control connection> 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s --'          < pi-redirect-80-operator.sh
-#   remove : ssh <strict batch control connection> 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 /bin/bash -s -- --remove' < pi-redirect-80-operator.sh
+#   install: ssh <strict batch control connection> 'sudo -n env CHILLCENTER_LAN_IP=192.168.50.9 /bin/bash -s --'          < pi-redirect-80-operator.sh
+#   remove : ssh <strict batch control connection> 'sudo -n env CHILLCENTER_LAN_IP=192.168.50.9 /bin/bash -s -- --remove' < pi-redirect-80-operator.sh
 #   check  : ssh <strict batch control connection> 'sudo -n /bin/bash -s -- --self-test'                                  < pi-redirect-80-operator.sh
 #
 # Authority (nothing else): create /etc/chillcenter/redirect-80.nft and /etc/systemd/system/chillcenter-redirect-http.service,
@@ -34,17 +34,17 @@ render_unit() {
 must_fail() { if "$@" >/dev/null 2>&1; then echo "SELF-TEST FAILED (accepted what must be refused): $*" >&2; exit 1; fi; }
 
 if [[ "${1:-}" == '--self-test' ]]; then
-  valid_lan_ip 192.168.1.42; valid_lan_ip 10.0.0.1; valid_lan_ip 172.16.254.3
-  for bad in '' '127.0.0.1' '0.0.0.0' '0.1.2.3' '224.0.0.1' '255.255.255.255' '192.168.1.256' '192.168.1' '192.168.1.42.1' 'a.b.c.d' '192.168.01.42' '192.168.1.42 ' ' 192.168.1.42' '192.168.1.42;' '192.168.1.42
+  valid_lan_ip 192.168.50.9; valid_lan_ip 10.0.0.1; valid_lan_ip 172.16.254.3
+  for bad in '' '127.0.0.1' '0.0.0.0' '0.1.2.3' '224.0.0.1' '255.255.255.255' '192.168.50.256' '192.168.50' '192.168.50.9.1' 'a.b.c.d' '192.168.050.9' '192.168.50.9 ' ' 192.168.50.9' '192.168.50.9;' '192.168.50.9
 1.1.1.1'; do must_fail valid_lan_ip "$bad"; done
-  [[ "$(render_rules 192.168.1.42)" == $'table ip chillcenter_http {\n\tchain prerouting {\n\t\ttype nat hook prerouting priority dstnat; policy accept;\n\t\tip daddr 192.168.1.42 tcp dport 80 redirect to :8080\n\t}\n}' ]]
+  [[ "$(render_rules 192.168.50.9)" == $'table ip chillcenter_http {\n\tchain prerouting {\n\t\ttype nat hook prerouting priority dstnat; policy accept;\n\t\tip daddr 192.168.50.9 tcp dport 80 redirect to :8080\n\t}\n}' ]]
   [[ "$(render_unit)" == *$'ExecStart=/usr/sbin/nft -f /etc/chillcenter/redirect-80.nft\nExecStop=/usr/sbin/nft delete table ip chillcenter_http\n'* ]]
   printf 'redirect_self_test=PASS\n'; exit 0
 fi
 
 mode='install'
 case "${1:-}" in '') ;; --remove) mode='remove' ;; *) echo 'unknown argument' >&2; exit 2 ;; esac
-: "${CHILLCENTER_LAN_IP:?set the Pi LAN address, e.g. 192.168.1.42}"
+: "${CHILLCENTER_LAN_IP:?set the Pi LAN address explicitly}"
 valid_lan_ip "$CHILLCENTER_LAN_IP" || { echo 'invalid LAN address' >&2; exit 2; }
 lan_ip="$CHILLCENTER_LAN_IP"
 [[ "$(id -u)" == '0' ]] || { echo 'must run as root' >&2; exit 2; }

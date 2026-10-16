@@ -2,7 +2,9 @@
 
 Harnais distinct des binaires livrés. Il utilise le transport épinglé et le lecteur libmpv/FFmpeg du produit. Il ne lit jamais un chemin NAS depuis le Mac. Installation réelle et scan2496 confirmés14octobre2026 ; [preuves](../../docs/releases/REL-PI-001-media-evidence.md) des troisformats, deuxHD30min et troisfluxDune/720p : capacitétriple **nonvalidée**, Dune2progression<80%. La propriétébuffered_ahead_seconds est une approximation mpv, pas une garantie60s. L'optionlocaleMio du client graphique n'est pas chargée par ce harnais ; il emploie PlayerOptions::default128/64Mio.
 
-Avant usage : installation vérifiée sur192.168.1.42:8443, certificat public récupéré via SSH approuvé puis empreinte SHA256 SPKI vérifiée. Ne jamais extraire la clé privée. `--authorized-pi-tests` et l'empreinte exacte sont obligatoires. Aucun `-k` ni remplacement de la confiance de l'application.
+Avant usage : installation vérifiée surchillcenter.local:8443, certificat public récupéré via SSH approuvé puis empreinte SHA256 SPKI vérifiée. Ne jamais extraire la clé privée. `--authorized-pi-tests` et l'empreinte exacte sont obligatoires. Aucun `-k` ni remplacement de la confiance de l'application.
+
+Définir `CHILLCENTER_SERVER_URL` explicitement dans l’environnement local avant le lancement (URL HTTPS de votre serveur, port configurable). Le harnais n’a aucune adresse cible par défaut. Ne pas commiter cette variable ou une configuration réelle ; le nom ci-dessus est anonymisé. Le contrôle d’empreinte reste obligatoire.
 
 ```sh
 cargo build --locked --offline --manifest-path scripts/pi-probe/Cargo.toml

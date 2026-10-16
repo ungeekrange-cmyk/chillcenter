@@ -3,8 +3,8 @@
 # service, verify, and put the previous configuration back automatically if anything fails. DO NOT EXECUTE before an independent
 # reviewer has approved THESE EXACT BYTES (sha256 of this file) and the user has given explicit go for the Pi. Runs as root on the
 # Pi, fed through stdin:
-#   enable : ssh <master> 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 NEW_BINARY_SHA256=… CONFIG_SHA256=… CHILLCENTER_TLS_CERT_PATH=… /bin/bash -s --' < pi-enable-http-operator.sh
-#   revert : ssh <master> 'sudo -n env CHILLCENTER_LAN_IP=192.168.1.42 CONFIG_SHA256=<hash of the file now> PREVIOUS_CONFIG_SHA256=<hash of the ORIGINAL file> /bin/bash -s -- --revert' < pi-enable-http-operator.sh
+#   enable : ssh <master> 'sudo -n env CHILLCENTER_LAN_IP=192.168.50.9 NEW_BINARY_SHA256=… CONFIG_SHA256=… CHILLCENTER_TLS_CERT_PATH=… /bin/bash -s --' < pi-enable-http-operator.sh
+#   revert : ssh <master> 'sudo -n env CHILLCENTER_LAN_IP=192.168.50.9 CONFIG_SHA256=<hash of the file now> PREVIOUS_CONFIG_SHA256=<hash of the ORIGINAL file> /bin/bash -s -- --revert' < pi-enable-http-operator.sh
 #   check  : ssh <master> 'sudo -n /bin/bash -s -- --self-test' < pi-enable-http-operator.sh
 #
 # Authority (nothing else): edit /etc/chillcenter/server.json (one added line), keep a private copy of the previous file in
@@ -29,18 +29,18 @@ render_config() {  # $1 = file, $2 = ip ; prints the new content
 must_fail() { if "$@" >/dev/null 2>&1; then echo "SELF-TEST FAILED (accepted what must be refused): $*" >&2; exit 1; fi; }
 
 if [[ "${1:-}" == '--self-test' ]]; then
-  valid_lan_ip 192.168.1.42; valid_lan_ip 10.0.0.1
-  for bad in '' '127.0.0.1' '0.0.0.0' '224.0.0.1' '192.168.1.256' '192.168.1' 'a.b.c.d' '192.168.01.42' '192.168.1.42;' $'192.168.1.42\n1.1.1.1'; do must_fail valid_lan_ip "$bad"; done
-  t="$(mktemp)"; printf '{\n  "listen": "192.168.1.42:8443",\n  "data_dir": "/var/lib/chillcenter/data"\n}\n' > "$t"
-  [[ "$(render_config "$t" 192.168.1.42)" == $'{\n  "http_listen": "192.168.1.42:8080",\n  "listen": "192.168.1.42:8443",\n  "data_dir": "/var/lib/chillcenter/data"\n}' ]]
-  printf '"listen": "x"\n' > "$t"; must_fail render_config "$t" 192.168.1.42
-  printf '{"listen": "x"}\n' > "$t"; must_fail render_config "$t" 192.168.1.42
+  valid_lan_ip 192.168.50.9; valid_lan_ip 10.0.0.1
+  for bad in '' '127.0.0.1' '0.0.0.0' '224.0.0.1' '192.168.50.256' '192.168.50' 'a.b.c.d' '192.168.050.9' '192.168.50.9;' $'192.168.50.9\n1.1.1.1'; do must_fail valid_lan_ip "$bad"; done
+  t="$(mktemp)"; printf '{\n  "listen": "192.168.50.9:8443",\n  "data_dir": "/var/lib/chillcenter/data"\n}\n' > "$t"
+  [[ "$(render_config "$t" 192.168.50.9)" == $'{\n  "http_listen": "192.168.50.9:8080",\n  "listen": "192.168.50.9:8443",\n  "data_dir": "/var/lib/chillcenter/data"\n}' ]]
+  printf '"listen": "x"\n' > "$t"; must_fail render_config "$t" 192.168.50.9
+  printf '{"listen": "x"}\n' > "$t"; must_fail render_config "$t" 192.168.50.9
   rm -f "$t"; printf 'enable_http_self_test=PASS\n'; exit 0
 fi
 
 mode='enable'
 case "${1:-}" in '') ;; --revert) mode='revert' ;; *) echo 'unknown argument' >&2; exit 2 ;; esac
-: "${CHILLCENTER_LAN_IP:?set the Pi LAN address, e.g. 192.168.1.42}" "${CONFIG_SHA256:?sha256 of the configuration file expected right now}"
+: "${CHILLCENTER_LAN_IP:?set the Pi LAN address explicitly}" "${CONFIG_SHA256:?sha256 of the configuration file expected right now}"
 valid_lan_ip "$CHILLCENTER_LAN_IP" || { echo 'invalid LAN address' >&2; exit 2; }
 [[ "$CONFIG_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo 'invalid CONFIG_SHA256' >&2; exit 2; }
 lan_ip="$CHILLCENTER_LAN_IP"

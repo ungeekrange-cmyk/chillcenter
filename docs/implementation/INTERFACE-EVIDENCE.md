@@ -6,7 +6,7 @@
 
 Application Tauri Mac Apple Silicon → commandes allowlist Rust → HTTPS/SPKI → serveur Rust/SQLite. Adresse DNS/IP/port editable ; première confiance ou refus, dernier profil par serveur et par Mac ; CRUD/CAS/confirmation des profils, administration zéro profil ; dossier Linux editable et scan **exclusivement dans Administration**, catalogue paginé avec filtres/grille/liste, notes/vu manuels isolés et préférences individuelles. « Actualiser » recharge seulement le catalogue, pas le NAS. Cette séparation confirme la demande ajoutée par l'utilisateur le 2026-10-13, illustrée par la barre Cinéfolio.
 
-Racine `/srv/volumes/video` et IP `192.168.1.42` restent des exemples, pas des constantes. Aucun accès NAS côté Mac ; aucune vidéo/fichier source Cinéfolio modifié. Les chemins absolus médias restent au serveur ; le catalogue expose des chemins relatifs. Les profils n'offrent pas de confidentialité/authentification, conformément au réseau familial approuvé.
+Racine `/srv/volumes/video` et IP `chillcenter.local` restent des exemples, pas des constantes. Aucun accès NAS côté Mac ; aucune vidéo/fichier source Cinéfolio modifié. Les chemins absolus médias restent au serveur ; le catalogue expose des chemins relatifs. Les profils n'offrent pas de confidentialité/authentification, conformément au réseau familial approuvé.
 
 ## Exécution locale
 

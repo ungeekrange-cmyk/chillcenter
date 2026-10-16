@@ -2,7 +2,7 @@
 
 Canonical verdict: APPROVED_SCOPED
 
-15octobre2026, DEV_FAST ciblé familial. Le coordinateur `/root` consigne le verdict du vérificateur distinct `/root/catalog_pi_verifier`, sans s'auto-approuver. Sources : client7a0f480, serveur `cfc87dec21aee553d72f5016f6c9dfe600a6e1f3`. Pi192.168.1.42:8443, binaire installé/exécuté `f85375ad4ac33fd0993151b547e8ca731d0ffa49441beb8b85756f0433f842cd`, déployé02:31:51UTC, PID6808/NRestarts0. [Rapport indépendant](../releases/REL-CATALOG-CACHE-001-pi-verification.md), addendum final02:33–02:34UTC.
+15octobre2026, DEV_FAST ciblé familial. Le coordinateur `/root` consigne le verdict du vérificateur distinct `/root/catalog_pi_verifier`, sans s'auto-approuver. Sources : client7a0f480, serveur `cfc87dec21aee553d72f5016f6c9dfe600a6e1f3`. Pichillcenter.local:8443, binaire installé/exécuté `f85375ad4ac33fd0993151b547e8ca731d0ffa49441beb8b85756f0433f842cd`, déployé02:31:51UTC, PID6808/NRestarts0. [Rapport indépendant](../releases/REL-CATALOG-CACHE-001-pi-verification.md), addendum final02:33–02:34UTC.
 
 Premier verdict CHANGES_REQUESTED sur073/11cb conservé :422sagas/snapshot et backup avec auxiliaires non déclarés. CorrectifCFC code/sécurité APPROVED, testlazyRED/GREEN+serveurmirror+clippy ciblés PASS, script opérateur fd162… revu APPROVED, sauvegarde offline exacte et rollback073 sans écrasement. Quarantaine réversible9270… approuvée et exécutée pour les deux fichiers initiaux ; aucune suppression de données.
 

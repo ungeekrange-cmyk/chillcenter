@@ -30,7 +30,7 @@ Ce verdict approuve la release DEV effectivement active et le parcours de connex
 | Unité fournisseur | inchangée | `76f7d34921ff344e344ba2bffa51263248ec6118dad9e15a39ef7078877d72e2` | PASS |
 | Drop-in cwd | inchangé | `6bad2f8c529705b246253bb8d593d7ae58155b2eb23bacac7afb404e01a5bf1a` | PASS |
 | Configuration | inchangée selon comparaison V4 | hash courant `ea24f2f0a98db2b0a080ab70113a2fbe8eb1006a20e2eae646d115448f3783f9`, fichier régulier `0640` root:GID983, mtime antérieur au déploiement | PASS |
-| TLS public | SAN/IP et pin conservés | SAN `192.168.1.42`; SPKI `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df` | PASS |
+| TLS public | SAN/IP et pin conservés | SAN `chillcenter.local`; SPKI `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df` | PASS |
 | NAS | CIFS lecture seule | superposition observée : autofs `rw`, ligne CIFS `ro,nosuid,nodev,noexec` | PASS borné |
 | Journaux | pas de nouveau signal warning+ | compteur systemd journal depuis déploiement : `0` | PASS |
 

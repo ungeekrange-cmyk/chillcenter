@@ -34,7 +34,7 @@ Toutes les requêtes ont utilisé le certificat public du Pi avec vérification 
 
 | Contrôle | Observé | Résultat |
 | :--- | :--- | :--- |
-| Identité TLS | SPKI `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`, SAN IP `192.168.1.42`, validité `2026-10-14`–`2028-04-14` | PASS |
+| Identité TLS | SPKI `3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df`, SAN IP `chillcenter.local`, validité `2026-10-14`–`2028-04-14` | PASS |
 | API datée | `GET /api/2026-10-14/server` → `200`, version `2026-10-14`, version déclarée supportée | PASS |
 | Alias compatible | `GET /api/v1/server` → `200`, `api_version=1` | PASS |
 | OpenAPI servi | SHA-256 `01423e6a3ace79453671a59cb67674db2c575b27bd295a1c2a83965906d9acae` | PASS |
@@ -55,7 +55,7 @@ Commande critique :
 
 ```text
 chillcenter-cache-connection-probe \
-  https://192.168.1.42:8443 \
+  https://chillcenter.local:8443 \
   /private/tmp/chillcenter-cache-pi-check.FZw8IO \
   3018fb4d28af3899ae9a0261c89ef92d7ebfe508ecbd613b38f6dd6d7d4740df
 ```
