@@ -8,6 +8,7 @@ pub mod legacy;
 pub mod metadata_edit;
 pub mod provider_updates;
 pub mod reassociation;
+pub mod recommendations;
 pub mod snapshot;
 pub mod store;
 pub mod types;

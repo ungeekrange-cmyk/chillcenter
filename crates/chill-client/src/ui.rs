@@ -826,6 +826,41 @@ impl UiClient {
             cache: self.settings.playback_cache,
         })
     }
+    /// Advice captures a coherent, grouped local snapshot only on explicit submit.
+    /// Never download the library or call a provider while holding the UI lock.
+    pub fn recommendation_catalog(
+        &mut self,
+        query: &chill_domain::recommendations::RecommendationQuery,
+    ) -> Result<Vec<chill_domain::recommendations::Recommendation>, UiError> {
+        self.open_catalog_cache()?;
+        let cache = self
+            .catalog_cache
+            .as_ref()
+            .ok_or_else(|| invalid("Catalogue local absent."))?;
+        if cache.document.is_none() {
+            return Err(invalid(
+                "Synchronisez le catalogue avant de demander conseil.",
+            ));
+        }
+        let items = cache
+            .store
+            .recommendation_catalog(&cache.profile, query)
+            .map_err(|_| invalid("Conseil local indisponible."))?;
+        let items: Vec<_> = items
+            .into_iter()
+            .filter(|i| {
+                !i.media.genres.is_empty()
+                    || !i.media.directors.is_empty()
+                    || !i.media.cast.is_empty()
+            })
+            .collect();
+        if items.len() > 3000 {
+            return Err(invalid(
+                "Le conseil accepte 3 000 films ou séries par demande. Précisez les filtres.",
+            ));
+        }
+        Ok(items)
+    }
     /// Call from the host setup thread, never from an async task (blocking HTTP runtime).
     pub fn open(directory: &Path) -> Result<Self, UiError> {
         use std::os::unix::fs::PermissionsExt;
@@ -1391,7 +1426,7 @@ impl UiClient {
         let result = match command {
             RelatedMedia { media_id } => {
                 valid_id(media_id)?;
-                json!({"items":cache.store.related(&cache.profile,media_id).map_err(|_|invalid("Suggestions locales indisponibles."))?})
+                json!({"items":cache.store.recommendations(&cache.profile,media_id).map_err(|_|invalid("Suggestions locales indisponibles."))?})
             }
             Catalog {
                 offset,
@@ -2520,6 +2555,9 @@ mod tests {
         film_a.media.title = "Film A".into();
         film_a.media.category = "film".into();
         film_a.media.series = None;
+        film_a.media.season = None;
+        film_a.media.episode = None;
+        film_a.media.cast = vec!["Shared Actor".into()];
         film_a.media.year = Some(1900);
         film_a.media.genres.clear();
         let mut film_b = film_a.clone();
@@ -2597,7 +2635,18 @@ mod tests {
             .unwrap();
         assert_eq!(
             related["items"][0]["id"], b,
-            "same saga must work entirely from the mirror"
+            "shared cast recommendations must work entirely from the mirror"
+        );
+        let advice = client.recommendation_catalog(&Default::default()).unwrap();
+        assert_eq!(
+            advice.len(),
+            3,
+            "advice reads the same grouped mirror without HTTP"
+        );
+        assert!(
+            advice
+                .iter()
+                .all(|item| item.media.episode.is_none() && item.media.season.is_none())
         );
         client.invalidate_catalog();
         client.ensure_catalog(false).unwrap();

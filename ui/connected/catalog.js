@@ -6,7 +6,7 @@ let collectionFilter="",collectionDetails=new Map(),collectionLoaded=0,collectio
 let collectionEpoch=0,collectionContext="",detailGeneration=0,detailId=null;
 function detailCurrent(generation,context,id){return generation===detailGeneration&&context===collectionScope()&&detailId===id&&$("media-dialog").open;}
 function invalidateDetail(){detailGeneration++;detailId=null;detailView=null;}
-$("media-dialog").addEventListener("close",()=>{if(!$("media-dialog").open){retireArtwork($("detail-poster"));invalidateDetail();}});
+$("media-dialog").addEventListener("close",()=>{if(!$("media-dialog").open){retireArtwork($("detail-poster"));retireRecommendationRail($("related-media"));invalidateDetail();}});
 $("media-dialog").addEventListener("click",event=>{if(event.target!==$("media-dialog"))return;const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.target.close();});
 function collectionScope(){return state.server_id+":"+state.profile_id;}
 function collectionCurrent(epoch,context){return epoch===collectionEpoch&&context===collectionScope();}
@@ -59,7 +59,7 @@ async function openMedia(id){
   // Even a same-media refresh may remove its poster. Retire the old observer
   // identity before awaiting metadata, not just the current image child/token.
   retireArtwork($("detail-poster"));$("detail-poster").replaceChildren();
-  if(!same){$("detail-title").textContent="Chargement…";$("detail-overview").textContent="";$("detail-metadata").textContent="";$("detail-availability").textContent="";$("detail-path")?.replaceChildren();$("detail-tmdb")?.replaceChildren();$("detail-stars")?.replaceChildren();$("related-media")?.replaceChildren();$("detail-play").disabled=true;$("detail-addlist").disabled=true;if($("detail-artwork"))$("detail-artwork").disabled=true;$("metadata-form").hidden=true;}
+  if(!same){$("detail-title").textContent="Chargement…";$("detail-overview").textContent="";$("detail-metadata").textContent="";$("detail-availability").textContent="";$("detail-path")?.replaceChildren();$("detail-tmdb")?.replaceChildren();$("detail-stars")?.replaceChildren();retireRecommendationRail($("related-media"));$("related-media")?.replaceChildren();$("detail-play").disabled=true;$("detail-addlist").disabled=true;if($("detail-artwork"))$("detail-artwork").disabled=true;$("metadata-form").hidden=true;}
   if(!$("media-dialog").open)$("media-dialog").showModal();
   const result=await libraryRead({action:"media_detail",media_id:id},current);if(!result||!current())return;detailView=result;
   const m=result.media;$("detail-title").textContent=m.title;$("detail-overview").textContent=m.overview||"Informations à compléter";
@@ -88,10 +88,50 @@ function renderTmdbPanel(target,media,scope,current,reload){
  target.append(query,button("Rechercher TMDB",async()=>{const generation=++searchGeneration;results.replaceChildren(node("p","Recherche…","muted"));const response=await libraryRead({action:"tmdb_candidates",media_id:media.id,query:query.value},()=>current()&&generation===searchGeneration);if(!response)return;results.replaceChildren();for(const candidate of response.candidates||[]){if(scope!=="media"&&candidate.kind!=="tv")continue;results.append(button([candidate.title,candidate.year].filter(Boolean).join(" · "),()=>mutate(candidate)));}if(!results.childElementCount)results.append(node("p","Aucune correspondance.","muted"));}),button("Actualiser les informations TMDB",()=>mutate(null,"refresh")),results);
  if(scope!=="media")target.append(button("Importer une image",async()=>{const fresh=await libraryRead({action:"media_detail",media_id:media.id},current);if(fresh)await importArtwork({kind:scope,media_id:media.id,expected_revision:fresh.revision},async()=>{await syncAfterMutation();if(current())await reload();});}));
 }
+// A recommendation is a title-level object. Rust groups shows and sends
+// one representative artwork id; the client still rejects raw episodes so an
+// older server response can never leak them back into either recommendation UI.
+function recommendationItems(items){
+ const seen=new Set(),valid=[];
+ for(const item of Array.isArray(items)?items:[]){
+  if(!item||typeof item.id!=="string"||!item.id)continue;
+  const series=item.category==="serie";
+  if(series&&(!item.series_key||item.season!=null||item.episode!=null))continue;
+  if(!series&&(item.season!=null||item.episode!=null))continue;
+  const key=series?"series:"+item.series_key:"media:"+item.id;
+  if(seen.has(key))continue;seen.add(key);valid.push(item);
+ }
+ return valid;
+}
+function recommendationScroll(viewport,direction){
+ const reduce=globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+ viewport.scrollBy({left:direction*viewport.clientWidth,behavior:reduce?"auto":"smooth"});
+}
+function catalogRecommendationRail(items,{label="",beforeOpen}={}){
+ const recommended=recommendationItems(items),context=collectionScope();if(!recommended.length)return null;
+ const rail=node("section",undefined,"recommendation-rail-wrap"),head=node("div",undefined,"recommendation-controls"),viewport=node("div",undefined,"recommendation-rail");
+ viewport.tabIndex=0;viewport.setAttribute("role","region");viewport.setAttribute("aria-label",label||"Sélection de vidéos recommandées");
+ if(label)rail.append(node("h3",label));
+ const previous=button("←",()=>recommendationScroll(viewport,-1),"secondary"),next=button("→",()=>recommendationScroll(viewport,1),"secondary");
+ previous.setAttribute("aria-label","Voir les recommandations précédentes");next.setAttribute("aria-label","Voir les recommandations suivantes");head.append(previous,next);rail.append(head,viewport);
+ for(const item of recommended){
+  const displayTitle=typeof item.title==="string"&&item.title?item.title:"Sans titre",card=document.createElement("button"),poster=node("div",displayTitle.slice(0,1).toUpperCase(),"poster recommendation-poster"),title=node("span",displayTitle,"recommendation-title"),reasons=Array.isArray(item.matches)&&item.matches.length?node("span",item.matches.join(" · "),"recommendation-reasons"):null;
+  card.type="button";card.className="recommendation-card";card.append(poster,title,node("span",[({film:"Film",serie:"Série",documentaire:"Documentaire",spectacle:"Spectacle"})[item.category],item.year].filter(Boolean).join(" · "),"recommendation-meta"));if(reasons)card.append(reasons);
+  card.onclick=async()=>{if(!card.isConnected||context!==collectionScope()||beforeOpen&&beforeOpen(item)===false)return;if(item.category==="serie"){if($("media-dialog").open)$("media-dialog").close();await openSeries(item.series_key);}else await openMedia(item.id);};
+  viewport.append(card);if(item.poster)observeArtwork(poster,item.id);
+ }
+ return rail;
+}
+function retireRecommendationRail(target){
+ if(!target)return;
+ for(const poster of target.querySelectorAll?.(".recommendation-poster")||[])retireArtwork(poster);
+}
+window.catalogRecommendationRail=catalogRecommendationRail;
+window.catalogRetireRecommendationRail=retireRecommendationRail;
 async function loadRelatedMedia(mediaId){
-  let section=$("related-media");if(!section){section=document.createElement("section");section.id="related-media";$("media-dialog").append(section);}section.replaceChildren(node("h3","Vidéos en relation"),node("div",undefined,"actions"));section.hidden=true;
+  let section=$("related-media");if(!section){section=document.createElement("section");section.id="related-media";$("media-dialog").append(section);}retireRecommendationRail(section);section.replaceChildren(node("h3","Vidéos en relation"));section.hidden=true;
   const generation=detailGeneration,context=collectionScope();const result=await libraryRead(relatedMediaCommand(mediaId),()=>detailCurrent(generation,context,mediaId));if(!result||!detailView||detailView.media.id!==mediaId)return;
-  for(const item of (result.items||[]).slice(0,12))section.lastChild.append(button(item.title,()=>openMedia(item.id)));section.hidden=!section.lastChild.childElementCount;
+  const rail=catalogRecommendationRail(result.items||[],{beforeOpen:()=>detailCurrent(generation,context,mediaId)});if(rail)section.append(rail);section.hidden=!rail;
 }
 $("detail-edit").onclick=()=>{
   if(!detailView)return;const m=detailView.media;

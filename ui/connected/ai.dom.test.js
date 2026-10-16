@@ -47,6 +47,7 @@ test('advice combines watched and categories before context cap and never applie
  await h.byId('advice-form').onsubmit({preventDefault(){}});
  const start=calls.find(c=>c.action==='start');
  assert.equal(start.mode,'search');assert.equal(start.watched,false);assert.equal(start.available,true);
+ assert.equal(start.recommendations,true);
  assert.deepEqual(Array.from(start.categories),['film','serie']);assert.equal(start.category,null);
  assert.equal(h.find('Confirmer cette proposition'),undefined);
  h.byId('advice-category').value='film';h.byId('advice-category').onchange();

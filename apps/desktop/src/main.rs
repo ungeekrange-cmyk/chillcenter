@@ -211,14 +211,38 @@ async fn ai_command(
         .await
         .map_err(|_| ai_bridge::error("Une opération est déjà en cours.", "CLIENT_BUSY"))?;
     let client = bridge.client.clone();
+    let advice_query = match &command {
+        C::Start {
+            recommendations: true,
+            category,
+            categories,
+            watched,
+            available,
+            ..
+        } => Some(chill_domain::recommendations::RecommendationQuery {
+            categories: category
+                .clone()
+                .map(|c| vec![c])
+                .or_else(|| categories.clone())
+                .unwrap_or_else(|| vec!["film".into(), "serie".into()]),
+            watched: *watched,
+            available: *available,
+        }),
+        _ => None,
+    };
     let current = tauri::async_runtime::spawn_blocking(move || {
-        client
+        let mut client = client
             .lock()
-            .map_err(|_| ai_bridge::error("Client indisponible.", "AI_BUSY"))?
-            .playback_connection()
+            .map_err(|_| ai_bridge::error("Client indisponible.", "AI_BUSY"))?;
+        let connection = client.playback_connection()?;
+        let recommendations = advice_query
+            .map(|q| client.recommendation_catalog(&q))
+            .transpose()?;
+        Ok::<_, UiError>((connection, recommendations))
     })
     .await
     .map_err(|_| ai_bridge::error("Client interrompu.", "CLIENT_INTERRUPTED"))??;
+    let (current, recommendations) = current;
     let _permit = permit; // Register/check the job before a profile switch can invalidate it.
     match command {
         C::Start {
@@ -229,6 +253,7 @@ async fn ai_command(
             categories,
             watched,
             available,
+            recommendations: _,
         } => bridge.assistant.start(
             current,
             request,
@@ -240,6 +265,7 @@ async fn ai_command(
                 watched,
                 available,
             },
+            recommendations,
         ),
         C::Status { id } => ai_bridge::view(&bridge.assistant.get(&id, &current)?),
         C::Cancel { id } => ai_bridge::cancel(&bridge.assistant.get(&id, &current)?),

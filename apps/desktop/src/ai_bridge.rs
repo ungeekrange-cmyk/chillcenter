@@ -39,6 +39,8 @@ pub enum AiCommand {
         categories: Option<Vec<String>>,
         watched: Option<bool>,
         available: Option<bool>,
+        #[serde(default)]
+        recommendations: bool,
     },
     Status {
         id: String,
@@ -112,6 +114,7 @@ pub struct Job {
     stage: &'static str,
     mode: String,
     context: Option<AiContext>,
+    recommendations: Option<Vec<chill_domain::recommendations::Recommendation>>,
     plan: Option<assistant::Plan>,
     result: Option<Value>,
     message: Option<String>,
@@ -249,6 +252,7 @@ impl AiHost {
         request: String,
         mode: String,
         filters: AiFilters,
+        recommendations: Option<Vec<chill_domain::recommendations::Recommendation>>,
     ) -> Result<Value, UiError> {
         let AiFilters {
             category,
@@ -257,7 +261,8 @@ impl AiHost {
             watched,
             available,
         } = filters;
-        if !["organize", "search"].contains(&mode.as_str())
+        if recommendations.is_some() && mode != "search"
+            || !["organize", "search"].contains(&mode.as_str())
             || request.trim().is_empty()
             || request.len() > 8000
             || category
@@ -292,6 +297,7 @@ impl AiHost {
             stage: "working",
             mode: mode.clone(),
             context: None,
+            recommendations,
             plan: None,
             result: None,
             message: None,
@@ -357,16 +363,27 @@ where
 }
 pub fn view(job: &Arc<Mutex<Job>>) -> Result<Value, UiError> {
     let j = job.lock().map_err(|_| lock_error())?;
-    let items: Vec<Value> = j
-        .context
-        .as_ref()
-        .map(|c| {
-            c.media
-                .iter()
-                .map(|m| json!({"id":m.id,"title":m.title}))
-                .collect()
-        })
-        .unwrap_or_default();
+    let items: Vec<Value> = if let Some(items) = &j.recommendations {
+        let matched: std::collections::HashSet<_> = j
+            .plan
+            .as_ref()
+            .map(|p| p.matched_ids.iter().collect())
+            .unwrap_or_default();
+        items.iter().filter(|item|matched.contains(&item.media.id)).map(|item|{
+            let m=&item.media;
+            json!({"id":m.id,"title":m.title,"category":m.category,"year":m.year,"genres":m.genres,"cast":m.cast,"directors":m.directors,"poster":m.poster.is_some(),"series_key":item.series_key,"matches":item.matches})
+        }).collect()
+    } else {
+        j.context
+            .as_ref()
+            .map(|c| {
+                c.media
+                    .iter()
+                    .map(|m| json!({"id":m.id,"title":m.title}))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     Ok(
         json!({"id":j.id,"stage":j.stage,"mode":j.mode,"plan":j.plan,"items":items,"result":j.result,"message":j.message}),
     )
@@ -451,11 +468,12 @@ async fn propose(
         watched,
         available,
     } = filters;
-    let (transport, profile) = {
+    let (transport, profile, recommendations) = {
         let j = job.lock().map_err(|_| lock_error())?;
         (
             j.connection.transport.clone(),
             j.connection.profile_id.clone(),
+            j.recommendations.clone(),
         )
     };
     let mut query = Vec::new();
@@ -474,15 +492,44 @@ async fn propose(
     if let Some(value) = available {
         query.push(("available", value.to_string()));
     }
-    let context: AiContext = transport
-        .json_with_options(
-            HttpMethod::GET,
-            &format!("/api/v1/profiles/{profile}/ai/context"),
-            None::<&Value>,
-            &query,
-            &[],
-        )
-        .await?;
+    let (context, catalogue) = if let Some(items) = recommendations {
+        let catalogue: Vec<_> = items.into_iter().map(|item| item.media).collect();
+        let context = AiContext {
+            profile_id: profile.clone(),
+            common_revision: 0,
+            personal_revision: 0,
+            media: catalogue
+                .iter()
+                .map(|m| chill_domain::ai::AiMedia {
+                    id: m.id.clone(),
+                    title: m.title.clone(),
+                    category: m.category.clone(),
+                    year: m.year,
+                    series: m.series.clone(),
+                    season: None,
+                    episode: None,
+                    genres: m.genres.clone(),
+                    saga: m.saga.clone(),
+                    watched: m.watched,
+                    rating: m.rating,
+                    revision: 0,
+                })
+                .collect(),
+        };
+        (context, catalogue)
+    } else {
+        let context: AiContext = transport
+            .json_with_options(
+                HttpMethod::GET,
+                &format!("/api/v1/profiles/{profile}/ai/context"),
+                None::<&Value>,
+                &query,
+                &[],
+            )
+            .await?;
+        let catalogue = catalogue(&context);
+        (context, catalogue)
+    };
     if context.profile_id != profile
         || context.media.len() > 3000
         || serde_json::to_vec(&context)
@@ -496,13 +543,12 @@ async fn propose(
         ));
     }
     let workspace = Workspace::new()?;
-    let catalogue = catalogue(&context);
     let request = if mode == "search" {
         format!("Recherche seulement, aucun changement autorisé. {request}")
     } else {
         request
     };
-    let plan = assistant::propose(
+    let mut plan = assistant::propose(
         &settings.provider_settings(),
         &catalogue,
         &request,
@@ -511,6 +557,21 @@ async fn propose(
     .await
     .map_err(|message| error(&message, "AI_PROVIDER_FAILED"))?;
     validate_plan(&plan, &catalogue, &mode)?;
+    if job
+        .lock()
+        .map_err(|_| lock_error())?
+        .recommendations
+        .is_some()
+    {
+        let mut seen = std::collections::HashSet::new();
+        plan.matched_ids.retain(|id| seen.insert(id.clone()));
+        if plan.matched_ids.len() > 60 {
+            return Err(error(
+                "Le conseil a proposé trop de résultats (60 maximum). Précisez vos envies.",
+                "AI_PLAN_INVALID",
+            ));
+        }
+    }
     Ok((context, plan))
 }
 fn validate_plan(plan: &assistant::Plan, catalogue: &[Media], mode: &str) -> Result<(), UiError> {
@@ -645,6 +706,7 @@ mod tests {
             stage: "working",
             mode: "organize".into(),
             context: None,
+            recommendations: None,
             plan: None,
             result: None,
             message: None,
@@ -669,6 +731,16 @@ mod tests {
             .validate()
             .is_err()
         );
+        let legacy: AiCommand =
+            serde_json::from_value(json!({"action":"start","request":"fixture","mode":"search"}))
+                .unwrap();
+        assert!(matches!(
+            legacy,
+            AiCommand::Start {
+                recommendations: false,
+                ..
+            }
+        ));
         assert!(
             CliSettings {
                 codex_path: "codex; rm".into(),
@@ -708,6 +780,59 @@ mod tests {
         )
         .unwrap();
         assert!(validate_plan(&plan, &[], "search").is_err());
+    }
+    #[test]
+    fn advice_preview_contains_only_selected_grouped_metadata_without_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = chill_domain::Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let p = store.create_profile("Fixture").unwrap().id;
+        let mut media = chill_catalog::scanner::parse_file(
+            std::path::Path::new("/fixture"),
+            std::path::Path::new("/fixture/PrivateFolder/Show.S01E01.mkv"),
+        );
+        media.category = "serie".into();
+        media.series = Some("Show".into());
+        media.genres = vec!["Drama".into()];
+        media.cast = vec!["Actor".into()];
+        media.directors = vec!["Director".into()];
+        store.snapshot(vec![media]).unwrap();
+        let items = store
+            .recommendation_catalog(&p, &Default::default())
+            .unwrap();
+        let selected = items[0].media.id.clone();
+        let job = test_job();
+        {
+            let mut j = job.lock().unwrap();
+            j.mode = "search".into();
+            j.stage = "preview";
+            j.recommendations = Some(items);
+            j.plan = Some(assistant::Plan {
+                message: String::new(),
+                changes: vec![],
+                matched_ids: vec![selected],
+            });
+        }
+        let result = view(&job).unwrap();
+        assert_eq!(result["items"].as_array().unwrap().len(), 1);
+        assert_eq!(result["items"][0]["title"], "Show");
+        assert!(
+            result["items"][0]["series_key"]
+                .as_str()
+                .unwrap()
+                .starts_with("media:")
+        );
+        assert!(result["items"][0].get("episode").is_none());
+        assert!(result["items"][0].get("path").is_none());
+        assert!(!result.to_string().contains("PrivateFolder"));
+        assert_eq!(result["items"][0]["cast"], json!(["Actor"]));
+        {
+            job.lock().unwrap().plan = None;
+        }
+        assert!(view(&job).unwrap()["items"].as_array().unwrap().is_empty());
+        assert!(
+            apply(job, true).is_err(),
+            "advice can never apply a plan or post to the server"
+        );
     }
     #[test]
     fn cancellation_settles_pending_work_without_a_preview() {

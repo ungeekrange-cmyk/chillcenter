@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR-0020](ADR-0020-local-title-recommendations.md), IMPLEMENTED_DETAIL,16octobre2026 : recommandations fiche/conseil en rails, séries regroupées par identité sans épisodes, correspondances genres/réalisation/distribution calculées dans le miroir ou fournies au CLI sur demande explicite ; API historique et web installé conservés.
+
 [ADR-0019](ADR-0019-explicit-series-selector.md), IMPLEMENTED_DETAIL,2026-10-15 : `selector=key` facultatif pour les nouvelles clés de séries ; titre historique par défaut sans préfixe réservé, aucune modification de l'ancien web. Remplace seulement la sélection implicite de l'ADR-0015-series-season-identity pour préserver l'API existante.
 
 [ADR-0014](ADR-0014-background-catalog-deltas.md), ACCEPTED, 2026-10-15, `/root` : remplace le transfert complet/contrôle synchrone de l’ADR-0013 ; curseurs persistants, deltas et transfert détaché. Revue indépendante APPROVED sur11aa529.
