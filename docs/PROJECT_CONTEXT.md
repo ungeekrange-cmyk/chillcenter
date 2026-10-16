@@ -1,5 +1,11 @@
 # Contexte du projet
 
+## Recommandations — fiches et demande de conseil
+
+16octobre2026 : précision utilisateur « en fait les deux ». Source **fa40e080edae6dd9d36180e00db0969e4252829e**, branche `codex/recommendation-rails`, bundle de test **`artifacts/macos/Chill Center-test-fa40e08.app`**, SHA exécutabledaa2ab80ba2a4814610419e2bfbf8d56330632ce70a56a1839611bfa1a56873a. Rails horizontaux communs, films/séries regroupées sans épisodes, identités opaques conservées ; relations locales sur genres/réalisation/distribution, conseil IA explicite sur contexte local filtré enrichi. Organisation existante et API datée/v1 inchangées, Pi/web/NAS non touchés.
+
+[Preuves/limites/retour arrière](implementation/RECOMMENDATION-RAILS-20261016.md), [ADR0020](architecture/decisions/ADR-0020-local-title-recommendations.md), [revue indépendante APPROVED_SCOPED](reviews/recommendation-rails-fa40e08.md).70domaine/40client/8pontIA/6assistant/44Node et vrai DOM connecté synthétique ciblé PASS, Clippy/API76/signature48dylibs/libmpv2.5 PASS, scan des nouveaux commits sans fuite détectée. Première revue779e299 défavorable corrigée : affiches de conseil retirées lorsque le panneau est masqué, réponses tardives rejetées, sélection conservée au retour. Aucun vrai fournisseur ni lecteur rejoué ; rendu humain Tauri et pertinence d'un conseil réel restent à valider. Anciennes versions et tags préservés, interne0.5.1/build6 inchangé ; choisir le nom de bundle exact plutôt que ce numéro partagé.
+
 ## Transition suivante — correctif local, validation humaine précédente enregistrée
 
 Remise : source **8be19f461712c1260db2b21c3d8aba1cb59c3064**, bundle **`artifacts/macos/Chill Center-test-8be19f4.app`**, SHA exécutabled94fa7adcf95edb4e483ff88bd7d338b1b730b077029097dc84d1be87e819716, interne0.5.1/build6, signature/48dylibs/API2.5 PASS. [Preuves et limites](implementation/NEXT-TRANSITION-20261016.md), [revue indépendante APPROVED_SCOPED](reviews/next-transition-8be19f4.md).32Node/24web et deux contrôles de rendu ciblés PASS, aucun nouveau lecteur réel ou déploiement ; transition Tauri à confirmer humainement. Le « bundle à préparer » ci-dessous conserve le checkpoint pré-compilation.
