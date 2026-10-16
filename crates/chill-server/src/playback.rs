@@ -84,46 +84,57 @@ struct Entry {
     deadline: Instant,
     sequence: u64,
     sample: Option<(Progress, Instant)>,
-    short_tail_contiguous: bool,
+    short_tail_coverage_ms: Option<f64>,
     pending: Option<PendingTransfer>,
 }
 
 /// Short videos must reach their end after continuously covering the final tenth.
 /// This bounded, volatile proof belongs to the validated lease, not the wire DTO
 /// or the persisted real-time credit (which stays in milliseconds, at every speed).
-fn short_tail_continues(entry: &Entry, event: &Progress, now: Instant) -> bool {
+fn short_tail_coverage(entry: &Entry, event: &Progress, now: Instant) -> Option<f64> {
     if event.duration_ms == 0 || event.duration_ms >= 100_000 {
-        return false;
+        return None;
     }
-    if event.position_ms <= chill_domain::final_tenth_start(event.duration_ms) {
-        return true;
+    let boundary = chill_domain::final_tenth_start(event.duration_ms);
+    if event.position_ms <= boundary {
+        return Some(0.0);
     }
-    let Some((last, at)) = &entry.sample else {
-        return false;
-    };
-    if !entry.short_tail_contiguous
-        || last.duration_ms != event.duration_ms
+    let covered = entry.short_tail_coverage_ms?;
+    let (last, at) = entry.sample.as_ref()?;
+    if last.duration_ms != event.duration_ms
         || event.seek
         || last.seek
         || event.position_ms < last.position_ms
     {
-        return false;
+        return None;
     }
     // A stationary pause/buffer/speed change preserves already covered media.
     if event.position_ms == last.position_ms {
-        return true;
+        return Some(covered);
     }
     // Web clients report EOF paused; the final advancing interval still began
     // playing. Other paused/buffering advances must not supply coverage.
     let ended = event.position_ms == event.duration_ms;
-    let elapsed = now.saturating_duration_since(*at).as_millis() as f64;
-    last.playing
+    let elapsed = now.saturating_duration_since(*at).as_secs_f64() * 1000.0;
+    if last.playing
         && !last.buffering
         && !event.buffering
         && (event.playing || ended)
         && last.speed == event.speed
         && elapsed > 0.0
         && (event.position_ms - last.position_ms) as f64 <= elapsed * event.speed + 1000.0
+    {
+        // Position jitter may validate a sample but must never supply watched
+        // coverage. Bound coverage by BOTH real elapsed media-time and position.
+        // Retain fractional milliseconds so tiny clips/speeds do not round away.
+        let before_tail = boundary.saturating_sub(last.position_ms) as f64;
+        Some(
+            (covered + (elapsed * event.speed - before_tail).max(0.0))
+                .min((event.position_ms - boundary) as f64),
+        )
+    } else {
+        None
+    }
 }
 
 fn save_progress(
@@ -221,7 +232,7 @@ impl LeaseBook {
                 deadline: now + LEASE_TIME,
                 sequence: 0,
                 sample: None,
-                short_tail_contiguous: false,
+                short_tail_coverage_ms: None,
                 pending: None,
             },
         );
@@ -322,18 +333,22 @@ impl LeaseBook {
     }
     fn record(&mut self, p: &str, event: Progress, now: Instant) {
         if let Some(e) = self.entries.get_mut(p) {
-            e.short_tail_contiguous = short_tail_continues(e, &event, now);
+            e.short_tail_coverage_ms = short_tail_coverage(e, &event, now);
             e.sequence = event.sequence;
             e.sample = Some((event, now));
         }
     }
 
     fn completed_short_tail(&self, p: &str, event: &Progress, now: Instant) -> bool {
+        let required = event.duration_ms - chill_domain::final_tenth_start(event.duration_ms);
         event.position_ms == event.duration_ms
             && self
                 .entries
                 .get(p)
-                .is_some_and(|e| short_tail_continues(e, event, now))
+                .and_then(|e| short_tail_coverage(e, event, now))
+                // Only floating-point/nanosecond arithmetic noise, not the 1s
+                // sample-position drift allowance, may round the comparison.
+                .is_some_and(|covered| covered + 0.000_001 >= required as f64)
     }
 
     fn offer(
@@ -1352,6 +1367,57 @@ mod tests {
                 t + Duration::from_secs(7)
             };
             assert!(!b.completed_short_tail("p", &end, now), "{defect}");
+        }
+    }
+    #[test]
+    fn short_tail_position_tolerance_never_substitutes_for_elapsed_coverage() {
+        for pieces in [1, 10] {
+            let (mut b, t, request, stream) = prepared();
+            let lease = b.acquire("p".into(), request, stream, t).unwrap();
+            let mut sample = event(&lease, 1, 900, 0);
+            sample.duration_ms = 1_000;
+            b.record("p", sample.clone(), t);
+            for index in 1..=pieces {
+                sample.sequence += 1;
+                sample.position_ms = 900 + index * 100 / pieces;
+                let now = t + Duration::from_millis(index);
+                assert!(
+                    b.validate_progress("p", &sample, now).is_ok(),
+                    "position drift alone may validate a zero-credit sample"
+                );
+                assert!(
+                    !b.completed_short_tail("p", &sample, now),
+                    "1s clip cannot supply 100ms of coverage in {index}ms"
+                );
+                b.record("p", sample.clone(), now);
+            }
+            sample.sequence += 1;
+            assert!(
+                !b.completed_short_tail("p", &sample, t + Duration::from_secs(1)),
+                "waiting stationary at EOF adds no coverage"
+            );
+        }
+    }
+    #[test]
+    fn short_tail_precise_duration_boundaries_and_all_speeds() {
+        for duration in [1, 10, 100, 1_000, 99_999] {
+            for speed in [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0] {
+                let (mut b, t, request, stream) = prepared();
+                let lease = b.acquire("p".into(), request, stream, t).unwrap();
+                let boundary = chill_domain::final_tenth_start(duration);
+                let mut sample = event(&lease, 1, boundary, 0);
+                sample.duration_ms = duration;
+                sample.speed = speed;
+                b.record("p", sample.clone(), t);
+                sample.sequence += 1;
+                sample.position_ms = duration;
+                let now =
+                    t + Duration::from_secs_f64((duration - boundary) as f64 / speed / 1000.0);
+                assert!(
+                    b.completed_short_tail("p", &sample, now),
+                    "duration {duration}, speed {speed}"
+                );
+            }
         }
     }
     #[test]
