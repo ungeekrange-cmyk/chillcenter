@@ -354,7 +354,7 @@ function appendCollectionMember(m,visibleIds,target=$("collection-members")){tar
 async function loadCollectionArtwork(view,kind){
   const preview=$("saga-artwork-preview"),server=state.server_id,profile=state.profile_id;
   if(!preview)return;
-  const label=kind==="playlist"?"liste":"saga";
+  const label=kind==="playlist"?uiText("liste"):"saga";
   preview.replaceChildren(node("span",view.poster?uiText("Chargement de l’affiche…"):uiText("Aucune image de ")+label+uiText(". La couverture est composée des neuf premières vidéos.")));
   if(!view.poster)return;
   const result=await libraryRead(collectionArtworkCommand(kind,view.id),()=>collectionView===view&&server===state.server_id&&profile===state.profile_id);
