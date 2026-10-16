@@ -2544,6 +2544,67 @@ pub fn normalize_address(input: &str) -> Result<String, UiError> {
 }
 #[cfg(test)]
 mod tests {
+    fn publication_fixture(count: usize, overview_bytes: usize) -> super::CatalogPublishTask {
+        use super::*;
+        let server = "00000000-0000-4000-8000-000000000001".to_owned();
+        let profile = "00000000-0000-4000-8000-000000000002".to_owned();
+        let items = (0..count).map(|index| {
+            serde_json::from_value(serde_json::json!({"media":{
+                "id":format!("00000000-0000-4000-8000-{index:012}"),
+                "path":format!("fixture/{index}.mkv"),"title":format!("Fixture {index}"),
+                "category":"film","year":2024,"series":null,"season":null,"episode":null,
+                "genres":["Drama"],"overview":"x".repeat(overview_bytes),"poster":null,
+                "saga":null,"watched":false,"rating":null,"available":true,"added_at":1,"tmdb_id":null
+            },"revision":1})).unwrap()
+        }).collect();
+        CatalogPublishTask {
+            task: CatalogSyncTask {
+                server, profile, base_revision: None, mutation_generation: 0,
+                mutation_guard: Arc::new(AtomicU64::new(0)),
+                publish_gate: Arc::new(std::sync::Mutex::new(())), task: None,
+            },
+            result: CatalogSyncResult(crate::catalog_cache::SyncResult {
+                changed: true, reset: true, revision: "fixture-r1".into(), items,
+                deleted_ids: vec![], document: serde_json::json!({"revision":"fixture-r1",
+                    "sagas":[],"playlists":[],"series_revisions":{},"season_metadata":{}}),
+            }).into(),
+            directory: PathBuf::new(), artwork_gate: Arc::new(tokio::sync::Semaphore::new(1)),
+        }
+    }
+    /// Run this exact ignored test in a fresh process under /usr/bin/time -l.
+    /// The same deterministic fixture and publication path are used on both revisions.
+    #[test]
+    #[ignore = "isolated before/after memory benchmark, not a routine unit test"]
+    fn benchmark_catalog_publication_memory() {
+        let root = tempfile::tempdir().unwrap();
+        let mut task = publication_fixture(10_000, 2_048);
+        task.directory = root.path().to_owned();
+        let epoch = super::Arc::new(super::AtomicU64::new(7));
+        let started = std::time::Instant::now();
+        let (completed, publication) = task.publish_owned(epoch, 7).unwrap();
+        let (document, changed, revision) = publication.unwrap();
+        assert!(changed);
+        assert_eq!(revision, "fixture-r1");
+        assert_eq!(document["revision"], "fixture-r1");
+        let mut cache = crate::catalog_cache::LocalCatalog::open(root.path(), &completed.task.server,
+            &completed.task.profile, completed.artwork_gate.clone()).unwrap();
+        assert_eq!(cache.store.catalog(&completed.task.profile).unwrap().len(), 10_000);
+        println!("client_publication_fixture=10000 overview_bytes=2048 elapsed_ms={} rows=10000 revision=fixture-r1", started.elapsed().as_millis());
+        std::hint::black_box(completed);
+    }
+    #[test]
+    fn owned_publication_preserves_mirror_when_context_or_mutation_is_stale() {
+        for stale_context in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let mut task = publication_fixture(2, 16);
+            task.directory = root.path().to_owned();
+            let epoch = super::Arc::new(super::AtomicU64::new(if stale_context { 2 } else { 1 }));
+            if !stale_context { task.task.mutation_guard.store(1, super::Ordering::Release); }
+            let (_, publication) = task.publish_owned(epoch, 1).unwrap();
+            assert!(publication.is_none());
+            assert!(!root.path().join("catalog-cache").exists());
+        }
+    }
     #[test]
     fn legacy_library_update_does_not_send_the_new_optional_field() {
         assert_eq!(
