@@ -1,5 +1,7 @@
 # Audit RAM/stockage —16octobre2026, lecture seule
 
+Suite explicitement autorisée par l'utilisateur : [optimisations appliquées et mesures avant/après](RESOURCE-OPTIMIZATION-20261016.md), sourcef980355. Le présent audit garde ses observations initiales ; les propositions « non appliquées » ci-dessous décrivent ce checkpoint, pas la livraison ultérieure.
+
 Demande : chercher des optimisations sans modifier le fonctionnement. Sources/paramètres du candidat Configuration, client installé et serveur du foyer. Aucun effacement, VACUUM, modification de rétention ou réduction du tampon effectué. L'audit ne remplace ni les tests correctifs ni une mesure comparative d'une optimisation implémentée.
 
 ## Mesures

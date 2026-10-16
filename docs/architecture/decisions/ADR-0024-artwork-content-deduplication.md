@@ -1,7 +1,7 @@
 # ADR0024 — déduplication physique des affiches du client Mac
 
-- Statut : PROPOSED, détail réversible de l'ADR0013 ; aucune suppression de références ou nouvelle rétention.
-- Auteur/propriétaire : `/root` ; reviewer indépendant : en attente.
+- Statut : ACCEPTED, détail réversible de l'ADR0013 ; aucune suppression de références ou nouvelle rétention.
+- Auteur/propriétaire : `/root` ; reviewer indépendant : `/root/configuration_code_review`, APPROVED sur proposition hash98c8a30c82fea4fa6534d7bae98534d4c060773745d850ec37053355528b65ef ; statut/index ensuite actualisés sans changement sémantique. [Rapport](../../reviews/resource-optimization-f980355.md).
 - Date : 2026-10-16 ; branche `codex/resource-optimizations`, base228c4c6.
 - Supersedes : NONE ; Superseded by : NONE. Exigences F-01/F-14/F-16, US021, NFR ressources.
 
