@@ -101,3 +101,44 @@ resolved. Package integrity and Pi deployment are outside this verdict.
 `BUG0110` must remain `FIXED_IMPLEMENTATION / VERIFIED_SYNTHETIC /
 DEVICE_RETEST_PENDING`, not closed: Safari MP3 support still depends on the
 device's `isTypeSupported` result, with no current MP3 transcoder fallback.
+
+## Annexe paquet / Package appendix
+
+Le paquet figé au commit
+`8b950334a17641aaa1a20e2129ccfe9a449b813a` est **APPROVED_SCOPED** pour
+une installation des seuls fichiers web avec sauvegarde. Archive :
+`chillcenter-web.tar`, SHA256
+`0da5d3962cbccabc966f71f1b9901aa61c4a2ef74508bb82ba1909694a1d7a50`,
+6 628 864 octets, build `95ebee4fbe0a`.
+
+Les 88 membres sont exactement 82 fichiers réguliers et 6 répertoires sous
+`web/`, sans lien, nœud spécial, doublon, chemin absolu ou remontée. Les 81
+entrées de `SHA256SUMS` couvrent exactement tous les fichiers hors manifeste et
+toutes les empreintes passent. L’arborescence hors manifeste est octet pour
+octet identique à `web/dist`; `build.json` confirme `95ebee4fbe0a`. La taille
+reste sous la limite de 16 Mio.
+
+L’opérateur inchangé
+`b0baea0b2a572b65c9a79cd792276143b45092dc95523eb47815b8742c743996`
+passe `bash -n` et `--self-test`. Il vérifie le binaire installé sans le
+remplacer, prépare et contrôle les fichiers dans un répertoire privé, déplace
+l’ancien client dans `/root/chillcenter-rollback`, remplace uniquement
+`/usr/lib/chillcenter/web`, puis contrôle le même PID, les empreintes de la
+configuration/unité, la clé publique TLS et les routes HTTPS/HTTP. Son piège de
+récupération remet l’ancien répertoire en cas d’échec. Il ne redémarre pas le
+service et ne modifie ni binaire, configuration, certificat, NAS ou client Mac.
+
+The frozen package at commit
+`8b950334a17641aaa1a20e2129ccfe9a449b813a` is **APPROVED_SCOPED** for a
+backed-up web-assets-only installation. `chillcenter-web.tar` has SHA256
+`0da5d3962cbccabc966f71f1b9901aa61c4a2ef74508bb82ba1909694a1d7a50`,
+size 6,628,864 bytes, and build `95ebee4fbe0a`.
+
+Its 88 members are exactly 82 regular files and 6 directories below `web/`,
+with no link, special node, duplicate, absolute path, or traversal. The 81-line
+manifest covers every non-manifest file, all hashes validate, and the tree is
+byte-identical to `web/dist` except for `SHA256SUMS`. The unchanged operator
+hash above passes syntax and self-test, keeps a private rollback copy, swaps only
+the static web directory, verifies the live service without changing its PID,
+and proves binary, unit, configuration, TLS public key, NAS, and Mac client are
+untouched.

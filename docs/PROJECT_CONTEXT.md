@@ -1,5 +1,23 @@
 # Contexte du projet
 
+## Correctifs web mobile R2 déployés — 17 octobre 2026
+
+Source **8b95033**, build **95ebee4fbe0a** : recherche/filtres derrière une loupe,
+catalogue immédiat, rail gauche en paysage téléphone, outils série/saison repliés
+après les épisodes. Repli ManagedMediaSource pour iPhone et reprise tactile du
+lecteur préparé, sans nouveau bail, avec respect des pauses serveur.
+**304/304 tests**, trois QA Chromium (interface, desktop, clips AVI/MKV réels
+synthétiques) PASS. Ces tests ne prouvent pas WebKit natif : **DEVICE_RETEST_PENDING**,
+en particulier le MP3 des AVI selon Safari ; aucune nouvelle conversion MP3/AAC.
+Source et archive revues indépendamment. Assets seuls installés à18:07:25UTC
+après sauvegarde privée ; post-vérification indépendante **APPROVED_SCOPED**.
+PID5420 inchangé, zéro redémarrage ; binaire/configuration/unité/certificat/SPKI
+inchangés, aucun accès aux vidéos NAS ni modification du client Mac.
+Sauvegarde, ancien arbre et archive locale conservés ; transfert temporaire supprimé.
+Ouvrir `/?v=95ebee4fbe0a` pour éviter une ancienne page en cache.
+[Livraison FR/EN et preuves](releases/REL-WEB-MOBILE-002.md).
+Les checkpoints ci-dessous sont historiques ; aucun push GitHub.
+
 ## Client web smartphone déployé — 17 octobre 2026
 
 Concept R1 validé puis intégration exclusivement web, source **98ee3e3**,

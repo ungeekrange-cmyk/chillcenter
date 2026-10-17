@@ -17,6 +17,8 @@ does not imply a new bundle or deployment.
 | Next candidate: fixes 82–84 and web parity (no AI) | [Rapport](implementation/WEB-PARITY-20261017.md) | [Report](implementation/WEB-PARITY-20261017.en.md) |
 | Web-assets-only Pi deployment | [Livraison](releases/REL-WEB-PARITY-001-web-deployment.md) | [Delivery](releases/REL-WEB-PARITY-001-web-deployment.en.md) |
 | Smartphone web client delivery | [Livraison mobile](releases/REL-WEB-MOBILE-001.md) | [Mobile delivery](releases/REL-WEB-MOBILE-001.en.md) |
+| Mobile R2 and iPhone playback fixes | [Livraison R2](releases/REL-WEB-MOBILE-002.md) | [R2 delivery](releases/REL-WEB-MOBILE-002.en.md) |
+| Content-first mobile and iPhone playback decision | [ADR0027](architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.md) | [ADR0027](architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.en.md) |
 | Smartphone adapter decision | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.md) | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.en.md) |
 | Contributing | [Contribuer](../CONTRIBUTING.md) | [Contributing](../CONTRIBUTING.en.md) |
 | Security | [Sécurité](../SECURITY.md) | [Security](../SECURITY.en.md) |

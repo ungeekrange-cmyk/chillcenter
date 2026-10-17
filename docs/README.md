@@ -17,6 +17,8 @@ langue. Un changement documentaire n'implique ni nouveau bundle ni déploiement.
 | Candidat suivant : bugs 82–84 et parité web (sans IA) | [Rapport](implementation/WEB-PARITY-20261017.md) | [Report](implementation/WEB-PARITY-20261017.en.md) |
 | Déploiement des seuls fichiers web sur Pi | [Livraison](releases/REL-WEB-PARITY-001-web-deployment.md) | [Delivery](releases/REL-WEB-PARITY-001-web-deployment.en.md) |
 | Client web smartphone, livraison | [Livraison mobile](releases/REL-WEB-MOBILE-001.md) | [Mobile delivery](releases/REL-WEB-MOBILE-001.en.md) |
+| Correctifs mobile R2 et lecture iPhone | [Livraison R2](releases/REL-WEB-MOBILE-002.md) | [R2 delivery](releases/REL-WEB-MOBILE-002.en.md) |
+| Contenu mobile et lecteur iPhone, décision | [ADR0027](architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.md) | [ADR0027](architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.en.md) |
 | Adaptateurs smartphone, décision | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.md) | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.en.md) |
 | Contribution | [Contribuer](../CONTRIBUTING.md) | [Contributing](../CONTRIBUTING.en.md) |
 | Sécurité | [Sécurité](../SECURITY.md) | [Security](../SECURITY.en.md) |
