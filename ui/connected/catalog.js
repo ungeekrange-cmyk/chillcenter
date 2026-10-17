@@ -6,7 +6,7 @@ let catalogProfile=typeof state==="undefined"?null:state.server_id+":"+state.pro
 let collectionFilter="",collectionDetails=new Map(),collectionLoaded=0,collectionCards=new Map(),collectionCardsOrder=[];
 let collectionEpoch=0,collectionContext="",detailGeneration=0,detailId=null;
 function detailCurrent(generation,context,id){return generation===detailGeneration&&context===collectionScope()&&detailId===id&&$("media-dialog").open;}
-function invalidateDetail(){detailGeneration++;detailId=null;detailView=null;}
+function invalidateDetail(){detailGeneration++;detailId=null;detailView=null;window.recoveryContextChanged?.();}
 $("media-dialog").addEventListener("close",()=>{if(!$("media-dialog").open){retireArtwork($("detail-poster"));retireRecommendationRail($("related-media"));invalidateDetail();window.restoreCatalogLayout?.();}});
 $("media-dialog").addEventListener("click",event=>{if(event.target!==$("media-dialog"))return;const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.target.close();});
 function collectionScope(){return state.server_id+":"+state.profile_id;}
@@ -53,10 +53,10 @@ window.catalogReturnFromPlayback=async(playback,current)=>{
   else if((context?.kind==="saga"||context?.kind==="playlist")&&context.id)await openCollection(context.id,context.kind);
   else if(playback.media_id)await openMedia(playback.media_id);
 };
-async function importArtwork(target,reload){try{const result=await window.__TAURI__.core.invoke("artwork_command",{target});if(!result?.cancelled)await reload();}catch(error){message(error?.message||uiText("Import de l'image non effectué."));}}
+async function importArtwork(target,reload){const recovery=window.conflictTarget?.({...target,action:"artwork"});try{const result=await window.__TAURI__.core.invoke("artwork_command",{target});if(!result?.cancelled)await reload();}catch(error){window.offerConflictRecovery?.(error,recovery);message(error?.message||uiText("Import de l'image non effectué."));}}
 async function openMedia(id){
   const same=detailId===id&&$("media-dialog").open,scroll=same?$("media-dialog").scrollTop:0,generation=++detailGeneration,context=collectionScope();detailId=id;detailView=null;
-  const current=()=>detailCurrent(generation,context,id);
+  const current=()=>detailCurrent(generation,context,id);window.recoveryContextChanged?.();
   // Even a same-media refresh may remove its poster. Retire the old observer
   // identity before awaiting metadata, not just the current image child/token.
   retireArtwork($("detail-poster"));$("detail-poster").replaceChildren();
@@ -169,7 +169,36 @@ $("metadata-form").onsubmit=async e=>{
   for(const key of ["season","episode"])patch[key]=$("edit-"+key).value===""?null:Number($("edit-"+key).value);
   for(const key of ["genres","cast","directors"])patch[key]=$("edit-"+key).value.split(",").map(s=>s.trim()).filter(Boolean);
   const result=await libraryRead({action:"edit_media",media_id:id,expected_revision:detailView.revision,patch},current);
-  if(result){await syncAfterMutation();if(current())await openMedia(id);}else if(current()){$("detail-availability").textContent=uiText("Enregistrement non effectué. Rouvrez la fiche pour relire sa dernière révision ; vos champs restent visibles.");}
+  if(result){await syncAfterMutation();if(current())await openMedia(id);}else if(current()){$("detail-availability").textContent=uiText("Enregistrement non effectué. Votre saisie est conservée ; utilisez l’action d’actualisation si un conflit est signalé.");$("detail-availability").hidden=false;}
+};
+window.catalogConflictTarget=command=>{
+ const context=collectionScope();
+ if(command.media_id&&detailView?.media.id===command.media_id&&$("media-dialog").open){
+  const id=detailId,generation=detailGeneration,current=()=>detailCurrent(generation,context,id);
+  return {root:$("media-dialog"),label:"Actualiser cette fiche",current,identityCurrent:()=>context===collectionScope()&&detailId===id&&$("media-dialog").open,async reload(){
+   await window.recoveryRefreshCatalogue();if(!current())return false;
+   const form=$("metadata-form"),draft=window.captureRecoveryFields(form),editing=!form.hidden;
+   await openMedia(id);if(context!==collectionScope()||detailId!==id||!detailView)return false;
+   window.restoreRecoveryFields(draft,$("metadata-form"));$("metadata-form").hidden=!editing;return true;
+  }};
+ }
+ if(collectionView&&(command.id===collectionView.id||command.series===collectionView.id||command.media_id&&collectionView.media_ids.includes(command.media_id))){
+  const view=collectionView,kind=collectionKind,epoch=collectionEpoch,current=()=>collectionCurrent(epoch,context)&&collectionView===view;
+  return {root:$(shellSection==="picker"?"picker-panel":"collection-panel"),label:kind==="series"?"Actualiser cette série":kind==="saga"?"Actualiser cette saga":"Actualiser cette liste",current,identityCurrent:()=>context===collectionScope()&&collectionView?.id===view.id&&collectionKind===kind&&["collection","picker"].includes(shellSection),async reload(){
+   await window.recoveryRefreshCatalogue();if(!current())return false;
+   if(kind==="series"){
+    const form=$("series-tools")?.querySelector(".series-form"),draft=window.captureRecoveryFields(form),editing=form&&!form.hidden;
+    await openSeries(view.id);if(context!==collectionScope()||collectionView?.id!==view.id)return false;
+    const next=$("series-tools")?.querySelector(".series-form");if(next){window.restoreRecoveryFields(draft,next);next.hidden=!editing;}return true;
+   }
+   const result=await invoke({action:kind==="saga"?"saga":"playlist",id:view.id});if(!current())return false;
+   // Keep the object captured by move/picker handlers and the user's rename
+   // field/selection. Refresh its CAS revision and membership, never its draft.
+   Object.assign(view,result.saga||result.playlist);$("collection-title").textContent=view.name;$("collection-counts").textContent=view.media_ids.length+uiText(" vidéos");
+   discardCollectionCards();await collectionPage(view.id,0);return current();
+  }};
+ }
+ return null;
 };
 async function openSeries(name){
   if(!await stopPlayerForNavigation())return;

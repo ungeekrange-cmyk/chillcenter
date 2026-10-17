@@ -1,5 +1,15 @@
 # Contexte du projet
 
+## Candidat suivant — bugs 82–84 et parité web
+
+17 octobre2026 : demande de corriger BUG0082/0083/0084, reconstruire Mac et
+adapter le web ; clarification explicite : **pas d'IA web**. Branche isolée
+`codex/fix-82-84-web-parity`, bases Mac3b2e28b et webe6e23db intégrées par merge,
+sans écraser l'autre worktree. Candidat0.6.1/build8, release/tagv0.6 préservés.
+[Rapport FR/EN et limites](implementation/WEB-PARITY-20261017.md),
+[remise](releases/REL-WEB-PARITY-001.md), ADR0025. Aucun accès/déploiement Pi/NAS.
+Les checkpoints ci-dessous conservent les livraisons antérieures.
+
 ## Documentation de référence FR/EN — complément après v0.6
 
 17 octobre 2026 : demande utilisateur « doc en anglais et en francais. ensuite merge ».

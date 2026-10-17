@@ -93,13 +93,14 @@ test("API errors become French messages with status and code", async () => {
   await assert.rejects(ui({ action: "create_profile", name: "A" }), e => e.status === 409 && e.code === "PROFILE_NAME_TAKEN" && /déjà utilisé/.test(e.message));
 });
 
-test("artwork becomes a blob URL once; unsupported commands fail explicitly", async () => {
+test("artwork becomes a blob URL once; TMDB status uses the explicit API", async () => {
   const { ui, calls } = make({ [`GET /profiles/${P}/media/${M}/artwork`]: [200, "", { size: 10 }] });
   await ui({ action: "boot" }); await ui({ action: "select_profile", id: P });
   assert.deepEqual(await ui({ action: "artwork", media_id: M }), { src: "blob:x" });
   await ui({ action: "artwork", media_id: M });
   assert.equal(calls.filter(c => c.url.endsWith("/artwork")).length, 1);
-  await assert.rejects(ui({ action: "tmdb_status" }), e => e.code === "WEB_UNSUPPORTED");
+  const tmdb = make({ "GET /admin/tmdb": ok({ configured: false }) }); await tmdb.ui({ action: "boot" });
+  assert.deepEqual(await tmdb.ui({ action: "tmdb_status" }), { configured: false });
 });
 
 test("delayed artwork cannot republish after a mutation or profile switch", async () => {

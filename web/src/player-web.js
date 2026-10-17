@@ -95,28 +95,42 @@
     }
     clearTransfer() { if (this.transferTimer) { this.d.clearInterval(this.transferTimer); this.transferTimer = null; } }
 
+    // The lease is held and the title is known: answer at once with a "loading" view and open the file (container
+    // index, first fragments) in the background. A slow open used to keep the PREVIOUS video's title on screen and
+    // froze the player controls until it finished (BUG-0070). Failures reach the UI through the next `status` poll.
     async begin(grant) {
       this.clearTransfer(); this.transfer = null;
       this.lease = grant.lease; this.clock = new Clock.WatchClock(); this.lastSeek = false;
-      this.engine = this.d.engineFactory();
+      const opening = { engine: this.d.engineFactory(), cancelled: false, promise: null };
+      this.opening = opening; this.openError = null;
+      opening.promise = this.lastOpen = this.finishOpening(opening, grant);   // lastOpen: settled-state hook for tests
+      return this.view();
+    }
+    async finishOpening(opening, grant) {
+      const engine = opening.engine;
       this.t0 = this.d.now();
       try {
-        await this.engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1 });
+        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1 });
       } catch (e) {
+        if (opening.cancelled) return;
+        this.openError = e.message || "Lecture impossible.";
         await this.stop(true);
-        return this.closed(e.message || "Lecture impossible.");
+        return;
       }
-      const prefs = this.info.preferences || {};
-      const tracks = this.engine.snapshot().tracks || [];
-      const audio = pickTrack(tracks, prefs.audio_language, "Audio"), sub = pickTrack(tracks, prefs.subtitle_language, "Subtitle");
-      if (audio.id !== null) this.engine.selectAudio(audio.id);
-      this.engine.selectSubtitle(sub.id);
-      if (audio.fallback) this.note = FALLBACK_NOTE;
-      this.engine.play();
-      this.timers.push(this.d.setInterval(() => this.heartbeat(), HEARTBEAT_MS));
-      this.timers.push(this.d.setInterval(() => this.report(false, false), HEARTBEAT_MS));
-      this.openEvents();
-      return this.view();
+      if (opening.cancelled) { try { engine.close(); } catch { /* already closed */ } return; }
+      this.engine = engine; this.opening = null;
+      try {
+        const prefs = this.info.preferences || {};
+        const tracks = engine.snapshot().tracks || [];
+        const audio = pickTrack(tracks, prefs.audio_language, "Audio"), sub = pickTrack(tracks, prefs.subtitle_language, "Subtitle");
+        if (audio.id !== null) engine.selectAudio(audio.id);
+        engine.selectSubtitle(sub.id);
+        if (audio.fallback) this.note = FALLBACK_NOTE;
+        engine.play();
+        this.timers.push(this.d.setInterval(() => this.heartbeat(), HEARTBEAT_MS));
+        this.timers.push(this.d.setInterval(() => this.report(false, false), HEARTBEAT_MS));
+        this.openEvents();
+      } catch (e) { this.openError = e.message || "Lecture impossible."; await this.stop(true); }
     }
 
     openEvents() {
@@ -156,7 +170,7 @@
       return event;
     }
     async seek(position) {
-      if (!this.engine) return this.closed();
+      if (!this.engine) return this.opening ? this.view() : this.closed();
       this.engine.seek(Math.max(0, position));
       this.ended = false; this.nextResolved = null;
       this.clock.forgetCredit();
@@ -165,6 +179,7 @@
     }
     async setSpeed(speed) {
       if (!Clock.validSpeed(speed)) throw Object.assign(new Error("Vitesse invalide."), { code: "PLAYER_ERROR" });
+      if (!this.engine) return this.view();
       this.engine.setSpeed(speed);
       this.clock.forgetCredit();
       try { await this.d.request("POST", this.api("/playback/speed"), { body: { lease: this.control(), speed } }); } catch { /* local speed still applies */ }
@@ -172,7 +187,10 @@
     }
 
     async status() {
-      if (!this.engine) return this.transfer ? this.view() : this.closed();
+      if (!this.engine) {
+        if (this.openError) { const error = this.openError; this.openError = null; return this.closed(error); }
+        return this.transfer || this.opening ? this.view() : this.closed();
+      }
       const s = this.engine.snapshot();
       if (s.ended && !this.ended) {
         this.ended = true;
@@ -202,6 +220,7 @@
     }
     async stop(report) {
       this.clearTransfer(); this.transfer = null;
+      if (this.opening) { this.opening.cancelled = true; try { this.opening.engine.close(); } catch { /* not opened yet */ } this.opening = null; }
       if (this.engine && this.lease && report) await this.report(false, true);
       await this.release();
       this.engine?.close(); this.engine = null;
@@ -209,6 +228,14 @@
 
     view() {
       if (this.transfer) return { stage: "transfer", title: this.info?.media?.title || "", confirmed: this.transfer.confirmed, remaining_ms: this.transfer.remaining_ms, note: "Ce profil lit déjà une vidéo sur un autre appareil. Confirmez pour y interrompre la lecture et la reprendre ici." };
+      if (!this.engine && this.opening) {
+        return {
+          stage: "player", media_id: this.mediaId, title: this.info.media.title, note: this.note,
+          position: 0, duration: 0, active: Boolean(this.lease), context: this.context, next: null,
+          autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null, external_subtitles: [],
+          native: { loaded: false, paused: true, buffering: false, ended: false, error: null, notice: null, speed: this.info.speed || 1, volume: 100, tracks: [], fullscreen: Boolean(this.fullscreen), hardware_decoder: "no", decoder: null },
+        };
+      }
       if (!this.engine) return this.closed();
       const s = this.engine.snapshot();
       return {

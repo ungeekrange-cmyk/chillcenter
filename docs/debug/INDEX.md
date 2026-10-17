@@ -2,12 +2,14 @@
 
 ## Lecture de l'état courant
 
-Version Mac de référence : [v0.6](../releases/REL-V0.6.md), validée le 17 octobre 2026.
+Version Mac publiée de référence : [v0.6](../releases/REL-V0.6.md), validée le 17 octobre 2026.
+Nouveau candidat : [corrections 82–84 et parité web](../implementation/WEB-PARITY-20261017.md).
+BUG0082/0083/0084 **FIXED / VERIFIED_LOCAL**, avec limites Tauri humaines explicites.
+Le client web exclut l'IA sur demande utilisateur ; aucun déploiement Pi dans ce lot.
 Ce journal est chronologique, du plus récent au plus ancien : les lignes OPEN
 historiques ne rouvrent pas un bug corrigé dans une entrée ultérieure.
 Les limites natives restantes ne sont pas converties en validations par le gel
-de version. BUG0082 (récupération des conflits), BUG0083 (loupe) et BUG0084
-(rotation de synchronisation) restent tracés sans nouveau correctif dans ce gel.
+de version. Les corrections après ce gel n'altèrent ni le tag ni le bundle v0.6.
 
 17 octobre2026 : [BUG0106 assertions QA périmées](BUG-0106-stale-player-qa-assertions.md),
 FIXED/VERIFIED_LOCAL_QA. Les deux faux échecs antérieurs sont corrigés :7/7tests
@@ -125,3 +127,5 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 ## Correctifs série / fin de lecture — 16 octobre 2026
 
 [BUG0085](BUG-0085-series-season-card-layout.md) : saison non vue ouverte, grille et fiche série réorganisée, corrigé localement. [BUG0086](BUG-0086-terminal-playback-return.md) : fin du dernier élément et conservation du contexte de lecture, corrigé localement. [BUG0087](BUG-0087-watched-eof-local-refresh.md) : rafraîchissement personnel à EOF et exception courte approuvée corrigés localement. Preuves synthétiques ciblées, pas de nouveau test vidéo réel ou déploiement Pi/web.
+- [BUG-0070](BUG-0070-web-player-stale-title-while-opening.md) — client web : titre de la vidéo précédente pendant l'ouverture de la suivante ; FIXED (branche `codex/web-pwa`).
+- [BUG-0071](BUG-0071-web-audio-missing-ac3-eac3.md) — client web : pas de son sur les films AC-3/E-AC-3 ; FIXED (branche `codex/web-pwa`), à vérifier sur le Pi.

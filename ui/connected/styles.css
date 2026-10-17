@@ -26,8 +26,12 @@ dialog[open] { overflow-y: auto; overscroll-behavior: contain; }
 .rating-stars{display:flex;gap:4px;margin:16px 0;align-items:center}
 .rating-stars .rating-star{font-size:28px;padding:2px 4px;border:0;background:transparent;color:var(--accent);line-height:1.2}
 .tmdb-candidates{display:flex;flex-direction:column;gap:8px;margin:12px 0}.tmdb-candidates button{text-align:left}
-.sync-indicator{width:24px;height:24px;flex:none;color:var(--muted);font-size:20px;text-align:center}.sync-indicator.syncing{animation:sync-spin 1s linear infinite;color:var(--accent)}
+.search-icon{display:block;width:24px;height:24px;flex:0 0 24px;color:var(--muted);fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.sync-indicator{width:24px;height:24px;flex:none;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);line-height:1}
+.sync-glyph{display:block;width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transform-box:view-box;transform-origin:50% 50%}
+.sync-indicator.syncing{color:var(--accent)}.sync-indicator.syncing .sync-glyph{animation:sync-spin 1s linear infinite}
+.conflict-recovery{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px;margin:12px 0;border:1px solid var(--accent);border-radius:10px;background:var(--panel);color:var(--text)}.conflict-recovery p{flex:1;min-width:160px;margin:0}
 @keyframes sync-spin{to{transform:rotate(360deg)}}
 .matching-row{display:grid;grid-template-columns:minmax(160px,1fr) minmax(220px,2fr);gap:24px;padding:20px 0;border-bottom:1px solid var(--line)}
 @media(hover:none){.poster-actions{opacity:1}}
-@media(prefers-reduced-motion:reduce){.poster-actions{transition:none}.sync-indicator.syncing{animation:none}}
+@media(prefers-reduced-motion:reduce){.poster-actions{transition:none}.sync-indicator.syncing .sync-glyph{animation:none}}

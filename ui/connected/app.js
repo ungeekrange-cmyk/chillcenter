@@ -5,7 +5,11 @@ let state = {stage:"server"}, busy=false, offset=0, more=false, deleting=null, t
 const CATALOG_PAGE_SIZE=48;
 function message(value="") { const text=uiText(value);$("message").textContent=text;document.querySelectorAll(".dialog-message").forEach(n=>n.textContent=text); }
 function node(tag,text,cls) { const n=document.createElement(tag); if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n; }
-async function invoke(command) { return window.__TAURI__.core.invoke("ui_command",{command}); }
+async function invoke(command) {
+  const recovery=window.conflictTarget?.(command);
+  try{return await window.__TAURI__.core.invoke("ui_command",{command});}
+  catch(error){window.offerConflictRecovery?.(error,recovery);throw error;}
+}
 async function run(command, update=true, progress="") {
   if(busy)return null; busy=true;document.body.setAttribute("aria-busy","true");const disabledBefore=new Map();document.querySelectorAll("button,input,select").forEach(n=>{disabledBefore.set(n,n.disabled);n.disabled=true;});message(progress);
   let result;try { result=await invoke(command);if(update)state=result; }
@@ -14,6 +18,7 @@ async function run(command, update=true, progress="") {
   if(result&&/^(create_playlist|rename_playlist|delete_playlist|add_playlist|remove_playlist_member|reorder_playlist|create_saga|rename_saga|delete_saga|add_saga|remove_saga_member|reorder_saga|saga_member_artwork|set_watched|set_rating|group_rating|edit_media|edit_series|forget_unavailable)$/.test(command.action)){invalidateFacetBase();await syncAfterMutation();}return result;
 }
 function render(){
+  window.recoveryContextChanged?.();
   if(state.language!==undefined&&window.chillI18n?.hydrate(state.language))return;
   if(window.adminContextChanged)window.adminContextChanged();
   if(window.identityContextChanged)window.identityContextChanged();
@@ -46,7 +51,7 @@ function render(){
   for(const p of state.profiles){
     const option=node("option",p.name);option.value=p.id;$("profile-switch").append(option);
     const choice=node("button",p.name,"profile-choice");choice.onclick=()=>selectProfile(p.id);$("profile-choices").append(choice);
-    const row=node("div",undefined,"profile-row"),name=node("input");name.value=p.name;name.maxLength=80;name.setAttribute("aria-label",uiText("Renommer ")+p.name);
+    const row=node("div",undefined,"profile-row"),name=node("input");name.id="profile-name-"+p.id;name.value=p.name;name.maxLength=80;name.setAttribute("aria-label",uiText("Renommer ")+p.name);
     const rename=node("button",uiText("Renommer"),"secondary");rename.onclick=async()=>{await run({action:"rename_profile",id:p.id,name:name.value,expected_revision:p.revision});};
     const remove=node("button",uiText("Supprimer"),"secondary danger");remove.onclick=()=>{deleting=p;$("delete-name").textContent=p.name;$("confirm-delete").showModal();};row.append(name,rename,remove);$("admin-profiles").append(row);
   }
@@ -203,13 +208,18 @@ $("cancel-delete").onclick=()=>{$("confirm-delete").close();deleting=null;};
 $("confirm-delete").addEventListener("cancel",()=>{deleting=null;});
 $("confirm-delete-button").onclick=async()=>{if(!deleting)return;const p=deleting;$("confirm-delete").close();deleting=null;if(await run({action:"delete_profile",id:p.id,confirm_id:p.id})){$("media").replaceChildren();if(state.profile_id)await loadPage();}};
 let lastFocusRefresh=0;
+function makeSyncIndicator(){
+ const icon=node("span","","sync-indicator");icon.id="sync-indicator";icon.setAttribute("role","status");
+ const svg=document.createElementNS("http://www.w3.org/2000/svg","svg"),path=document.createElementNS(svg.namespaceURI,"path");
+ svg.setAttribute("viewBox","0 0 24 24");svg.setAttribute("class","sync-glyph");svg.setAttribute("aria-hidden","true");svg.setAttribute("focusable","false");path.setAttribute("d","M21 12a9 9 0 1 1-2.64-6.36 M21 3v6h-6");svg.append(path);icon.append(svg);return icon;
+}
 let syncPromise=null,syncContext=null;
 // Detached delta sync owns only its indicator, not the global UI busy state.
 // Keep native and web bridge contracts distinct; only web replies may require an ack ticket.
 async function syncCatalog(){
  if(state.stage!=="connected"||!state.profile_id)return;
  const requestedContext=state.server_id+":"+state.profile_id;if(syncPromise)return syncContext===requestedContext?syncPromise:syncPromise.then(()=>syncCatalog());syncContext=requestedContext;
- const context=state.server_id+":"+state.profile_id;let icon=$("sync-indicator");if(!icon){icon=node("span","⟳","sync-indicator");icon.id="sync-indicator";icon.setAttribute("role","status");$("profile-menu").before(icon);}icon.hidden=false;icon.classList.add("syncing");icon.title=uiText("Vérification des nouveautés");icon.setAttribute("aria-label",icon.title);
+ const context=state.server_id+":"+state.profile_id;let icon=$("sync-indicator");if(!icon){icon=makeSyncIndicator();$("profile-menu").before(icon);}icon.hidden=false;icon.classList.add("syncing");icon.title=uiText("Vérification des nouveautés");icon.setAttribute("aria-label",icon.title);
  syncPromise=(async()=>{try{
   const result=await invoke({action:"sync_catalog"});if(context!==state.server_id+":"+state.profile_id)return;
   if(result.changed){
@@ -219,10 +229,10 @@ async function syncCatalog(){
    // Only the web bridge issues a ticket; existing native clients need no new command.
    if(result.ack_ticket!==undefined){const ack=await invoke({action:"ack_catalog_sync",ticket:result.ack_ticket});if(ack.discarded){icon.title=uiText("Mise à jour différée après une modification locale");return;}}
   }
-  icon.title=result.discarded?uiText("Mise à jour différée après une modification locale"):uiText("Catalogue à jour");
- }catch(error){if(context===state.server_id+":"+state.profile_id){icon.title=uiText("Serveur indisponible — catalogue local conservé");}}finally{icon.classList.remove("syncing");icon.setAttribute("aria-label",icon.title);syncPromise=null;}})();return syncPromise;
+  icon.title=result.discarded?uiText("Mise à jour différée après une modification locale"):uiText("Catalogue à jour");return result;
+ }catch(error){if(context===state.server_id+":"+state.profile_id){icon.title=uiText("Serveur indisponible — catalogue local conservé");}return {error};}finally{icon.classList.remove("syncing");icon.setAttribute("aria-label",icon.title);syncPromise=null;}})();return syncPromise;
 }
-async function syncAfterMutation(){if(syncPromise)await syncPromise;await syncCatalog();}
+async function syncAfterMutation(){if(syncPromise)await syncPromise;return syncCatalog();}
 window.addEventListener("focus",()=>{if(state.stage!=="connected"||!state.profile_id||busy)return;const now=Date.now();if(now-lastFocusRefresh<5000)return;lastFocusRefresh=now;void syncCatalog();});
 window.chillReady=(async()=>{
  // All deferred modules (artwork, shell, appearance...) must be installed before

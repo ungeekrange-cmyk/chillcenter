@@ -217,3 +217,24 @@ Après un `--revert` de l'étape 10, la redirection du port 80 (étape 11) point
 **Ordre impératif** : 9, 10, 11 (le script de redirection exige que le service écoute déjà sur `chillcenter.local:8080`). Un retour du binaire (étape 7) vers un build sans `http_listen` exige d'abord le `--revert` de l'étape 10.
 
 Si l'étape 10 se termine par un code non nul **sans** le résumé (sortie standard morte après l'activation), l'état est en général correct : contrôle `sha256sum /etc/chillcenter/server.json` et `ss -ltn` avant de relancer quoi que ce soit (revue n° 8, constat 5).
+
+## Étape 13 — mise à jour du **client web seul** (catalogue local, audio converti, lecteur) — ADR-0019, ADR-0020
+
+À utiliser pour toute mise à jour de l'archive web quand le binaire du serveur ne change pas (cas présent : binaire `ffcc634923f6…` déjà installé le 15 octobre). Le service n'est **ni arrêté ni redémarré**, aucune interruption de lecture ; l'ancien dossier est conservé dans `/root/chillcenter-rollback/web-<horodatage>` et remis **automatiquement** si une vérification échoue. Contrat d'API inchangé (`2026-10-14`).
+
+| Fichier | SHA-256 |
+| --- | --- |
+| `scripts/pi-update-web-assets-operator.sh` | `ffc1aed1d388f9fbdb7f256ab583669f4f1d8568f493fbfd3f65aaf60cf08c5d` |
+| `artifacts/web-pi/chillcenter-web.tar` (2 174 464 octets, 69 membres, build `1cfd389f7596`) | `b28e1aebc44ab437b1c5b7d265bdfcaa6b7b15a67a5d071ec9e06329f9c707e3` |
+| binaire installé attendu | `ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7` |
+
+```bash
+cd "$R"
+pi_scp artifacts/web-pi/chillcenter-web.tar admin@chillcenter.local:/var/tmp/chillcenter-web.tar
+pi 'chmod 600 /var/tmp/chillcenter-web.tar; sha256sum /var/tmp/chillcenter-web.tar'      # doit afficher b28e1aebc44ab437b1c5b7d265bdfcaa6b7b15a67a5d071ec9e06329f9c707e3
+pi 'sudo -n /bin/bash -s -- --self-test' < scripts/pi-update-web-assets-operator.sh      # web_assets_self_test=PASS
+pi "sudo -n env INSTALLED_BINARY_SHA256=ffcc634923f637331cac25fec1e5283b062ef5e2943778bcab59460b6269b0f7 WEB_ARCHIVE_SHA256=b28e1aebc44ab437b1c5b7d265bdfcaa6b7b15a67a5d071ec9e06329f9c707e3 EXPECTED_BUILD_ID=1cfd389f7596 CHILLCENTER_TLS_CERT_PATH=/var/lib/chillcenter/data/tls/certificate.pem CHILLCENTER_BASE_URL=https://chillcenter.local:8443 CHILLCENTER_HTTP_URL=http://chillcenter.local:8080 /bin/bash -s --" < scripts/pi-update-web-assets-operator.sh
+pi 'rm -f /var/tmp/chillcenter-web.tar'
+```
+
+Succès : code 0 et `previous_build`, `installed_build=1cfd389f7596`, `service_pid` identique à celui d'avant. Vérifications faites par le script (HTTPS strict **et** HTTP clair) : `build.json`, page d'accueil versionnée, types MIME du WebAssembly, API, `.env` refusé, cross-site refusé, binaire / configuration / unité / certificat inchangés. **Retour arrière manuel** : `pi 'sudo -n mv -T /usr/lib/chillcenter/web /usr/lib/chillcenter/web-rejected && sudo -n mv -T /root/chillcenter-rollback/web-<horodatage> /usr/lib/chillcenter/web'`. Les navigateurs ouverts rechargent les fichiers dès que `index.html` (jamais mis en cache) désigne le nouveau build : chaque fichier porte `?v=<build>`.

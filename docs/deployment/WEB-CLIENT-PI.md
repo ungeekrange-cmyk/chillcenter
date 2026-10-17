@@ -112,6 +112,20 @@ Après les revues n° 6 à 8 (n° 8 : APPROVED sur les octets déployés) et le 
 
 **Non vérifié** : lecture complète d'un film dans un navigateur sur le Pi (PWA, téléphones, autres navigateurs) ; comportement après un redémarrage **provoqué** par nous (celui-ci était subi : la redirection 443 a survécu, la redirection 80 et `http_listen` n'ont pas été éprouvées au redémarrage) ; la cause de la coupure de 4 heures (aucune action de notre part sur le Pi à ce moment).
 
+## Mise à jour du client web seul : catalogue local, audio converti, lecteur (15 octobre 2026) — **préparée, pas déployée**
+
+Demandes de l'utilisateur : fluidité du chargement (miroir local, différences en arrière-plan), titre périmé du lecteur, pas de son sur les films AC-3/E-AC-3. Détails : [ADR-0019](../architecture/decisions/ADR-0019-web-client-catalog-mirror.md), [ADR-0020](../architecture/decisions/ADR-0020-web-audio-transcode-to-aac.md), [BUG-0070](../debug/BUG-0070-web-player-stale-title-while-opening.md), [BUG-0071](../debug/BUG-0071-web-audio-missing-ac3-eac3.md). **Aucun changement de binaire, de configuration, de pare-feu ni d'API** (reste `2026-10-14`).
+
+| Élément | Résultat réellement obtenu |
+| --- | --- |
+| Tests web | **98 tests Node, 0 échec** (dont moteur de requêtes, synchro, cache d'affiches, pont avec miroir, lecteur, transcodage audio contre un décodeur indépendant) ; Rust inchangé : 110 tests |
+| Validation différentielle du moteur de requêtes contre le serveur **réel du Pi** | 66 requêtes, **0 écart** (éléments, ordre, compteurs) |
+| Navigateur réel, HTTP clair, serveur réel (2 443 titres) | première visite 1,3 s, visite suivante **22 ms**, filtres et tris < 10 ms, ajout d'un fichier puis scan reflété en 1,4 s ; film MKV à deux pistes AC-3 : son mesuré, changement de piste, saut à 20 s |
+| Archive | `b28e1aebc44ab437b1c5b7d265bdfcaa6b7b15a67a5d071ec9e06329f9c707e3`, 2 174 464 o, 69 membres, build `1cfd389f7596` (+ transcodeur WebAssembly 967 Ko, LGPL, source FFmpeg 9.0.2 figée) |
+| Script `pi-update-web-assets-operator.sh` (`ffc1aed1d388f9fbdb7f256ab583669f4f1d8568f493fbfd3f65aaf60cf08c5d`) | auto-test PASS ; simulation VM (systemd réel, vrai binaire, ancienne et nouvelle archive) **31 PASS, 0 FAIL** : mise à jour sans toucher au service (même PID), refus (hash, binaire, build, archive piégée, SHA256SUMS incomplet, service arrêté), restauration automatique, y compris stderr cassé et signal TERM ; vérifié que le scénario détecte le défaut sur un mutant (3 FAIL) |
+| Procédure | [runbook, étape 13](WEB-CLIENT-PI-RUNBOOK.md) |
+| Revue indépendante | à faire sur ces octets |
+
 ## 3. Compilation du serveur : état réel et téléchargements à approuver
 
 **Constat initial (avant exécution).** La modification Rust (garde d'origine + service des fichiers statiques + leurs tests) n'avait jamais été compilée : `cargo` n'était pas sur le PATH de la session. Il existait (`~/.cargo/bin`), mais :

@@ -3,6 +3,7 @@
 // The decoder lives in a Worker; the .wasm is only fetched when such a video is played.
 (function (root) {
   if (!root.ChillSoft || typeof Worker === "undefined") return;
+  const V = (root.document && root.document.currentScript && new URL(root.document.currentScript.src).search) || "";   // ?v=<build> of this page
   // MPEG-4 Part 2 fourccs found in AVI. MS-MPEG4 (div2/div3/mp43) is a different codec: not handled here.
   const FOURCC = new Set(["xvid", "divx", "dx50", "div4", "div5", "div6", "mp4v", "fmp4", "3iv2", "3ivx", "dvx1", "mp4s", "m4s2", "rmp4", "dm4v", "blz0", "hdx4", "geox", "fvfw", "ndig", "sedg", "smp4", "pm4v", "wv1f", "xvix", "siph"]);
 
@@ -30,6 +31,6 @@
   root.ChillSoft.decoders.register({
     match: track => FOURCC.has(String(track.type).toLowerCase()),
     label: "Décodeur MPEG-4 (FFmpeg, WebAssembly)",
-    async create(track) { const d = new WorkerDecoder("vendor/mpeg4/mpeg4-worker.js"); await d.call({ op: "open", fifo: track.ptsMode === "decode" }); return d; },
+    async create(track) { const d = new WorkerDecoder("vendor/mpeg4/mpeg4-worker.js" + V); await d.call({ op: "open", fifo: track.ptsMode === "decode" }); return d; },
   });
 })(typeof window !== "undefined" ? window : globalThis);

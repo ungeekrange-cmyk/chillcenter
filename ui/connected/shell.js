@@ -18,7 +18,7 @@ window.renderShell=()=>{
  $("admin-toggle").classList.toggle("active",shellSection==="admin");$("advice-toggle").classList.toggle("active",shellSection==="advice");
  $("catalog-title").textContent=categoryNames[$("category").value]||uiText("Toute la collection");
 };
-function shellShow(section){if(!["collections","collection","picker"].includes(section))window.leaveCollectionPages?.();shellSection=section;window.renderShell();}
+function shellShow(section){if(!["collections","collection","picker"].includes(section))window.leaveCollectionPages?.();shellSection=section;window.recoveryContextChanged?.();window.renderShell();}
 document.querySelectorAll("[data-category]").forEach(button=>button.onclick=async()=>{
  if(!state.profile_id)return;
  if(!await stopPlayerForNavigation())return;

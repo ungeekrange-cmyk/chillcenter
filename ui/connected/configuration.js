@@ -22,12 +22,13 @@ if(typeof window!=="undefined"&&typeof document!=="undefined")(()=>{
  const panel=$("admin-panel"),grid=panel.querySelector(".admin-grid"),navigation=$("configuration-categories"),search=$("configuration-search");
  const groups={"tmdb-admin":"metadata","matching-admin":"metadata","archive-admin":"archives","ai-settings":"ai","playback-cache-settings":"playback","player-presentation-settings":"playback","unavailable-admin":"library","identity-settings":"library"};
  let selected="all",locationsSignature=null;
- for(const [key,label]of configurationCategories){const option=node("button",label,"configuration-category");option.type="button";option.dataset.category=key;option.onclick=()=>{selected=key;refresh();};navigation.append(option);}
+ for(const [key,label]of configurationCategories){if(key==="ai"&&window.ChillBridge)continue;const option=node("button",label,"configuration-category");option.type="button";option.dataset.category=key;option.onclick=()=>{selected=key;refresh();};navigation.append(option);}
  function refresh(){
   let count=0;
   for(const card of grid.children){
    if(card.tagName!=="SECTION")continue;
    const category=card.dataset.settingsCategory||groups[card.id]||"general";card.dataset.settingsCategory=category;
+   if(category==="ai"&&window.ChillBridge){card.hidden=true;continue;}
    const label=configurationCategories.find(([key])=>key===category)?.[1]||uiText("Général");
    // Values of inputs (notably provider secrets) are never search material.
    const text=[label,...[...card.querySelectorAll("h2,h3,label,button,summary")].map(element=>element.textContent)].join(" ");
@@ -53,6 +54,8 @@ if(typeof window!=="undefined"&&typeof document!=="undefined")(()=>{
   $("video-root").value=settings.video_root||"";$("additional-library-locations").replaceChildren();for(const path of settings.additional_video_roots||[])addLocation(path);updateAddButton();
  };
  window.configurationLibraryCommand=()=>buildLibraryConfigurationCommand($("video-root").value,[...$("additional-library-locations").querySelectorAll("input")].map(input=>input.value),state.library);
+ window.captureLibraryDraft=()=>({primary:$("video-root").value,additional:[...$("additional-library-locations").querySelectorAll("input")].map(input=>input.value)});
+ window.restoreLibraryDraft=draft=>{if(!draft)return;$("video-root").value=draft.primary;$("additional-library-locations").replaceChildren();for(const path of draft.additional)addLocation(path);updateAddButton();locationsSignature=JSON.stringify([state.library.video_root,state.library.additional_video_roots||[]]);};
  window.refreshConfiguration=refresh;
  window.configurationShow=category=>{selected=configurationCategories.some(([key])=>key===category)?category:"all";search.value="";refresh();};
  if(state.library)window.refreshLibraryLocations(state.library);refresh();
