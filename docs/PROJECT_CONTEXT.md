@@ -1,13 +1,18 @@
 # Contexte du projet
 
-## Contrats QA — reconstruction Mac en cours
+## Contrats QA — bundle Mac reconstruit
 
 17 octobre2026 : branche `codex/qa-player-contracts`, basec071b42. Les deux anciens
 échecs sont des assertions périmées (compteur global et recherche textuelle du garde
 de modes), pas des pannes du lecteur. Test Node seul corrigé, contre-tests et readiness
 VM ajoutés : **7/7ciblés et130/130Node PASS**. Aucun fichier runtime, Pi, API ou client
 web modifié, aucune lecture réelle rejouée. [BUG0106](debug/BUG-0106-stale-player-qa-assertions.md),
-[remise et limites](implementation/QA-CONTRACTS-20261017.md). Bundle à reconstruire.
+[remise et limites](implementation/QA-CONTRACTS-20261017.md).
+Source **095631ad55d1502480c874016a24f3b79968ff28**, bundle à tester
+**`artifacts/macos/Chill Center-test-095631a.app`**, SHAexécutable
+`2865690fef80cc01ec00e8c7475f34cc81b01c5c2017f811376f966f4f915ab1`.
+Signature profonde/48dylibsARM64/libmpvAPI2.5 PASS, copie canonique identique ;
+ancien15c2d63 conservé et hash inchangé. Pas de lancement natif ou déploiement Pi/web.
 
 ## Lot client livré pour test — sous-titres, retour grille, français/anglais
 
