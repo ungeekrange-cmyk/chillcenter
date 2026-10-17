@@ -19,6 +19,7 @@ langue. Un changement documentaire n'implique ni nouveau bundle ni déploiement.
 | Client web smartphone, livraison | [Livraison mobile](releases/REL-WEB-MOBILE-001.md) | [Mobile delivery](releases/REL-WEB-MOBILE-001.en.md) |
 | Correctifs mobile R2 et lecture iPhone | [Livraison R2](releases/REL-WEB-MOBILE-002.md) | [R2 delivery](releases/REL-WEB-MOBILE-002.en.md) |
 | AVI MP3 et commandes mobiles R3 | [Livraison R3](releases/REL-WEB-MOBILE-003.md) | [R3 delivery](releases/REL-WEB-MOBILE-003.en.md) |
+| Bandeau plein écran et marges caméra R4 | [Livraison R4](releases/REL-WEB-MOBILE-004.md) | [R4 delivery](releases/REL-WEB-MOBILE-004.en.md) |
 | MP3 AVI côté navigateur et plein écran mobile | [ADR0028](architecture/decisions/ADR-0028-web-mp3-fallback.md) | [ADR0028](architecture/decisions/ADR-0028-web-mp3-fallback.en.md) |
 | Contenu mobile et lecteur iPhone, décision | [ADR0027](architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.md) | [ADR0027](architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.en.md) |
 | Adaptateurs smartphone, décision | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.md) | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.en.md) |

@@ -19,6 +19,7 @@ does not imply a new bundle or deployment.
 | Smartphone web client delivery | [Livraison mobile](releases/REL-WEB-MOBILE-001.md) | [Mobile delivery](releases/REL-WEB-MOBILE-001.en.md) |
 | Mobile R2 and iPhone playback fixes | [Livraison R2](releases/REL-WEB-MOBILE-002.md) | [R2 delivery](releases/REL-WEB-MOBILE-002.en.md) |
 | AVI MP3 and mobile controls R3 | [Livraison R3](releases/REL-WEB-MOBILE-003.md) | [R3 delivery](releases/REL-WEB-MOBILE-003.en.md) |
+| Fullscreen notice and camera insets R4 | [Livraison R4](releases/REL-WEB-MOBILE-004.md) | [R4 delivery](releases/REL-WEB-MOBILE-004.en.md) |
 | Browser-side AVI MP3 and mobile fullscreen | [ADR0028](architecture/decisions/ADR-0028-web-mp3-fallback.md) | [ADR0028](architecture/decisions/ADR-0028-web-mp3-fallback.en.md) |
 | Content-first mobile and iPhone playback decision | [ADR0027](architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.md) | [ADR0027](architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.en.md) |
 | Smartphone adapter decision | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.md) | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.en.md) |

@@ -17,6 +17,7 @@ const pairs = [
   ['docs/releases/REL-WEB-MOBILE-001.md', 'docs/releases/REL-WEB-MOBILE-001.en.md'],
   ['docs/releases/REL-WEB-MOBILE-002.md', 'docs/releases/REL-WEB-MOBILE-002.en.md'],
   ['docs/releases/REL-WEB-MOBILE-003.md', 'docs/releases/REL-WEB-MOBILE-003.en.md'],
+  ['docs/releases/REL-WEB-MOBILE-004.md', 'docs/releases/REL-WEB-MOBILE-004.en.md'],
   ['docs/architecture/decisions/ADR-0028-web-mp3-fallback.md', 'docs/architecture/decisions/ADR-0028-web-mp3-fallback.en.md'],
   ['docs/architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.md', 'docs/architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.en.md'],
   ['docs/architecture/decisions/ADR-0026-mobile-web-presentation.md', 'docs/architecture/decisions/ADR-0026-mobile-web-presentation.en.md'],
