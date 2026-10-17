@@ -1,5 +1,7 @@
 # Sécurité
 
+**Français** | [English](SECURITY.en.md)
+
 Chill Center est destiné au réseau local de confiance du foyer. Il ne fournit actuellement pas d’authentification : un profil n’est pas une frontière de sécurité entre utilisateurs. Ne pas exposer le serveur à Internet ni ouvrir de redirection de port publique.
 
 L’HTTPS chiffre les échanges. Accepter un certificat de première connexion demande de vérifier que l’on contacte son propre serveur. Ne jamais transmettre de clé privée ni de mot de passe dans un rapport.

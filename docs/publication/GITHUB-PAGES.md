@@ -1,5 +1,7 @@
 # Préparation GitHub Pages — 16 octobre 2026
 
+**Français** | [English](GITHUB-PAGES.en.md)
+
 État : **préparé localement, non publié**. Le site est une présentation statique, pas le client web/PWA et pas une passerelle vers le serveur du foyer. Aucun déploiement Pi ou Mac n’est nécessaire à ce lot.
 
 ## Frontière de publication

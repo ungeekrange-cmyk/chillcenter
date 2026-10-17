@@ -1,5 +1,7 @@
 # Chill Center
 
+**Français** | [English](README.en.md)
+
 Votre vidéothèque, sur votre réseau. Projet issu de Cinéfolio : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust.
 
 Version de référence du client Mac : **v0.6 — 0.6.0, build 7**.
@@ -51,6 +53,7 @@ Les bundles locaux sont signés ad hoc, non notariés. Les licences des biblioth
 L’API HTTPS est versionnée : `/api/2026-10-14`. Les ajouts compatibles restent dans cette version ; une rupture nécessite une nouvelle version et le maintien de celle utilisée par les clients existants.
 
 - [Contrat OpenAPI](docs/api/openapi-2026-10-14.json)
+- [Documentation bilingue](docs/README.md) et [guide d'intégration API](docs/api/INTEGRATION-FR.md)
 - [Contribuer](CONTRIBUTING.md) et [sécurité](SECURITY.md)
 - [Préparer le dépôt GitHub public](docs/publication/GITHUB-REPOSITORY.md)
 - [Préparer et vérifier GitHub Pages](docs/publication/GITHUB-PAGES.md)

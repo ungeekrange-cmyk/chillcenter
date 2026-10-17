@@ -1,5 +1,7 @@
 # Contribuer
 
+**Français** | [English](CONTRIBUTING.en.md)
+
 Lire `AGENTS.md` et le contexte du projet. Travailler sur une branche isolée ; préserver les configurations, changements et versions livrées des autres contributeurs.
 
 Chaque correction précise le comportement attendu, la reproduction et les tests exécutés. Commenter les invariants et les raisons non évidentes, plutôt que traduire chaque ligne. Éviter les réécritures générales et les dépendances sans nécessité.
@@ -11,6 +13,7 @@ cargo fmt --all -- --check
 cargo test --workspace --all-targets --locked
 node --test ui/connected/filters.test.js ui/connected/filters.dom.test.js ui/connected/catalog-loading.dom.test.js ui/connected/sync.dom.test.js ui/connected/tests/catalog-query.test.js
 node --test scripts/test-public-site.mjs
+node --test scripts/test-bilingual-docs.mjs
 node scripts/build-public-site.mjs
 git diff --check
 ```

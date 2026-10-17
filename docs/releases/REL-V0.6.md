@@ -1,5 +1,7 @@
 # Chill Center v0.6
 
+**Français** | [English](REL-V0.6.en.md)
+
 Date : 17 octobre 2026. Autorité : validation utilisateur explicite du candidat,
 puis demande de commit et de fusion avec documentation. Version Mac **0.6.0**,
 build **7**, tag local **v0.6**.

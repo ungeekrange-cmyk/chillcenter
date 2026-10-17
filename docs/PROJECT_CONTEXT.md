@@ -1,5 +1,26 @@
 # Contexte du projet
 
+## Documentation de référence FR/EN — complément après v0.6
+
+17 octobre 2026 : demande utilisateur « doc en anglais et en francais. ensuite merge ».
+L'[index français](README.md) et l'[English index](README.en.md) donnent accès
+aux neuf paires : README, contribution, sécurité, index, synthèse d'architecture,
+guide API, notes v0.6 et deux guides de publication. Les journaux, ADR acceptés
+et preuves historiques restent dans leur langue d'origine, sans réécriture.
+
+Le guide API corrige dans les deux langues deux descriptions périmées, à partir
+du code existant : origine web autorisée sur la même instance (y compris la
+variante HTTP facultative) et bail conservé pendant la pause Mac (ADR0022).
+Ces corrections sont documentaires, pas des changements de contrat ou de runtime.
+Les 13 contrôles documentaires vérifient liens croisés, exemples API identiques,
+endpoints, provenance/hashes v0.6 et garde-fous de confidentialité. Leur succès
+ne remplace pas une revue sémantique de traduction ou un audit d'historique.
+
+Branche `codex/docs-fr-en`, base `69da608`, intégration locale dans
+`codex/player-streaming`. Le tag `v0.6` reste à `69da608` et le bundle signé
+de source `bac22ca` est conservé. Aucun accès Pi/NAS, modification web, rebuild,
+push ou publication n'est inclus.
+
 ## Référence actuelle — v0.6
 
 17 octobre 2026 : validation utilisateur « validé commit en v0.6 et merge avec doc propre ».

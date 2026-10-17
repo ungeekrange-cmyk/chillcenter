@@ -1,5 +1,7 @@
 # Préparer le projet GitHub public
 
+**Français** | [English](GITHUB-REPOSITORY.en.md)
+
 Le livrable principal est le **dépôt du projet** : sources, README, licence, contribution et sécurité. GitHub Pages est une présentation optionnelle, pas une nouvelle application web. Aucun dépôt, site ou historique n’a été publié par ce lot.
 
 ## Configuration distribuée

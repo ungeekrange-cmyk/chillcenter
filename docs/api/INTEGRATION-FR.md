@@ -1,5 +1,7 @@
 # Intégrer un client tiers — API Chill Center 2026-10-14
 
+**Français** | [English](INTEGRATION-EN.md)
+
 Le client Mac officiel, et tout client tiers, parlent au serveur avec une API JSON sur HTTPS. Les octets vidéo passent aussi par HTTPS, mais uniquement en `Range` HTTP : le serveur ne transcode jamais et un client n'accède jamais au NAS.
 
 Le contrat canonique est [openapi-2026-10-14.json](openapi-2026-10-14.json), servi par chaque instance à `GET /api/2026-10-14/openapi.json`. La version est une **date de contrat**, pas une date calculée au jour de la requête. La base est donc :
@@ -21,7 +23,9 @@ BASE='https://chillcenter.local:8443/api/2026-10-14'
 curl --fail-with-body --cacert ./chill-center-public.pem "$BASE/server"
 ```
 
-Il n'y a pas de CORS : les requêtes avec `Origin` ou `Sec-Fetch-Site` sont refusées. Un site web ou Swagger UI chargé depuis une autre origine ne peut donc pas appeler le serveur. Intégrez l'API depuis un client natif, un service local de confiance, ou un futur client web explicitement supporté.
+Il n'y a pas de CORS inter-origines : un site web ou Swagger UI chargé depuis une autre origine ne peut pas appeler le serveur. Le client web servi par l'instance est accepté avec `Sec-Fetch-Site: same-origin` et, si présent, un `Origin` correspondant exactement à l'origine du serveur (schéma et hôte/port validés). Un client natif ou service local de confiance n'envoie pas ces en-têtes de navigateur. Leur absence n'ajoute pas d'authentification ; ne contournez pas une erreur d'origine en les falsifiant.
+
+Sur l'écoute HTTP facultative du client web, le navigateur peut omettre `Sec-Fetch-Site` ; un `Origin` présent doit toujours correspondre au serveur. Les routes réservées à HTTPS restent refusées sur cette écoute. Les exemples de ce guide utilisent HTTPS.
 
 ## Erreurs et écritures concurrentes
 
@@ -89,7 +93,7 @@ Un flux n'est possible qu'après acquisition d'un bail du profil. Utilisez un `d
 2. Conservez le bail reçu (session, génération, révision du média, échéance) et ouvrez `GET /media/{media}/stream` avec `X-Chill-Session`, `X-Chill-Generation` et un unique `Range`.
 3. Renouvelez avec `heartbeat` environ toutes les 5 secondes; envoyez `progress` avec une séquence strictement croissante et des millisecondes.
 4. Écoutez `playback/events` en SSE. Un événement pause impose un arrêt local, y compris si le lecteur possède déjà des octets en tampon.
-5. À pause, arrêt ou changement de média, envoyez la progression finale puis `release`.
+5. À arrêt ou changement de média, envoyez la progression finale puis `release`. Pour une pause locale sans abandon du tampon, le client Mac conserve moteur et bail, envoie la position et continue les `heartbeat` sans crédit de visionnage (ADR0022). Un autre client peut libérer son bail en pause, mais devra alors le réacquérir et recharger ; un bail expiré/révoqué ne doit jamais être réutilisé.
 
 `Progress.final_elapsed_ms` est du temps réel de lecture dans les derniers 10 % de la vidéo, sans pause, buffering ou seek. Pour une durée d'au moins 100 secondes, à 10 secondes cumulées le serveur marque vu. Une vitesse ×2 ne double pas ce temps. Les vitesses autorisées sont 0,5; 0,75; 1; 1,25; 1,5; 1,75; 2.
 
