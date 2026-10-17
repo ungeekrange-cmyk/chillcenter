@@ -75,3 +75,32 @@ stream, real landscape lock, or Pi. Orientation refusal is covered with a
 mocked browser policy and the honest fallback. This verdict does not yet cover
 the deployment archive; its frozen SHA256 and manifest require separate
 verification before installation.
+
+## Annexe de livraison / Delivery appendix
+
+La limitation ci-dessus sur l'archive est levée pour le paquet figé suivant :
+commit `98ee3e37e8b19c0d2e8e92991b3fb917eb0a13b8`, archive
+`chillcenter-web.tar`, SHA256
+`281cf6eb6babca616004f425ac9e13332f38ef9a3af59f7793398640c81cc0ed`,
+6 616 576octets, build `b1722f00c0a6`. **APPROVED_SCOPED** pour une
+installation des seuls fichiers web avec l'opérateur
+`b0baea0b2a572b65c9a79cd792276143b45092dc95523eb47815b8742c743996`.
+
+L'archive contient exactement82fichiers réguliers et6répertoires, tous sous
+`web/`, sans lien, nœud spécial, chemin absolu, remontée ou doublon. Les81lignes
+de `SHA256SUMS` couvrent exactement tous les fichiers sauf le manifeste ; chaque
+empreinte est valide. L'arborescence hors manifeste est identique au build web
+revu. La taille reste sous la limite de16Mio de l'opérateur.
+
+The archive limitation above is cleared for this exact frozen package: commit
+`98ee3e37e8b19c0d2e8e92991b3fb917eb0a13b8`, `chillcenter-web.tar`, SHA256
+`281cf6eb6babca616004f425ac9e13332f38ef9a3af59f7793398640c81cc0ed`,
+6,616,576bytes, build `b1722f00c0a6`. It is **APPROVED_SCOPED** for a
+web-assets-only install with operator
+`b0baea0b2a572b65c9a79cd792276143b45092dc95523eb47815b8742c743996`.
+
+The archive contains exactly82regular files and6directories, all below
+`web/`, with no link, special node, absolute path, traversal, or duplicate.
+The81-line `SHA256SUMS` manifest covers every file except itself and all hashes
+validate. The non-manifest tree is byte-identical to the reviewed web build.
+The archive remains below the operator's16MiB limit.

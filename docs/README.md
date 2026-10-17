@@ -16,6 +16,8 @@ langue. Un changement documentaire n'implique ni nouveau bundle ni déploiement.
 | Livraison v0.6 et limites connues | [Release](releases/REL-V0.6.md) | [Release](releases/REL-V0.6.en.md) |
 | Candidat suivant : bugs 82–84 et parité web (sans IA) | [Rapport](implementation/WEB-PARITY-20261017.md) | [Report](implementation/WEB-PARITY-20261017.en.md) |
 | Déploiement des seuls fichiers web sur Pi | [Livraison](releases/REL-WEB-PARITY-001-web-deployment.md) | [Delivery](releases/REL-WEB-PARITY-001-web-deployment.en.md) |
+| Client web smartphone, livraison | [Livraison mobile](releases/REL-WEB-MOBILE-001.md) | [Mobile delivery](releases/REL-WEB-MOBILE-001.en.md) |
+| Adaptateurs smartphone, décision | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.md) | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.en.md) |
 | Contribution | [Contribuer](../CONTRIBUTING.md) | [Contributing](../CONTRIBUTING.en.md) |
 | Sécurité | [Sécurité](../SECURITY.md) | [Security](../SECURITY.en.md) |
 | Préparation du dépôt public | [GitHub](publication/GITHUB-REPOSITORY.md) | [GitHub](publication/GITHUB-REPOSITORY.en.md) |

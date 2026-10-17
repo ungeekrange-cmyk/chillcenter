@@ -16,6 +16,8 @@ does not imply a new bundle or deployment.
 | v0.6 delivery and known limitations | [Release](releases/REL-V0.6.md) | [Release](releases/REL-V0.6.en.md) |
 | Next candidate: fixes 82–84 and web parity (no AI) | [Rapport](implementation/WEB-PARITY-20261017.md) | [Report](implementation/WEB-PARITY-20261017.en.md) |
 | Web-assets-only Pi deployment | [Livraison](releases/REL-WEB-PARITY-001-web-deployment.md) | [Delivery](releases/REL-WEB-PARITY-001-web-deployment.en.md) |
+| Smartphone web client delivery | [Livraison mobile](releases/REL-WEB-MOBILE-001.md) | [Mobile delivery](releases/REL-WEB-MOBILE-001.en.md) |
+| Smartphone adapter decision | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.md) | [ADR0026](architecture/decisions/ADR-0026-mobile-web-presentation.en.md) |
 | Contributing | [Contribuer](../CONTRIBUTING.md) | [Contributing](../CONTRIBUTING.en.md) |
 | Security | [Sécurité](../SECURITY.md) | [Security](../SECURITY.en.md) |
 | Public repository preparation | [GitHub](publication/GITHUB-REPOSITORY.md) | [GitHub](publication/GITHUB-REPOSITORY.en.md) |

@@ -1,5 +1,21 @@
 # Contexte du projet
 
+## Client web smartphone déployé — 17 octobre 2026
+
+Concept R1 validé puis intégration exclusivement web, source **98ee3e3**,
+build **b1722f00c0a6**. Navigation basse, grille virtuelle et fiches tactiles ;
+plein écran réel demandé avant attente réseau, paysage selon capacités, repli
+explicite. Desktop web conservé, aucun fichier commun Mac/serveur modifié.
+**283/283 tests**, QA Chromium mobile et desktop PASS, documentation **24/24**.
+Revue source/archive et vérification post-déploiement **APPROVED_SCOPED**.
+Assets seuls remplacés à14:36:13UTC après sauvegarde privée complète ; PID5420
+et0redémarrage, hashes binaire/configuration/unité/certificat/SPKI inchangés.
+Archive locale et ancien arbre conservés, seul transfert temporaire supprimé.
+HTTP sans port et applicatif répondent depuis le Mac ; sonde locale du Pi sur
+le port80 distincte. Essais physiques Safari/iPhone, Android et vidéo restants.
+[Livraison FR/EN, preuves et retour arrière](releases/REL-WEB-MOBILE-001.md).
+Les versions et worktrees antérieurs sont conservés ; aucun push GitHub.
+
 ## Web seul déployé sur Pi — 17 octobre 2026
 
 Autorisation explicite après la remise Mac/web : sauvegarder puis remplacer
