@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR0027](ADR-0027-mobile-content-and-iphone-playback.md), ACCEPTED_BY_USER_CHANGE_REQUEST,17octobre2026 : contenu mobile d'abord, recherche repliée, rail paysage et repli ManagedMediaSource iPhone ; reprise tactile respectant les pauses serveur. Réserves de validation physique conservées.
+
 [ADR0026](ADR-0026-mobile-web-presentation.md) ([EN](ADR-0026-mobile-web-presentation.en.md)), ACCEPTED,17octobre2026 : présentation smartphone web approuvée R1, navigation basse et plein écran/paysage selon capacités réelles ; calcul virtuel cohérent, aucun client Mac, serveur, API ou NAS modifié.
 
 [ADR0024](ADR-0024-artwork-content-deduplication.md), ACCEPTED,16octobre2026 : pool privé d'affiches à liens physiques, chemins/cache hors ligne/budget logique historiques conservés ; migration explicite et réversible, pas de SQLite ou web modifié. Proposition revue indépendamment APPROVED ; source f980355 code/sécurité APPROVED_SCOPED avant migration réelle complète.

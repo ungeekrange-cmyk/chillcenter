@@ -10,6 +10,19 @@
   const fail = message => Object.assign(new Error(message), { code: "PLAYER_ERROR" });
   const LABELS = { "ac-3": "AC-3", "ec-3": "E-AC-3", flac: "FLAC", opus: "Opus", xvid: "Xvid (MPEG-4)", dx50: "DivX (MPEG-4)", divx: "DivX (MPEG-4)", mp4v: "MPEG-4" };
   const codecLabel = c => LABELS[c] || (/^mp4a\.6B/i.test(c || "") ? "MP3" : /^mp4a/.test(c || "") ? "AAC" : (c || "inconnu").split(".")[0]);
+  const language = doc => (doc?.documentElement?.lang || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
+  const playbackNotice = (doc, reason) => {
+    const fr = language(doc) === "fr";
+    if (reason === "interrupted") return fr
+      ? "La lecture a été interrompue. Touchez Lecture pour reprendre."
+      : "Playback was interrupted. Tap Play to resume.";
+    return fr
+      ? "La lecture a été bloquée par le navigateur. Touchez Lecture pour reprendre."
+      : "Playback was blocked by the browser. Tap Play to resume.";
+  };
+  const playbackFailure = doc => language(doc) === "fr"
+    ? "Le navigateur n'a pas pu démarrer la lecture."
+    : "The browser could not start playback.";
 
   function sniffContainer(head) {
     const tag = String.fromCharCode(...head.subarray(4, 8));
@@ -76,9 +89,7 @@
         this.host.replaceChildren(this.canvas, this.video);
       } else this.host.replaceChildren(this.video);
       this.bind();
-      this.ms = new MS();
-      this.url = this.d.URL.createObjectURL(this.ms);
-      this.video.src = this.url;
+      this.attachMediaSource(MS);
       await new Promise((res, rej) => { this.ms.addEventListener("sourceopen", res, { once: true }); setTimeout(() => rej(fail("MediaSource indisponible.")), 5000); }); alive();
       if (this.movie.duration) this.ms.duration = this.movie.duration;
       for (const t of [video, this.activeAudio].filter(Boolean)) {
@@ -96,6 +107,17 @@
       else this.probeHardware(video);
       await this.pump();
       this.started = true;
+    }
+
+    // Safari on iPhone exposes ManagedMediaSource rather than the older
+    // MediaSource API. WebKit requires remote playback to be disabled (unless
+    // an AirPlay alternative is provided) before that source is attached.
+    // Keep this narrow: buffer ownership and range fetching remain identical.
+    attachMediaSource(MS) {
+      if (this.d.managedMediaSource) this.video.disableRemotePlayback = true;
+      this.ms = new MS();
+      this.url = this.d.URL.createObjectURL(this.ms);
+      this.video.src = this.url;
     }
 
     async initSoft(track, entry, startAt) {
@@ -203,8 +225,37 @@
     }
 
     // ---- Engine interface --------------------------------------------------------------
-    play() { this.video?.play().catch(() => {}); }
-    pause() { this.video?.pause(); }
+    async play() {
+      if (!this.video) return false;
+      const attempt = (this.playAttempt || 0) + 1;
+      this.playAttempt = attempt;
+      try {
+        await this.video.play();
+        if (this.closed || attempt !== this.playAttempt) return false;
+        this.playBlocked = false;
+        this.playBlockReason = null;
+        return true;
+      } catch (e) {
+        // A newer pause/retry/close owns the media element. Its state must not
+        // be overwritten by an old promise settling late.
+        if (this.closed || attempt !== this.playAttempt) return false;
+        if (e?.name === "NotAllowedError") {
+          // Keep the loaded MediaSource buffers. A visible Play control is a
+          // new gesture and can resume without downloading it again.
+          this.playBlocked = true;
+          this.playBlockReason = "blocked";
+        } else if (e?.name === "AbortError") {
+          // The current media element was interrupted without a newer local
+          // command. Keep its buffers and offer a fresh, trusted retry.
+          this.playBlocked = true;
+          this.playBlockReason = "interrupted";
+        } else if (e?.name !== "AbortError") {
+          this.errorText = playbackFailure(this.d.document);
+        }
+        return false;
+      }
+    }
+    pause() { this.playAttempt = (this.playAttempt || 0) + 1; this.video?.pause(); }
     seek(seconds) { if (this.video) this.video.currentTime = Math.min(seconds, this.movie.duration); }
     setSpeed(x) { this.rate = x; if (this.video) this.video.playbackRate = x; }
     setVolume(v) { if (this.video) this.video.volume = Math.min(1, Math.max(0, v / 100)); }
@@ -226,13 +277,15 @@
       if (!v) return { loaded: false, paused: true, buffering: false, ended: false, error: this.errorText, position: 0, duration: 0, speed: this.rate, volume: 100, tracks: [] };
       return {
         loaded: v.readyState >= 1, paused: v.paused, buffering: !v.paused && !v.ended && v.readyState < 3, ended: v.ended,
-        error: this.errorText || this.soft?.errorText || null, notice: this.notice, position: v.currentTime || 0, duration: this.movie.duration, speed: v.playbackRate, volume: Math.round(v.volume * 100),
+        error: this.errorText || this.soft?.errorText || null,
+        notice: [this.notice, this.playBlocked ? playbackNotice(this.d.document, this.playBlockReason) : null].filter(Boolean).join(" ") || null,
+        play_blocked: Boolean(this.playBlocked), position: v.currentTime || 0, duration: this.movie.duration, speed: v.playbackRate, volume: Math.round(v.volume * 100),
         tracks: (this.audio || []).map((t, i) => ({ id: t.id, kind: "Audio", language: t.language, title: t.sourceLabel ? `${t.sourceLabel} (converti en AAC)` : codecLabel(t.codec), selected: t === this.activeAudio, original: i === 0 })),
         hardware_decoder: this.soft ? "no" : this.hardware, decoder: this.soft ? this.softLabel : "Décodeur du navigateur",
       };
     }
     close() {
-      this.closed = true; this.epoch++;
+      this.closed = true; this.epoch++; this.playAttempt = (this.playAttempt || 0) + 1;
       try { this.src?.close?.(); } catch { /* ignore */ }
       try { this.soft?.close(); } catch { /* ignore */ }
       try { this.video?.pause(); this.video?.removeAttribute("src"); this.video?.load(); } catch { /* ignore */ }
@@ -243,7 +296,13 @@
 
   const api = { MseEngine, sniffContainer };
   if (typeof module !== "undefined") module.exports = api;
-  else if (root.MediaSource && root.ChillEngines) {
-    root.ChillEngines.factories.push(host => new MseEngine(host, { fetch: (...a) => root.fetch(...a), MediaSource: root.MediaSource, document: root.document, URL: root.URL, storage: root.localStorage, navigator: root.navigator, requestAnimationFrame: f => root.requestAnimationFrame(f), cancelAnimationFrame: h => root.cancelAnimationFrame(h) }));
+  else {
+    // Prefer the established MSE implementation where both exist. iPhone
+    // Safari may expose only ManagedMediaSource, which has the same engine
+    // contract but needs the explicit remote-playback setting above.
+    const MediaSourceCtor = root.MediaSource || root.ManagedMediaSource;
+    if (MediaSourceCtor && root.ChillEngines) {
+      root.ChillEngines.factories.push(host => new MseEngine(host, { fetch: (...a) => root.fetch(...a), MediaSource: MediaSourceCtor, managedMediaSource: !root.MediaSource && Boolean(root.ManagedMediaSource), document: root.document, URL: root.URL, storage: root.localStorage, navigator: root.navigator, requestAnimationFrame: f => root.requestAnimationFrame(f), cancelAnimationFrame: h => root.cancelAnimationFrame(h) }));
+    }
   }
 })(typeof window !== "undefined" ? window : globalThis);

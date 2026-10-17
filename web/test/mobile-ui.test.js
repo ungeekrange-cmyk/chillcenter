@@ -44,8 +44,8 @@ test("poster actions keep separate 44px touch targets and mobile header keeps pr
   assert.match(css, /\.poster-watched\{left:5px;bottom:5px\}/);
   assert.match(css, /\.poster-add\{right:5px;bottom:5px\}/);
   assert.match(css, /min-width:44px;min-height:44px/);
-  assert.match(css, /grid-template-columns:44px minmax\(0,1fr\) 44px max-content/);
-  assert.match(css, /\.profile-menu\{grid-column:4/);
+  assert.match(css, /grid-template-columns:44px minmax\(0,1fr\) 44px 44px max-content/);
+  assert.match(css, /\.profile-menu\{grid-column:5/);
 });
 test("collection member actions are visible and touch-safe without changing virtual row info height", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
@@ -59,4 +59,54 @@ test("remaining mobile player and profile controls meet the 44px touch target", 
   assert.match(css, /\.profile-menu summary\{gap:6px;min-width:44px;min-height:44px/);
   assert.match(css, /#mobile-orientation-hint button\{min-height:44px/);
   assert.match(css, /\.player-seek input\{min-height:44px/);
+});
+test("content-first mobile search and filters are opened by an accessible small control", () => {
+  const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
+  assert.match(source, /mobile-search-toggle/);
+  assert.match(source, /aria-expanded/);
+  assert.match(source, /aria-controls/);
+  assert.match(source, /event\.key === "Escape"/);
+  assert.match(css, /\.app-topbar \.global-search\{display:none/);
+  assert.match(css, /\.mobile-discovery-open #filter-form\{display:flex\}/);
+});
+test("web-only toggle is absent from desktop and landscape rail remains phone-scoped", () => {
+  const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
+  assert.match(css, /\.mobile-brand,\.mobile-nav,\.mobile-search-toggle\{display:none\}/);
+  assert.match(css, /orientation:landscape\) and \(max-height:500px\) and \(pointer:coarse\)/);
+  assert.match(css, /text-overflow:ellipsis/);
+});
+test("every mobile forwarding destination closes discovery without clearing its values", () => {
+  assert.match(source, /if \(source && !source\.disabled\) \{ setDiscoveryOpen\(false\); source\.click\(\); \}/);
+  assert.match(source, /searchToggle\.hidden = !active/);
+});
+test("closing discovery survives a desktop transition and never hides picker filters", () => {
+  assert.match(source, /if \(open && !isPhone\(\)\) return/);
+  const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
+  assert.match(css, /#filter-form\{display:none/);
+  assert.doesNotMatch(css, /\.filters\{display:none/);
+});
+test("series tools are reparented into mobile details without recreating their listeners", () => {
+  assert.match(source, /mobile-season-details/);
+  assert.match(source, /mobile-series-details/);
+  assert.match(source, /restoreSeriesDetails/);
+  assert.match(source, /new MutationObserver\(\(\) => \{ if \(!seriesQueued\)/);
+});
+test("landscape phone navigation becomes a compact left rail", () => {
+  const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
+  assert.match(css, /orientation:landscape/);
+  assert.match(css, /width:68px/);
+  assert.match(css, /grid-template-rows:repeat\(5,minmax\(0,1fr\)\)/);
+});
+test("portrait header assigns distinct columns to sync, search and profile", () => {
+  const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
+  assert.match(css, /grid-template-columns:44px minmax\(0,1fr\) 44px 44px max-content/);
+  assert.match(css, /#sync-indicator\{grid-column:3/);
+  assert.match(css, /\.mobile-search-toggle\{display:grid;grid-column:4/);
+  assert.match(css, /\.profile-menu\{grid-column:5/);
+});
+test("late season artwork joins mobile details and desktop restore preserves poster order", () => {
+  assert.match(source, /const existing = season\.querySelector/);
+  assert.match(source, /existing\.append\(node\)/);
+  assert.match(source, /node\.classList\?\.contains\("series-poster"\)/);
+  assert.match(source, /season\.append\(node\)/);
 });

@@ -13,9 +13,9 @@ function make({ phone = true, fullscreen = "resolve", lock = "resolve", native =
   const panel = { get hidden() { return panelHidden; }, requestFullscreen() { events.push("request"); if (fullscreen === "throw") throw new Error("denied"); if (fullscreen === "reject") return Promise.reject(new Error("denied")); if (delayed) return delayed.promise.then(() => { actual = true; }); return Promise.resolve().then(() => { actual = true; }); } };
   const doc = { documentElement: { lang }, get fullscreenElement() { return actual ? panel : null; }, exitFullscreen() { actual = false; events.push("exit"); return Promise.resolve(); }, getElementById: () => panel, querySelector: () => video };
   const orientation = { lock() { events.push("lock"); return lock === "reject" ? Promise.reject(new Error("no")) : Promise.resolve(); }, unlock() { events.push("unlock"); } };
-  const win = { matchMedia: () => ({ matches: phone }), screen: { orientation } };
+  const win = { innerWidth:390, innerHeight:844, matchMedia: () => ({ matches: phone }), screen: { orientation } };
   const controller = createController({ window: win, document: doc, panel: () => panel, video: () => video, hint: () => hint });
-  return { controller, events, hint, labels, retry, delayed, set actual(v) { actual = v; }, set hidden(v) { panelHidden = v; }, get actual() { return actual; } };
+  return { controller, events, hint, labels, retry, delayed, win, set actual(v) { actual = v; }, set hidden(v) { panelHidden = v; }, get actual() { return actual; } };
 }
 test("phone predicate is standard and desktop never requests fullscreen", async () => { assert.equal(phoneViewport({ matchMedia: () => ({ matches: false }) }), false); const desktop = make({ phone: false }); assert.equal(await desktop.controller.requestFromGesture(), false); assert.deepEqual(desktop.events, []); });
 test("a desktop fullscreenchange never locks orientation or shows mobile guidance", async () => { const desktop = make({ phone: false }); desktop.actual = true; await desktop.controller.onFullscreenChange(); assert.equal(desktop.events.includes("lock"), false); assert.equal(desktop.hint.hidden, true); });
@@ -25,3 +25,16 @@ test("a late fullscreenchange while the panel is hidden exits the panel", async 
 test("orientation refusal is guidance, and native video fallback is real only when active", async () => { const refused = make({ lock: "reject" }); assert.equal(await refused.controller.requestFromGesture(), true); assert.equal(refused.hint.hidden, false); const native = make({ fullscreen: "reject", native: true }); assert.equal(await native.controller.requestFromGesture(), true); assert.ok(native.events.includes("native-enter")); native.controller.stop(); assert.ok(native.events.includes("native-exit")); });
 test("browser exit unlocks without re-entering and labels follow language", async () => { const fr = make({ lang: "fr" }); await fr.controller.requestFromGesture(); fr.actual = false; await fr.controller.onFullscreenChange(); assert.ok(fr.events.includes("unlock")); assert.equal(text({ documentElement: { lang: "en" } }, "retry"), "Retry full screen"); });
 test("WebPlayer status exposes the real browser fullscreen state", () => { const player = new WebPlayer({ isFullscreen: () => true }); player.info = { media: { title: "Test" }, preferences: {} }; player.mediaId = "m"; player.lease = {}; player.engine = { snapshot: () => ({ loaded: true, paused: false, tracks: [] }), externalSubtitles: () => [] }; assert.equal(player.view().native.fullscreen, true); });
+test("rotation guidance disappears in landscape even when fullscreen or locking is refused", async () => {
+ const phone=make({fullscreen:"reject",canvas:true});await phone.controller.requestFromGesture();
+ assert.equal(phone.hint.hidden,false);
+ phone.win.innerWidth=844;phone.win.innerHeight=390;phone.controller.refreshViewport();
+ assert.equal(phone.hint.hidden,true);assert.deepEqual(phone.events,["request"]);
+ phone.win.innerWidth=390;phone.win.innerHeight=844;phone.controller.refreshViewport();assert.equal(phone.hint.hidden,false);
+ phone.controller.stop();phone.controller.refreshViewport();assert.equal(phone.hint.hidden,true);
+});
+test("the video-only iPhone fullscreen fallback is requested synchronously in the gesture",async()=>{
+ let calls=0;const video={webkitDisplayingFullscreen:false,webkitEnterFullscreen(){calls++;this.webkitDisplayingFullscreen=true;}};
+ const controller=createController({window:{innerWidth:844,innerHeight:390,matchMedia:()=>({matches:true}),screen:{}},document:{},panel:()=>({hidden:false}),video:()=>video});
+ const promise=controller.requestFromGesture();assert.equal(calls,1);assert.equal(await promise,true);
+});

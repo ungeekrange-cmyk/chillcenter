@@ -12,6 +12,7 @@ const entries=Array.from({length:180},(_,i)=>({media:{
  overview:'Synthetic mobile layout synopsis.',watched:false,rating:null,available:true,poster:null,
 },revision:1}));
 const media=entries[0].media.id;
+for(const [index,episode] of [[176,1],[177,2]])Object.assign(entries[index].media,{category:'serie',title:'Episode '+episode,series:'Fixture series',tmdb_id:123,season:1,episode,series_metadata:{name:'Fixture series',overview:'Series synopsis',genres:['Drama'],cast:[],directors:[],year:2026}});
 const saga={id:'fixture-saga',name:'Fixture saga',revision:1,media_ids:entries.slice(0,3).map(e=>e.media.id),poster:null};
 const playlist={id:'77777777-7777-4777-8777-777777777777',name:'Fixture playlist',revision:1,media_ids:entries.slice(0,3).map(e=>e.media.id),poster:null};
 
@@ -35,9 +36,10 @@ async function routeFixture(page,root){
    if(p==='/admin/tmdb')return json({configured:true,auto_enrich:false});
    if(p.endsWith('/unavailable'))return json({items:[],has_more:false,epoch:1});
    if(p.endsWith('/catalog/revision'))return json({revision:'r1'});
-   if(p.endsWith('/catalog/changes'))return json(req.postDataJSON().known_revision==='r1'?{revision:'r1',unchanged:true}:{revision:'r1',unchanged:false,reset:true,snapshot_id:'55555555-5555-4555-8555-555555555555',total:entries.length,items:entries.slice(0,100),deleted_ids:[],sagas:[saga],playlists:[playlist],series_revisions:{},season_metadata:{},has_more:true,next_offset:100});
+   if(p.endsWith('/catalog/changes'))return json(req.postDataJSON().known_revision==='r1'?{revision:'r1',unchanged:true}:{revision:'r1',unchanged:false,reset:true,snapshot_id:'55555555-5555-4555-8555-555555555555',total:entries.length,items:entries.slice(0,100),deleted_ids:[],sagas:[saga],playlists:[playlist],series_revisions:{'tmdb:tv:123':1},season_metadata:{},has_more:true,next_offset:100});
    if(p.includes('/catalog/changes/'))return json({revision:'r1',items:entries.slice(Number(url.searchParams.get('offset'))),has_more:false,next_offset:null});
    if(p.endsWith('/catalog'))return json(Query.browse(Query.prepare(entries),{offset:Number(url.searchParams.get('offset')||0),limit:48,grouped:true,category:url.searchParams.get('category')||null}));
+   if(p.includes('/series/'))return json(Query.series(Query.prepare(entries),decodeURIComponent(p.split('/series/')[1]),1,url.searchParams.get('selector')||'title'));
    if(p.endsWith('/related'))return json({items:[]});
    if(p.endsWith('/sagas'))return json({items:[saga]});
    if(p.endsWith('/playlists'))return json({items:[playlist]});
@@ -70,6 +72,9 @@ async function noOverflow(page,label){
   assert.equal(await page.locator('#mobile-nav button').count(),5);
   assert.equal(await page.locator('.sidebar').isVisible(),false);
   assert.equal(await page.locator('#profile-name').isVisible(),true);
+  assert.equal(await page.locator('.global-search').isVisible(),false);
+  assert.equal(await page.locator('#filter-form').isVisible(),false);
+  assert((await page.locator('#media').boundingBox()).y<300,'catalogue is visible above the fold without search');
   for(const width of [320,390,430,736,844]){
    await page.setViewportSize({width,height:width>=736?390:844});
    await page.waitForFunction(()=>getComputedStyle(document.getElementById('mobile-nav')).position==='fixed');
@@ -79,15 +84,18 @@ async function noOverflow(page,label){
    // intentionally retired virtual window after the resize RAF replaces it.
    const columns=await page.evaluate(()=>{const el=document.querySelector('#media .virtual-window');return {count:getComputedStyle(el).gridTemplateColumns.split(' ').length,inline:el.style.gridTemplateColumns,display:getComputedStyle(el).display,hidden:document.getElementById('catalog-panel').hidden,stage:state.stage};});
    assert.equal(columns.count,width<=360?2:3,`poster density at ${width}: ${JSON.stringify(columns)}`);
-   const nav=await page.locator('#mobile-nav').boundingBox();assert(Math.abs(nav.y+nav.height-(width>=736?390:844))<=1);
+   const nav=await page.locator('#mobile-nav').boundingBox();
+   if(width>=736){assert.equal(nav.x,0);assert(nav.width<=76&&nav.y===0&&nav.height>=389,'landscape navigation is a left rail');}
+   else assert(Math.abs(nav.y+nav.height-844)<=1);
   }
   await page.setViewportSize({width:390,height:844});
   for(const action of ['.play-video','.poster-watched','.poster-add']){
-   const box=await page.locator('#media .media-card').first().locator(action).boundingBox();
+   const box=await page.locator('#media .media-card').filter({has:page.locator('.play-video')}).first().locator(action).boundingBox();
    assert(box&&box.width>=44&&box.height>=44,`${action}: touch target at least 44px`);
   }
   const profileBox=await page.locator('#profile-menu').boundingBox();assert(profileBox&&profileBox.x+profileBox.width>=370,'profile stays in the upper right');
   await page.locator('[data-mobile-category=film]').click();await page.waitForFunction(()=>document.getElementById('category').value==='film');
+  await page.locator('#mobile-search-toggle').click();assert.equal(await page.locator('.global-search').isVisible(),true);
   await page.locator('#facet-genres').click();await noOverflow(page,'expanded genres');
   await page.locator('.facet-chip').filter({hasText:'Drama'}).click();
   await page.waitForFunction(()=>window.catalogFacets.values().genres.includes('Drama'));
@@ -115,7 +123,24 @@ async function noOverflow(page,label){
   const last=page.locator('#media .media-card').last();
   const lastBox=await last.boundingBox(),navBox=await page.locator('#mobile-nav').boundingBox();
   assert(lastBox&&lastBox.y+lastBox.height<=navBox.y+1,'last virtual row remains above navigation');
+  await page.locator('[data-mobile-category=serie]').click();
+  assert.equal(await page.locator('.global-search').isVisible(),false);
+  await page.evaluate(()=>{window.catalogFacets.clear();return loadPage();});
+  await page.locator('#media .media-card h2').first().click();await page.waitForSelector('.series-episodes .media-card');
+  await page.waitForSelector('.mobile-season-details');
+  assert.equal(await page.locator('.mobile-season-details').first().getAttribute('open'),null);
+  assert.equal(await page.locator('.mobile-season-details .season-provider').first().isVisible(),false);
+  assert.equal(await page.locator('.mobile-series-details').getAttribute('open'),null);
+  assert.equal(await page.evaluate(()=>{const season=document.querySelector('.series-season');return [...season.children].indexOf(season.querySelector('.series-episodes'))<[...season.children].indexOf(season.querySelector('.mobile-season-details'));}),true);
+  await page.locator('.mobile-season-details > summary').first().click();
+  assert.equal(await page.locator('.mobile-season-details .season-provider').first().isVisible(),true);
+  await page.setViewportSize({width:1280,height:950});await page.waitForFunction(()=>!document.querySelector('.mobile-season-details'));
+  assert.equal(await page.locator('.season-provider').first().isVisible(),true);
+  assert.equal(await page.locator('#mobile-search-toggle').isVisible(),false);
+  await page.setViewportSize({width:390,height:844});await page.waitForSelector('.mobile-season-details');
+  await page.locator('#mobile-search-toggle').click();assert.equal(await page.locator('.global-search').isVisible(),true);
   await page.locator('[data-mobile-more]').click();await page.locator('[data-mobile-sagas]').click();
+  assert.equal(await page.locator('.global-search').isVisible(),false);
   try{await page.waitForFunction(()=>!document.getElementById('collections-panel').hidden);}catch(error){console.error('sagas diagnostics',await page.evaluate(()=>({section:shellSection,message:document.getElementById('message').textContent,disabled:document.getElementById('show-sagas').disabled,handler:String(document.getElementById('show-sagas').onclick),sheet:document.getElementById('mobile-more-sheet').open})),errors);throw error;}await noOverflow(page,'sagas');
   await page.locator('[data-collection-id="fixture-saga"]').click();await page.waitForSelector('#collection-members .media-card');
   await noOverflow(page,'saga members');

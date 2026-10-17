@@ -9,7 +9,7 @@
   // These web-only labels are deliberately not added to shared locales.  The
   // normal catalogue remains authoritative; this small fallback covers only
   // labels the desktop client never renders.
-  const webEnglish = { "Docs": "Documentaries", "Plus": "More", "Navigation mobile": "Mobile navigation", "Plus de rubriques": "More sections" };
+  const webEnglish = { "Docs": "Documentaries", "Plus": "More", "Navigation mobile": "Mobile navigation", "Plus de rubriques": "More sections", "Rechercher et filtrer": "Search and filter", "Fermer la recherche": "Close search", "Plus d’informations sur la saison": "More information about this season", "Plus d’informations sur la série": "More information about this series" };
   const t = text => {
     const translated = root.chillI18n?.t?.(text) || text;
     return translated === text && root.chillI18n?.language === "en" ? (webEnglish[text] || text) : translated;
@@ -24,7 +24,7 @@
 
   function forward(selector) {
     const source = doc.querySelector(selector);
-    if (source && !source.disabled) source.click();
+    if (source && !source.disabled) { setDiscoveryOpen(false); source.click(); }
   }
   function closeSheet() { const sheet = byId("mobile-more-sheet"); if (sheet?.open) sheet.close(); }
   function addMobileShell() {
@@ -38,9 +38,17 @@
       brand.append(image); brand.addEventListener("click", () => forward('[data-category=""]'));
       topbar.prepend(brand);
     }
+    if (topbar && !byId("mobile-search-toggle")) {
+      const searchToggle = doc.createElement("button");
+      searchToggle.id = "mobile-search-toggle"; searchToggle.type = "button"; searchToggle.className = "mobile-search-toggle";
+      searchToggle.setAttribute("aria-label", t("Rechercher et filtrer")); searchToggle.setAttribute("aria-expanded", "false"); searchToggle.setAttribute("aria-controls", "search filter-form");
+      searchToggle.innerHTML = icon("m10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13m5 11 4 4");
+      searchToggle.addEventListener("click", () => setDiscoveryOpen(!doc.body.classList.contains("mobile-discovery-open"), searchToggle));
+      topbar.append(searchToggle);
+    }
     const nav = doc.createElement("nav");
     nav.id = "mobile-nav"; nav.className = "mobile-nav"; nav.setAttribute("aria-label", t("Navigation mobile"));
-    nav.innerHTML = entries.map(([category, label, path]) => `<button type="button" data-mobile-category="${category}">${icon(path)}<span>${t(label)}</span></button>`).join("") + `<button type="button" data-mobile-more aria-haspopup="dialog">${icon("M5 12h.01M12 12h.01M19 12h.01")}<span>${t("Plus")}</span></button>`;
+    nav.innerHTML = entries.map(([category, label, path]) => `<button type="button" data-mobile-category="${category}" aria-label="${t(label)}">${icon(path)}<span>${t(label)}</span></button>`).join("") + `<button type="button" data-mobile-more aria-haspopup="dialog" aria-label="${t("Plus")}">${icon("M5 12h.01M12 12h.01M19 12h.01")}<span>${t("Plus")}</span></button>`;
     doc.body.append(nav);
     for (const button of nav.querySelectorAll("[data-mobile-category]")) button.addEventListener("click", () => forward(`[data-category="${button.dataset.mobileCategory}"]`));
     nav.querySelector("[data-mobile-more]").addEventListener("click", () => byId("mobile-more-sheet")?.showModal());
@@ -56,6 +64,49 @@
     sheet.querySelector("[data-mobile-playlists]").addEventListener("click", () => { closeSheet(); forward("#show-playlists"); });
     sheet.querySelector("[data-mobile-config]").addEventListener("click", () => { closeSheet(); forward("#admin-toggle"); });
   }
+  function setDiscoveryOpen(open, focus) {
+    // Opening is meaningful only on a phone; closing must still clear stale
+    // state after a resize to desktop, ready for the next phone viewport.
+    if (open && !isPhone()) return;
+    doc.body.classList.toggle("mobile-discovery-open", open);
+    const toggle = byId("mobile-search-toggle"); toggle?.setAttribute("aria-expanded", String(open));
+    if (open) root.setTimeout(() => byId("search")?.focus(), 0); else focus?.focus?.();
+  }
+  function arrangeSeriesDetails() {
+    if (!isPhone()) return restoreSeriesDetails();
+    const members = byId("collection-members"); if (!members) return;
+    for (const season of members.querySelectorAll(".series-season")) {
+      const existing = season.querySelector(":scope > .mobile-season-details");
+      if (existing) {
+        for (const node of Array.from(season.children)) if (node !== existing && node.tagName !== "SUMMARY" && !node.classList.contains("series-episodes")) existing.append(node);
+        continue;
+      }
+      const grid = season.querySelector(":scope > .series-episodes"); if (!grid) continue;
+      const extra = doc.createElement("details"); extra.className = "mobile-season-details";
+      const summary = doc.createElement("summary"); summary.textContent = t("Plus d’informations sur la saison"); extra.append(summary);
+      for (const node of Array.from(season.children)) if (node !== grid && node.tagName !== "SUMMARY") extra.append(node);
+      season.append(extra);
+    }
+    const tools = byId("series-tools");
+    if (tools && !tools.querySelector(":scope > .mobile-series-details")) {
+      const extra = doc.createElement("details"); extra.className = "mobile-series-details";
+      const summary = doc.createElement("summary"); summary.textContent = t("Plus d’informations sur la série"); extra.append(summary);
+      for (const node of Array.from(tools.childNodes)) if (node !== extra) extra.append(node);
+      tools.append(extra);
+    }
+  }
+  function restoreSeriesDetails() {
+    const members = byId("collection-members");
+    for (const extra of members?.querySelectorAll?.(".mobile-season-details") || []) {
+      const season = extra.parentElement, grid = season?.querySelector(":scope > .series-episodes");
+      for (const node of Array.from(extra.children)) if (node.tagName !== "SUMMARY") {
+        if (node.classList?.contains("series-poster")) season.append(node); else season.insertBefore(node, grid);
+      }
+      extra.remove();
+    }
+    const tools = byId("series-tools"), extra = tools?.querySelector(":scope > .mobile-series-details");
+    if (extra) { for (const node of Array.from(extra.childNodes)) if (node.tagName !== "SUMMARY") tools.insertBefore(node, extra); extra.remove(); }
+  }
   function syncShell() {
     const nav = byId("mobile-nav"); if (!nav) return;
     const category = byId("category")?.value || "";
@@ -65,6 +116,8 @@
     const sharedFilm = doc.querySelector('[data-category="film"]');
     const active = Boolean(sharedFilm && !sharedFilm.disabled);
     nav.hidden = !isPhone() || !active || doc.body.classList.contains("player-open");
+    const searchToggle = byId("mobile-search-toggle");
+    if (searchToggle) searchToggle.hidden = !active;
     for (const button of nav.querySelectorAll("[data-mobile-category]")) {
       const selected = button.dataset.mobileCategory === category && !byId("catalog-panel")?.hidden;
       button.classList.toggle("active", selected); button.setAttribute("aria-current", selected ? "page" : "false"); button.disabled = !active;
@@ -95,7 +148,7 @@
       wrapped.__mobileWrapped = true; root.renderShell = wrapped;
     }
     root.addEventListener("resize", () => { root.restoreCatalogLayout?.(); syncShell(); }, { passive: true });
-    mobileQuery?.addEventListener?.("change", () => { closeSheet(); root.restoreCatalogLayout?.(); syncShell(); });
+    mobileQuery?.addEventListener?.("change", () => { closeSheet(); setDiscoveryOpen(false); root.restoreCatalogLayout?.(); arrangeSeriesDetails(); syncShell(); });
     // player.js toggles this class without re-rendering the shell. Observe it
     // so a resize during playback cannot leave the bottom navigation hidden
     // when the player subsequently closes.
@@ -103,9 +156,12 @@
       if (doc.body.classList.contains("player-open")) closeSheet();
       syncShell();
     }).observe(doc.body, { attributes: true, attributeFilter: ["class"] });
+    let seriesQueued = false;
+    new MutationObserver(() => { if (!seriesQueued) { seriesQueued = true; root.queueMicrotask(() => { seriesQueued = false; arrangeSeriesDetails(); }); } }).observe(byId("collection-panel"), { childList: true, subtree: true });
+    doc.addEventListener("keydown", event => { if (event.key === "Escape" && doc.body.classList.contains("mobile-discovery-open")) { event.preventDefault(); setDiscoveryOpen(false, byId("mobile-search-toggle")); } });
     root.chillReady?.then(() => { root.restoreCatalogLayout?.(); syncShell(); });
     syncShell();
   }
-  root.ChillMobileUi = { isPhone, install, syncShell };
+  root.ChillMobileUi = { isPhone, install, syncShell, arrangeSeriesDetails };
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", install, { once: true }); else install();
 })(window, document);

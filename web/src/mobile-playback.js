@@ -16,16 +16,20 @@
     const panel = () => deps.panel?.() || doc?.getElementById?.("player-panel");
     const video = () => deps.video?.() || doc?.querySelector?.("#native-video video");
     const actual = () => Boolean(doc?.fullscreenElement || video()?.webkitDisplayingFullscreen);
-    let requested = false, generation = 0, hintVisible = false, lockingToken = null, lockingPromise = null;
+    let requested = false, generation = 0, hintWanted = false, lockingToken = null, lockingPromise = null;
+    const landscape = () => Number(win?.innerWidth) > Number(win?.innerHeight);
     const current = token => token === generation && !panel()?.hidden;
     function setHint(visible) {
-      hintVisible = visible;
+      hintWanted = visible;
       const hint = deps.hint?.(); if (!hint) return;
-      hint.hidden = !visible;
+      // Orientation locking may be unavailable even when the user has already
+      // rotated the phone. Guidance must never imply that playback is gated.
+      hint.hidden = !visible || landscape();
       const label = hint.querySelector?.("[data-mobile-orientation-text]"); if (label) label.textContent = text(doc, "rotate");
       const retry = hint.querySelector?.("button"); if (retry) retry.textContent = text(doc, "retry");
     }
-    function refreshLanguage() { if (hintVisible) setHint(true); }
+    function refreshLanguage() { if (hintWanted) setHint(true); }
+    function refreshViewport() { setHint(hintWanted); }
     function unlock() { try { win?.screen?.orientation?.unlock?.(); } catch { /* browser-specific no-op */ } }
     function playbackOpen() { return Boolean(panel() && !panel().hidden); }
     async function lockLandscape(token) {
@@ -77,6 +81,13 @@
     function requestFromGesture() {
       if (!phoneViewport(win) || !playbackOpen()) return Promise.resolve(false);
       const token = ++generation; requested = true;
+      if (typeof panel()?.requestFullscreen !== "function") {
+        // iPhone's video-only API may require the direct gesture stack too.
+        // Once the video is ready, do not defer this fallback to a microtask.
+        const entered = attemptNativeVideoFullscreen();
+        if (entered) return lockLandscape(token).then(() => actual() && current(token));
+        setHint(true); return Promise.resolve(false);
+      }
       let request; try { request = panel()?.requestFullscreen?.(); } catch { request = null; }
       return Promise.resolve(request).catch(() => false).then(async () => {
         if (!current(token)) { cleanLateFullscreen(token); return false; }
@@ -103,7 +114,7 @@
       leavePanelFullscreen();
       leaveNativeVideoFullscreen();
     }
-    return { requestFromGesture, onFullscreenChange, stop, refreshLanguage, isActualFullscreen: actual, isPhone: () => phoneViewport(win) };
+    return { requestFromGesture, onFullscreenChange, stop, refreshLanguage, refreshViewport, isActualFullscreen: actual, isPhone: () => phoneViewport(win) };
   }
 
   function install() {
@@ -115,6 +126,21 @@
     hint.id = "mobile-orientation-hint"; hint.hidden = true; hint.setAttribute("role", "status");
     hint.innerHTML = '<span data-mobile-orientation-text></span><button type="button"></button>';
     panel.append(hint);
+    const retryPlay = doc.createElement("button");
+    retryPlay.id = "web-play-retry"; retryPlay.type = "button"; retryPlay.hidden = true;
+    retryPlay.setAttribute("aria-live", "polite");
+    doc.getElementById("player-stage").append(retryPlay);
+    retryPlay.addEventListener("click", () => {
+      retryPlay.disabled = true;
+      // Call before any await to retain the fresh trusted touch gesture.
+      const pending = root.ChillWebPlayer.resumeFromGesture();
+      if (controller.isPhone()) controller.requestFromGesture();
+      Promise.resolve(pending).catch(() => false).finally(() => { retryPlay.disabled = false; });
+    });
+    root.addEventListener("chill:web-player-view", event => {
+      retryPlay.textContent = doc.documentElement.lang.startsWith("fr") ? "▶ Toucher pour lancer la vidéo" : "▶ Tap to play video";
+      retryPlay.hidden = panel.hidden || event.detail?.stage !== "player" || Boolean(event.detail.native?.error) || !event.detail.native?.play_blocked;
+    });
     const controller = createController({ window: root, document: doc, panel: () => panel, hint: () => hint });
     controller.refreshLanguage(); root.ChillMobilePlayback = controller;
     hint.querySelector("button").addEventListener("click", () => controller.requestFromGesture());
@@ -122,7 +148,9 @@
     doc.addEventListener("webkitbeginfullscreen", () => { controller.onFullscreenChange(); }, true);
     doc.addEventListener("webkitendfullscreen", () => { controller.onFullscreenChange(); }, true);
     root.addEventListener?.("languagechange", () => controller.refreshLanguage());
-    new MutationObserver(() => { if (panel.hidden) controller.stop(); }).observe(panel, { attributes: true, attributeFilter: ["hidden"] });
+    root.addEventListener?.("resize", () => controller.refreshViewport(), { passive: true });
+    root.addEventListener?.("orientationchange", () => controller.refreshViewport(), { passive: true });
+    new MutationObserver(() => { if (panel.hidden) { controller.stop(); retryPlay.hidden = true; } }).observe(panel, { attributes: true, attributeFilter: ["hidden"] });
     // `chillPlay` runs synchronously through its first await, opening the panel.
     // Request fullscreen immediately after that prefix, while activation remains.
     const original = root.chillPlay;

@@ -43,7 +43,7 @@
         case "refuse_transfer": await this.stop(false); return this.closed();
         case "next": return this.playNext(c.expected_id);
         case "pause": this.engine?.pause(); await this.report(false, true); return this.view();
-        case "resume": this.engine?.play(); return this.view();
+        case "resume": this.resume(); return this.view();
         case "stop": await this.stop(true); return this.closed();
         case "mount": return this.view();
         case "seek": return this.seek(c.position);
@@ -100,7 +100,7 @@
     // froze the player controls until it finished (BUG-0070). Failures reach the UI through the next `status` poll.
     async begin(grant) {
       this.clearTransfer(); this.transfer = null;
-      this.lease = grant.lease; this.clock = new Clock.WatchClock(); this.lastSeek = false;
+      this.lease = grant.lease; this.serverPaused = false; this.clock = new Clock.WatchClock(); this.lastSeek = false;
       const opening = { engine: this.d.engineFactory(), cancelled: false, promise: null };
       this.opening = opening; this.openError = null;
       opening.promise = this.lastOpen = this.finishOpening(opening, grant);   // lastOpen: settled-state hook for tests
@@ -126,7 +126,7 @@
         if (audio.id !== null) engine.selectAudio(audio.id);
         engine.selectSubtitle(sub.id);
         if (audio.fallback) this.note = FALLBACK_NOTE;
-        engine.play();
+        this.resume();
         this.timers.push(this.d.setInterval(() => this.heartbeat(), HEARTBEAT_MS));
         this.timers.push(this.d.setInterval(() => this.report(false, false), HEARTBEAT_MS));
         this.openEvents();
@@ -141,6 +141,7 @@
       this.events.addEventListener("pause", async ev => {
         // Server-ordered pause (transfer): stop locally even with buffered data, then ACK.
         let token; try { token = JSON.parse(ev.data).token; } catch { return; }
+        this.serverPaused = true;
         this.engine?.pause();
         const progress = this.observe(false, true);
         try { await this.d.request("POST", this.api("/playback/transfer/ack"), { body: { token, lease: this.control(), progress } }); } catch { /* deadline path */ }
@@ -152,7 +153,13 @@
     async heartbeat() {
       if (!this.lease) return;
       try { this.lease = { ...this.lease, ...(await this.d.request("POST", this.api("/playback/heartbeat"), { body: this.control() })) }; }
-      catch (e) { if (e.status === 409 || e.code === "LEASE_INVALID") { this.engine?.pause(); this.note = "Lecture interrompue : le bail n'est plus valide."; } }
+      catch (e) { if (e.status === 409 || e.code === "LEASE_INVALID") { this.serverPaused = true; this.engine?.pause(); this.note = "Lecture interrompue : le bail n'est plus valide."; } }
+    }
+    // A server-ordered pause is effective before the ACK/release network round
+    // trip. Neither the regular Play control nor a fresh iOS gesture may undo it.
+    resume() {
+      if (this.serverPaused || this.transfer || !this.engine || !this.lease) return false;
+      return this.engine.play();
     }
     observe(seek, forcePaused) {
       const s = this.engine.snapshot();
@@ -247,7 +254,7 @@
         position: s.position || 0, duration: s.duration || 0, active: Boolean(this.lease), context: this.context,
         next: this.nextResolved, autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null,
         external_subtitles: this.engine.externalSubtitles?.() || [],
-        native: { loaded: s.loaded, paused: s.paused, buffering: s.buffering, ended: s.ended || this.ended, error: s.error || null, notice: s.notice || null, speed: s.speed || 1, volume: s.volume ?? 100, tracks: s.tracks || [], fullscreen: Boolean(this.fullscreen), hardware_decoder: s.hardware_decoder || "no", decoder: s.decoder || null },
+        native: { loaded: s.loaded, paused: s.paused, buffering: s.buffering, ended: s.ended || this.ended, error: s.error || null, notice: s.notice || null, play_blocked: Boolean(s.play_blocked), speed: s.speed || 1, volume: s.volume ?? 100, tracks: s.tracks || [], fullscreen: Boolean(this.fullscreen), hardware_decoder: s.hardware_decoder || "no", decoder: s.decoder || null },
       };
     }
   }
@@ -267,6 +274,11 @@
     root.ChillPlayerCore = api;
     let player = null;
     root.ChillWebPlayer = {
+      // Retry on the buffered element inside a fresh user gesture on iOS.
+      // No API await, lease acquisition, decoder reset or stream reopening.
+      resumeFromGesture() {
+        return player ? player.resume() : Promise.resolve(false);
+      },
       command(c, ctx) {
         player = player || new WebPlayer({
           request: ctx.request.bind ? (m, p, o) => ctx.request(m, p, o) : ctx.request,
@@ -284,7 +296,10 @@
           return Boolean(document.fullscreenElement || document.querySelector("#native-video video")?.webkitDisplayingFullscreen);
         },
         });
-        return player.command(c, ctx);
+        return Promise.resolve(player.command(c, ctx)).then(view => {
+          root.dispatchEvent(new CustomEvent("chill:web-player-view", { detail: view }));
+          return view;
+        });
       },
     };
   }

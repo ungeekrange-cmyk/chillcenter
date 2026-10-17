@@ -2,6 +2,11 @@
 
 ## Lecture de l'état courant
 
+17octobre2026, retours iPhone : [BUG0109 encombrement mobile](BUG-0109-mobile-content-obscured.md)
+et [BUG0110 lecture iPhone](BUG-0110-iphone-web-playback.md), corrections web
+vérifiées avec données synthétiques. Retest des vidéos sur appareil réel requis,
+sans prétendre résoudre tous les codecs Safari à partir du seul conteneur.
+
 17octobre2026 : [BUG0108 adaptateur smartphone web](BUG-0108-mobile-web-lifecycle.md),
 FIXED/VERIFIED_LOCAL avant déploiement : navigation après lecteur, grille,
 ambiance et plein écran tardif. Revue et essais physiques distingués dans le
