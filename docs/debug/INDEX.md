@@ -1,5 +1,9 @@
 # Journal des bugs, observations et risques
 
+17 octobre2026 : [BUG0106 assertions QA périmées](BUG-0106-stale-player-qa-assertions.md),
+FIXED/VERIFIED_LOCAL_QA. Les deux faux échecs antérieurs sont corrigés :7/7tests
+ciblés et130/130Node PASS ; aucun lecteur/runtime/Pi/web modifié.
+
 16 octobre2026, lot client `codex/playback-locale` : [BUG0104 sous-titres/lecture](BUG-0104-subtitle-switch-blocks-playback.md)
 et [BUG0105 grille après lecteur/fiche](BUG-0105-grid-after-player-detail-close.md), FIXED/VERIFIED_LOCAL.
 Preuves et limites : [langues et lecteur](../implementation/PLAYBACK-LANGUAGE-20261016.md).

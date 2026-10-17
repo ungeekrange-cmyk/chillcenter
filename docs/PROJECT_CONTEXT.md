@@ -1,5 +1,14 @@
 # Contexte du projet
 
+## Contrats QA — reconstruction Mac en cours
+
+17 octobre2026 : branche `codex/qa-player-contracts`, basec071b42. Les deux anciens
+échecs sont des assertions périmées (compteur global et recherche textuelle du garde
+de modes), pas des pannes du lecteur. Test Node seul corrigé, contre-tests et readiness
+VM ajoutés : **7/7ciblés et130/130Node PASS**. Aucun fichier runtime, Pi, API ou client
+web modifié, aucune lecture réelle rejouée. [BUG0106](debug/BUG-0106-stale-player-qa-assertions.md),
+[remise et limites](implementation/QA-CONTRACTS-20261017.md). Bundle à reconstruire.
+
 ## Lot client livré pour test — sous-titres, retour grille, français/anglais
 
 16 octobre2026 : source **15c2d63c2bca5058456a16c8ac7d0320d440ad4c**, branche `codex/playback-locale`, base0c49a8c. Corrections BUG0104/0105
