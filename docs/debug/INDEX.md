@@ -6,6 +6,8 @@ Version Mac publiée de référence : [v0.6](../releases/REL-V0.6.md), validée 
 Nouveau candidat : [corrections 82–84 et parité web](../implementation/WEB-PARITY-20261017.md).
 BUG0082/0083/0084 **FIXED / VERIFIED_LOCAL**, avec limites Tauri humaines explicites.
 Le client web exclut l'IA sur demande utilisateur ; aucun déploiement Pi dans ce lot.
+[BUG0107 écarts d'adaptateur web](BUG-0107-web-parity-adapter-contracts.md) détectés
+avant remise, corrigés et vérifiés localement dans ce candidat.
 Ce journal est chronologique, du plus récent au plus ancien : les lignes OPEN
 historiques ne rouvrent pas un bug corrigé dans une entrée ultérieure.
 Les limites natives restantes ne sont pas converties en validations par le gel
