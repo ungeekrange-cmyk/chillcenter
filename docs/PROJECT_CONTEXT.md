@@ -1,5 +1,20 @@
 # Contexte du projet
 
+## Web seul déployé sur Pi — 17 octobre 2026
+
+Autorisation explicite après la remise Mac/web : sauvegarder puis remplacer
+uniquement les fichiers web. Build **1cce6dd6cd9d**, source **a13902e**, archive
+SHA32176d8f…c885e4, opérateur revu indépendamment SHA b0baea0b…743996.
+Installation12:56:36 Europe/Dublin, rc0, sauvegarde privée préalable et ancien
+dossier conservés. Vérification indépendante **APPROVED_SCOPED**,79fichiers,
+78sommes,56fichiers de backup identiques, API datée/v1 HTTP/HTTPS PASS.
+PID5420 inchangé,0redémarrage ; binaire serveur6fec/configuration/unité/SPKI
+identiques. Aucun accès aux vidéos ou écriture NAS. SHA certificat complet et
+état de montage avant non relevés, pas d'invariance inventée sur ces éléments.
+[Preuves FR/EN et retour arrière](releases/REL-WEB-PARITY-001-web-deployment.md).
+Bundle Mac, tag/releasev0.6 et chantier web indépendant conservés ; aucun push.
+Le checkpoint « non déployé » ci-dessous reste l'état antérieur de la compilation.
+
 ## Candidat suivant — bugs 82–84 et parité web
 
 17 octobre2026 : demande de corriger BUG0082/0083/0084, reconstruire Mac et

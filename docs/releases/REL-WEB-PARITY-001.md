@@ -2,6 +2,10 @@
 
 **Français** | [English](REL-WEB-PARITY-001.en.md)
 
+Complément ultérieur du17octobre : [déploiement web seul](REL-WEB-PARITY-001-web-deployment.md),
+explicitement autorisé après cette compilation. Les mentions « non déployé »
+ci-dessous conservent l'état de la remise initiale, pas celui de ce complément.
+
 Voir [périmètre, vérifications et retour arrière](../implementation/WEB-PARITY-20261017.md).
 
 ## Source et artefacts

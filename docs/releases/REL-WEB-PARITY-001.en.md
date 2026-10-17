@@ -2,6 +2,10 @@
 
 **English** | [Français](REL-WEB-PARITY-001.md)
 
+Later17October supplement: [web-only deployment](REL-WEB-PARITY-001-web-deployment.en.md),
+explicitly authorized after this build. Undeployed statements below retain the
+initial handoff state, not the state recorded by that supplement.
+
 See [scope, verification and rollback](../implementation/WEB-PARITY-20261017.en.md).
 
 ## Source and artifacts

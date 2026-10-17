@@ -15,6 +15,7 @@ does not imply a new bundle or deployment.
 | Third-party API integration | [Guide API](api/INTEGRATION-FR.md) | [API guide](api/INTEGRATION-EN.md) |
 | v0.6 delivery and known limitations | [Release](releases/REL-V0.6.md) | [Release](releases/REL-V0.6.en.md) |
 | Next candidate: fixes 82–84 and web parity (no AI) | [Rapport](implementation/WEB-PARITY-20261017.md) | [Report](implementation/WEB-PARITY-20261017.en.md) |
+| Web-assets-only Pi deployment | [Livraison](releases/REL-WEB-PARITY-001-web-deployment.md) | [Delivery](releases/REL-WEB-PARITY-001-web-deployment.en.md) |
 | Contributing | [Contribuer](../CONTRIBUTING.md) | [Contributing](../CONTRIBUTING.en.md) |
 | Security | [Sécurité](../SECURITY.md) | [Security](../SECURITY.en.md) |
 | Public repository preparation | [GitHub](publication/GITHUB-REPOSITORY.md) | [GitHub](publication/GITHUB-REPOSITORY.en.md) |
