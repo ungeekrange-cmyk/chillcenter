@@ -1,5 +1,21 @@
 # Contexte du projet
 
+## Correctif web mobile R4 déployé — 17 octobre 2026
+
+Source **fa13d44**, build **67773f7877d3**, assets seuls livrés **20:50:15UTC**
+après sauvegarde privée vérifiée ; ancien arbre conservé. Bandeau plein écran
+limité à2,5s sans réarmement sur poll, autre chemin WebKit dans le geste, safe
+areas quatre côtés et correction d'arrondi de grille fractionnaire. **315/315
+tests PASS**, QA mobile/desktop web PASS. Aucun moteur audio modifié, aucune
+vidéo NAS relue. PID5420, zéro redémarrage, hashes binaire/config/unité/cert/SPKI
+inchangés. URL `/?v=67773f7877d3` vérifiée depuis le LAN ; fermer l'ancien onglet.
+**DEVICE_RETEST_PENDING** : Safari réel/encoches, canvas toujours potentiellement
+refusé par le plein écran natif. Question apps iOS/Android sans store traitée en
+faisabilité seulement : aucun nouveau client natif, certificat ou signature créé.
+[Livraison FR/EN et preuves](releases/REL-WEB-MOBILE-004.md).
+Post-vérification indépendante **APPROVED_SCOPED à20:51:07UTC**, manifeste81/81
+et rollback validés. Transfert temporaire seul retiré ; archives conservées.
+
 ## Correctif web mobile R3 déployé — 17 octobre 2026
 
 Source **acd7aeb**, build **a15795b5c4cd**. Repli AVI MP3 vers AAC dans le Worker

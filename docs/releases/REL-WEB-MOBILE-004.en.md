@@ -33,9 +33,20 @@ and fixed only in the web adapter. [BUG0112](../debug/BUG-0112-persistent-fullsc
 
 ## Installation and limits
 
-Package prepared; installation and verification after backup are recorded here
-once executed. Rollback restores retained previous web assets, without migration
-or restart.
+Only web assets deployed on 17 October at **20:50:15 UTC**, unchanged operator,
+exit `0`, previous build `a15795b5c4cd`. Private backup, mode `0700`:
+`/root/chillcenter-rollback/predeploy-mobile-r4-20261017T204951Z`.
+TAR SHA256 `37216843cfa433d3c3982a0a77b9f815dd974af3c3143552765cb0accb7270f2`;
+manifest `8019e0efe658c9dbd6b1c93113d7cce61ec1e17d7aea5fac72252437dbd37d54`.
+Old tree: `/root/chillcenter-rollback/web-20261017T205014Z`.
+PID5420 and zero restarts; binary/configuration/unit/certificate/SPKI unchanged.
+Default-port HTTP entry and versioned URL verified from the LAN. Rollback
+restores these retained assets only, without migration or server changes.
+[Independent verification](REL-WEB-MOBILE-004-verification.md).
+**APPROVED_SCOPED at20:51:07UTC**: all 81 hashes, rollback, APIs/resources and
+invariants validated; no bounded error signal. Only the temporary transfer
+archive was removed after its hash was checked; backups and local archives
+were retained.
 
 **DEVICE_RETEST_PENDING**: physical Safari, fullscreen by codec/API and actual
 camera cutouts still require confirmation. Native fullscreen may still reject
