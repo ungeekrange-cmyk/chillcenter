@@ -3,8 +3,8 @@
 **Français** · [English](REL-WEB-MOBILE-003.en.md)
 
 2026-10-17. Correctif exclusivement web. Client Mac, binaire serveur, API,
-configuration et NAS inchangés. **Préparé localement, non déployé** : le Pi
-reste sur R2 tant qu'une livraison de ces assets n'est pas autorisée/exécutée.
+configuration et NAS inchangés. **Déployé sur le Pi** après autorisation
+explicite de sauvegarder puis installer les seuls fichiers web.
 Aucun push GitHub ou changement de visibilité.
 
 ## Modifications
@@ -57,6 +57,31 @@ contexte Docker initial restauré après compilation.
 [BUG0110](../debug/BUG-0110-iphone-web-playback.md),
 [BUG0111](../debug/BUG-0111-mobile-posters-fullscreen-search.md).
 
+## Installation et retour arrière
+
+Le 17 octobre 2026 à **19:31:14 UTC**, l'opérateur d'assets web inchangé
+(`b0baea0b2a572b65c9a79cd792276143b45092dc95523eb47815b8742c743996`)
+a remplacé R2 `95ebee4fbe0a` par `a15795b5c4cd`, sortie `0`.
+Sauvegarde privée préalable, permissions `0700` :
+`/root/chillcenter-rollback/predeploy-mobile-r3-20261017T193045Z`.
+SHA256 du TAR `web-before.tar` :
+`2f3afc29058d5ab91a428d22a6bbae9b57b86073ed0289963bfe95fc411bf7cc`.
+Manifeste de sauvegarde :
+`47cc29dd349854baefca0d95e70f3ee0b8156019ddbb9eafd8aae1a6cfe84c1b`.
+Ancien arbre conservé : `/root/chillcenter-rollback/web-20261017T193113Z`.
+
+PID `5420` inchangé, zéro redémarrage ; empreintes binaire, configuration,
+unité, certificat et SPKI identiques au baseline. Aucune vidéo ouverte,
+aucun bail ou profil modifié. Le point d'entrée HTTP sans port et son URL
+versionnée ont aussi été vérifiés depuis le LAN.
+
+Le retour arrière restaure les seuls assets précédents conservés, sans migration
+ni modification du serveur. [Vérification indépendante après installation](REL-WEB-MOBILE-003-verification.md)
+à **19:31:50 UTC : APPROVED_SCOPED**, manifeste 81/81, ressources/API HTTP/HTTPS,
+rollback et empreintes protégées validés ; aucun signal d'erreur dans le journal borné.
+Après vérification, seule l'archive de transfert temporaire a été supprimée,
+après contrôle de son hash ; sauvegardes, ancien arbre et archive locale conservés.
+
 ## Limites et prochaine validation
 
 Retester physiquement les AVI/MKV signalés sur Safari/Vivaldi iPhone,
@@ -66,7 +91,6 @@ si Safari n'offre pas le plein écran des panneaux : lecture conservée dans la
 zone disponible et limite affichée, sans faux état plein écran. Ce lot ne
 prétend pas avoir supprimé cette restriction de plateforme.
 
-Une éventuelle installation remplace uniquement `web/` après sauvegarde privée
-et vérification des hashes protégés ; restauration des anciens assets pour
-retour arrière, sans migration ni redémarrage du serveur. Utiliser alors
-`/?v=a15795b5c4cd` pour éviter une page antérieure en cache.
+Fermer l'ancien onglet puis ouvrir `/?v=a15795b5c4cd` sur le serveur pour éviter
+une page antérieure en cache. Aucun test physique iPhone n'est déduit du smoke
+HTTP/HTTPS ou de la vérification des fichiers installés.

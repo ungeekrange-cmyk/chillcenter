@@ -1,6 +1,6 @@
 # Contexte du projet
 
-## Correctif web mobile R3 préparé — 17 octobre 2026
+## Correctif web mobile R3 déployé — 17 octobre 2026
 
 Source **acd7aeb**, build **a15795b5c4cd**. Repli AVI MP3 vers AAC dans le Worker
 FFmpeg web, source/compiler épinglés ; aucun transcodage serveur. Actions des
@@ -9,7 +9,13 @@ vidéo iPhone ; limite canvas explicite, pas de faux succès. Recherche/catégor
 déjà conservées, signalement non reproduit : test E2E de résultats ajouté.
 **311/311 tests PASS**, trois QA Chromium PASS, dont vrai AVI local avec MP3
 natif désactivé. Pas une preuve Safari physique ; **DEVICE_RETEST_PENDING**.
-Archive immuable préparée ; **non déployée**, Pi toujours sur R2 ci-dessous.
+Archive immuable approuvée ; assets web seuls **déployés à19:31:14UTC** après
+sauvegarde privée vérifiée, ancien arbre conservé. PID5420 inchangé, zéro
+redémarrage ; binaire/configuration/unité/certificat/SPKI identiques au baseline.
+Point d'entrée HTTP et URL `/?v=a15795b5c4cd` vérifiés depuis le LAN ; fermer
+l'ancien onglet pour éviter une page en cache. Post-vérification indépendante
+**APPROVED_SCOPED à19:31:50UTC**, 81/81 sommes et rollback vérifiés ; les
+checkpoints ci-dessous sont historiques.
 Mac, serveur, API, configuration et NAS inchangés ; aucun push GitHub.
 [Livraison FR/EN et limites](releases/REL-WEB-MOBILE-003.md).
 
