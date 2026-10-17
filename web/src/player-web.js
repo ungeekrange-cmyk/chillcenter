@@ -21,7 +21,7 @@
   }
 
   class WebPlayer {
-    // deps: {request, engineFactory, storage, now, setInterval, clearInterval, EventSource, uuid, setFullscreen}
+    // deps: {request, engineFactory, storage, now, setInterval, clearInterval, EventSource, uuid, setFullscreen, isFullscreen}
     constructor(deps) {
       this.d = deps; this.state = null; this.timers = []; this.events = null;
       this.clock = new Clock.WatchClock(); this.busy = false;
@@ -227,6 +227,10 @@
     }
 
     view() {
+      // A browser can leave fullscreen through its native UI.  Always report
+      // the actual DOM state on the next status tick rather than keeping the
+      // previous command's optimistic value in the shared player UI.
+      if (typeof this.d.isFullscreen === "function") this.fullscreen = Boolean(this.d.isFullscreen());
       if (this.transfer) return { stage: "transfer", title: this.info?.media?.title || "", confirmed: this.transfer.confirmed, remaining_ms: this.transfer.remaining_ms, note: "Ce profil lit déjà une vidéo sur un autre appareil. Confirmez pour y interrompre la lecture et la reprendre ici." };
       if (!this.engine && this.opening) {
         return {
@@ -269,10 +273,15 @@
           engineFactory: () => root.ChillEngines.create(document.getElementById("native-video")),
           storage: root.localStorage, now: () => performance.now(), setInterval: (f, t) => root.setInterval(f, t), clearInterval: t => root.clearInterval(t),
           EventSource: root.EventSource, uuid: () => uuidV4(root.crypto),
+          isFullscreen: () => Boolean(document.fullscreenElement || document.querySelector("#native-video video")?.webkitDisplayingFullscreen),
           setFullscreen: async on => { // browsers refuse this without a recent user gesture: report the real state instead of failing
-          const el = document.getElementById("player-panel");
-          try { if (on) await el.requestFullscreen?.(); else if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* refused */ }
-          return Boolean(document.fullscreenElement);
+          const el = document.getElementById("player-panel"), video = document.querySelector("#native-video video");
+          try {
+            if (on) await el.requestFullscreen?.();
+            else if (document.fullscreenElement) await document.exitFullscreen();
+            else if (video?.webkitDisplayingFullscreen) video.webkitExitFullscreen?.();
+          } catch { /* refused */ }
+          return Boolean(document.fullscreenElement || document.querySelector("#native-video video")?.webkitDisplayingFullscreen);
         },
         });
         return player.command(c, ctx);

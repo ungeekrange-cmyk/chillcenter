@@ -19,7 +19,7 @@ cpSync(ui, out, {
   recursive: true,
   filter: path => !/(\/qa\.js|-qa\.js|\.test\.js)$/.test(path) && !path.endsWith("/tests"),
 });
-for (const name of [...webScripts, "web-sync-ui.js", "web.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name));
+for (const name of [...webScripts, "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name));
 // MPEG-4 (Xvid/DivX) WebAssembly decoder: built by web/decoder/mpeg4, loaded by a Worker only when needed.
 mkdirSync(join(out, "vendor/mpeg4"), { recursive: true });
 const vendor = join(root, "web/vendor/mpeg4");
@@ -48,7 +48,11 @@ let html = readFileSync(join(out, "index.html"), "utf8");
 const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css">`
   + webScripts.map(name => `<script src="${name}"></script>`).join("");
 if (!html.includes("<title>")) throw new Error("index.html sans <title>");
-html = html.replace("</head>", `<script src="web-sync-ui.js" defer></script></head>`).replace("<title>", head + "<title>").replace("Apparence de ce Mac", "Apparence de cet appareil").replace("Le Mac ne monte pas ce chemin.", "Cet appareil ne monte pas ce chemin.");
+// These adapters run after the shared desktop scripts. Responsive behavior is
+// web-only: neither the Mac source nor its persisted presentation is rewritten.
+html = html.replace("</head>", `<script src="web-sync-ui.js" defer></script><link rel="stylesheet" href="mobile.css"><script src="mobile-ui.js" defer></script><script src="mobile-playback.js" defer></script></head>`)
+  .replace('content="width=device-width, initial-scale=1"', 'content="width=device-width, initial-scale=1, viewport-fit=cover"')
+  .replace("<title>", head + "<title>").replace("Apparence de ce Mac", "Apparence de cet appareil").replace("Le Mac ne monte pas ce chemin.", "Cet appareil ne monte pas ce chemin.");
 writeFileSync(join(out, "index.html"), html);   // stamped with the build id below, once it is known
 
 const files = [];

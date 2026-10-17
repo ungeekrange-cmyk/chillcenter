@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR0026](ADR-0026-mobile-web-presentation.md) ([EN](ADR-0026-mobile-web-presentation.en.md)), ACCEPTED,17octobre2026 : présentation smartphone web approuvée R1, navigation basse et plein écran/paysage selon capacités réelles ; calcul virtuel cohérent, aucun client Mac, serveur, API ou NAS modifié.
+
 [ADR0024](ADR-0024-artwork-content-deduplication.md), ACCEPTED,16octobre2026 : pool privé d'affiches à liens physiques, chemins/cache hors ligne/budget logique historiques conservés ; migration explicite et réversible, pas de SQLite ou web modifié. Proposition revue indépendamment APPROVED ; source f980355 code/sécurité APPROVED_SCOPED avant migration réelle complète.
 
 [ADR0021](ADR-0021-multiple-library-locations.md), [ADR0022](ADR-0022-paused-playback-retains-buffer.md), [ADR0023](ADR-0023-series-spelling-canonicalization.md),16octobre2026 : bibliothèques multiples/addition compatible, pause gardant moteur/tampon et canonicalisation des variantes de séries. Autorité : demandes utilisateur explicites ; preuves exactes dans le lot Configuration, pas une preuve de déploiement Pi.

@@ -2,6 +2,11 @@
 
 ## Lecture de l'état courant
 
+17octobre2026 : [BUG0108 adaptateur smartphone web](BUG-0108-mobile-web-lifecycle.md),
+FIXED/VERIFIED_LOCAL avant déploiement : navigation après lecteur, grille,
+ambiance et plein écran tardif. Revue et essais physiques distingués dans le
+rapport de livraison mobile ; aucun changement du client Mac.
+
 Version Mac publiée de référence : [v0.6](../releases/REL-V0.6.md), validée le 17 octobre 2026.
 Nouveau candidat : [corrections 82–84 et parité web](../implementation/WEB-PARITY-20261017.md).
 BUG0082/0083/0084 **FIXED / VERIFIED_LOCAL**, avec limites Tauri humaines explicites.
