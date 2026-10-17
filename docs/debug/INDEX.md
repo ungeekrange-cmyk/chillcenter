@@ -1,5 +1,14 @@
 # Journal des bugs, observations et risques
 
+## Lecture de l'état courant
+
+Version Mac de référence : [v0.6](../releases/REL-V0.6.md), validée le 17 octobre 2026.
+Ce journal est chronologique, du plus récent au plus ancien : les lignes OPEN
+historiques ne rouvrent pas un bug corrigé dans une entrée ultérieure.
+Les limites natives restantes ne sont pas converties en validations par le gel
+de version. BUG0082 (récupération des conflits), BUG0083 (loupe) et BUG0084
+(rotation de synchronisation) restent tracés sans nouveau correctif dans ce gel.
+
 17 octobre2026 : [BUG0106 assertions QA périmées](BUG-0106-stale-player-qa-assertions.md),
 FIXED/VERIFIED_LOCAL_QA. Les deux faux échecs antérieurs sont corrigés :7/7tests
 ciblés et130/130Node PASS ; aucun lecteur/runtime/Pi/web modifié.

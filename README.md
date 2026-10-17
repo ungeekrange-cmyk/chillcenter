@@ -2,7 +2,11 @@
 
 Votre vidéothèque, sur votre réseau. Projet issu de Cinéfolio : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust.
 
-Version de référence du client Mac : **0.5.1**. Le projet est en développement ; les versions livrées sont suivies séparément des sources en cours.
+Version de référence du client Mac : **v0.6 — 0.6.0, build 7**.
+Livraison locale : `artifacts/macos/Chill Center-v0.6.app`.
+Consulter les [notes de version et preuves](docs/releases/REL-V0.6.md) pour les
+corrections, les contrôles exécutés et les limites connues. Le projet reste en
+développement ; cette version ne publie ni ne déploie le serveur ou le client web.
 
 ## Fonctionnalités
 
@@ -12,6 +16,7 @@ Version de référence du client Mac : **0.5.1**. Le projet est en développemen
 - Métadonnées TMDB avec votre clé, correction manuelle et import d’images.
 - Filtres par genres et années, thèmes clair/sombre et ambiances saisonnières.
 - Catalogue et images conservés côté client ; synchronisation différentielle en arrière-plan.
+- Interface en anglais ou français, détection automatique et choix dans Configuration.
 
 Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun transcodage serveur** : le client décode les vidéos sans monter le NAS. La cible inclut le Raspberry Pi 3 ; la fluidité dépend du réseau et des fichiers. Deux ou trois utilisateurs constituent un objectif, pas une garantie à tout débit.
 

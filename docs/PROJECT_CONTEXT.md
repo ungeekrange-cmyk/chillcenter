@@ -1,5 +1,21 @@
 # Contexte du projet
 
+## Référence actuelle — v0.6
+
+17 octobre 2026 : validation utilisateur « validé commit en v0.6 et merge avec doc propre ».
+Client Mac **0.6.0 / build 7**, bundle de référence
+`artifacts/macos/Chill Center-v0.6.app`, tag local `v0.6`.
+La [fiche de livraison](releases/REL-V0.6.md) fait autorité pour cette version,
+ses preuves, ses limites et le retour arrière. Elle consolide le candidat validé
+`73cbc8c` (source QA `095631a`) sans nouvelle modification fonctionnelle.
+
+Branche de préparation `codex/release-v0.6`, destination d'intégration
+`codex/player-streaming`. Aucun accès ou déploiement Pi/NAS, aucune modification
+du chantier `codex/web-pwa`, aucun push ou changement de visibilité GitHub.
+Les sections ci-dessous sont des checkpoints historiques : leurs anciennes
+mentions « à préparer », « encore ouvert » ou « bundle à tester » ne remplacent
+pas la fiche de livraison actuelle. Elles sont conservées comme preuves datées.
+
 ## Contrats QA — bundle Mac reconstruit
 
 17 octobre2026 : branche `codex/qa-player-contracts`, basec071b42. Les deux anciens
