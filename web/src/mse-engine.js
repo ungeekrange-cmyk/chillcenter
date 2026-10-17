@@ -53,7 +53,15 @@
       await this.reader.open(); alive();
       const kind = sniffContainer(this.reader.head);
       if (kind === "unknown") throw fail("Format de fichier non reconnu.");
-      this.src = kind === "mp4" ? new Mp4.Mp4Source(this.reader) : kind === "mkv" ? new Mkv.MkvSource(this.reader, { audio: root.ChillAudio || null }) : new Avi.AviSource(this.reader);
+      // AVI stores MP3 in an fMP4 stream for MSE.  Safari iPhone does not
+      // reliably accept that sample entry (nor bare MPEG audio) in its
+      // ManagedMediaSource, so give only that unsupported case to the local
+      // Worker transcoder. Browsers that support either native form retain
+      // their direct MP3 path.
+      const nativeMp3 = MS.isTypeSupported('audio/mp4; codecs="mp4a.6B"') || MS.isTypeSupported("audio/mpeg");
+      this.src = kind === "mp4" ? new Mp4.Mp4Source(this.reader)
+        : kind === "mkv" ? new Mkv.MkvSource(this.reader, { audio: root.ChillAudio || null })
+          : new Avi.AviSource(this.reader, { audio: root.ChillAudio || null, transcodeMp3: !nativeMp3 });
       this.movie = await this.src.open(); alive();
       // MP3 is not accepted inside audio/mp4 everywhere (Chromium builds): fall back to a bare MPEG audio stream.
       for (const t of this.movie.tracks) {

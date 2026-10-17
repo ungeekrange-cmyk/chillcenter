@@ -1,8 +1,10 @@
 "use strict";
 // Thin JS layer over the WebAssembly audio transcoder (web/decoder/audio, ADR-0020). Pure logic shared by the Worker and the
-// Node tests: compressed access units in (AC-3, E-AC-3, DTS, TrueHD), AAC-LC access units out (1024 samples each).
+// Node tests: compressed access units in (AC-3, E-AC-3, DTS, TrueHD, MP3), AAC-LC access units out (1024 samples each).
 (function (root) {
-  const CODECS = { ac3: 0, eac3: 1, dts: 2, truehd: 3, mlp: 4 };
+  // MP3 is only selected when the current MediaSource implementation cannot
+  // accept it natively. This keeps a capable browser on the zero-CPU path.
+  const CODECS = { ac3: 0, eac3: 1, dts: 2, truehd: 3, mlp: 4, mp3: 5 };
   const RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000];
   const fail = (op, code) => Object.assign(new Error(`Transcodeur audio : ${op} a échoué (code ${code}).`), { code: "PLAYER_ERROR" });
 

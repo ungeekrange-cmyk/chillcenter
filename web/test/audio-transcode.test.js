@@ -8,6 +8,8 @@ const path = require("node:path");
 const os = require("node:os");
 const { spawnSync } = require("node:child_process");
 const { MkvSource } = require("../src/mkv.js");
+const { AviSource } = require("../src/avi.js");
+const Mp4 = require("../src/mp4.js");
 const Core = require("../src/audio-core.js");
 
 const wasmDir = path.join(__dirname, "..", "vendor", "audio");
@@ -118,6 +120,98 @@ test("AudioSpecificConfig: AAC-LC, known rates only", () => {
   assert.deepEqual([...Core.audioSpecificConfig(48000, 2)], [0x11, 0x90]);
   assert.deepEqual([...Core.audioSpecificConfig(44100, 2)], [0x12, 0x10]);
   assert.equal(Core.audioSpecificConfig(47999, 2), null); assert.equal(Core.audioSpecificConfig(48000, 0), null);
+});
+
+function mp3Frames(bytes) {
+  const out = [];
+  for (let p = 0; p + 4 <= bytes.length;) {
+    const n = Mp4.mp3FrameLength(bytes, p);
+    if (!n || p + n > bytes.length) { p += 1; continue; }
+    out.push(new Uint8Array(bytes.subarray(p, p + n))); p += n;
+  }
+  return out;
+}
+
+function makeMp3Avi(dir) {
+  const avi = path.join(dir, "mp3.avi");
+  const mp3 = path.join(dir, "audio.mp3");
+  const common = ["-v", "error", "-f", "lavfi", "-i", "testsrc=size=96x64:rate=25:duration=2", "-f", "lavfi", "-i", "sine=frequency=523:sample_rate=44100:duration=2"];
+  assert.equal(spawnSync("ffmpeg", [...common, "-map", "0:v", "-map", "1:a", "-c:v", "mpeg4", "-q:v", "5", "-c:a", "libmp3lame", "-b:a", "128k", avi]).status, 0);
+  assert.equal(spawnSync("ffmpeg", ["-v", "error", "-i", avi, "-map", "0:a:0", "-c:a", "copy", mp3]).status, 0);
+  return { avi, mp3 };
+}
+
+test("MP3 is converted to AAC locally when AVI MediaSource support is absent", { skip: skip || (haveFfmpeg ? false : "ffmpeg absent") }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chill-mp3-avi-"));
+  try {
+    const { avi, mp3 } = makeMp3Avi(dir);
+    const M = await require(path.join(wasmDir, "audio-transcoder.js"))({ locateFile: f => path.join(wasmDir, f) });
+    const core = Core.wrap(M, { codec: "mp3", rate: 44100, channels: 2 }); core.open();
+    const encoded = [...core.convert(mp3Frames(fs.readFileSync(mp3))), ...core.flush()];
+    assert.ok(encoded.length > 50, "the whole MP3 stream yields AAC packets, not a single initial frame");
+    const ours = ffmpegPcm(["-f", "aac", "-i", "pipe:0", "-ac", "2", "-ar", "44100"], adts(encoded, 44100, 2));
+    const reference = ffmpegPcm(["-i", mp3, "-ac", "2", "-ar", "44100"]);
+    const { r } = correlate(mono(ours), mono(reference), 4096);
+    assert.ok(r > 0.97, `MP3 waveform correlation ${r.toFixed(4)}`);
+    core.close();
+
+    const src = new AviSource(reader(avi), { audio, transcodeMp3: true });
+    const movie = await src.open(); const track = movie.tracks.find(t => t.kind === "audio");
+    assert.equal(track.transcode, "mp3"); assert.equal(track.mime, 'audio/mp4; codecs="mp4a.40.2"');
+    const fragments = [Mp4.initSegment(track)];
+    for (let fragment; (fragment = await src.next(track.id));) fragments.push(fragment.data);
+    assert.ok(fragments.length > 2, "AVI MP3 produces multiple non-empty AAC fMP4 fragments");
+    const remuxed = path.join(dir, "mp3-aac.mp4"); fs.writeFileSync(remuxed, Mp4.concat(fragments));
+    const remuxedPcm = ffmpegPcm(["-i", remuxed, "-ac", "2", "-ar", "44100"]);
+    assert.ok(Math.abs(remuxedPcm.length - reference.length) < 44100 * 2 * 0.1, "full AVI audio duration is retained within codec padding, not only a matching initial tone");
+    const remuxedMatch = correlate(mono(remuxedPcm), mono(reference), 4096);
+    assert.ok(remuxedMatch.r > 0.97, `AVI remux waveform correlation ${remuxedMatch.r.toFixed(4)}`);
+    src.close();
+
+    const native = new AviSource(reader(avi));
+    const nativeMovie = await native.open();
+    const nativeTrack = nativeMovie.tracks.find(t => t.kind === "audio");
+    assert.equal(nativeTrack.transcode, null, "native-capable MSE keeps the no-CPU MP3 path");
+    assert.equal(nativeTrack.codec, "mp4a.6B");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("AVI MP3 worker output cannot revive after close or seek", async () => {
+  const track = { id: 7, kind: "audio", transcode: "mp3", sourceLabel: "MP3", timescale: 44100, count: 1, dts: Float64Array.of(0, 1152), cts: new Int32Array(1), sync: Uint8Array.of(1) };
+  const frame = new Uint8Array(417); frame.set([0xff, 0xfb, 0x90, 0x00]);
+  let finishOpen, closed = 0;
+  const opening = { open: () => new Promise(resolve => { finishOpen = resolve; }), close: () => { closed++; }, reset: async () => {}, convert: async () => [] };
+  const first = new AviSource({}); first.audio = { create: () => opening };
+  const pendingOpen = first.transcodeEntries(track, [{ data: frame, dts: 0 }]);
+  first.close(); finishOpen();
+  assert.deepEqual(await pendingOpen, []); assert.equal(closed, 1); assert.equal(first.transcoders.size, 0);
+
+  let finishConvert;
+  const active = { open: async () => {}, close() {}, reset: async () => {}, convert: () => new Promise(resolve => { finishConvert = resolve; }) };
+  const second = new AviSource({}); second.audio = { create: () => active }; second.movie = { tracks: [track] }; second.cursor.set(track.id, 0);
+  const pendingConvert = second.transcodeEntries(track, [{ data: frame, dts: 0 }]);
+  // Wait until convert is actually pending, then seek: stale bytes and the
+  // partial frame must not contaminate the next position.
+  for (let n = 0; !finishConvert && n < 20; n++) await Promise.resolve();
+  assert.equal(typeof finishConvert, "function");
+  second.transcoders.get(track.id).partial = frame.slice(0, 90);
+  await second.seek(0);
+  assert.equal(second.transcoders.get(track.id).partial.length, 0);
+  finishConvert([new Uint8Array([1, 2, 3])]);
+  assert.deepEqual(await pendingConvert, []);
+});
+
+test("AVI MP3 reassembles split and concatenated frames across arbitrary chunk boundaries", () => {
+  const src = new AviSource({}), state = { partial: new Uint8Array() };
+  const frame = new Uint8Array(417); frame.set([0xff, 0xfb, 0x90, 0x00]);
+  const next = frame.slice(); next[100] = 9;
+  assert.deepEqual(src.mp3Frames(state, [frame.slice(0, 2)]), []);
+  assert.deepEqual(src.mp3Frames(state, [frame.slice(2, 191)]), []);
+  assert.deepEqual(src.mp3Frames(state, [frame.slice(191), next.slice(0, 90)]), [frame]);
+  assert.equal(state.partial.length, 90);
+  assert.deepEqual(src.mp3Frames(state, [next.slice(90), frame]), [next, frame]);
+  assert.equal(state.partial.length, 0);
+  assert.deepEqual(src.mp3Frames(state, [Uint8Array.of(0, 4, 3), frame]), [frame], "garbage is skipped without losing the next frame");
 });
 
 test("without a transcoder the track fails with a clear message instead of staying silent", { skip }, async () => {

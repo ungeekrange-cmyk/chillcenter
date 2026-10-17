@@ -38,7 +38,7 @@ async function routeFixture(page,root){
    if(p.endsWith('/catalog/revision'))return json({revision:'r1'});
    if(p.endsWith('/catalog/changes'))return json(req.postDataJSON().known_revision==='r1'?{revision:'r1',unchanged:true}:{revision:'r1',unchanged:false,reset:true,snapshot_id:'55555555-5555-4555-8555-555555555555',total:entries.length,items:entries.slice(0,100),deleted_ids:[],sagas:[saga],playlists:[playlist],series_revisions:{'tmdb:tv:123':1},season_metadata:{},has_more:true,next_offset:100});
    if(p.includes('/catalog/changes/'))return json({revision:'r1',items:entries.slice(Number(url.searchParams.get('offset'))),has_more:false,next_offset:null});
-   if(p.endsWith('/catalog'))return json(Query.browse(Query.prepare(entries),{offset:Number(url.searchParams.get('offset')||0),limit:48,grouped:true,category:url.searchParams.get('category')||null}));
+   if(p.endsWith('/catalog')){const query=Object.fromEntries(url.searchParams);return json(Query.browse(Query.prepare(entries),{offset:Number(query.offset||0),limit:48,grouped:true,category:query.category||null,q:query.q||null,genre:query.genre||null,year:query.year==null?null:Number(query.year),watched:query.watched==null?null:query.watched==='true',available:query.available==null?null:query.available==='true',sort:query.sort||null}));}
    if(p.includes('/series/'))return json(Query.series(Query.prepare(entries),decodeURIComponent(p.split('/series/')[1]),1,url.searchParams.get('selector')||'title'));
    if(p.endsWith('/related'))return json({items:[]});
    if(p.endsWith('/sagas'))return json({items:[saga]});
@@ -78,7 +78,9 @@ async function noOverflow(page,label){
   for(const width of [320,390,430,736,844]){
    await page.setViewportSize({width,height:width>=736?390:844});
    await page.waitForFunction(()=>getComputedStyle(document.getElementById('mobile-nav')).position==='fixed');
-   await page.waitForFunction(w=>{const grid=document.querySelector('#media .virtual-window');return grid&&getComputedStyle(grid).gridTemplateColumns.split(' ').length===(w<=360?2:3);},width);
+   await page.evaluate(()=>window.restoreCatalogLayout?.());
+   try{await page.waitForFunction(w=>{const grid=document.querySelector('#media .virtual-window');return grid&&getComputedStyle(grid).gridTemplateColumns.split(' ').length===(w<=360?2:3);},width);}
+   catch(error){error.message+=JSON.stringify(await page.evaluate(()=>{const grid=document.querySelector('#media .virtual-window');return {width:innerWidth,height:innerHeight,mediaWidth:document.getElementById('media').getBoundingClientRect().width,grid:grid?.style.cssText,computed:grid&&getComputedStyle(grid).gridTemplateColumns};}));throw error;}
    await noOverflow(page,`catalogue ${width}`);
    // Query in the same JS turn: a Locator's earlier element handle may be an
    // intentionally retired virtual window after the resize RAF replaces it.
@@ -89,11 +91,27 @@ async function noOverflow(page,label){
    else assert(Math.abs(nav.y+nav.height-844)<=1);
   }
   await page.setViewportSize({width:390,height:844});
-  for(const action of ['.play-video','.poster-watched','.poster-add']){
-   const box=await page.locator('#media .media-card').filter({has:page.locator('.play-video')}).first().locator(action).boundingBox();
-   assert(box&&box.width>=44&&box.height>=44,`${action}: touch target at least 44px`);
-  }
+  assert.equal(await page.locator('#media .media-card.catalog-open .poster-actions:visible').count(),0,'catalogue poster actions stay off the mobile posters');
+  await page.waitForFunction(()=>typeof window.catalogOpenMedia==='function');
+  await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(80);
+  // Choose an already visible card: scrolling an offscreen virtual row would
+  // deliberately replace that node before the click is delivered.
+  const firstVisibleId=await page.evaluate(()=>[...document.querySelectorAll('#media .media-card.catalog-open')].find(el=>{const r=el.getBoundingClientRect();return !el.querySelector('.series-counts')&&r.top>80&&r.bottom<760;})?.dataset.mediaId);
+  assert(firstVisibleId,'a catalogue card is visible for its ordinary detail click');
+  await page.locator(`#media [data-media-id="${firstVisibleId}"] h2`).click();
+  await page.waitForSelector('#media-dialog[open]');await page.locator('#media-dialog .dialog-close').click();
   const profileBox=await page.locator('#profile-menu').boundingBox();assert(profileBox&&profileBox.x+profileBox.width>=370,'profile stays in the upper right');
+  await page.locator('#mobile-search-toggle').click();assert.equal(await page.locator('.global-search').isVisible(),true);
+  // Select a category before the shared input debounce fires.  The category
+  // request and the delayed search refresh must both retain this query.
+  await page.locator('#search').fill('Movie 000');
+  await page.locator('[data-mobile-category=film]').click();
+  await page.waitForTimeout(320);
+  for(const [selector,category,expected] of [['[data-mobile-category=film]','film',1],['[data-mobile-category=serie]','serie',0],['[data-mobile-category=documentaire]','documentaire',0],['#mobile-brand','',1]]){
+   await page.locator(selector).click();
+   await page.waitForFunction(([category,count])=>document.getElementById('category').value===category&&document.getElementById('search').value==='Movie 000'&&document.querySelectorAll('#media .media-card').length===count,[category,expected]);
+  }
+  await page.locator('#mobile-search-toggle').click();await page.locator('#search').fill('');await page.waitForFunction(()=>document.getElementById('search').value===''&&document.querySelectorAll('#media .media-card').length>1);
   await page.locator('[data-mobile-category=film]').click();await page.waitForFunction(()=>document.getElementById('category').value==='film');
   await page.locator('#mobile-search-toggle').click();assert.equal(await page.locator('.global-search').isVisible(),true);
   await page.locator('#facet-genres').click();await noOverflow(page,'expanded genres');
@@ -187,7 +205,8 @@ async function noOverflow(page,label){
    const panel=document.getElementById('player-panel'),trace=[];
    panel.hidden=false;document.body.classList.add('player-open');
    const hint=document.getElementById('mobile-orientation-hint');
-   const ctl=ChillMobilePlaybackCore.createController({window:{matchMedia:()=>({matches:true}),screen:{orientation:{lock:async mode=>trace.push(mode),unlock:()=>trace.push('unlock')}}},document:{get fullscreenElement(){return panel;},exitFullscreen:async()=>trace.push('exit')},panel:()=>({requestFullscreen(){trace.push('request');return Promise.resolve();}}),hint:()=>hint});
+   let actual=false;const presented={hidden:false,requestFullscreen(){trace.push('request');actual=true;return Promise.resolve();}};
+   const ctl=ChillMobilePlaybackCore.createController({window:{matchMedia:()=>({matches:true}),screen:{orientation:{lock:async mode=>trace.push(mode),unlock:()=>trace.push('unlock')}}},document:{get fullscreenElement(){return actual?presented:null;},exitFullscreen:async()=>{actual=false;trace.push('exit');}},panel:()=>presented,hint:()=>hint});
    const promise=ctl.requestFromGesture();trace.push('after-call');await promise;
    const immediate=trace.slice(0,2);ctl.stop();
    const denied=ChillMobilePlaybackCore.createController({window:{matchMedia:()=>({matches:true}),screen:{}},document:{},panel:()=>({requestFullscreen:()=>Promise.reject(new Error('denied'))}),hint:()=>hint});

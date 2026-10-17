@@ -5,18 +5,28 @@
 (function (root) {
   const PHONE_QUERY = "(max-width: 760px), (max-height: 500px) and (pointer: coarse)";
   const copy = {
-    en: { rotate: "Rotate your phone", retry: "Retry full screen" },
-    fr: { rotate: "Tournez votre téléphone", retry: "Réessayer le plein écran" },
+    en: { rotate: "Rotate your phone", retry: "Retry full screen", ready: "Tap to open video full screen", unavailable: "Full screen is unavailable in this browser. Video uses the available screen." },
+    fr: { rotate: "Tournez votre téléphone", retry: "Réessayer le plein écran", ready: "Touchez pour ouvrir la vidéo en plein écran", unavailable: "Plein écran indisponible dans ce navigateur. La vidéo occupe l’écran disponible." },
   };
   function phoneViewport(win) { return Boolean(win?.matchMedia?.(PHONE_QUERY).matches); }
   function text(doc, key) { return (doc?.documentElement?.lang || "en").toLowerCase().startsWith("fr") ? copy.fr[key] : copy.en[key]; }
+  function bindFullscreenButton(button, controller, activity) {
+    button?.addEventListener("click", event => {
+      if (!controller.isPhone()) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      controller.setFullscreen(!controller.isActualFullscreen());
+      activity?.();
+    }, true);
+  }
 
   function createController(deps) {
     const win = deps.window, doc = deps.document;
     const panel = () => deps.panel?.() || doc?.getElementById?.("player-panel");
     const video = () => deps.video?.() || doc?.querySelector?.("#native-video video");
-    const actual = () => Boolean(doc?.fullscreenElement || video()?.webkitDisplayingFullscreen);
-    let requested = false, generation = 0, hintWanted = false, lockingToken = null, lockingPromise = null;
+    const canvas = () => doc?.querySelector?.("#native-video canvas");
+    const fullscreenElement = () => doc?.fullscreenElement || doc?.webkitFullscreenElement;
+    const actual = () => Boolean(fullscreenElement() || video()?.webkitDisplayingFullscreen);
+    let requested = false, generation = 0, hintWanted = false, fullscreenHint = null, lockingToken = null, lockingPromise = null;
     const landscape = () => Number(win?.innerWidth) > Number(win?.innerHeight);
     const current = token => token === generation && !panel()?.hidden;
     function setHint(visible) {
@@ -24,12 +34,18 @@
       const hint = deps.hint?.(); if (!hint) return;
       // Orientation locking may be unavailable even when the user has already
       // rotated the phone. Guidance must never imply that playback is gated.
-      hint.hidden = !visible || landscape();
-      const label = hint.querySelector?.("[data-mobile-orientation-text]"); if (label) label.textContent = text(doc, "rotate");
-      const retry = hint.querySelector?.("button"); if (retry) retry.textContent = text(doc, "retry");
+      hint.hidden = !visible || (!fullscreenHint && landscape());
+      const label = hint.querySelector?.("[data-mobile-orientation-text]"); if (label) label.textContent = text(doc, fullscreenHint || "rotate");
+      const retry = hint.querySelector?.("button"); if (retry) { retry.textContent = text(doc, "retry"); retry.hidden = fullscreenHint === "unavailable"; }
     }
     function refreshLanguage() { if (hintWanted) setHint(true); }
     function refreshViewport() { setHint(hintWanted); }
+    function refreshMedia() {
+      if (!hintWanted || !requested || actual()) return;
+      const hasPanelApi = doc?.fullscreenEnabled !== false && (typeof panel()?.requestFullscreen === "function" || typeof panel()?.webkitRequestFullscreen === "function");
+      if (fullscreenHint) fullscreenHint = !hasPanelApi && canvas() ? "unavailable" : "ready";
+      setHint(true);
+    }
     function unlock() { try { win?.screen?.orientation?.unlock?.(); } catch { /* browser-specific no-op */ } }
     function playbackOpen() { return Boolean(panel() && !panel().hidden); }
     async function lockLandscape(token) {
@@ -65,8 +81,9 @@
       }
     }
     function leavePanelFullscreen() {
-      if (doc?.fullscreenElement === panel() && typeof doc.exitFullscreen === "function") {
-        Promise.resolve(doc.exitFullscreen()).catch(() => {});
+      const exit = doc?.exitFullscreen || doc?.webkitExitFullscreen;
+      if (fullscreenElement() === panel() && typeof exit === "function") {
+        try { Promise.resolve(exit.call(doc)).catch(() => {}); } catch { /* already left */ }
       }
     }
     // A browser may grant a request after the player has already closed. Only
@@ -80,22 +97,34 @@
     // browsers reject requests made after an async player/API step.
     function requestFromGesture() {
       if (!phoneViewport(win) || !playbackOpen()) return Promise.resolve(false);
+      if (actual()) return Promise.resolve(true);
       const token = ++generation; requested = true;
-      if (typeof panel()?.requestFullscreen !== "function") {
+      fullscreenHint = null;
+      // Some WebKit versions expose the method but explicitly disable it.
+      // Prefer the native video path immediately, in the trusted touch stack.
+      const requestPanel = doc?.fullscreenEnabled === false ? null : (panel()?.requestFullscreen || panel()?.webkitRequestFullscreen);
+      const failed = () => {
+        if (!current(token)) return false;
+        // At initial launch the media element may not exist yet. Keep a
+        // fresh-gesture action available once it arrives; only a real canvas
+        // without a panel API has no native iPhone fullscreen route.
+        fullscreenHint = !requestPanel && canvas() ? "unavailable" : "ready";
+        setHint(true); return false;
+      };
+      if (typeof requestPanel !== "function") {
         // iPhone's video-only API may require the direct gesture stack too.
         // Once the video is ready, do not defer this fallback to a microtask.
         const entered = attemptNativeVideoFullscreen();
         if (entered) return lockLandscape(token).then(() => actual() && current(token));
-        setHint(true); return Promise.resolve(false);
+        return Promise.resolve(failed());
       }
-      let request; try { request = panel()?.requestFullscreen?.(); } catch { request = null; }
+      let request; try { request = requestPanel.call(panel()); } catch { request = null; }
       return Promise.resolve(request).catch(() => false).then(async () => {
         if (!current(token)) { cleanLateFullscreen(token); return false; }
         if (actual()) { await lockLandscape(token); return actual() && current(token); }
         const nativeActual = attemptNativeVideoFullscreen();
         if (nativeActual) { await lockLandscape(token); return actual() && current(token); }
-        if (current(token)) setHint(true);
-        return false;
+        return failed();
       });
     }
     async function onFullscreenChange() {
@@ -105,16 +134,20 @@
       // browser behavior, but it must never acquire phone-only orientation
       // control or render the mobile guidance outside its media query.
       if (!phoneViewport(win)) { setHint(false); return; }
-      if (actual()) { await lockLandscape(token); return; }
+      if (actual()) { fullscreenHint = null; setHint(false); await lockLandscape(token); return; }
       unlock(); if (requested) setHint(false);
     }
     function stop() {
-      generation++; requested = false; unlock(); setHint(false);
+      generation++; requested = false; fullscreenHint = null; unlock(); setHint(false);
       lockingToken = null; lockingPromise = null;
       leavePanelFullscreen();
       leaveNativeVideoFullscreen();
     }
-    return { requestFromGesture, onFullscreenChange, stop, refreshLanguage, refreshViewport, isActualFullscreen: actual, isPhone: () => phoneViewport(win) };
+    function setFullscreen(enabled) {
+      if (enabled) return requestFromGesture();
+      stop(); return Promise.resolve(actual());
+    }
+    return { requestFromGesture, setFullscreen, onFullscreenChange, stop, refreshLanguage, refreshViewport, refreshMedia, isActualFullscreen: actual, isPhone: () => phoneViewport(win) };
   }
 
   function install() {
@@ -140,16 +173,22 @@
     root.addEventListener("chill:web-player-view", event => {
       retryPlay.textContent = doc.documentElement.lang.startsWith("fr") ? "▶ Toucher pour lancer la vidéo" : "▶ Tap to play video";
       retryPlay.hidden = panel.hidden || event.detail?.stage !== "player" || Boolean(event.detail.native?.error) || !event.detail.native?.play_blocked;
+      controller.refreshMedia();
     });
     const controller = createController({ window: root, document: doc, panel: () => panel, hint: () => hint });
     controller.refreshLanguage(); root.ChillMobilePlayback = controller;
     hint.querySelector("button").addEventListener("click", () => controller.requestFromGesture());
     doc.addEventListener("fullscreenchange", () => { controller.onFullscreenChange(); });
+    doc.addEventListener("webkitfullscreenchange", () => { controller.onFullscreenChange(); });
     doc.addEventListener("webkitbeginfullscreen", () => { controller.onFullscreenChange(); }, true);
     doc.addEventListener("webkitendfullscreen", () => { controller.onFullscreenChange(); }, true);
     root.addEventListener?.("languagechange", () => controller.refreshLanguage());
     root.addEventListener?.("resize", () => controller.refreshViewport(), { passive: true });
     root.addEventListener?.("orientationchange", () => controller.refreshViewport(), { passive: true });
+    // The shared command queue may be waiting for a status/network operation.
+    // Native iPhone fullscreen must run *now*, not after that queue settles.
+    // Polling still reports only the browser's actual fullscreen state.
+    bindFullscreenButton(doc.getElementById("player-fullscreen"), controller, () => root.showPlayerControls?.());
     new MutationObserver(() => { if (panel.hidden) { controller.stop(); retryPlay.hidden = true; } }).observe(panel, { attributes: true, attributeFilter: ["hidden"] });
     // `chillPlay` runs synchronously through its first await, opening the panel.
     // Request fullscreen immediately after that prefix, while activation remains.
@@ -160,7 +199,7 @@
       return result;
     };
   }
-  const api = { PHONE_QUERY, phoneViewport, text, createController, install };
+  const api = { PHONE_QUERY, phoneViewport, text, createController, bindFullscreenButton, install };
   if (typeof module !== "undefined") module.exports = api;
   else { root.ChillMobilePlaybackCore = api; install(); }
 })(typeof window !== "undefined" ? window : globalThis);

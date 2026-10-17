@@ -16,6 +16,7 @@ const pairs = [
   ['docs/releases/REL-V0.6.md', 'docs/releases/REL-V0.6.en.md'],
   ['docs/releases/REL-WEB-MOBILE-001.md', 'docs/releases/REL-WEB-MOBILE-001.en.md'],
   ['docs/releases/REL-WEB-MOBILE-002.md', 'docs/releases/REL-WEB-MOBILE-002.en.md'],
+  ['docs/architecture/decisions/ADR-0028-web-mp3-fallback.md', 'docs/architecture/decisions/ADR-0028-web-mp3-fallback.en.md'],
   ['docs/architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.md', 'docs/architecture/decisions/ADR-0027-mobile-content-and-iphone-playback.en.md'],
   ['docs/architecture/decisions/ADR-0026-mobile-web-presentation.md', 'docs/architecture/decisions/ADR-0026-mobile-web-presentation.en.md'],
   ['docs/publication/GITHUB-REPOSITORY.md', 'docs/publication/GITHUB-REPOSITORY.en.md'],

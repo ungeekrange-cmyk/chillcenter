@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the audio transcoder (AC-3 / E-AC-3 / DTS / TrueHD -> AAC) to WebAssembly (ADR-0020). Runs INSIDE the pinned
+# Builds the audio transcoder (AC-3 / E-AC-3 / DTS / TrueHD / MP3 -> AAC) to WebAssembly (ADR-0020). Runs INSIDE the pinned
 # emscripten/emsdk container (see build-in-docker.sh); never needs the network.
 #
 #   FFMPEG_TARBALL   path to ffmpeg-9.0.2.tar.xz (mounted read-only)
@@ -21,7 +21,7 @@ CONFIGURE_LINE=(--prefix="$WORK/install" --target-os=none --arch=x86_32 --enable
   --disable-all --disable-autodetect --disable-programs --disable-doc --disable-debug --disable-stripping
   --disable-asm --disable-x86asm --disable-inline-asm --disable-runtime-cpudetect --disable-network
   --disable-pthreads --disable-w32threads --disable-os2threads
-  --enable-avcodec --enable-avutil --enable-swresample --enable-decoder=ac3,eac3,dca,truehd,mlp --enable-encoder=aac
+  --enable-avcodec --enable-avutil --enable-swresample --enable-decoder=ac3,eac3,dca,truehd,mlp,mp3 --enable-encoder=aac
   --extra-cflags="-O3 -fno-exceptions")
 emconfigure ./configure "${CONFIGURE_LINE[@]}"
 emmake make -j"$(nproc)" libavcodec/libavcodec.a libavutil/libavutil.a libswresample/libswresample.a

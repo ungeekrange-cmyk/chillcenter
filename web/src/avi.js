@@ -73,6 +73,24 @@
   }
 
   class AviSource extends Mp4.Mp4Source {
+    // `transcodeMp3` is chosen by the MSE engine before opening the AVI.  It
+    // is deliberately false by default: browsers which accept MPEG audio in
+    // MediaSource keep the direct, no-CPU route.
+    constructor(reader, options = {}) {
+      super(reader);
+      this.audio = options.audio || null;
+      this.transcodeMp3 = Boolean(options.transcodeMp3);
+      this.transcoders = new Map();
+      this.seq = 0; this.gen = 0; this.closed = false;
+    }
+
+    close() {
+      this.closed = true; this.gen++;
+      for (const state of this.transcoders.values()) {
+        try { state.tc.close(); } catch { /* Worker already stopped. */ }
+      }
+      this.transcoders.clear();
+    }
     async open() {
       const r = this.reader, read = (a, b) => r.read(a, b);
       const head = await read(0, Math.min(r.size, MAX_HEADER) - 1);
@@ -131,11 +149,108 @@
       // VBR (sampleSize 0): one sample per chunk; CBR: position follows cumulative bytes.
       const unit = s.scale / (s.rate || 1), times = []; let cum = 0;
       list.forEach((e, i) => { times.push(s.sampleSize ? (cum / s.sampleSize) * unit : i * unit); cum += e.size; });
-      const base = s.format === 0x55 ? Mkv.buildTrack({ number: index + 1, type: 2, codecId: "A_MPEG/L3", channels: s.channels, sampleRate: s.sampleRate, language: "und" })
+      // AVI MP3 chunks are converted locally only when `transcodeMp3` was
+      // selected from MediaSource capability detection.  Reuse the audited
+      // AAC sample-entry builder for the declared fMP4 track, then retain the
+      // real source codec for the worker and the user-facing label.
+      const mp3Fallback = s.format === 0x55 && this.transcodeMp3;
+      const base = mp3Fallback ? Mkv.buildTrack({ number: index + 1, type: 2, codecId: "A_MPEG/L3", transcode: "mp3", sourceLabel: "MP3", channels: 2, sampleRate: s.sampleRate, language: "und" })
+        : s.format === 0x55 ? Mkv.buildTrack({ number: index + 1, type: 2, codecId: "A_MPEG/L3", channels: s.channels, sampleRate: s.sampleRate, language: "und" })
         : { id: index + 1, kind: "audio", timescale: s.sampleRate || 48000, codec: null, mime: null, type: "0x" + (s.format || 0).toString(16) };
       base.timescale = base.timescale || s.sampleRate || 48000;
       base.language = null;
       return this.finish(base, list, times);
+    }
+
+    /** Convert AVI MP3 chunks to AAC fMP4 fragments while retaining AVI's sample timeline. */
+    async transcodeEntries(track, samples, flush = false, gen = this.gen) {
+      let state = this.transcoders.get(track.id);
+      if (!state) {
+        if (!this.audio) throw fail(`Cette piste audio (${track.sourceLabel || track.type}) doit être convertie, mais le transcodeur audio n'est pas disponible.`);
+        const tc = this.audio.create({ codec: track.transcode, rate: track.timescale, channels: 2, kbps: 192 });
+        await tc.open();
+        if (this.closed || gen !== this.gen) { tc.close(); return []; }
+        state = { tc, anchor: null, count: 0, priming: tc.priming || 1024, flushed: false, partial: new Uint8Array() };
+        this.transcoders.set(track.id, state);
+      }
+      if (!flush && state.anchor === null && samples.length) {
+        state.anchor = Math.round(samples[0].dts);
+        state.count = 0;
+      }
+      const input = flush ? [] : this.mp3Frames(state, samples.map(s => s.data));
+      const packets = flush ? await state.tc.flush() : input.length ? await state.tc.convert(input) : [];
+      if (this.closed || gen !== this.gen) return [];
+      const entries = [];
+      for (const data of packets) {
+        const dts = state.anchor + (state.count - 1) * 1024;
+        state.count += 1;
+        if (dts < 0) continue; // AAC encoder pre-roll before the first AVI sample.
+        entries.push({ data, dts, dur: 1024 });
+      }
+      return entries;
+    }
+
+    // AVI audio chunks need not align to MPEG frames. Keep at most one
+    // partial tail, resynchronise safely, and send complete frames only to
+    // FFmpeg; this avoids a device-dependent decoder/parser assumption.
+    mp3Frames(state, chunks) {
+      const bytes = Mp4.concat([state.partial, ...chunks]);
+      const frames = []; let p = 0;
+      while (p + 4 <= bytes.length) {
+        const n = Mp4.mp3FrameLength(bytes, p);
+        if (!n) { p++; continue; }
+        if (p + n > bytes.length) break;
+        frames.push(bytes.slice(p, p + n)); p += n;
+      }
+      state.partial = bytes.slice(p);
+      return frames;
+    }
+
+    buildTranscodedFragment(track, entries) {
+      const n = entries.length;
+      const batch = {
+        ...track,
+        count: n,
+        sizes: Uint32Array.from(entries, e => e.data.length),
+        dur: Uint32Array.from(entries, e => e.dur),
+        dts: Float64Array.from([...entries.map(e => e.dts), entries[n - 1].dts + entries[n - 1].dur]),
+        cts: new Int32Array(n), sync: new Uint8Array(n).fill(1), offsets: Uint32Array.from(entries, (_, i) => i),
+      };
+      return Mp4.buildFragment(batch, 0, n, ++this.seq, offset => entries[offset].data);
+    }
+
+    async next(trackId) {
+      const track = this.movie.tracks.find(t => t.id === trackId);
+      if (!track?.transcode) return super.next(trackId);
+      const gen = this.gen;
+      let entries = [];
+      // AAC encoding holds back one frame. Feed a bounded chunk loop so MSE
+      // never receives an empty fragment merely because the encoder is warm.
+      while (!entries.length && this.cursor.get(trackId) < track.count) {
+        const from = this.cursor.get(trackId);
+        const to = Math.min(track.count, from + 32);
+        const raw = await this.rawRead(track, from, to - from);
+        if (this.closed || gen !== this.gen) return null;
+        this.cursor.set(trackId, to);
+        entries = await this.transcodeEntries(track, raw, false, gen);
+      }
+      const state = this.transcoders.get(trackId);
+      if (!entries.length && this.cursor.get(trackId) >= track.count && state && !state.flushed) {
+        state.flushed = true;
+        entries = await this.transcodeEntries(track, [], true, gen);
+      }
+      if (this.closed || gen !== this.gen) return null;
+      return entries.length ? { data: this.buildTranscodedFragment(track, entries) } : null;
+    }
+
+    async seek(seconds) {
+      const gen = ++this.gen;
+      super.seek(seconds);
+      for (const state of this.transcoders.values()) {
+        state.anchor = null; state.count = 0; state.flushed = false; state.partial = new Uint8Array();
+        await state.tc.reset();
+        if (this.closed || gen !== this.gen) return;
+      }
     }
   }
 

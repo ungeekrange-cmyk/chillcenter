@@ -1,6 +1,6 @@
-# Transcodeur audio (AC-3, E-AC-3, DTS, TrueHD vers AAC) — avis de licence
+# Transcodeur audio (AC-3, E-AC-3, DTS, TrueHD, MP3 vers AAC) — avis de licence
 
-`audio-transcoder.wasm` et `audio-transcoder.js` sont une compilation WebAssembly de **FFmpeg 9.0.2** (bibliothèques `libavcodec`, `libswresample` et `libavutil` ; décodeurs `ac3`, `eac3`, `dca`, `truehd`, `mlp` ; encodeur `aac` natif), distribuée sous **LGPL v2.1 ou ultérieure**. La compilation n'utilise ni `--enable-gpl` ni `--enable-nonfree` ni bibliothèque externe.
+`audio-transcoder.wasm` et `audio-transcoder.js` sont une compilation WebAssembly de **FFmpeg 9.0.2** (bibliothèques `libavcodec`, `libswresample` et `libavutil` ; décodeurs `ac3`, `eac3`, `dca`, `truehd`, `mlp`, `mp3` ; encodeur `aac` natif), distribuée sous **LGPL v2.1 ou ultérieure**. La compilation n'utilise ni `--enable-gpl` ni `--enable-nonfree` ni bibliothèque externe.
 
 - Sources exactes : <https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz>, SHA-256 `8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e` (valeur identique à celle épinglée par la formule Homebrew de FFmpeg 9.0.2).
 - Ligne `configure`, version d'Emscripten et sommes de contrôle des binaires : [`BUILD-INFO.json`](BUILD-INFO.json).

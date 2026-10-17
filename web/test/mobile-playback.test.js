@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createController, phoneViewport, text } = require("../src/mobile-playback.js");
+const { createController, phoneViewport, text, bindFullscreenButton } = require("../src/mobile-playback.js");
 const { WebPlayer } = require("../src/player-web.js");
 function deferred() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
 function make({ phone = true, fullscreen = "resolve", lock = "resolve", native = false, canvas = false, lang = "en" } = {}) {
@@ -11,7 +11,8 @@ function make({ phone = true, fullscreen = "resolve", lock = "resolve", native =
   const delayed = fullscreen === "deferred" ? deferred() : null;
   const video = canvas ? null : { webkitDisplayingFullscreen: false, webkitEnterFullscreen: native ? () => { events.push("native-enter"); video.webkitDisplayingFullscreen = true; } : undefined, webkitExitFullscreen: native ? () => { events.push("native-exit"); video.webkitDisplayingFullscreen = false; } : undefined };
   const panel = { get hidden() { return panelHidden; }, requestFullscreen() { events.push("request"); if (fullscreen === "throw") throw new Error("denied"); if (fullscreen === "reject") return Promise.reject(new Error("denied")); if (delayed) return delayed.promise.then(() => { actual = true; }); return Promise.resolve().then(() => { actual = true; }); } };
-  const doc = { documentElement: { lang }, get fullscreenElement() { return actual ? panel : null; }, exitFullscreen() { actual = false; events.push("exit"); return Promise.resolve(); }, getElementById: () => panel, querySelector: () => video };
+  if(fullscreen === "absent")delete panel.requestFullscreen;
+  const doc = { documentElement: { lang }, get fullscreenElement() { return actual ? panel : null; }, exitFullscreen() { actual = false; events.push("exit"); return Promise.resolve(); }, getElementById: () => panel, querySelector: selector => selector.endsWith("canvas") ? (canvas ? {} : null) : video };
   const orientation = { lock() { events.push("lock"); return lock === "reject" ? Promise.reject(new Error("no")) : Promise.resolve(); }, unlock() { events.push("unlock"); } };
   const win = { innerWidth:390, innerHeight:844, matchMedia: () => ({ matches: phone }), screen: { orientation } };
   const controller = createController({ window: win, document: doc, panel: () => panel, video: () => video, hint: () => hint });
@@ -25,16 +26,49 @@ test("a late fullscreenchange while the panel is hidden exits the panel", async 
 test("orientation refusal is guidance, and native video fallback is real only when active", async () => { const refused = make({ lock: "reject" }); assert.equal(await refused.controller.requestFromGesture(), true); assert.equal(refused.hint.hidden, false); const native = make({ fullscreen: "reject", native: true }); assert.equal(await native.controller.requestFromGesture(), true); assert.ok(native.events.includes("native-enter")); native.controller.stop(); assert.ok(native.events.includes("native-exit")); });
 test("browser exit unlocks without re-entering and labels follow language", async () => { const fr = make({ lang: "fr" }); await fr.controller.requestFromGesture(); fr.actual = false; await fr.controller.onFullscreenChange(); assert.ok(fr.events.includes("unlock")); assert.equal(text({ documentElement: { lang: "en" } }, "retry"), "Retry full screen"); });
 test("WebPlayer status exposes the real browser fullscreen state", () => { const player = new WebPlayer({ isFullscreen: () => true }); player.info = { media: { title: "Test" }, preferences: {} }; player.mediaId = "m"; player.lease = {}; player.engine = { snapshot: () => ({ loaded: true, paused: false, tracks: [] }), externalSubtitles: () => [] }; assert.equal(player.view().native.fullscreen, true); });
-test("rotation guidance disappears in landscape even when fullscreen or locking is refused", async () => {
- const phone=make({fullscreen:"reject",canvas:true});await phone.controller.requestFromGesture();
+test("rotation guidance disappears in landscape after fullscreen succeeds but orientation locking is refused", async () => {
+ const phone=make({lock:"reject"});await phone.controller.requestFromGesture();
  assert.equal(phone.hint.hidden,false);
  phone.win.innerWidth=844;phone.win.innerHeight=390;phone.controller.refreshViewport();
- assert.equal(phone.hint.hidden,true);assert.deepEqual(phone.events,["request"]);
+ assert.equal(phone.hint.hidden,true);assert.deepEqual(phone.events.slice(0,2),["request","lock"]);
  phone.win.innerWidth=390;phone.win.innerHeight=844;phone.controller.refreshViewport();assert.equal(phone.hint.hidden,false);
  phone.controller.stop();phone.controller.refreshViewport();assert.equal(phone.hint.hidden,true);
+});
+test("unavailable canvas fullscreen is reported honestly, not as a rotation requirement", async () => {
+ const phone=make({fullscreen:"absent",canvas:true});phone.win.innerWidth=844;phone.win.innerHeight=390;
+ assert.equal(await phone.controller.requestFromGesture(),false);
+ assert.equal(phone.controller.isActualFullscreen(),false);assert.equal(phone.hint.hidden,false);
+ assert.match(phone.labels.textContent,/unavailable/);assert.equal(phone.retry.hidden,true);
+ phone.controller.stop();assert.equal(phone.hint.hidden,true);
+});
+test("disabled panel fullscreen immediately uses iPhone video API, without waiting for a queued command",async()=>{
+ let calls=0;const video={webkitDisplayingFullscreen:false,webkitEnterFullscreen(){calls++;this.webkitDisplayingFullscreen=true;},webkitExitFullscreen(){this.webkitDisplayingFullscreen=false;}};
+ const controller=createController({window:{matchMedia:()=>({matches:true})},document:{fullscreenEnabled:false},panel:()=>({hidden:false,requestFullscreen(){throw Error("must not run");}}),video:()=>video});
+ const pending=controller.setFullscreen(true);assert.equal(calls,1);assert.equal(await pending,true);
+ await controller.setFullscreen(false);assert.equal(controller.isActualFullscreen(),false);
+});
+test("fullscreen click capture runs inside the touch stack and leaves desktop handler alone",()=>{
+ let listener,capture,prevented=0,stopped=0,calls=[];let phone=true,actual=false;
+ const button={addEventListener(type,fn,option){assert.equal(type,"click");listener=fn;capture=option;}};
+ bindFullscreenButton(button,{isPhone:()=>phone,isActualFullscreen:()=>actual,setFullscreen:on=>calls.push(on)},()=>calls.push("active"));
+ const event={preventDefault(){prevented++;},stopImmediatePropagation(){stopped++;}};
+ listener(event);assert.equal(capture,true);assert.deepEqual(calls,[true,"active"]);
+ actual=true;listener(event);assert.equal(calls[2],false);phone=false;listener(event);
+ assert.equal(calls.length,4);assert.equal(prevented,2);assert.equal(stopped,2);
 });
 test("the video-only iPhone fullscreen fallback is requested synchronously in the gesture",async()=>{
  let calls=0;const video={webkitDisplayingFullscreen:false,webkitEnterFullscreen(){calls++;this.webkitDisplayingFullscreen=true;}};
  const controller=createController({window:{innerWidth:844,innerHeight:390,matchMedia:()=>({matches:true}),screen:{}},document:{},panel:()=>({hidden:false}),video:()=>video});
  const promise=controller.requestFromGesture();assert.equal(calls,1);assert.equal(await promise,true);
+});
+test("an unprepared iPhone video keeps a visible fresh-touch action in landscape and clears it on native entry",async()=>{
+ let video=null,calls=0;const label={textContent:""},button={};
+ const hint={hidden:true,querySelector:selector=>selector==="button"?button:label};
+ const controller=createController({window:{innerWidth:844,innerHeight:390,matchMedia:()=>({matches:true})},document:{fullscreenEnabled:false},panel:()=>({hidden:false}),video:()=>video,hint:()=>hint});
+ assert.equal(await controller.requestFromGesture(),false);assert.equal(hint.hidden,false);assert.equal(button.hidden,false);assert.match(label.textContent,/Tap to open/);
+ video={webkitDisplayingFullscreen:false,webkitEnterFullscreen(){calls++;}};
+ controller.refreshMedia();const pending=controller.requestFromGesture();assert.equal(calls,1);
+ assert.equal(await pending,false,"an asynchronous native request is not reported as success yet");
+ video.webkitDisplayingFullscreen=true;await controller.onFullscreenChange();
+ assert.equal(controller.isActualFullscreen(),true);assert.equal(hint.hidden,true);
 });

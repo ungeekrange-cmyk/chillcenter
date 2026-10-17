@@ -1,5 +1,5 @@
 "use strict";
-// Runs the WebAssembly audio transcoder off the main thread. Served from vendor/audio/ next to the .wasm (ADR-0020).
+// Runs the WebAssembly audio transcoder off the main thread. It also handles MP3 only when native MSE lacks support (ADR-0020).
 // The page starts this worker as audio-worker.js?v=<build>: every file it loads carries the same version (no stale mix after an update).
 const V = self.location.search;
 importScripts("audio-transcoder.js" + V, "audio-core.js" + V);

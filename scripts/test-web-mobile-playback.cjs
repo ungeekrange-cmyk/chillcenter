@@ -60,8 +60,14 @@ async function loadRuntime(page) {
   await page.addStyleTag({ url: `${origin}/web.css` });
   await page.evaluate(() => {
     // Test only the fallback wiring. The native Chromium constructor still
-    // does all decoding and source-buffer work below.
-    Object.defineProperty(window, "ManagedMediaSource", { configurable: true, value: window.MediaSource });
+    // does all decoding and source-buffer work below. Hide native MP3 MSE
+    // support too: this exercises the iPhone-compatible AVI MP3 -> AAC
+    // worker path instead of Chromium's ordinary MPEG audio fast path.
+    const NativeMediaSource = window.MediaSource;
+    function FixtureManagedMediaSource() { return new NativeMediaSource(); }
+    FixtureManagedMediaSource.prototype = NativeMediaSource.prototype;
+    FixtureManagedMediaSource.isTypeSupported = type => /audio\/(mpeg|mp4; codecs="mp4a\.6B")/i.test(type) ? false : NativeMediaSource.isTypeSupported(type);
+    Object.defineProperty(window, "ManagedMediaSource", { configurable: true, value: FixtureManagedMediaSource });
     Object.defineProperty(window, "MediaSource", { configurable: true, value: undefined });
     Object.defineProperty(window, "EventSource", { configurable: true, value: undefined });
     window.__allowFixturePlay = false;
@@ -144,7 +150,8 @@ async function waitForStatus(page, predicate, label) {
     await command(page, { action: "start", media_id: "avi", context: { kind: "standalone", id: null } });
     await waitForStatus(page, view => view.stage === "player" && view.native.loaded, "AVI opens after the MKV is stopped");
     // Playback permission remains granted from the trusted retry. AVI exercises
-    // the Xvid software-decoder canvas and MP3 MSE path in Chromium only.
+    // the Xvid software decoder and the forced MP3 -> AAC fallback (the
+    // native MP3 MSE capability was deliberately hidden above).
     await waitForStatus(page, view => view.stage === "player" && view.position > 0.3, "AVI advances");
     assert.equal(await page.locator("#native-video canvas").count(), 1, "AVI uses the software video canvas");
     await page.waitForTimeout(150);
@@ -158,7 +165,7 @@ async function waitForStatus(page, predicate, label) {
     assert.equal(hasPicture, true, "AVI canvas contains decoded RGB pixels, not only dimensions");
     await command(page, { action: "stop" });
     assert.deepEqual(errors, []);
-    console.log("PASS built web playback: ManagedMediaSource fallback wiring, blocked-play retry without reopening, H.264/AAC MKV and Xvid/MP3 AVI in Chromium synthetic fixtures. Native iPhone Safari/ManagedMediaSource and Safari MP3 support still require device validation.");
+    console.log("PASS built web playback: ManagedMediaSource fallback wiring, blocked-play retry without reopening, H.264/AAC MKV and Xvid/MP3 AVI with forced local MP3->AAC fallback in Chromium synthetic fixtures. Native iPhone Safari/ManagedMediaSource still requires device validation.");
   } finally {
     await browser.close();
     fs.rmSync(temp, { recursive: true, force: true });

@@ -2,6 +2,8 @@
 
 ## Lecture de l'état courant
 
+17octobre2026 : [BUG0111 vignettes/plein écran/recherche mobile](BUG-0111-mobile-posters-fullscreen-search.md), correctif web R3 en cours. Extension MP3 AVI de BUG0110 dans le Worker client ; preuves synthétiques et essai physique à distinguer.
+
 17octobre2026, retours iPhone : [BUG0109 encombrement mobile](BUG-0109-mobile-content-obscured.md)
 et [BUG0110 lecture iPhone](BUG-0110-iphone-web-playback.md), corrections web
 vérifiées avec données synthétiques. Retest des vidéos sur appareil réel requis,

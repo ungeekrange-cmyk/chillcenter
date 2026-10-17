@@ -1,5 +1,5 @@
 "use strict";
-// Factory used by the MKV demuxer to convert audio the browser cannot decode (AC-3, E-AC-3, DTS, TrueHD) into AAC (ADR-0020).
+// Factory used by the MKV/AVI demuxers to convert audio the browser cannot decode (including MP3 on iPhone MSE) into AAC (ADR-0020).
 // The transcoder lives in a Worker; the .wasm (~1 MB) is only fetched when such a track is played.
 (function (root) {
   if (typeof Worker === "undefined") return;

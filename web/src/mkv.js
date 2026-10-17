@@ -74,10 +74,14 @@
   /** Matroska track -> MP4 sample entry bytes, or null when this build cannot remux the codec. */
   function sampleEntryFor(t) {
     const cp = t.codecPrivate;
-    if (TRANSCODED[t.codecId]) {
+    // `transcode` is an explicit demuxer decision (AVI MP3 on an MSE that
+    // lacks native MPEG audio support). It must not be inferred from an
+    // unrelated codec: the source codec remains truthful in track metadata.
+    const conversion = t.transcode ? [t.transcode, t.sourceLabel || t.codecId] : TRANSCODED[t.codecId];
+    if (conversion) {
       const asc = AudioCore && AudioCore.audioSpecificConfig(Math.round(t.sampleRate), 2);
       if (!asc) return null;
-      t.transcode = TRANSCODED[t.codecId][0]; t.sourceLabel = TRANSCODED[t.codecId][1];
+      t.transcode = conversion[0]; t.sourceLabel = conversion[1];
       return audio("mp4a", 2, Math.round(t.sampleRate), esds(0x40, 5, asc));
     }
     switch (t.codecId) {

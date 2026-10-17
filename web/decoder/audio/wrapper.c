@@ -1,4 +1,4 @@
-// Audio transcoder for the web client (ADR-0020): AC-3 / E-AC-3 / DTS / TrueHD access units in, AAC-LC access units out.
+// Audio transcoder for the web client (ADR-0020): AC-3 / E-AC-3 / DTS / TrueHD / MP3 access units in, AAC-LC access units out.
 // Browsers do not decode these codecs through Media Source Extensions (the app browser does not; Safari does), so the
 // client converts them locally: decode (FFmpeg libavcodec), mix down and resample (libswresample), encode (native AAC encoder).
 // The server never transcodes anything. LGPL only: no external library, no GPL component.
@@ -18,7 +18,7 @@
 
 #define AAC_FRAME 1024
 
-enum { CC_AC3 = 0, CC_EAC3 = 1, CC_DTS = 2, CC_TRUEHD = 3, CC_MLP = 4 };
+enum { CC_AC3 = 0, CC_EAC3 = 1, CC_DTS = 2, CC_TRUEHD = 3, CC_MLP = 4, CC_MP3 = 5 };
 
 static AVCodecContext *dec = NULL, *enc = NULL;
 static SwrContext *swr = NULL;
@@ -39,6 +39,7 @@ static enum AVCodecID codec_id(int c) {
     case CC_DTS: return AV_CODEC_ID_DTS;
     case CC_TRUEHD: return AV_CODEC_ID_TRUEHD;
     case CC_MLP: return AV_CODEC_ID_MLP;
+    case CC_MP3: return AV_CODEC_ID_MP3;
     default: return AV_CODEC_ID_NONE;
   }
 }

@@ -39,11 +39,10 @@ test("web-only labels have an English fallback and More is selected for the libr
   assert.match(source, /category === ""/);
   assert.match(source, /aria-current/);
 });
-test("poster actions keep separate 44px touch targets and mobile header keeps profile at right", () => {
+test("mobile catalogue posters are unobscured and the header keeps profile at right", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
-  assert.match(css, /\.poster-watched\{left:5px;bottom:5px\}/);
-  assert.match(css, /\.poster-add\{right:5px;bottom:5px\}/);
-  assert.match(css, /min-width:44px;min-height:44px/);
+  assert.match(css, /\.media-card\.catalog-open \.poster-actions\{display:none\}/);
+  assert.doesNotMatch(css, /\.media-card \.poster-actions\{inset:0;display:block/);
   assert.match(css, /grid-template-columns:44px minmax\(0,1fr\) 44px 44px max-content/);
   assert.match(css, /\.profile-menu\{grid-column:5/);
 });

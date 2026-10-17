@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR0028](ADR-0028-web-mp3-fallback.md) ([EN](ADR-0028-web-mp3-fallback.en.md)), ACCEPTED_BY_USER_CHANGE_REQUEST,17octobre2026 : repli MP3 AVI vers AAC dans le Worker FFmpeg web ; chemin natif conservé si accepté, plein écran mobile dans le geste, limite canvas iPhone explicite. Aucun transcodage serveur ou changement Mac/API.
+
 [ADR0027](ADR-0027-mobile-content-and-iphone-playback.md), ACCEPTED_BY_USER_CHANGE_REQUEST,17octobre2026 : contenu mobile d'abord, recherche repliée, rail paysage et repli ManagedMediaSource iPhone ; reprise tactile respectant les pauses serveur. Réserves de validation physique conservées.
 
 [ADR0026](ADR-0026-mobile-web-presentation.md) ([EN](ADR-0026-mobile-web-presentation.en.md)), ACCEPTED,17octobre2026 : présentation smartphone web approuvée R1, navigation basse et plein écran/paysage selon capacités réelles ; calcul virtuel cohérent, aucun client Mac, serveur, API ou NAS modifié.
