@@ -192,6 +192,14 @@ async function noOverflow(page,label){
   assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.workspace'),'::before').content),'none');
   await page.setViewportSize({width:844,height:390});
   await page.waitForFunction(()=>document.getElementById('mobile-nav').hidden);
+  // Inject OS-inset values, not a fake claim of physical cutout testing.
+  for(const [left,right] of [[44,0],[0,44]]){
+   await page.evaluate(([left,right])=>{document.documentElement.style.setProperty('--mobile-safe-left',`${left}px`);document.documentElement.style.setProperty('--mobile-safe-right',`${right}px`);document.documentElement.style.setProperty('--mobile-safe-bottom','21px');},[left,right]);
+   const safe=await page.evaluate(()=>{const r=document.getElementById('native-video').getBoundingClientRect(),h=getComputedStyle(document.querySelector('.player-heading')),o=getComputedStyle(document.getElementById('player-overlay'));return {x:r.x,right:r.right,bottom:r.bottom,headingLeft:parseFloat(h.paddingLeft),headingRight:parseFloat(h.paddingRight),overlayLeft:parseFloat(o.paddingLeft),overlayRight:parseFloat(o.paddingRight)};});
+   assert(safe.x>=left&&safe.right<=844-right&&safe.bottom<=369,`video avoids synthetic camera/home insets ${JSON.stringify(safe)}`);
+   assert(safe.headingLeft>=left&&safe.headingRight>=right&&safe.overlayLeft>=left&&safe.overlayRight>=right,'player controls avoid left and right camera cutouts');
+  }
+  await page.evaluate(()=>{for(const edge of ['left','right','bottom'])document.documentElement.style.removeProperty(`--mobile-safe-${edge}`);});
   await page.setViewportSize({width:390,height:844});
   await page.evaluate(async()=>{if(document.fullscreenElement)await document.exitFullscreen();document.getElementById('test-mobile-fullscreen').remove();document.getElementById('player-panel').hidden=true;document.body.classList.remove('player-open');});
   await page.waitForFunction(()=>!document.getElementById('mobile-nav').hidden);
@@ -210,10 +218,13 @@ async function noOverflow(page,label){
    const promise=ctl.requestFromGesture();trace.push('after-call');await promise;
    const immediate=trace.slice(0,2);ctl.stop();
    const denied=ChillMobilePlaybackCore.createController({window:{matchMedia:()=>({matches:true}),screen:{}},document:{},panel:()=>({requestFullscreen:()=>Promise.reject(new Error('denied'))}),hint:()=>hint});
-   await denied.requestFromGesture();const fallback=!hint.hidden;denied.stop();
-   panel.hidden=true;document.body.classList.remove('player-open');return {immediate,fallback,cleaned:hint.hidden};
+   await denied.requestFromGesture();const fallback=!hint.hidden;
+   await new Promise(resolve=>setTimeout(resolve,ChillMobilePlaybackCore.HINT_MS+50));
+   denied.refreshMedia();denied.refreshViewport();denied.refreshLanguage();
+   const expired=hint.hidden;denied.stop();
+   panel.hidden=true;document.body.classList.remove('player-open');return {immediate,fallback,expired,cleaned:hint.hidden};
   });
-  assert.deepEqual(presentation.immediate,['request','after-call']);assert(presentation.fallback&&presentation.cleaned);
+  assert.deepEqual(presentation.immediate,['request','after-call']);assert(presentation.fallback&&presentation.expired&&presentation.cleaned);
   assert.deepEqual(errors,[]);
   console.log('PASS built mobile web: 320/390/430/736/844 layouts, 1280 desktop restore, fixed navigation/Plus, profile/touch targets, virtual rows and preserved detail scroll, live genre/year filters, nonempty collections/configuration, EN/FR, themes, AI excluded; real Chromium fullscreen entry/exit, orientation denial mocked, no physical-device or live video claim.');
  }finally{await browser.close();}

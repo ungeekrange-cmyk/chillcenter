@@ -4,6 +4,7 @@
 // browser presentation concern layered over the shared client player.
 (function (root) {
   const PHONE_QUERY = "(max-width: 760px), (max-height: 500px) and (pointer: coarse)";
+  const HINT_MS = 2500;
   const copy = {
     en: { rotate: "Rotate your phone", retry: "Retry full screen", ready: "Tap to open video full screen", unavailable: "Full screen is unavailable in this browser. Video uses the available screen." },
     fr: { rotate: "Tournez votre téléphone", retry: "Réessayer le plein écran", ready: "Touchez pour ouvrir la vidéo en plein écran", unavailable: "Plein écran indisponible dans ce navigateur. La vidéo occupe l’écran disponible." },
@@ -25,23 +26,36 @@
     const video = () => deps.video?.() || doc?.querySelector?.("#native-video video");
     const canvas = () => doc?.querySelector?.("#native-video canvas");
     const fullscreenElement = () => doc?.fullscreenElement || doc?.webkitFullscreenElement;
-    const actual = () => Boolean(fullscreenElement() || video()?.webkitDisplayingFullscreen);
+    const actual = () => Boolean(fullscreenElement() || video()?.webkitDisplayingFullscreen || video()?.webkitPresentationMode === "fullscreen");
     let requested = false, generation = 0, hintWanted = false, fullscreenHint = null, lockingToken = null, lockingPromise = null;
+    let hintTimer = null, hintExpired = false;
+    const later = deps.setTimeout || ((fn, ms) => win?.setTimeout ? win.setTimeout(fn, ms) : setTimeout(fn, ms));
+    const cancel = deps.clearTimeout || (id => win?.clearTimeout ? win.clearTimeout(id) : clearTimeout(id));
     const landscape = () => Number(win?.innerWidth) > Number(win?.innerHeight);
     const current = token => token === generation && !panel()?.hidden;
     function setHint(visible) {
+      const wasWanted = hintWanted;
       hintWanted = visible;
+      if (!visible) {
+        if (hintTimer !== null) cancel(hintTimer);
+        hintTimer = null; hintExpired = false;
+      } else if (!wasWanted) {
+        // Status/resize events may refresh the label, but never renew this
+        // deadline. A browser limitation must not cover the film indefinitely.
+        hintTimer = later(() => { hintTimer = null; hintExpired = true; const hint = deps.hint?.(); if (hint) hint.hidden = true; }, HINT_MS);
+        hintTimer?.unref?.();
+      }
       const hint = deps.hint?.(); if (!hint) return;
       // Orientation locking may be unavailable even when the user has already
       // rotated the phone. Guidance must never imply that playback is gated.
-      hint.hidden = !visible || (!fullscreenHint && landscape());
+      hint.hidden = !visible || hintExpired || (!fullscreenHint && landscape());
       const label = hint.querySelector?.("[data-mobile-orientation-text]"); if (label) label.textContent = text(doc, fullscreenHint || "rotate");
       const retry = hint.querySelector?.("button"); if (retry) { retry.textContent = text(doc, "retry"); retry.hidden = fullscreenHint === "unavailable"; }
     }
     function refreshLanguage() { if (hintWanted) setHint(true); }
     function refreshViewport() { setHint(hintWanted); }
     function refreshMedia() {
-      if (!hintWanted || !requested || actual()) return;
+      if (!hintWanted || hintExpired || !requested || actual()) return;
       const hasPanelApi = doc?.fullscreenEnabled !== false && (typeof panel()?.requestFullscreen === "function" || typeof panel()?.webkitRequestFullscreen === "function");
       if (fullscreenHint) fullscreenHint = !hasPanelApi && canvas() ? "unavailable" : "ready";
       setHint(true);
@@ -68,17 +82,23 @@
     }
     function attemptNativeVideoFullscreen() {
       const el = video();
-      if (!el || typeof el.webkitEnterFullscreen !== "function") return false;
-      try { el.webkitEnterFullscreen(); } catch { return false; }
+      if (!el) return false;
+      const enter = el.webkitEnterFullscreen || el.webkitEnterFullScreen;
+      if (typeof enter === "function") { try { enter.call(el); return actual(); } catch { /* try WebKit's presentation API in the same gesture */ } }
+      if (typeof el.webkitSetPresentationMode === "function" && el.webkitSupportsPresentationMode?.("fullscreen") !== false) {
+        try { el.webkitSetPresentationMode("fullscreen"); } catch { return false; }
+      }
       // WebKit may enter asynchronously; a later event locks orientation. Do
       // not report success before the browser says that it is actually active.
       return actual();
     }
     function leaveNativeVideoFullscreen() {
       const el = video();
-      if (el?.webkitDisplayingFullscreen && typeof el.webkitExitFullscreen === "function") {
-        try { el.webkitExitFullscreen(); } catch { /* user/browser owns the exit */ }
+      const exit = el?.webkitExitFullscreen || el?.webkitExitFullScreen;
+      if (el?.webkitDisplayingFullscreen && typeof exit === "function") {
+        try { exit.call(el); } catch { /* user/browser owns the exit */ }
       }
+      if (el?.webkitPresentationMode === "fullscreen") { try { el.webkitSetPresentationMode?.("inline"); } catch { /* browser owns presentation */ } }
     }
     function leavePanelFullscreen() {
       const exit = doc?.exitFullscreen || doc?.webkitExitFullscreen;
@@ -98,6 +118,7 @@
     function requestFromGesture() {
       if (!phoneViewport(win) || !playbackOpen()) return Promise.resolve(false);
       if (actual()) return Promise.resolve(true);
+      setHint(false); // Only a new explicit attempt starts a new notice deadline.
       const token = ++generation; requested = true;
       fullscreenHint = null;
       // Some WebKit versions expose the method but explicitly disable it.
@@ -118,7 +139,7 @@
         if (entered) return lockLandscape(token).then(() => actual() && current(token));
         return Promise.resolve(failed());
       }
-      let request; try { request = requestPanel.call(panel()); } catch { request = null; }
+      let request; try { request = requestPanel.call(panel(), { navigationUI: "hide" }); } catch { request = null; }
       return Promise.resolve(request).catch(() => false).then(async () => {
         if (!current(token)) { cleanLateFullscreen(token); return false; }
         if (actual()) { await lockLandscape(token); return actual() && current(token); }
@@ -182,6 +203,7 @@
     doc.addEventListener("webkitfullscreenchange", () => { controller.onFullscreenChange(); });
     doc.addEventListener("webkitbeginfullscreen", () => { controller.onFullscreenChange(); }, true);
     doc.addEventListener("webkitendfullscreen", () => { controller.onFullscreenChange(); }, true);
+    doc.addEventListener("webkitpresentationmodechanged", () => { controller.onFullscreenChange(); }, true);
     root.addEventListener?.("languagechange", () => controller.refreshLanguage());
     root.addEventListener?.("resize", () => controller.refreshViewport(), { passive: true });
     root.addEventListener?.("orientationchange", () => controller.refreshViewport(), { passive: true });
@@ -199,7 +221,7 @@
       return result;
     };
   }
-  const api = { PHONE_QUERY, phoneViewport, text, createController, bindFullscreenButton, install };
+  const api = { PHONE_QUERY, HINT_MS, phoneViewport, text, createController, bindFullscreenButton, install };
   if (typeof module !== "undefined") module.exports = api;
   else { root.ChillMobilePlaybackCore = api; install(); }
 })(typeof window !== "undefined" ? window : globalThis);

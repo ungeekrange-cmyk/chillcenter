@@ -2,6 +2,8 @@
 
 ## Lecture de l'état courant
 
+17octobre2026 : [BUG0112 bandeau persistant et zones caméra](BUG-0112-persistent-fullscreen-notice-cutouts.md), correctif web ciblé R4 : bandeau limité à2,5s, autre chemin WebKit et safe areas quatre côtés. Retest physique Safari toujours distinct ; aucune app native lancée sur la base d'une question de faisabilité.
+
 17octobre2026 : [BUG0111 vignettes/plein écran/recherche mobile](BUG-0111-mobile-posters-fullscreen-search.md), correctif web R3 en cours. Extension MP3 AVI de BUG0110 dans le Worker client ; preuves synthétiques et essai physique à distinguer.
 
 17octobre2026, retours iPhone : [BUG0109 encombrement mobile](BUG-0109-mobile-content-obscured.md)

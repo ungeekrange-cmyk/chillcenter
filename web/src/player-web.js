@@ -285,7 +285,9 @@
           engineFactory: () => root.ChillEngines.create(document.getElementById("native-video")),
           storage: root.localStorage, now: () => performance.now(), setInterval: (f, t) => root.setInterval(f, t), clearInterval: t => root.clearInterval(t),
           EventSource: root.EventSource, uuid: () => uuidV4(root.crypto),
-          isFullscreen: () => Boolean(document.fullscreenElement || document.webkitFullscreenElement || document.querySelector("#native-video video")?.webkitDisplayingFullscreen),
+          isFullscreen: () => root.ChillMobilePlayback?.isPhone()
+            ? root.ChillMobilePlayback.isActualFullscreen()
+            : Boolean(document.fullscreenElement || document.webkitFullscreenElement || document.querySelector("#native-video video")?.webkitDisplayingFullscreen),
           setFullscreen: async on => { // browsers refuse this without a recent user gesture: report the real state instead of failing
           if (root.ChillMobilePlayback?.isPhone()) return root.ChillMobilePlayback.setFullscreen(on);
           const el = document.getElementById("player-panel"), video = document.querySelector("#native-video video");

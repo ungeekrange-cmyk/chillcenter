@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createController, phoneViewport, text, bindFullscreenButton } = require("../src/mobile-playback.js");
+const { createController, phoneViewport, text, bindFullscreenButton, HINT_MS } = require("../src/mobile-playback.js");
 const { WebPlayer } = require("../src/player-web.js");
 function deferred() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
 function make({ phone = true, fullscreen = "resolve", lock = "resolve", native = false, canvas = false, lang = "en" } = {}) {
@@ -71,4 +71,30 @@ test("an unprepared iPhone video keeps a visible fresh-touch action in landscape
  assert.equal(await pending,false,"an asynchronous native request is not reported as success yet");
  video.webkitDisplayingFullscreen=true;await controller.onFullscreenChange();
  assert.equal(controller.isActualFullscreen(),true);assert.equal(hint.hidden,true);
+});
+
+test("fullscreen notice expires once at 2.5s despite status, orientation and language refreshes",async()=>{
+ let now=0,next=0;const timers=new Map(),label={},retry={},hint={hidden:true,querySelector:s=>s==="button"?retry:label};
+ const tick=ms=>{now+=ms;for(const [id,t] of timers)if(t.at<=now){timers.delete(id);t.fn();}};
+ const ctl=createController({window:{innerWidth:844,innerHeight:390,matchMedia:()=>({matches:true})},document:{querySelector:s=>s.endsWith("canvas")?{}:null},panel:()=>({hidden:false}),hint:()=>hint,setTimeout:(fn,ms)=>{timers.set(++next,{fn,at:now+ms});return next;},clearTimeout:id=>timers.delete(id)});
+ assert.equal(HINT_MS,2500);await ctl.requestFromGesture();assert.equal(hint.hidden,false);
+ tick(1000);ctl.refreshMedia();ctl.refreshViewport();ctl.refreshLanguage();
+ tick(1499);assert.equal(hint.hidden,false);tick(1);assert.equal(hint.hidden,true);
+ for(let i=0;i<8;i++){tick(500);ctl.refreshMedia();ctl.refreshViewport();ctl.refreshLanguage();assert.equal(hint.hidden,true);}
+ await ctl.requestFromGesture();assert.equal(hint.hidden,false,"only a new user attempt rearms the notice");
+ ctl.stop();assert.equal(timers.size,0);tick(4000);assert.equal(hint.hidden,true);
+});
+test("WebKit presentation fullscreen is tried synchronously when enterFullscreen refuses",async()=>{
+ const calls=[];const video={webkitPresentationMode:"inline",webkitEnterFullscreen(){calls.push("enter");throw Error("refused");},webkitSupportsPresentationMode:mode=>mode==="fullscreen",webkitSetPresentationMode(mode){calls.push(mode);this.webkitPresentationMode=mode;}};
+ const ctl=createController({window:{matchMedia:()=>({matches:true})},document:{fullscreenEnabled:false},panel:()=>({hidden:false}),video:()=>video});
+ const pending=ctl.requestFromGesture();assert.deepEqual(calls,["enter","fullscreen"]);assert.equal(await pending,true);
+ ctl.stop();assert.equal(video.webkitPresentationMode,"inline");assert.equal(ctl.isActualFullscreen(),false);
+});
+test("legacy WebKit video spelling works and a standard request asks to hide browser navigation",async()=>{
+ const video={webkitDisplayingFullscreen:false,webkitEnterFullScreen(){this.webkitDisplayingFullscreen=true;},webkitExitFullScreen(){this.webkitDisplayingFullscreen=false;}};
+ const ctl=createController({window:{matchMedia:()=>({matches:true})},document:{},panel:()=>({hidden:false}),video:()=>video});
+ assert.equal(await ctl.requestFromGesture(),true);ctl.stop();assert.equal(video.webkitDisplayingFullscreen,false);
+ let options;const panel={hidden:false,requestFullscreen(value){options=value;}};
+ const standard=createController({window:{matchMedia:()=>({matches:true})},document:{},panel:()=>panel});
+ await standard.requestFromGesture();assert.deepEqual(options,{navigationUI:"hide"});standard.stop();
 });

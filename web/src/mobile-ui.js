@@ -136,7 +136,11 @@
       // Three posters are the phone default. At a 320px viewport two columns
       // preserve independent 44px seen/add targets. Compare viewport width,
       // not the smaller content width (390px phones have ~358px of content).
-      const adapted = useMobile ? Math.max(1, root.innerWidth <= 360 ? (width - 18) / 2 : (width - 36) / 3) : posterSize;
+      // A mathematically exact three-column width can round to a ratio of
+      // 2.9999999999999996 before the shared floor(), especially with cutout
+      // insets/subpixel resizing. Bias only that rounding error, not the layout.
+      const epsilon = Math.max(1, width) * Number.EPSILON * 8;
+      const adapted = useMobile ? Math.max(1, (root.innerWidth <= 360 ? (width - 18) / 2 : (width - 36) / 3) - epsilon) : posterSize;
       return desktop(count, width, adapted, scrollTop, viewportHeight, list);
     };
   }

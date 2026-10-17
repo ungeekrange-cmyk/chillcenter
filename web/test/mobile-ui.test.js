@@ -14,6 +14,14 @@ test("mobile virtualizer computes three columns from its live available width", 
   assert.match(source, /root\.innerWidth <= 360/);
   assert.match(source, /root\.catalogWindow = \(count, width, posterSize/);
 });
+test("fractional available widths cannot randomly drop a mobile poster column", () => {
+  const {runInNewContext}=require("node:vm"),{catalogWindow}=require("../../ui/connected/catalog-window.js");
+  const install=source.match(/function installVirtualizer\(\) \{[\s\S]*?\n  \}/)[0];
+  const root={catalogWindow,innerWidth:430};runInNewContext(`(${install})()`,{root,isPhone:()=>true});
+  for(let width=280;width<600;width+=1/64)assert.equal(root.catalogWindow(100,width,160,0,844,false).columns,3,`width ${width}`);
+  root.innerWidth=320;for(let width=200;width<400;width+=1/64)assert.equal(root.catalogWindow(100,width,160,0,844,false).columns,2,`width ${width}`);
+  assert.equal(root.catalogWindow(100,366.03125,160,0,844,true).columns,1,"list layout is unchanged");
+});
 test("mobile event decoration has no hidden desktop sidebar reservation", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
   assert.match(css, /\.app-shell\{display:block;min-height:100dvh;--event-sidebar-width:0px\}/);
