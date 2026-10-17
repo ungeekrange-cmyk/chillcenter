@@ -12,9 +12,9 @@ ni les contrats réseau. Base exacte : `73cbc8c9fec3fbddf3f239d00db64ca450a7d9f6
 Dernier changement de tests : `095631ad55d1502480c874016a24f3b79968ff28`.
 Dernier changement fonctionnel Mac : `15c2d63c2bca5058456a16c8ac7d0320d440ad4c`.
 
-Branche de livraison : `codex/release-v0.6`. Fusion locale prévue dans la branche
-d'intégration existante `codex/player-streaming`, sans réécrire l'historique.
-Le tag est créé après consignation des preuves. La source de compilation et le
+Branche de livraison : `codex/release-v0.6`. Branche d'intégration locale :
+`codex/player-streaming`, par avance rapide depuis `37a5b35`, sans réécriture de
+l'historique. Le tag est créé après consignation des preuves. La source de compilation et le
 SHA256 du binaire sont indiqués dans la section Livraison ci-dessous ; un commit
 ultérieur limité à la documentation ne signifie pas une autre source compilée.
 
@@ -60,10 +60,21 @@ Preuves détaillées, sans prétendre à une nouvelle validation globale :
 
 ## Vérification du gel
 
-Contrôles à consigner après exécution : cohérence Cargo/Tauri/plist/lock,
-suite Node complète, compilation release verrouillée, signature profonde,
-bibliothèques ARM64 et chargement du libmpv embarqué. Aucune nouvelle lecture
-générale ou sollicitation des fournisseurs/NAS n'est nécessaire pour ce delta.
+Contrôles exécutés le 17 octobre 2026 sur le gel :
+
+| Contrôle | Résultat |
+| --- | --- |
+| Cargo/Tauri/plist/lock | 0.6.0 cohérent, build 7, locales en/fr |
+| `node --test --test-reporter=spec ui/connected/*.test.js ui/connected/tests/*.test.js` | 130/130 PASS, aucun ignoré/annulé |
+| `git diff --check` et liens locaux des documents actualisés | PASS ; ancien lien ADR web renuméroté réparé |
+| Scan ciblé des lignes ajoutées et inventaire des fichiers sensibles suivis | Aucun secret, certificat ou adresse privée détecté dans les ajouts ; pas un audit complet de l'historique |
+| `scripts/package-macos.sh` avec cache Cargo existant et `CARGO_NET_OFFLINE=true` | rc0, compilation `--release --locked`, sans changement des dépendances |
+| Signature profonde ad hoc et copie publiée | PASS ; même SHA256 avant/après copie exclusive |
+| Bibliothèques embarquées et chargement | 48 dylibs ARM64 relocalisées, libmpv client API 2.5 chargé |
+
+Deux avertissements release préexistants (`nonblank`, `glReadPixels` inutilisés)
+restent visibles ; aucune erreur de compilation. Pas de nouvelle lecture
+générale, de lancement natif, de sollicitation des fournisseurs ou du NAS.
 
 Les preuves antérieures restent attribuées à leurs sources : 7/7 tests QA et
 130/130 tests Node sur `095631a`, contrôles Rust et DOM ciblés dans les rapports
@@ -72,14 +83,26 @@ numéro de version. Pas de nouvelle revue indépendante revendiquée pour ce gel
 
 ## Livraison et retour arrière
 
-Bundle distinct : `artifacts/macos/Chill Center-v0.6.app`. Compilation et
-publication exclusive à confirmer avant remise finale. Application Apple Silicon,
+Bundle distinct livré : `artifacts/macos/Chill Center-v0.6.app` dans le dépôt
+canonique. Source compilée : **`bac22cafaa31639e68d508b2c95365f924ab8540`**.
+SHA256 de l'exécutable signé :
+`7eb9dd979f473f1dc09309bdc314fe93c9890d8eabf6a42203c7a5232787e3f7`.
+Publication par staging et renommage exclusif, sans écraser de bundle.
+Application Apple Silicon,
 macOS 13 minimum ; signature ad hoc, non notariée. Les licences des bibliothèques
 embarquées sont incluses. Quitter l'ancienne application avant d'ouvrir ce bundle.
 
 Les anciens bundles et tags sont conservés. Repli : quitter v0.6 et relancer
 `Chill Center-test-095631a.app` ou une autre version livrée compatible ; aucune
 restauration serveur/base ni intervention NAS n'est nécessaire pour ce gel.
+L'ancien exécutable `095631a` conserve son SHA256
+`2865690fef80cc01ec00e8c7475f34cc81b01c5c2017f811376f966f4f915ab1`.
+
+Le chantier web a été relevé sur `codex/web-pwa`, source
+`e6e23dbc967bcfe340c06985519c91155eb1f22c`, état propre avant intégration.
+La fusion Mac ne déplace pas cette branche et n'écrit pas dans son worktree.
+Les sources web déjà héritées du candidat validé ne sont pas une livraison de
+sa nouvelle version en chantier. Aucun push distant n'est effectué.
 
 ## Limites connues
 

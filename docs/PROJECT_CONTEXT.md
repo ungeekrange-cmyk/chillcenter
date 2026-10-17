@@ -8,6 +8,9 @@ Client Mac **0.6.0 / build 7**, bundle de référence
 La [fiche de livraison](releases/REL-V0.6.md) fait autorité pour cette version,
 ses preuves, ses limites et le retour arrière. Elle consolide le candidat validé
 `73cbc8c` (source QA `095631a`) sans nouvelle modification fonctionnelle.
+Source compilée `bac22ca`, 130/130 tests Node PASS, signature profonde et
+48 bibliothèques ARM64 vérifiées ; SHA256 de l'exécutable
+`7eb9dd979f473f1dc09309bdc314fe93c9890d8eabf6a42203c7a5232787e3f7`.
 
 Branche de préparation `codex/release-v0.6`, destination d'intégration
 `codex/player-streaming`. Aucun accès ou déploiement Pi/NAS, aucune modification
@@ -161,7 +164,7 @@ Interface/API source9277ac4 promue localement, bundle `artifacts/macos/Chill Cen
 
 ## Branche parallèle — client web PWA (`codex/web-pwa`)
 
-14 octobre 2026, demande utilisateur : reproduire le client Mac en web app/PWA servie par le Pi, sans authentification, calcul vidéo côté navigateur, serveur inchangé hors delta minimal. Travail isolé dans un worktree distinct pour ne pas gêner le client Mac. [ADR-0012](architecture/decisions/ADR-0012-web-client-pwa.md) PROPOSED, [architecture web](architecture/WEB-CLIENT.md). Aucun déploiement, aucun push. Dépôt distant : `https://github.com/ungeekrange-cmyk/chillcenter.git`.
+14 octobre 2026, demande utilisateur : reproduire le client Mac en web app/PWA servie par le Pi, sans authentification, calcul vidéo côté navigateur, serveur inchangé hors delta minimal. Travail isolé dans un worktree distinct pour ne pas gêner le client Mac. [ADR-0014 (anciennement ADR-0012)](architecture/decisions/ADR-0014-web-client-pwa.md) PROPOSED, [architecture web](architecture/WEB-CLIENT.md). Aucun déploiement, aucun push. Dépôt distant : `https://github.com/ungeekrange-cmyk/chillcenter.git`.
 
 ## Point actuel — interface/API approuvées, livraison coordonnée en cours
 
