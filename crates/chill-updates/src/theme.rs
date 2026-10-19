@@ -10,7 +10,7 @@ use std::path::{Component, Path};
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 
-const MAX_MANIFEST: u64 = 1024 * 1024;
+const MAX_MANIFEST: u64 = 64 * 1024;
 const MAX_ASSETS: usize = 128;
 const MAX_PNG: u64 = 5 * 1024 * 1024;
 const MAX_TOTAL: u64 = 12 * 1024 * 1024;
@@ -41,7 +41,9 @@ struct ThemeAsset {
 /// truncation, decompression, dimensions, and APNG are checked before publish.
 pub fn validate_theme_package(root: &Path) -> Result<()> {
     let manifest_bytes = read_regular(&root.join("manifest.json"), MAX_MANIFEST)?;
-    let manifest: ThemeManifest = parse_strict_json(&manifest_bytes)?;
+    let value: serde_json::Value = parse_strict_json(&manifest_bytes)?;
+    validate_theme_metadata(&value)?;
+    let manifest: ThemeManifest = serde_json::from_value(value)?;
     if manifest.format_version != 1
         || manifest.renderer_version != 1
         || !manifest.version.pre.is_empty()
@@ -101,6 +103,115 @@ pub fn validate_theme_package(root: &Path) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Shared pre-activation calendar/token validation for Linux and native Mac.
+/// Web mirrors these same limits; a malformed signed pack is still rejected.
+pub fn validate_theme_metadata(value: &serde_json::Value) -> Result<()> {
+    let valid = (|| -> Option<()> {
+        use serde_json::Value;
+        if value["format_version"] != 1 || value["renderer_version"] != 1 {
+            return None;
+        }
+        let version = Version::parse(value["version"].as_str()?).ok()?;
+        if !version.pre.is_empty() || !version.build.is_empty() {
+            return None;
+        }
+        let assets = value["assets"].as_object()?;
+        if assets.is_empty() || assets.len() > 128 {
+            return None;
+        }
+        validate_asset_path(value["default_logo"].as_str()?).ok()?;
+        if !assets.contains_key(value["default_logo"].as_str()?) {
+            return None;
+        }
+        let date = |value: &Value| -> Option<u16> {
+            let parts = value.as_array().filter(|p| p.len() == 2)?;
+            let month = parts[0].as_u64()?;
+            let day = parts[1].as_u64()?;
+            if !(1..=12).contains(&month) {
+                return None;
+            }
+            let maximum = *[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+                .get(month.checked_sub(1)? as usize)?;
+            (day >= 1 && day <= maximum).then_some((month * 32 + day) as u16)
+        };
+        let palette = |value: &Value| {
+            value.as_object().is_some_and(|p| {
+                p.iter().all(|(key, value)| {
+                    matches!(
+                        key.as_str(),
+                        "bg" | "panel"
+                            | "raised"
+                            | "text"
+                            | "muted"
+                            | "accent"
+                            | "button"
+                            | "sidebar"
+                            | "line"
+                    ) && value.as_str().is_some_and(|c| {
+                        matches!(c.len(), 7 | 9)
+                            && c.starts_with('#')
+                            && c.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
+                    })
+                })
+            })
+        };
+        let mut ids = BTreeSet::new();
+        let mut ranges = Vec::new();
+        for theme in value["themes"].as_array().filter(|t| t.len() == 6)? {
+            let id = theme["id"].as_str()?;
+            if !matches!(
+                id,
+                "spring" | "summer" | "autumn" | "winter" | "christmas" | "halloween"
+            ) || !ids.insert(id)
+            {
+                return None;
+            }
+            let priority = theme["priority"]
+                .as_i64()
+                .filter(|p| (-1000..=1000).contains(p))?;
+            ranges.push((date(&theme["start"])?, date(&theme["end"])?, priority));
+            for tone in ["light", "dark"] {
+                let variant = &theme[tone];
+                if !palette(&variant["palette"]) || !palette(&variant["sidebar"]) {
+                    return None;
+                }
+                for field in ["logo", "background"] {
+                    if field == "background" && variant.get(field).is_none() {
+                        continue;
+                    }
+                    let path = variant[field].as_str()?;
+                    validate_asset_path(path).ok()?;
+                    if !assets.contains_key(path) {
+                        return None;
+                    }
+                }
+            }
+        }
+        for (month, days) in [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+            .into_iter()
+            .enumerate()
+        {
+            for day in 1..=days {
+                let point = ((month + 1) * 32 + day) as u16;
+                let mut priorities = BTreeSet::new();
+                for &(start, end, priority) in &ranges {
+                    if ((start <= end && point >= start && point <= end)
+                        || (start > end && (point >= start || point <= end)))
+                        && !priorities.insert(priority)
+                    {
+                        return None;
+                    }
+                }
+                if priorities.is_empty() {
+                    return None;
+                }
+            }
+        }
+        Some(())
+    })();
+    valid.ok_or_else(|| UpdateError::Security("invalid theme calendar, variants or tokens".into()))
 }
 
 fn collect_references(value: &serde_json::Value, output: &mut BTreeSet<String>) -> Result<()> {
@@ -274,8 +385,14 @@ mod tests {
             "assets": {"assets/logos/default.png": {
                 "size": png.len(), "sha256": hex::encode(Sha256::digest(&png))
             }},
-            "themes": []
+            "themes": serde_json::from_str::<serde_json::Value>(include_str!("../../../themes/default/manifest.json")).unwrap()["themes"].clone()
         });
+        for theme in manifest["themes"].as_array_mut().unwrap() {
+            for tone in ["light", "dark"] {
+                theme[tone]["logo"] = serde_json::json!("assets/logos/default.png");
+                theme[tone].as_object_mut().unwrap().remove("background");
+            }
+        }
         File::create(temp.path().join("manifest.json"))
             .unwrap()
             .write_all(&serde_json::to_vec(&manifest).unwrap())
@@ -295,5 +412,29 @@ mod tests {
         )
         .unwrap();
         assert!(validate_theme_package(temp.path()).is_err());
+    }
+
+    #[test]
+    fn metadata_refuses_gaps_ambiguous_dates_and_active_tokens() {
+        let valid: serde_json::Value =
+            serde_json::from_str(include_str!("../../../themes/default/manifest.json")).unwrap();
+        assert!(validate_theme_metadata(&valid).is_ok());
+        for (pointer, value) in [
+            ("/themes/0/start", serde_json::json!([3, 2])),
+            ("/themes/0/priority", serde_json::json!(1001)),
+            ("/themes/0/light/background", serde_json::Value::Null),
+            (
+                "/themes/0/light/palette/bg",
+                serde_json::json!("url(http://invalid.example)"),
+            ),
+        ] {
+            let mut invalid = valid.clone();
+            if pointer.ends_with("background") {
+                invalid["themes"][0]["light"]["background"] = value;
+            } else {
+                *invalid.pointer_mut(pointer).unwrap() = value;
+            }
+            assert!(validate_theme_metadata(&invalid).is_err(), "{pointer}");
+        }
     }
 }

@@ -28,7 +28,7 @@ pub use state::{
     ComponentState, IntentKind, Operation, OperationStatus, PersistentState, Policy, PolicyMode,
     StateStore,
 };
-pub use theme::{validate_theme_package, validate_theme_png};
+pub use theme::{validate_theme_metadata, validate_theme_package, validate_theme_png};
 pub use transport::{GithubReleaseClient, ReleaseCandidate, TransportLimits};
 pub use trust::{
     AntiRollbackStore, PendingAcceptance, validate_root_owned_directory, validate_root_owned_file,

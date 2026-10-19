@@ -98,7 +98,7 @@ fn materialize(manifest: Value, read: impl Fn(&str) -> Option<Vec<u8>>) -> Optio
     if declarations.is_empty() || declarations.len() > 128 {
         return None;
     }
-    if !valid_metadata(&manifest) {
+    if !valid_metadata(&manifest) || chill_updates::validate_theme_metadata(&manifest).is_err() {
         return None;
     }
     let mut assets = BTreeMap::new();
@@ -112,7 +112,7 @@ fn materialize(manifest: Value, read: impl Fn(&str) -> Option<Vec<u8>>) -> Optio
             return None;
         }
         let bytes = read(path)?;
-        if bytes.len() as u64 != expected || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        if bytes.len() as u64 != expected || chill_updates::validate_theme_png(&bytes).is_err() {
             return None;
         }
         let digest = format!("{:x}", Sha256::digest(&bytes));
@@ -160,6 +160,9 @@ fn valid_metadata(manifest: &Value) -> bool {
         let parts = v.as_array().filter(|a| a.len() == 2)?;
         let month = parts[0].as_u64()?;
         let day = parts[1].as_u64()?;
+        if !(1..=12).contains(&month) {
+            return None;
+        }
         let maximum = *([31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
             .get(month.checked_sub(1)? as usize)?);
         (day >= 1 && day <= maximum).then_some((month * 32 + day) as u16)
@@ -309,6 +312,13 @@ pub fn load(directory: &Path) -> Value {
     // equality rejects symlinks in every asset component before reading it.
     let root = directory.join("updates/themes/current");
     let external = (|| {
+        if directory
+            .join("updates/themes/transaction.json")
+            .try_exists()
+            .ok()?
+        {
+            return None;
+        }
         let canonical = root.canonicalize().ok()?;
         if let Ok(target) = std::fs::read_link(&root) {
             if target.components().count() != 2

@@ -1,7 +1,7 @@
 use crate::archive::{ArchiveKind, ExtractionLimits, extract_archive};
 use crate::manifest::{AssetFormat, Component, VerifiedManifest};
 use crate::theme::validate_theme_package;
-#[cfg(not(test))]
+#[cfg(all(not(test), target_os = "linux"))]
 use crate::trust::validate_root_owned_directory;
 use crate::{Result, UpdateError};
 use serde::{Deserialize, Serialize};
@@ -275,9 +275,9 @@ fn validate_layout(layout: &InstallLayout) -> Result<()> {
             "install roots must be absolute".into(),
         ));
     }
-    #[cfg(not(test))]
+    #[cfg(all(not(test), target_os = "linux"))]
     validate_root_owned_directory(&layout.component_root)?;
-    #[cfg(test)]
+    #[cfg(any(test, not(target_os = "linux")))]
     reject_symlink(&layout.component_root)?;
     let backup_metadata = fs::symlink_metadata(&layout.backup_root)?;
     if backup_metadata.file_type().is_symlink() || !backup_metadata.is_dir() {
@@ -299,7 +299,7 @@ pub fn recover_interrupted(
     component_root: &Path,
     runtime_authorization: Option<&Path>,
 ) -> Result<RecoveryResult> {
-    #[cfg(not(test))]
+    #[cfg(all(not(test), target_os = "linux"))]
     validate_root_owned_directory(component_root)?;
     let marker_path = component_root.join("transaction.json");
     let marker_bytes = match read_bounded_nofollow(&marker_path, 16 * 1024) {

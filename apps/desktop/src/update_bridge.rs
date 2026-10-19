@@ -78,6 +78,49 @@ struct AvailableRelease {
     signature: String,
 }
 struct DownloadedAsset(PathBuf);
+struct InstallLease(std::fs::File);
+impl InstallLease {
+    fn acquire(directory: &std::path::Path) -> Result<Self, UiError> {
+        use std::os::{
+            fd::AsRawFd,
+            unix::fs::{MetadataExt, OpenOptionsExt},
+        };
+        let root = directory.join("updates");
+        std::fs::create_dir_all(&root)
+            .map_err(|_| error("Stockage indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(root.join("install.lock"))
+            .map_err(|_| error("Verrou indisponible.", "UPDATE_BUSY"))?;
+        let metadata = file
+            .metadata()
+            .map_err(|_| error("Verrou indisponible.", "UPDATE_BUSY"))?;
+        if !metadata.is_file()
+            || metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.mode() & 0o022 != 0
+            || unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0
+        {
+            return Err(error(
+                "Une autre instance installe déjà une mise à jour.",
+                "UPDATE_BUSY",
+            ));
+        }
+        Ok(Self(file))
+    }
+}
+impl Drop for InstallLease {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd;
+        unsafe {
+            libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
 impl Drop for DownloadedAsset {
     fn drop(&mut self) {
         // This is one exact generated cache file, never a recursive removal.
@@ -86,11 +129,26 @@ impl Drop for DownloadedAsset {
 }
 impl UpdateHost {
     pub fn new(directory: PathBuf) -> Self {
+        let interrupted = directory.join("updates/themes/transaction.json").exists();
+        let recovery = if interrupted {
+            InstallLease::acquire(&directory).and_then(|_lease| {
+                chill_updates::recover_interrupted(&directory.join("updates/themes"), None).map_err(
+                    |_| {
+                        error(
+                            "Récupération des ambiances requise.",
+                            "THEME_RECOVERY_REQUIRED",
+                        )
+                    },
+                )
+            })
+        } else {
+            Ok(chill_updates::RecoveryResult::None)
+        };
         Self {
             directory,
             active: AtomicBool::new(false),
             available: Mutex::new(BTreeMap::new()),
-            note: Mutex::new(String::new()),
+            note: Mutex::new(recovery.err().map_or(String::new(), |e| e.code)),
             pending_theme: AtomicBool::new(false),
         }
     }
@@ -306,6 +364,9 @@ impl UpdateHost {
                 "UPDATE_BUSY",
             ));
         }
+        // Cross-process serialization also protects bounded cache filenames
+        // when two installed/dev bundles happen to share the device settings.
+        let _lease = InstallLease::acquire(&self.directory)?;
         if self.active.swap(true, Ordering::AcqRel) {
             return Err(error("Une mise à jour est déjà en cours.", "UPDATE_BUSY"));
         }
@@ -474,6 +535,14 @@ impl UpdateHost {
                 component_root: host.directory.join("updates/themes"),
                 backup_root: host.directory.join("updates/theme-backups"),
             };
+            for path in [&layout.component_root, &layout.backup_root] {
+                std::fs::create_dir_all(path).map_err(|_| {
+                    error(
+                        "Stockage des ambiances indisponible.",
+                        "THEME_UPDATE_FAILED",
+                    )
+                })?;
+            }
             let limits = chill_updates::ExtractionLimits::default();
             let request = chill_updates::ApplyRequest {
                 operation_id: uuid::Uuid::new_v4(),
@@ -621,4 +690,39 @@ fn local_offset() -> time::UtcOffset {
     }
     time::UtcOffset::from_whole_seconds(unsafe { out.assume_init() }.tm_gmtoff as i32)
         .unwrap_or(time::UtcOffset::UTC)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn only_one_instance_can_install_and_lock_is_released() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = InstallLease::acquire(directory.path()).unwrap();
+        assert!(InstallLease::acquire(directory.path()).is_err());
+        drop(first);
+        assert!(InstallLease::acquire(directory.path()).is_ok());
+    }
+    #[test]
+    fn abandoned_download_is_removed_without_recursion() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("mac-download");
+        std::fs::write(&path, b"fixture").unwrap();
+        drop(DownloadedAsset(path.clone()));
+        assert!(!path.exists());
+    }
+    #[test]
+    fn renderer_cannot_supply_consent_url_path_or_force() {
+        for value in [
+            json!({"action":"install","component":"mac","confirmed":true}),
+            json!({"action":"install","component":"mac","url":"https://invalid.example"}),
+            json!({"action":"install","component":"themes","force":true}),
+        ] {
+            assert!(serde_json::from_value::<UpdateCommand>(value).is_err());
+        }
+        assert!(
+            serde_json::from_value::<UpdateCommand>(json!({"action":"install","component":"mac"}))
+                .is_ok()
+        );
+    }
 }
