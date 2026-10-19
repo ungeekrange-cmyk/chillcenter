@@ -665,6 +665,17 @@ impl UpdateHost {
         signature: &str,
         now: time::OffsetDateTime,
     ) -> chill_updates::Result<VerifiedManifest> {
+        self.verify_at_using_key(component, bytes, signature, now, PUBLIC_KEY, KEY_ID)
+    }
+    fn verify_at_using_key(
+        &self,
+        component: Component,
+        bytes: &[u8],
+        signature: &str,
+        now: time::OffsetDateTime,
+        public_key: &str,
+        key_id: &str,
+    ) -> chill_updates::Result<VerifiedManifest> {
         let installed = Version::parse(&if component == Component::Mac {
             env!("CARGO_PKG_VERSION").into()
         } else {
@@ -715,7 +726,7 @@ impl UpdateHost {
         };
         let context = VerificationContext {
             now,
-            expected_key_id: KEY_ID,
+            expected_key_id: key_id,
             component,
             target: if component == Component::Mac {
                 "darwin-aarch64"
@@ -733,7 +744,7 @@ impl UpdateHost {
             },
         };
         let verified =
-            chill_updates::parse_and_verify_manifest(bytes, signature, PUBLIC_KEY, &context)?;
+            chill_updates::parse_and_verify_manifest(bytes, signature, public_key, &context)?;
         if exact_pending
             && let Some(receipt) = PendingStore::open(&self.directory)
                 .map_err(|_| {
