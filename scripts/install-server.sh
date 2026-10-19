@@ -1,11 +1,15 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Generic first-install-only Linux installer. It consumes already downloaded,
 # inspectable local files; it never downloads or executes a remote script and
 # never mounts, remounts, writes, chowns, or probes the configured library.
 set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+unset PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE PYTHONINSPECT PYTHONWARNINGS
+readonly PYTHON=/usr/bin/python3
+readonly MINISIGN=/usr/bin/minisign
 readonly PINNED_RELEASE_KEY='RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
 readonly KEY_ID='18FD790B48C202F8'
-readonly SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "$0")" && /bin/pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
@@ -52,11 +56,14 @@ listen_ip=${listen%:*}; port=${listen##*:}; port_decimal=$((10#$port)); ((port_d
 port=$port_decimal
 [[ "$tls_name" =~ ^[A-Za-z0-9._-]+$ ]] || { echo 'Invalid TLS name.' >&2; exit 2; }
 
-for tool in bash cat chmod chown cmp curl getent grep id install ln minisign mktemp python3 rm sed seq sha256sum sleep systemctl systemd-analyze uname useradd; do
+for tool in bash cat chmod chown cmp curl getent grep id install ln mktemp rm sed seq sha256sum sleep systemctl systemd-analyze uname useradd; do
   command -v "$tool" >/dev/null || { echo "Required tool is missing: $tool" >&2; exit 1; }
 done
+for tool in "$PYTHON" "$MINISIGN"; do
+  [[ -f "$tool" && ! -L "$tool" && -O "$tool" ]] || { echo "Required root-owned tool is missing: $tool" >&2; exit 1; }
+done
 
-python3 - "$release_pub" "$PINNED_RELEASE_KEY" "$listen_ip" "$port" "$tls_name" <<'PY'
+"$PYTHON" -I - "$release_pub" "$PINNED_RELEASE_KEY" "$listen_ip" "$port" "$tls_name" <<'PY'
 import ipaddress, pathlib, socket, sys
 
 key_path, expected_key, listen_text, port_text, tls_name = sys.argv[1:]
@@ -86,7 +93,7 @@ bootstrap_stage=$(mktemp -d /var/tmp/chillcenter-bootstrap.XXXXXX)
 chmod 0700 "$bootstrap_stage"
 cleanup_stage() { rm -rf -- "$bootstrap_stage"; }
 trap cleanup_stage EXIT
-python3 - "$bootstrap_stage" "$server" "$updater" "$release_pub" "$manifest" "$manifest_signature" \
+"$PYTHON" -I - "$bootstrap_stage" "$server" "$updater" "$release_pub" "$manifest" "$manifest_signature" \
   "$SCRIPT_DIR/../deploy/updates/chillcenter.service" \
   "$SCRIPT_DIR/../deploy/updates/chillcenter-update.service" \
   "$SCRIPT_DIR/../deploy/updates/chillcenter-update.timer" <<'PY'
@@ -137,7 +144,7 @@ manifest_signature="$bootstrap_stage/manifest.minisig"
 server_unit="$bootstrap_stage/chillcenter.service"
 update_unit="$bootstrap_stage/chillcenter-update.service"
 timer_unit="$bootstrap_stage/chillcenter-update.timer"
-python3 - "$release_pub" "$PINNED_RELEASE_KEY" <<'PY'
+"$PYTHON" -I - "$release_pub" "$PINNED_RELEASE_KEY" <<'PY'
 import pathlib, sys
 lines = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
 if len(lines) != 2 or not lines[0].startswith("untrusted comment: minisign public key") or lines[1] != sys.argv[2]:
@@ -147,10 +154,8 @@ PY
 # Bootstrap verification cannot trust the downloaded updater binary to verify
 # itself. Use the independently installed Minisign CLI, then bind both local
 # binaries to the signed manifest before either binary is executed.
-command -v minisign >/dev/null || { echo 'System minisign is required for bootstrap verification.' >&2; exit 1; }
-command -v python3 >/dev/null || { echo 'Python 3 is required for strict bootstrap manifest parsing.' >&2; exit 1; }
-minisign -Vm "$manifest" -x "$manifest_signature" -p "$release_pub" >/dev/null
-python3 - "$manifest" "$server" "$updater" "$server_unit" "$update_unit" "$timer_unit" "$version" "$target" "$updater_target" "$KEY_ID" <<'PY'
+"$MINISIGN" -Vm "$manifest" -x "$manifest_signature" -p "$release_pub" >/dev/null
+"$PYTHON" -I - "$manifest" "$server" "$updater" "$server_unit" "$update_unit" "$timer_unit" "$version" "$target" "$updater_target" "$KEY_ID" <<'PY'
 import datetime, hashlib, json, pathlib, re, sys, urllib.parse
 
 class Strict(dict):

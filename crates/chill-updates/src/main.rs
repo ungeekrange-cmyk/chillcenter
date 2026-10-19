@@ -2,9 +2,9 @@ use chill_updates::{
     AntiRollbackStore, ApplyRequest, Component, ExtractionLimits, FIXED_GITHUB_OWNER,
     FIXED_GITHUB_REPOSITORY, GithubReleaseClient, InstallHooks, InstallLayout, IntentKind,
     OperationStatus, PolicyMode, RuntimeCompatibility, StateStore, TransportLimits, UpdateError,
-    VerificationContext, apply_staged, due_attempts, parse_and_verify_manifest, parse_strict_json,
-    record_retry, recover_interrupted, validate_root_owned_directory, validate_root_owned_file,
-    verify_staged_artifact,
+    VerificationContext, apply_staged, authorize_activation, due_attempts_for,
+    parse_and_verify_manifest, parse_strict_json, record_retry, recover_interrupted,
+    validate_root_owned_directory, validate_root_owned_file, verify_staged_artifact,
 };
 use reqwest::redirect::Policy as RedirectPolicy;
 use semver::Version;
@@ -27,6 +27,40 @@ use uuid::Uuid;
 
 const DEFAULT_CONFIG: &str = "/etc/chillcenter/updates.json";
 const CONFIRM_INTERRUPT: &str = "INTERRUPT_ACTIVE_WORK";
+
+/// Serializes network/cache/install mutations across timer and administrator
+/// invocations. Recovery intentionally does not acquire this lock: it runs as
+/// service pre-start and must be able to repair a killed updater.
+struct HelperLease(File);
+impl HelperLease {
+    fn acquire(config: &RootConfig) -> chill_updates::Result<Self> {
+        let path = config
+            .maintenance_flag
+            .parent()
+            .ok_or_else(|| UpdateError::Security("runtime directory missing".into()))?
+            .join("helper.lock");
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(path)?;
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            return Err(UpdateError::Busy(
+                "another updater invocation is active".into(),
+            ));
+        }
+        Ok(Self(file))
+    }
+}
+impl Drop for HelperLease {
+    fn drop(&mut self) {
+        unsafe {
+            libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,8 +168,18 @@ fn run() -> chill_updates::Result<()> {
     } else {
         PathBuf::from(DEFAULT_CONFIG)
     };
-    let recovery_only = arguments.first().map(String::as_str) == Some("recover");
+    let recovery_only = matches!(
+        arguments.first().map(String::as_str),
+        Some("recover" | "rescue")
+    );
     let config = load_config(&config_path, recovery_only)?;
+    let mut _lease = None;
+    if matches!(
+        arguments.first().map(String::as_str),
+        Some("check" | "apply" | "install" | "tick")
+    ) {
+        _lease = Some(HelperLease::acquire(&config)?);
+    }
     match arguments.first().map(String::as_str) {
         Some("inspect") if arguments.len() == 1 => inspect(&config),
         Some("check") if arguments.len() == 2 => {
@@ -157,6 +201,7 @@ fn run() -> chill_updates::Result<()> {
             );
             Ok(())
         }
+        Some("rescue") if arguments.len() == 1 => rescue(&config),
         Some("apply") | Some("install") => {
             if arguments.len() < 2 {
                 return Err(UpdateError::Invalid("component is required".into()));
@@ -355,11 +400,13 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
     let operation = store.admit_intent(component, IntentKind::Check, now)?;
     if operation.status != OperationStatus::Pending {
         println!("{}", operation.id);
-        return Ok(if operation.result_code.as_deref() == Some("no_update") {
-            CheckResult::NoUpdate
-        } else {
-            CheckResult::Available
-        });
+        return match (operation.status, operation.result_code.as_deref()) {
+            (OperationStatus::Succeeded, Some("available")) => Ok(CheckResult::Available),
+            (OperationStatus::Succeeded, Some("no_update")) => Ok(CheckResult::NoUpdate),
+            _ => Err(UpdateError::Busy(
+                "cached check is not a successful availability result".into(),
+            )),
+        };
     }
     store.transition(
         operation.id,
@@ -398,21 +445,33 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
         let cache_key = hex::encode(Sha256::digest(&manifest_bytes));
         cleanup_component_cache(config, component, Some(&cache_key))?;
         ensure_cache_headroom(config, verified.selected_asset.byte_length)?;
-        let directory = config.cache_root.join(component.as_str()).join(&cache_key);
+        let root = config.cache_root.join(component.as_str());
+        let directory = root.join(&cache_key);
         if !directory.exists() {
-            fs::create_dir(&directory)?;
-            write_new_sync(&directory.join("manifest.json"), &manifest_bytes)?;
-            write_new_sync(
-                &directory.join("manifest.json.minisig"),
-                signature.as_bytes(),
-            )?;
+            let stage = root.join(format!(".download-{}", Uuid::new_v4()));
+            fs::create_dir(&stage)?;
+            write_new_sync(&stage.join("manifest.json"), &manifest_bytes)?;
+            write_new_sync(&stage.join("manifest.json.minisig"), signature.as_bytes())?;
             client.download_verified(
                 &verified.selected_asset.url,
-                &directory.join("payload"),
+                &stage.join("payload"),
                 verified.selected_asset.byte_length,
                 &verified.selected_asset.sha256,
             )?;
-            File::open(&directory)?.sync_all()?;
+            verify_staged_artifact(
+                &stage.join("payload"),
+                verified.selected_asset.byte_length,
+                &verified.selected_asset.sha256,
+            )?;
+            File::open(&stage)?.sync_all()?;
+            match fs::rename(&stage, &directory) {
+                Ok(()) => File::open(&root)?.sync_all()?,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    validate_cache_tree(&directory, 1024 * 1024 * 1024)?;
+                    fs::remove_dir_all(&stage)?;
+                }
+                Err(error) => return Err(error.into()),
+            }
         } else {
             verify_staged_artifact(
                 &directory.join("payload"),
@@ -559,8 +618,10 @@ fn perform_apply(
     let store = state_store(config)?;
     let operation =
         store.admit_intent(component, IntentKind::Install, OffsetDateTime::now_utc())?;
-    if operation.status != OperationStatus::Pending
-        && !(retry_accepted && operation.status == OperationStatus::Running)
+    if !matches!(
+        operation.status,
+        OperationStatus::Pending | OperationStatus::DeferredBusy
+    ) && !(retry_accepted && operation.status == OperationStatus::Running)
     {
         return Err(UpdateError::Busy(format!(
             "install operation {} is already {:?}",
@@ -612,10 +673,13 @@ fn perform_apply(
             File::open(&layout.component_root)?.sync_all()?;
         }
     }
-    if operation.status == OperationStatus::Pending {
+    if matches!(
+        operation.status,
+        OperationStatus::Pending | OperationStatus::DeferredBusy
+    ) {
         store.transition(
             operation.id,
-            OperationStatus::Pending,
+            operation.status,
             OperationStatus::Running,
             None,
             OffsetDateTime::now_utc(),
@@ -696,11 +760,20 @@ fn perform_apply(
             Ok(())
         }
         Err(error) => {
+            let deferred = matches!(error, UpdateError::Busy(_));
             let _ = store.transition(
                 operation.id,
                 OperationStatus::Running,
-                OperationStatus::Failed,
-                Some("apply_failed"),
+                if deferred {
+                    OperationStatus::DeferredBusy
+                } else {
+                    OperationStatus::Failed
+                },
+                Some(if deferred {
+                    "deferred_busy"
+                } else {
+                    "apply_failed"
+                }),
                 OffsetDateTime::now_utc(),
             );
             Err(error)
@@ -711,11 +784,30 @@ fn perform_apply(
 fn tick(config: &RootConfig) -> chill_updates::Result<()> {
     let offset = os_local_offset()?;
     let store = state_store(config)?;
+    // A helper crash cannot leave a coalescing `running` operation forever.
+    // The next tick makes it terminal; admission/rate policy then determines a
+    // bounded fresh attempt rather than claiming that it is available.
+    store.update_scheduler(|state| {
+        let now = OffsetDateTime::now_utc().unix_timestamp();
+        for operation in &mut state.operations {
+            if operation.status == OperationStatus::Running {
+                operation.status = OperationStatus::Failed;
+                operation.result_code = Some("interrupted".into());
+                operation.updated_unix = now;
+            }
+        }
+        Ok(())
+    })?;
     let pending = store
         .read()?
         .operations
         .into_iter()
-        .filter(|operation| operation.status == OperationStatus::Pending)
+        .filter(|operation| {
+            matches!(
+                operation.status,
+                OperationStatus::Pending | OperationStatus::DeferredBusy
+            )
+        })
         .collect::<Vec<_>>();
     for operation in pending
         .iter()
@@ -739,8 +831,14 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
             );
         }
     }
-    let attempts =
-        store.update_scheduler(|state| due_attempts(state, OffsetDateTime::now_utc(), offset))?;
+    let attempts = store.update_scheduler(|state| {
+        due_attempts_for(
+            state,
+            OffsetDateTime::now_utc(),
+            offset,
+            &[Component::Server, Component::Web, Component::Themes],
+        )
+    })?;
     let policies = store.read()?.policies;
     for attempt in attempts {
         let check = perform_check(config, attempt.component);
@@ -832,6 +930,28 @@ fn require_linux_component(component: Component) -> chill_updates::Result<()> {
     }
 }
 
+/// Fixed root-only failure path used by the updater unit's ExecStopPost. It
+/// accepts no component/path/command input, repairs every component marker,
+/// then asks systemd to restore the known service unit.
+fn rescue(config: &RootConfig) -> chill_updates::Result<()> {
+    for component in [Component::Server, Component::Web, Component::Themes] {
+        let root = config
+            .component_roots
+            .get(&component)
+            .ok_or_else(|| UpdateError::Security("component root missing".into()))?;
+        recover_interrupted(root, Some(&activation_authorization(config, component)))?;
+    }
+    let status = Command::new("/usr/bin/systemctl")
+        .args(["start", config.service_name.as_str()])
+        .status()?;
+    if !status.success() {
+        return Err(UpdateError::Invalid(
+            "rescue could not start service".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn available_path(config: &RootConfig, component: Component) -> PathBuf {
     config
         .cache_root
@@ -860,6 +980,25 @@ fn cleanup_component_cache(
         if name == "available.json" || keep == Some(name) {
             continue;
         }
+        if let Some(temporary_kind) = abandoned_cache_temporary_kind(name) {
+            let entry_kind = entry.file_type()?;
+            if matches!(temporary_kind, CacheTemporary::Download) && entry_kind.is_dir() {
+                validate_cache_tree(&entry.path(), 1024 * 1024 * 1024)?;
+                fs::remove_dir_all(entry.path())?;
+            } else if matches!(temporary_kind, CacheTemporary::Available) && entry_kind.is_file() {
+                if entry.metadata()?.len() > 64 * 1024 {
+                    return Err(UpdateError::Security(
+                        "temporary receipt exceeds bound".into(),
+                    ));
+                }
+                fs::remove_file(entry.path())?;
+            } else {
+                return Err(UpdateError::Security(
+                    "cache temporary is not regular".into(),
+                ));
+            }
+            continue;
+        }
         if name.len() != 64 || !name.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(UpdateError::Security(
                 "unexpected cache entry refused".into(),
@@ -870,6 +1009,21 @@ fn cleanup_component_cache(
     }
     File::open(&root)?.sync_all()?;
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum CacheTemporary {
+    Download,
+    Available,
+}
+fn abandoned_cache_temporary_kind(name: &str) -> Option<CacheTemporary> {
+    if let Some(id) = name.strip_prefix(".download-") {
+        return Uuid::parse_str(id).ok().map(|_| CacheTemporary::Download);
+    }
+    name.strip_prefix(".available-")?
+        .strip_suffix(".tmp")
+        .and_then(|id| Uuid::parse_str(id).ok())
+        .map(|_| CacheTemporary::Available)
 }
 
 fn ensure_cache_headroom(config: &RootConfig, incoming: u64) -> chill_updates::Result<()> {
@@ -1369,13 +1523,10 @@ impl InstallHooks for LinuxHooks<'_> {
             .get(&component)
             .ok_or_else(|| UpdateError::Security("component root missing".into()))?;
         let authorization = activation_authorization(self.config, component);
-        match fs::read_link(root.join("current")) {
-            Ok(target) => {
-                write_new_sync(&authorization, target.to_string_lossy().as_bytes())?;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
-        }
+        // The core binds a one-shot token to this live helper PID/starttime,
+        // boot, transaction operation and candidate. It deliberately refuses
+        // stale authorizations rather than relying on a writable target string.
+        authorize_activation(root, &authorization)?;
         let action = if self.stopped { "start" } else { "restart" };
         let restarted = self.systemctl(action);
         let removed = match fs::remove_file(&authorization) {
@@ -1465,6 +1616,32 @@ fn private_health_ip(ip: IpAddr) -> bool {
         IpAddr::V4(value) => value.is_private() || value.is_loopback() || value.is_link_local(),
         IpAddr::V6(value) => {
             value.is_unique_local() || value.is_loopback() || value.is_unicast_link_local()
+        }
+    }
+}
+
+#[cfg(test)]
+mod helper_tests {
+    use super::*;
+
+    #[test]
+    fn cleanup_only_recognizes_our_bounded_atomic_cache_temporary_names() {
+        let id = Uuid::new_v4();
+        assert!(matches!(
+            abandoned_cache_temporary_kind(&format!(".download-{id}")),
+            Some(CacheTemporary::Download)
+        ));
+        assert!(matches!(
+            abandoned_cache_temporary_kind(&format!(".available-{id}.tmp")),
+            Some(CacheTemporary::Available)
+        ));
+        for value in [
+            ".download-not-a-uuid",
+            ".available-x.tmp",
+            ".available-00000000-0000-0000-0000-000000000000",
+            "payload",
+        ] {
+            assert!(abandoned_cache_temporary_kind(value).is_none());
         }
     }
 }
