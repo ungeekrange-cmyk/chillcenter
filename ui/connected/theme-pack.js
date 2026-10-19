@@ -1,0 +1,30 @@
+"use strict";
+// Declarative theme packs: CSS/effects stay local; this accepts only named tokens and local PNG assets.
+(() => {
+ const FORMAT=1, RENDERER=1, HEX=/^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$/, PATH=/^assets\/(?:logos|backgrounds)\/[a-z0-9-]+\.png$/;
+ const TOKENS=new Set(["bg","panel","raised","text","muted","accent","button","sidebar","line"]),THEME_IDS=new Set(["spring","summer","autumn","winter","christmas","halloween"]);
+ const isObject=value=>value!==null&&typeof value==="object"&&!Array.isArray(value);
+ const validDate=([month,day])=>Number.isInteger(month)&&Number.isInteger(day)&&month>=1&&month<=12&&Number.isInteger(day)&&day>=1&&day<=new Date(2024,month,0).getDate();
+ const ordinal=([month,day])=>month*32+day;
+ const inRange=(date,start,end)=>{const point=(date.getMonth()+1)*32+date.getDate(),a=ordinal(start),b=ordinal(end);return a<=b?point>=a&&point<=b:point>=a||point<=b;};
+ const validPalette=palette=>isObject(palette)&&Object.entries(palette).every(([key,value])=>TOKENS.has(key)&&typeof value==="string"&&HEX.test(value));
+ const validVariant=(variant,assets)=>isObject(variant)&&validPalette(variant.palette)&&validPalette(variant.sidebar)&&typeof variant.logo==="string"&&PATH.test(variant.logo)&&assets[variant.logo]&&(!variant.background||(typeof variant.background==="string"&&PATH.test(variant.background)&&assets[variant.background]));
+ function validate(manifest){
+  if(!isObject(manifest)||manifest.format_version!==FORMAT||manifest.renderer_version!==RENDERER||typeof manifest.version!=="string"||!isObject(manifest.assets)||!Array.isArray(manifest.themes)||!PATH.test(manifest.default_logo)||!manifest.assets[manifest.default_logo])throw Error("Invalid theme manifest");
+  for(const [path,asset] of Object.entries(manifest.assets))if(!PATH.test(path)||!isObject(asset)||!Number.isSafeInteger(asset.size)||asset.size<1||asset.size>5*1024*1024||typeof asset.sha256!=="string"||!/^[a-f0-9]{64}$/i.test(asset.sha256))throw Error("Invalid theme asset");
+  const ids=new Set();
+  for(const theme of manifest.themes){if(!isObject(theme)||typeof theme.id!=="string"||!THEME_IDS.has(theme.id)||ids.has(theme.id)||!Array.isArray(theme.start)||!Array.isArray(theme.end)||!validDate(theme.start)||!validDate(theme.end)||!Number.isInteger(theme.priority)||!validVariant(theme.light,manifest.assets)||!validVariant(theme.dark,manifest.assets))throw Error("Invalid theme entry");ids.add(theme.id);}
+  for(let month=1;month<=12;month++)for(let day=1;day<=new Date(2024,month,0).getDate();day++){const date=new Date(2024,month-1,day), active=manifest.themes.filter(theme=>inRange(date,theme.start,theme.end));for(const theme of active)if(active.filter(other=>other.priority===theme.priority).length>1)throw Error("Ambiguous theme priority");}
+  return manifest;
+ }
+ const resolve=(manifest,{date=new Date(),mode="auto",manual=""}={},tone="light")=>{validate(manifest);if(mode==="off")return null;let choices=manifest.themes.filter(theme=>mode==="manual"?theme.id===manual:inRange(date,theme.start,theme.end));choices.sort((a,b)=>b.priority-a.priority);const theme=choices[0];return theme?{id:theme.id,variant:theme[tone==="dark"?"dark":"light"]}:null;};
+ const safeAssetUrl=(path,{baseUrl="/themes/",assetUrls={}}={})=>{const supplied=assetUrls[path];if(typeof supplied==="string"&&(/^data:image\/png;base64,[a-z0-9+/=]+$/i.test(supplied)||/^\/themes\/assets\/(?:logos|backgrounds)\/[a-z0-9-]+\.png(?:\?[^#]*)?$/.test(supplied)))return supplied;const base=/^\/?themes\/$/.test(String(baseUrl))?String(baseUrl):"/themes/";return base+path;};
+ function apply(resolution,source={}){const root=document.documentElement,sidebar=document.querySelector(".sidebar"),logo=document.getElementById("brand-logo");root.dataset.ambiance=resolution?.id||"off";delete root.dataset.themeBackground;root.style.removeProperty("--event-art");for(const token of TOKENS){root.style.removeProperty("--"+token);sidebar?.style.removeProperty("--"+token);}
+  if(!resolution){if(logo)logo.src=safeAssetUrl(source.defaultLogo||"assets/logos/default.png",source);return;}for(const [key,value] of Object.entries(resolution.variant.palette))root.style.setProperty("--"+key,value);for(const [key,value] of Object.entries(resolution.variant.sidebar))sidebar?.style.setProperty("--"+key,value);if(resolution.variant.background){root.dataset.themeBackground="true";root.style.setProperty("--event-art",`url("${safeAssetUrl(resolution.variant.background,source)}")`);}if(logo)logo.src=safeAssetUrl(resolution.variant.logo,source);
+ }
+ async function fetchPack(url){const response=await fetch(url,{cache:"no-store",credentials:"same-origin"});if(!response.ok)throw Error("Theme pack unavailable");return {manifest:validate(await response.json()),baseUrl:url.replace(/manifest\.json(?:\?.*)?$/,"")};}
+ async function load(){try{if(globalThis.__TAURI__?.core?.invoke){const pack=await globalThis.__TAURI__.core.invoke("theme_command",{command:{action:"load"}});return {manifest:validate(pack.manifest),baseUrl:pack.base_url||"themes/",assetUrls:pack.assets||pack.asset_urls||pack.asset_url_map||{}};}}catch(_){/* invalid/unavailable desktop pack falls through to the embedded pack */}
+  try{return await fetchPack("/themes/manifest.json");}catch(_){return fetchPack("themes/manifest.json");}}
+ globalThis.ChillThemePack={FORMAT,RENDERER,validate,resolve,apply,load,safeAssetUrl};
+ if(typeof module!=="undefined")module.exports=globalThis.ChillThemePack;
+})();

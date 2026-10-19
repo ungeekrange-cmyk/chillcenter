@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "renderer_version": 1,
+  "version": "0.7.0",
+  "default_logo": "assets/logos/default.png",
+  "assets": {
+    "assets/backgrounds/christmas.png": {"size":2174063,"sha256":"54d6213369626be9e5f0bbc67315fcb7ecfc89c05b53ead64ccacd029693c9a3"},
+    "assets/backgrounds/halloween.png": {"size":2076802,"sha256":"36dfafcb5c54904632447b57e54fe0f3c09a627661ba1f35cce6f0eac1c02dd1"},
+    "assets/logos/default.png": {"size":58382,"sha256":"6d01670398a75fa04c18c5b0d5a8603db48d9334cf5078e5a57492739ee95d94"},
+    "assets/logos/spring-light.png":{"size":59390,"sha256":"43f91d8a9095266cc11ee463f13bd4b303d2e39e4afd1eda23dadd1bcc231f56"},"assets/logos/spring-dark.png":{"size":60043,"sha256":"96ef5ea977fba9dcb3b2313c41b5e0374617b14438b78200461f6b52ae746e60"},
+    "assets/logos/summer-light.png":{"size":56236,"sha256":"01134395c1ef89080dee7732b1b4afee0b84d9e42055068842c04ffbf9c622b5"},"assets/logos/summer-dark.png":{"size":57145,"sha256":"85f92dc4a1f6694d3522477bff72486e1384b78addd67c21227b57589d9c8e35"},
+    "assets/logos/autumn-light.png":{"size":58951,"sha256":"4b2f8f030203ae358fa9a36796f53f69f604c20563941ae312ad764b7f3ed78c"},"assets/logos/autumn-dark.png":{"size":58255,"sha256":"1e887efff835faa1333226cbb1ffbd3132ec61b088d7f94653c2c6e476a40be2"},
+    "assets/logos/winter-light.png":{"size":59382,"sha256":"d674a4527d231c41dfe0868f570837808720d887490cfc9aef001137e5a82f7a"},"assets/logos/winter-dark.png":{"size":60095,"sha256":"4e072cf90362bf227a2a4102ab14b6ccf45bbafeda142ecffc8c59036621f3f2"},
+    "assets/logos/christmas-light.png":{"size":68386,"sha256":"889d2f911b72b1edb4f41934fff55ea63fa3b067f44c17b8e36a7e8f940d456c"},"assets/logos/christmas-dark.png":{"size":68802,"sha256":"0a348d9dd46a4b901524b4331cd19171a14c545605a42f7de633539f8d637b4c"},
+    "assets/logos/halloween-light.png":{"size":61296,"sha256":"4b07c679456505c55522178c5040a7bd8fc55654126eb4fe4394275d9e44da81"},"assets/logos/halloween-dark.png":{"size":61647,"sha256":"4b7824547ec22d644b0b159398507f67a61e8e277075a54423c0e5c9e23c44d6"}
+  },
+  "themes": [
+    {"id":"spring","start":[3,1],"end":[5,31],"priority":0,"light":{"palette":{"bg":"#f4f6e9","panel":"#fffdf3","accent":"#4b632e","button":"#ffffff"},"sidebar":{},"logo":"assets/logos/spring-light.png"},"dark":{"palette":{"bg":"#101b16","panel":"#1a2d24","accent":"#c3cf8b"},"sidebar":{},"logo":"assets/logos/spring-dark.png"}},
+    {"id":"summer","start":[6,1],"end":[8,31],"priority":0,"light":{"palette":{"bg":"#fff3dc","panel":"#fffaf0","accent":"#94500c","button":"#ffffff"},"sidebar":{},"logo":"assets/logos/summer-light.png"},"dark":{"palette":{"bg":"#27180f","panel":"#3c2818","accent":"#ffcc75"},"sidebar":{},"logo":"assets/logos/summer-dark.png"}},
+    {"id":"autumn","start":[9,1],"end":[11,30],"priority":0,"light":{"palette":{"bg":"#f5eadd","panel":"#fff8ef","accent":"#87542d","button":"#ffffff"},"sidebar":{},"logo":"assets/logos/autumn-light.png"},"dark":{"palette":{"bg":"#251714","panel":"#3b2720","accent":"#e5af78"},"sidebar":{},"logo":"assets/logos/autumn-dark.png"}},
+    {"id":"winter","start":[12,1],"end":[2,29],"priority":0,"light":{"palette":{"bg":"#eef2f2","panel":"#fafcfa","accent":"#4c6571","button":"#ffffff"},"sidebar":{},"logo":"assets/logos/winter-light.png"},"dark":{"palette":{"bg":"#111b22","panel":"#1d2b33","accent":"#b6c6cf"},"sidebar":{},"logo":"assets/logos/winter-dark.png"}},
+    {"id":"christmas","start":[11,25],"end":[12,25],"priority":100,"light":{"palette":{"bg":"#faf5eb","panel":"#fffaf0","raised":"#ede5d8","text":"#302c25","muted":"#686355","accent":"#795428","button":"#ffffff"},"sidebar":{"sidebar":"#ba3028","text":"#fff8ed","muted":"#fff0df","accent":"#ffe0a3","button":"#701019","raised":"#ffe0a318","line":"#ffe0a326"},"logo":"assets/logos/christmas-light.png","background":"assets/backgrounds/christmas.png"},"dark":{"palette":{"bg":"#151b18","panel":"#1a211c","raised":"#242c25","text":"#f0eee4","muted":"#bbbeb1","accent":"#d9c48b"},"sidebar":{"sidebar":"#701019","text":"#fff5e7","muted":"#efd3bb","accent":"#e8ca8b","raised":"#e8ca8b20","line":"#e8ca8b26"},"logo":"assets/logos/christmas-dark.png","background":"assets/backgrounds/christmas.png"}},
+    {"id":"halloween","start":[10,1],"end":[10,31],"priority":100,"light":{"palette":{"bg":"#fbf0e3","panel":"#fff6eb","raised":"#eedbc6","text":"#302c25","muted":"#686355","accent":"#955218","button":"#ffffff"},"sidebar":{"sidebar":"#f5d4a7","text":"#432917","muted":"#6f492b","accent":"#8b3b0e","raised":"#b64f1d25","line":"#8b3b0e26"},"logo":"assets/logos/halloween-light.png","background":"assets/backgrounds/halloween.png"},"dark":{"palette":{"bg":"#1e181c","panel":"#2b2128","raised":"#362831","text":"#f0eee4","muted":"#c4b5bd","accent":"#e1a35b"},"sidebar":{"sidebar":"#352014","text":"#fff1df","muted":"#dcc0a4","accent":"#ffae58","raised":"#ffae581c","line":"#ffae5826"},"logo":"assets/logos/halloween-dark.png","background":"assets/backgrounds/halloween.png"}}
+  ]
+}

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ui = join(root, "ui/connected");
+const themes = join(root, "themes/default");
 const src = join(root, "web/src");
 const out = resolve(process.argv[2] || join(root, "web/dist"));
 const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "audio-core.js", "audio-register.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "catalog-query.js", "catalog-store.js", "catalog-sync.js", "artwork-cache.js", "bridge.js", "register-sw.js"];
@@ -19,6 +20,7 @@ cpSync(ui, out, {
   recursive: true,
   filter: path => !/(\/qa\.js|-qa\.js|\.test\.js)$/.test(path) && !path.endsWith("/tests"),
 });
+cpSync(themes, join(out, "themes"), { recursive: true });
 for (const name of [...webScripts, "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name));
 // MPEG-4 (Xvid/DivX) WebAssembly decoder: built by web/decoder/mpeg4, loaded by a Worker only when needed.
 mkdirSync(join(out, "vendor/mpeg4"), { recursive: true });
@@ -72,5 +74,5 @@ const stamped = readFileSync(join(out, "index.html"), "utf8").replace(/(src|href
 writeFileSync(join(out, "index.html"), stamped);
 const shell = ["./", ...files.filter(f => f !== "sw.js" && !f.endsWith(".md"))];
 writeFileSync(join(out, "sw.js"), readFileSync(join(src, "sw.js"), "utf8").replace("__BUILD__", id).replace("__SHELL__", JSON.stringify(shell)));
-writeFileSync(join(out, "build.json"), JSON.stringify({ build: id, source: "ui/connected + web/src", files: files.length + 1 }, null, 2) + "\n");
+writeFileSync(join(out, "build.json"), JSON.stringify({ version: "0.7.0", build: id, source: "ui/connected + web/src + themes/default", files: files.length + 1 }, null, 2) + "\n");
 console.log(`web: ${files.length + 1} fichiers, build ${id} -> ${out}`);
