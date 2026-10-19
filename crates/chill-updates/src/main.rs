@@ -461,39 +461,24 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
         cleanup_component_cache(config, component, Some(&cache_key))?;
         ensure_cache_headroom(config, verified.selected_asset.byte_length)?;
         let root = config.cache_root.join(component.as_str());
-        let directory = root.join(&cache_key);
-        if !directory.exists() {
-            let stage = root.join(format!(".download-{}", Uuid::new_v4()));
-            fs::create_dir(&stage)?;
-            write_new_sync(&stage.join("manifest.json"), &manifest_bytes)?;
-            write_new_sync(&stage.join("manifest.json.minisig"), signature.as_bytes())?;
-            client.download_verified(
-                &verified.selected_asset.url,
-                &stage.join("payload"),
-                verified.selected_asset.byte_length,
-                &verified.selected_asset.sha256,
-            )?;
-            verify_staged_artifact(
-                &stage.join("payload"),
-                verified.selected_asset.byte_length,
-                &verified.selected_asset.sha256,
-            )?;
-            File::open(&stage)?.sync_all()?;
-            match fs::rename(&stage, &directory) {
-                Ok(()) => File::open(&root)?.sync_all()?,
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    validate_cache_tree(&directory, 1024 * 1024 * 1024)?;
-                    fs::remove_dir_all(&stage)?;
-                }
-                Err(error) => return Err(error.into()),
-            }
-        } else {
-            verify_staged_artifact(
-                &directory.join("payload"),
-                verified.selected_asset.byte_length,
-                &verified.selected_asset.sha256,
-            )?;
-        }
+        publish_cached_release(
+            &root,
+            &cache_key,
+            &manifest_bytes,
+            &signature,
+            verified.selected_asset.byte_length,
+            &verified.selected_asset.sha256,
+            |payload| {
+                client
+                    .download_verified(
+                        &verified.selected_asset.url,
+                        payload,
+                        verified.selected_asset.byte_length,
+                        &verified.selected_asset.sha256,
+                    )
+                    .map(|_| ())
+            },
+        )?;
         write_available(
             config,
             &AvailableReceipt {
@@ -552,6 +537,41 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
             Err(error)
         }
     }
+}
+
+/// Publish only complete, verified bytes at the content-addressed cache path.
+/// The downloader is a private seam: production always supplies the fixed
+/// GitHub client, while tests can interrupt its write without network access.
+fn publish_cached_release(
+    root: &Path,
+    cache_key: &str,
+    manifest: &[u8],
+    signature: &str,
+    length: u64,
+    digest: &str,
+    download: impl FnOnce(&Path) -> chill_updates::Result<()>,
+) -> chill_updates::Result<()> {
+    let directory = root.join(cache_key);
+    if !directory.exists() {
+        let stage = root.join(format!(".download-{}", Uuid::new_v4()));
+        fs::create_dir(&stage)?;
+        write_new_sync(&stage.join("manifest.json"), manifest)?;
+        write_new_sync(&stage.join("manifest.json.minisig"), signature.as_bytes())?;
+        download(&stage.join("payload"))?;
+        verify_staged_artifact(&stage.join("payload"), length, digest)?;
+        File::open(&stage)?.sync_all()?;
+        match fs::rename(&stage, &directory) {
+            Ok(()) => File::open(root)?.sync_all()?,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                validate_cache_tree(&directory, 1024 * 1024 * 1024)?;
+                fs::remove_dir_all(&stage)?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    } else {
+        verify_staged_artifact(&directory.join("payload"), length, digest)?;
+    }
+    Ok(())
 }
 
 struct CachedVerification {
@@ -1194,9 +1214,7 @@ fn rescue(config: &RootConfig) -> chill_updates::Result<()> {
         // A candidate can already be running when its parent helper is killed.
         // Stop it before deleting/rolling back its slot; `start` alone is a no-op
         // for an active, uncommitted executable.
-        let mut stop = Command::new("/usr/bin/systemctl");
-        stop.args(["stop", config.service_name.as_str()]);
-        run_bounded_backup(&mut stop, Duration::from_secs(30))?;
+        stop_service_for_recovery(&config.service_name)?;
     }
     for component in [Component::Server, Component::Web, Component::Themes] {
         let root = config
@@ -1215,6 +1233,56 @@ fn rescue(config: &RootConfig) -> chill_updates::Result<()> {
     run_bounded_backup(&mut command, Duration::from_secs(30))
         .map_err(|_| UpdateError::Invalid("rescue could not start service".into()))?;
     Ok(())
+}
+
+/// PID 1 owns the service's 30-second graceful-stop deadline. The supervising
+/// command must outlive that deadline: killing `systemctl` at the same instant
+/// used to abandon recovery just before PID 1 killed an unresponsive candidate.
+fn stop_service_for_recovery(service: &str) -> chill_updates::Result<()> {
+    let mut stop = Command::new("/usr/bin/systemctl");
+    stop.args(["stop", service]);
+    if run_bounded_backup(&mut stop, Duration::from_secs(45)).is_err() {
+        // A failed/slow D-Bus job must not leave the uncommitted executable
+        // running while its slot is removed. The unit uses KillMode=control-group.
+        let mut kill = Command::new("/usr/bin/systemctl");
+        kill.args(["kill", "--kill-whom=all", "--signal=KILL", service]);
+        let _ = run_bounded_backup(&mut kill, Duration::from_secs(10));
+        let mut stop = Command::new("/usr/bin/systemctl");
+        stop.args(["stop", "--no-block", service]);
+        run_bounded_backup(&mut stop, Duration::from_secs(10))?;
+    }
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let mut show = Command::new("/usr/bin/systemctl");
+        show.args([
+            "show",
+            service,
+            "-p",
+            "ActiveState",
+            "-p",
+            "MainPID",
+            "-p",
+            "ControlPID",
+        ]);
+        let output = run_bounded_backup(&mut show, Duration::from_secs(5))?;
+        let output = String::from_utf8_lossy(&output);
+        let values: BTreeMap<_, _> = output
+            .lines()
+            .filter_map(|line| line.split_once('='))
+            .collect();
+        if matches!(values.get("ActiveState"), Some(&"inactive" | &"failed"))
+            && values.get("MainPID") == Some(&"0")
+            && values.get("ControlPID") == Some(&"0")
+        {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(UpdateError::Busy(
+                "recovery could not confirm service stopped".into(),
+            ));
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn available_path(config: &RootConfig, component: Component) -> PathBuf {
@@ -1759,6 +1827,9 @@ impl<'a> LinuxHooks<'a> {
         })
     }
     fn systemctl(&self, action: &str) -> chill_updates::Result<()> {
+        if action == "stop" {
+            return stop_service_for_recovery(&self.config.service_name);
+        }
         let mut command = Command::new("/usr/bin/systemctl");
         command.args([action, self.config.service_name.as_str()]);
         run_bounded_backup(&mut command, Duration::from_secs(30))
@@ -1949,41 +2020,62 @@ impl InstallHooks for LinuxHooks<'_> {
         component: Component,
         installed_root: &Path,
     ) -> chill_updates::Result<()> {
-        let endpoint = if component == Component::Server {
-            &self.config.health_url
-        } else {
-            &self.config.status_url
+        // Type=simple reports a process before its HTTPS listener is ready.
+        // Retry only the fixed, CA-pinned endpoint, within one global budget.
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let attempt = || -> chill_updates::Result<()> {
+            let endpoint = if component == Component::Server {
+                &self.config.health_url
+            } else {
+                &self.config.status_url
+            };
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let response = self
+                .client
+                .get(endpoint)
+                .timeout(remaining.min(Duration::from_secs(2)))
+                .send()?
+                .error_for_status()?;
+            let mut body = Vec::new();
+            response.take(1024 * 1024 + 1).read_to_end(&mut body)?;
+            if body.len() > 1024 * 1024 {
+                return Err(UpdateError::Security("health response is too large".into()));
+            }
+            let value: serde_json::Value = parse_strict_json(&body)?;
+            let leaf = installed_root
+                .file_name()
+                .and_then(|value| value.to_str())
+                .ok_or_else(|| UpdateError::Security("health slot has invalid name".into()))?;
+            let expected = leaf
+                .rsplit_once('-')
+                .map(|(version, _)| version)
+                .ok_or_else(|| UpdateError::Security("health slot has no sequence".into()))?;
+            Version::parse(expected)
+                .map_err(|_| UpdateError::Security("health slot version is invalid".into()))?;
+            let actual = match component {
+                Component::Server => value.get("version"),
+                Component::Web => value.pointer("/installed/web/version"),
+                Component::Themes => value.pointer("/installed/themes/version"),
+                Component::Mac => None,
+            }
+            .and_then(|value| value.as_str());
+            if actual != Some(expected) {
+                return Err(UpdateError::Incompatible(
+                    "health endpoint did not report installed version".into(),
+                ));
+            }
+            Ok(())
         };
-        let response = self.client.get(endpoint).send()?.error_for_status()?;
-        let mut body = Vec::new();
-        response.take(1024 * 1024 + 1).read_to_end(&mut body)?;
-        if body.len() > 1024 * 1024 {
-            return Err(UpdateError::Security("health response is too large".into()));
+        loop {
+            match attempt() {
+                Ok(()) => return Ok(()),
+                Err(error) if Instant::now() >= deadline => return Err(error),
+                Err(_) => thread::sleep(
+                    Duration::from_millis(250)
+                        .min(deadline.saturating_duration_since(Instant::now())),
+                ),
+            }
         }
-        let value: serde_json::Value = parse_strict_json(&body)?;
-        let leaf = installed_root
-            .file_name()
-            .and_then(|value| value.to_str())
-            .ok_or_else(|| UpdateError::Security("health slot has invalid name".into()))?;
-        let expected = leaf
-            .rsplit_once('-')
-            .map(|(version, _)| version)
-            .ok_or_else(|| UpdateError::Security("health slot has no sequence".into()))?;
-        Version::parse(expected)
-            .map_err(|_| UpdateError::Security("health slot version is invalid".into()))?;
-        let actual = match component {
-            Component::Server => value.get("version"),
-            Component::Web => value.pointer("/installed/web/version"),
-            Component::Themes => value.pointer("/installed/themes/version"),
-            Component::Mac => None,
-        }
-        .and_then(|value| value.as_str());
-        if actual != Some(expected) {
-            return Err(UpdateError::Incompatible(
-                "health endpoint did not report installed version".into(),
-            ));
-        }
-        Ok(())
     }
     fn end_quiescence(&mut self, _component: Component) -> chill_updates::Result<()> {
         let restarted = if self.stopped {
@@ -2030,6 +2122,62 @@ fn private_health_ip(ip: IpAddr) -> bool {
 #[cfg(test)]
 mod helper_tests {
     use super::*;
+
+    #[test]
+    fn interrupted_download_never_publishes_a_partial_digest_and_retries_exact_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let payload = b"synthetic complete payload";
+        let digest = hex::encode(Sha256::digest(payload));
+        let manifest = b"synthetic signed manifest bytes";
+        let cache_key = hex::encode(Sha256::digest(manifest));
+        for partial in [&b""[..], &b"partial"[..], &payload[..]] {
+            let outcome = publish_cached_release(
+                temp.path(),
+                &cache_key,
+                manifest,
+                "test signature",
+                payload.len() as u64,
+                &digest,
+                |path| {
+                    write_new_sync(path, partial)?;
+                    Err(std::io::Error::other("injected interrupted download").into())
+                },
+            );
+            assert!(outcome.is_err());
+            assert!(
+                !temp.path().join(&cache_key).exists(),
+                "partial digest path became visible"
+            );
+        }
+        publish_cached_release(
+            temp.path(),
+            &cache_key,
+            manifest,
+            "test signature",
+            payload.len() as u64,
+            &digest,
+            |path| write_new_sync(path, payload),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(temp.path().join(&cache_key).join("payload")).unwrap(),
+            payload
+        );
+        publish_cached_release(
+            temp.path(),
+            &cache_key,
+            manifest,
+            "test signature",
+            payload.len() as u64,
+            &digest,
+            |_| panic!("complete cache must be reused"),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(temp.path().join(&cache_key).join("manifest.json")).unwrap(),
+            manifest
+        );
+    }
 
     #[test]
     fn cleanup_only_recognizes_our_bounded_atomic_cache_temporary_names() {
