@@ -1,0 +1,27 @@
+[package]
+name = "chill-updates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hex = "0.4"
+libc = "0.2"
+minisign-verify = "=0.2.5"
+reqwest.workspace = true
+semver = { version = "=1.0.28", features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+time = { version = "=0.3.55", features = ["formatting", "local-offset", "parsing", "serde"] }
+uuid.workspace = true
+zip = { version = "=9.0.3", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "chill-update"
+path = "src/main.rs"

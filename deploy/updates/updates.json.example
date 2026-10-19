@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "key_id": "18FD790B48C202F8",
+  "public_key": "/etc/chillcenter/release.pub",
+  "state_root": "/var/lib/chillcenter/data/updates",
+  "trust_root": "/var/lib/chillcenter-update/trust",
+  "cache_root": "/var/lib/chillcenter-update/cache",
+  "backup_root": "/var/lib/chillcenter/data/backups",
+  "maintenance_flag": "/run/chillcenter-update/maintenance",
+  "quiescence_status": "/var/lib/chillcenter/data/updates/quiescence.json",
+  "server_config": "/etc/chillcenter/server.json",
+  "service_name": "chillcenter.service",
+  "service_uid": 997,
+  "service_gid": 983,
+  "health_url": "https://localhost:8443/api/2026-10-14/server",
+  "health_ca_certificate": "/etc/chillcenter/health-ca.pem",
+  "component_roots": {
+    "server": "/usr/lib/chillcenter/server",
+    "web": "/usr/lib/chillcenter/web",
+    "themes": "/usr/lib/chillcenter/themes"
+  },
+  "targets": {
+    "server": "linux-aarch64",
+    "web": "web",
+    "themes": "universal"
+  },
+  "bootstrap_versions": {
+    "server": "0.7.0",
+    "web": "0.0.0",
+    "themes": "0.0.0"
+  },
+  "api_version": "2026.10.14",
+  "database_schema": 3,
+  "renderer_version": 1,
+  "theme_format": 1
+}
