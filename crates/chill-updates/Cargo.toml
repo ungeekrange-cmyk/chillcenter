@@ -8,7 +8,8 @@ rust-version.workspace = true
 [dependencies]
 hex = "0.4"
 libc = "0.2"
-minisign-verify = "=0.2.5"
+minisign-verify = "=0.3.0"
+png = "=0.18.1"
 reqwest.workspace = true
 semver = { version = "=1.0.28", features = ["serde"] }
 serde.workspace = true

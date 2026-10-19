@@ -33,7 +33,10 @@ confirmation.
 - `StateStore`: service-owner-preserving atomic policy/intents, CAS revisions,
   operation coalescing, one running install globally, five-minute component
   check rate limit, and bounded terminal history.
-- `AntiRollbackStore`: distinct root-owned monotonic component sequences.
+- `AntiRollbackStore`: root-owned monotonic sequences plus exact
+  manifest-digest/version pending acceptance persisted before a slot can
+  execute. Rollback retains acceptance; only a local-root exact retry can reuse
+  that sequence.
 - `due_attempts` / `record_retry`: explicit OS-local offset, one attempt ledger
   per local date, missed-time admission, DST-repeat suppression, and at most
   three fixed retries. The Linux CLI obtains the offset through `localtime_r`;
@@ -45,7 +48,13 @@ confirmation.
 - `apply_staged`: repeats artifact size/hash, performs final idle check under
   quiescence, saves a backup, atomically moves a versioned slot and symlink,
   verifies component version health, and restores/restarts the previous slot on
-  failure. Previous release directories and versioned previous links remain.
+  failure. A durable root transaction marker precedes the `current` switch;
+  service/update pre-start recovery restores an uncommitted interrupted slot
+  before boot. Previous release directories and versioned previous links remain.
+- `validate_theme_package` / `validate_theme_png`: exact manifest-declared PNG
+  files and references, signed size/SHA-256, strict paths, full CRC-aware decode,
+  no APNG, 4096-pixel side, eight-megapixel, five-MiB-per-file, twelve-MiB-total
+  and 32-MiB decoder limits.
 
 The dated API route `2026-10-14` is represented as SemVer `2026.10.14` only
 inside compatibility ranges. This is a mechanical numeric mapping, not a new
@@ -69,17 +78,21 @@ is never used for trust decisions. Installed slots are:
 - `/usr/lib/chillcenter/themes/{releases,current,previous-*}`
 
 `chill-update` supports `--help`, `--version`, `inspect`, `check`, `manifest`,
-`policy`, `intent`, `tick`, `apply`, and first-install-only `install`. `tick`
+`policy`, `intent`, `tick`, crash recovery `recover`, `apply`, and first-install-only `install`. `tick`
 processes bounded pending intents and scheduled admissions. `apply --force` is
 local-root-only and requires the literal second confirmation
 `--confirm-interrupt=INTERRUPT_ACTIVE_WORK`; no API field maps to it.
+An already root-accepted failed release requires local `--retry-accepted`;
+repeated LAN intents cannot reset that outcome.
 
 Quiescence uses `/run/chillcenter-update/maintenance` created root/0600. The
 helper accepts the server's status only when it is at most three seconds old,
 reports `quiescing=true`, `busy=false`, `active_mutations=0`, and contains the
 exact nanosecond mtime generation of the current flag. It then stops the server
 for the offline backup and binary switch. The old server binary executes
-`--backup --config ...` under the configured service UID/GID, never as root.
+`--backup --config ...` with a minimal environment after clearing supplementary
+groups and dropping to the configured service UID/GID. The helper then validates
+the fresh private UUID receipt, exact database/config/TLS file set and hashes.
 
 `deploy/updates` contains the generic service and minutely persistent timer.
 The engine, not systemd, owns local 02:00, DST, missed-run and retry semantics.
@@ -91,20 +104,25 @@ The timer grants no general sudo rule.
 either downloaded binary executes, an independently installed system Minisign
 CLI verifies the detached server manifest with the pinned key and a strict
 bounded parser binds the local server and updater byte lengths/SHA-256 to their
-distinct signed targets. It requires explicit library/listen/TLS values, creates
+distinct signed targets. Every input is copied once with `O_NOFOLLOW` into a
+root/0700 private stage; staged server/updater/key/manifest/signature and all
+three systemd units are verified, installed only from that stage, then compared
+again before first execution. It requires explicit library/listen/TLS values, creates
 a non-root account, refuses existing account/config/binary/unit/state paths, and
 never mounts, remounts, chowns, writes, or enumerates the library/NAS. It does
 not use `curl | sh` and fails if service/TLS/API/helper smoke does not complete.
-Future helper replacement needs a separately signed updater target and a helper
+The installer script itself must come from an externally Minisign-verified
+release bundle before it is run as root: no script can authenticate its own
+already executing instructions. Future helper replacement needs a separately signed updater target and a helper
 version compatible with the manifest schema; no helper self-update path claims
 success in this candidate.
 
 `scripts/install-web.sh` and `scripts/install-themes.sh` invoke only fixed
 component operations and compare server binary, server config and TLS
 certificate hashes before/after. Their roots are separate from server,
-configuration, database and NAS. Theme install additionally rejects every file
-type except a single root `manifest.json` and bounded raster images; downloaded
-CSS, JS, HTML, SVG, links and special files fail closed.
+configuration, database and NAS. Theme install accepts only the exact
+manifest-declared PNG set and fully decodes it under the bounds above; CSS, JS,
+HTML, SVG, undeclared files, links, APNG and special files fail closed.
 
 ## Dependency/runtime evidence
 
@@ -112,18 +130,21 @@ Checked against primary package documentation on 2026-10-19 and pinned where
 security or parsing behavior matters:
 
 - Rust 1.99.0 / edition 2024 (workspace supported toolchain)
-- `minisign-verify` 0.2.5 (exact; prehashed verification, legacy disabled)
+- `minisign-verify` 0.3.0 (exact; prehashed verification, legacy disabled)
 - `semver` 1.0.28, `zip` 9.0.3 and `time` 0.3.55 (exact)
 - workspace `reqwest` 0.13 (resolved 0.13.5, Rustls)
+- `png` 0.18.1 (exact; bounded full image decode)
 
 No preview runtime, private signing dependency, GitHub Actions secret or key
 generation was added.
 
 ## Verification and remaining delivery gates
 
-Focused crate tests cover exact-byte signature/tamper, recursive duplicate keys,
+Focused crate tests cover exact-byte signature/tamper/full public-key file, recursive duplicate keys,
 fixed release URLs, safe TAR/traversal, policy CAS/coalescing, once-per-date and
-bounded retry scheduling, and a rootless health-failure rollback simulation.
+bounded retry scheduling, exact theme tree/PNG decode, a rootless health-failure
+rollback, and a fault-injected crash immediately after slot switch followed by
+pre-start recovery.
 Network GitHub release discovery, real systemd/account installation, real Pi,
 NAS, TLS rotation, disk-full and published package smoke remain `NOT_RUN`.
 These unsupported/unexecuted paths return errors; they are not stub successes.

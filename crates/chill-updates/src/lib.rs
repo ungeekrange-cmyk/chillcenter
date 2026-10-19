@@ -9,11 +9,15 @@ mod install;
 mod manifest;
 mod scheduler;
 mod state;
+mod theme;
 mod transport;
 mod trust;
 
 pub use archive::{ArchiveKind, ExtractionLimits, extract_archive};
-pub use install::{ApplyRequest, ApplyResult, InstallHooks, InstallLayout, apply_staged};
+pub use install::{
+    ApplyRequest, ApplyResult, InstallHooks, InstallLayout, RecoveryResult, apply_staged,
+    recover_interrupted, verify_staged_artifact,
+};
 pub use manifest::{
     Asset, AssetFormat, Compatibility, Component, DatabaseCompatibility, RendererCompatibility,
     RuntimeCompatibility, SignedManifest, VerificationContext, VerifiedManifest, VersionBounds,
@@ -24,8 +28,11 @@ pub use state::{
     ComponentState, IntentKind, Operation, OperationStatus, PersistentState, Policy, PolicyMode,
     StateStore,
 };
+pub use theme::{validate_theme_package, validate_theme_png};
 pub use transport::{GithubReleaseClient, ReleaseCandidate, TransportLimits};
-pub use trust::{AntiRollbackStore, validate_root_owned_file};
+pub use trust::{
+    AntiRollbackStore, PendingAcceptance, validate_root_owned_directory, validate_root_owned_file,
+};
 
 use thiserror::Error;
 
