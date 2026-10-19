@@ -4,6 +4,8 @@ var uiText=globalThis.chillI18n?.t||((text)=>text);
 const appearanceLabels={spring:uiText("Printemps"),summer:uiText("Été"),autumn:uiText("Automne"),winter:uiText("Hiver"),christmas:uiText("Noël"),halloween:uiText("Halloween")};
 const systemTone=window.matchMedia("(prefers-color-scheme: dark)");
 let appearanceTimer=null,appearanceRetry=null;
+let themePackPromise=null;
+const loadThemePack=()=>themePackPromise||(themePackPromise=window.ChillThemePack.load().catch(()=>null));
 
 // Decoration is local, non-interactive and bounded. No animation loop on the JS thread.
 (() => {
@@ -34,14 +36,15 @@ window.refreshAppearance=async()=>{
  try{
   const r=await invoke({action:"resolve_appearance",year:date.getFullYear(),month:date.getMonth()+1,day:date.getDate()});
   const tone=state.theme==="dark"||((state.theme||"system")==="system"&&systemTone.matches)?"dark":"light";
+  const pack=await loadThemePack();
   document.documentElement.dataset.tone=tone;
-  document.documentElement.dataset.ambiance=r.ambiance||"off";
-  $("brand-logo").src=r.ambiance?"branding/"+r.ambiance+"-"+tone+".svg":"branding/default.svg";
+  const resolution=pack&&window.ChillThemePack.resolve(pack.manifest,{date,mode:r.appearance.mode,manual:r.appearance.manual},tone);
+  window.ChillThemePack.apply(resolution,{baseUrl:pack?.baseUrl||"themes/",assetUrls:pack?.assetUrls,defaultLogo:pack?.manifest.default_logo});
   // The native bridge owns device-local preferences; no browser storage is introduced here.
   $("ambiance-mode").value=r.appearance.mode;
   $("ambiance-choice").value=r.appearance.manual;
   $("ambiance-choice-label").hidden=r.appearance.mode!=="manual";
-  $("ambiance-status").textContent=r.ambiance?uiText("Ambiance ")+appearanceLabels[r.ambiance]+uiText(" · sur ce Mac uniquement"):uiText("Sans ambiance · thème conservé");
+  $("ambiance-status").textContent=resolution?uiText("Ambiance ")+appearanceLabels[resolution.id]+uiText(" · sur ce Mac uniquement"):uiText("Sans ambiance · thème conservé");
  }catch(e){
   if(e.code==="CLIENT_BUSY")appearanceRetry=setTimeout(refreshAppearance,500);
  }
@@ -64,5 +67,6 @@ $("ambiance-choice").onchange=saveAppearance;
 systemTone.addEventListener("change",refreshAppearance);
 window.addEventListener("focus",refreshAppearance);
 window.addEventListener("pageshow",refreshAppearance);
+window.addEventListener("chill-theme-pack-updated",()=>{themePackPromise=null;void refreshAppearance();});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshAppearance();});
 window.chillReady.then(refreshAppearance);

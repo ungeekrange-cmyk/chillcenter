@@ -2,9 +2,10 @@
 
 [Français](README.md) | **English**
 
-Status: **proposed design, not yet loaded by the application**. Independent
-delivery is specified in [ADR-0029](../docs/architecture/decisions/ADR-0029-component-releases-updates.md).
-Existing resources remain in place until the runtime migration and tests exist.
+Status: declarative embedded pack `themes/default` (format/renderer 1, version
+0.7.0). The loader validates the manifest before use and falls back to the
+embedded copy when an external pack is missing or invalid. Independent delivery
+is specified in [ADR-0029](../docs/architecture/decisions/ADR-0029-component-releases-updates.md).
 
 ## Proposed calendar and precedence
 
@@ -30,14 +31,15 @@ not the ambience priority. Decorations must never cover video. Effects respect
 reduced motion, visibility and small screens. Event image subjects stay anchored
 to the right.
 
-## Format to implement after approval
+## Loaded format
 
 Each independently versioned pack will contain a declarative JSON manifest
 (pack version, compatible format/renderer, identifiers, dates, priorities,
 palettes, resources and SHA-256 hashes), images and logos. No JavaScript, HTML,
 absolute paths, remote URLs, arbitrary CSS or installation scripts are allowed.
-Existing SVGs require validation or image export. Rendering and animation code
-remain in the application.
+Historical SVGs remain in `ui/connected/branding`; the pack contains only their
+approved PNG exports, checked with a size and SHA-256. Rendering and animation
+code remain in the application.
 
 The GitHub `themes-v<version>` release will distribute a signed pack independently
 of binaries. Verify, stage in a new directory, then switch atomically; retain the
