@@ -225,7 +225,14 @@ fn run() -> chill_updates::Result<()> {
             }) {
                 return Err(UpdateError::Invalid("unknown apply option".into()));
             }
-            perform_apply(&config, component, first_install, force, retry_accepted)
+            perform_apply(
+                &config,
+                component,
+                first_install,
+                force,
+                retry_accepted,
+                false,
+            )
         }
         Some("policy") if arguments.len() == 6 => {
             let component = parse_component(&arguments[1])?;
@@ -604,14 +611,19 @@ fn perform_apply(
     component: Component,
     first_install: bool,
     force: bool,
-    _retry_accepted: bool,
+    retry_accepted: bool,
+    automatic: bool,
 ) -> chill_updates::Result<()> {
     require_linux_component(component)?;
     let receipt = read_available(config, component)?;
     let cached = verify_cached(config, component)?;
-    // `verify_cached` admits a pending trust floor only when the exact signed
-    // digest/version/sequence is still present. A deferred automatic retry is
-    // therefore not a downgrade or a generic --retry-accepted bypass.
+    // The service-owned operation ledger cannot authorize retrying a release
+    // already accepted by root and then failed/interrupted. Only local root can.
+    if cached.accepted_retry && !retry_accepted {
+        return Err(UpdateError::Security(
+            "accepted release requires local --retry-accepted recovery".into(),
+        ));
+    }
     let verified = cached.verified;
     let store = state_store(config)?;
     let operation =
@@ -645,6 +657,12 @@ fn perform_apply(
         &verified.selected_asset.sha256,
     )?;
     let mut hooks = LinuxHooks::new(config)?;
+    hooks.acceptance = Some((
+        component,
+        verified.manifest.release_sequence,
+        cached.manifest_sha256.clone(),
+        verified.manifest.version.clone(),
+    ));
     let expected_target = PathBuf::from("releases").join(format!(
         "{}-{}",
         verified.manifest.version, verified.manifest.release_sequence
@@ -655,10 +673,7 @@ fn perform_apply(
             .ok()
             .as_ref()
             == Some(&expected_target);
-    if cached.accepted_retry
-        && !resumes_healthy_candidate
-        && !layout.component_root.join("transaction.json").exists()
-    {
+    if !resumes_healthy_candidate && !layout.component_root.join("transaction.json").exists() {
         let orphan = layout.component_root.join(&expected_target);
         if let Ok(metadata) = fs::symlink_metadata(&orphan) {
             if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -669,6 +684,22 @@ fn perform_apply(
             fs::remove_dir_all(orphan)?;
             File::open(&layout.component_root)?.sync_all()?;
         }
+    }
+    let releases = layout.component_root.join("releases");
+    if releases.exists() {
+        for entry in fs::read_dir(&releases)? {
+            let entry = entry?;
+            if entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.strip_prefix(".stage-"))
+                .is_some_and(|id| Uuid::parse_str(id).is_ok())
+            {
+                validate_cache_tree(&entry.path(), 1024 * 1024 * 1024)?;
+                fs::remove_dir_all(entry.path())?;
+            }
+        }
+        File::open(&releases)?.sync_all()?;
     }
     if matches!(
         operation.status,
@@ -683,21 +714,6 @@ fn perform_apply(
         )?;
     }
     let trust = AntiRollbackStore::open_root(&config.trust_root)?;
-    if let Err(error) = trust.accept_pending(
-        component,
-        verified.manifest.release_sequence,
-        &cached.manifest_sha256,
-        &verified.manifest.version,
-    ) {
-        let _ = store.transition(
-            operation.id,
-            OperationStatus::Running,
-            OperationStatus::Failed,
-            Some("trust_accept_failed"),
-            OffsetDateTime::now_utc(),
-        );
-        return Err(error);
-    }
     if resumes_healthy_candidate {
         let outcome = hooks.health_check(component, &layout.component_root.join(&expected_target));
         if let Err(error) = outcome {
@@ -757,7 +773,13 @@ fn perform_apply(
             Ok(())
         }
         Err(error) => {
-            let deferred = matches!(error, UpdateError::Busy(_));
+            // Busy admission happens before before_switch/acceptance. Once a
+            // root sequence is accepted, never let a LAN intent reset recovery.
+            let accepted = trust
+                .verification_floor(component, &cached.manifest_sha256)?
+                .1
+                .is_some();
+            let deferred = matches!(error, UpdateError::Busy(_)) && !accepted;
             let _ = store.transition(
                 operation.id,
                 OperationStatus::Running,
@@ -767,7 +789,11 @@ fn perform_apply(
                     OperationStatus::Failed
                 },
                 Some(if deferred {
-                    "deferred_busy"
+                    if automatic {
+                        "deferred_busy_auto"
+                    } else {
+                        "deferred_busy_manual"
+                    }
                 } else {
                     "apply_failed"
                 }),
@@ -781,28 +807,63 @@ fn perform_apply(
 fn tick(config: &RootConfig) -> chill_updates::Result<()> {
     let offset = os_local_offset()?;
     let store = state_store(config)?;
-    // A helper crash cannot leave a coalescing `running` operation forever.
-    // It becomes an explicit recoverable deferral; any retry still revalidates
-    // the signed cache/trust receipt before activation.
+    // Reconcile under the helper lease, before coalescing new intents. Only
+    // pre-acceptance crashes are automatically retryable; root-pending slots
+    // require explicit local recovery, never a service-writable status field.
+    let recovery_required = [Component::Server, Component::Web, Component::Themes]
+        .into_iter()
+        .map(|component| {
+            let pending = read_available(config, component)
+                .ok()
+                .and_then(|receipt| {
+                    AntiRollbackStore::open_root(&config.trust_root)
+                        .ok()?
+                        .verification_floor(component, &receipt.cache_key)
+                        .ok()?
+                        .1
+                })
+                .is_some();
+            (component, pending)
+        })
+        .collect::<BTreeMap<_, _>>();
     store.update_scheduler(|state| {
         let now = OffsetDateTime::now_utc().unix_timestamp();
         for operation in &mut state.operations {
             if operation.status == OperationStatus::Running {
-                operation.status = if operation.kind == IntentKind::Check {
-                    OperationStatus::Pending
+                operation.status = if operation.kind == IntentKind::Install
+                    && recovery_required[&operation.component]
+                {
+                    OperationStatus::Failed
                 } else {
-                    OperationStatus::DeferredBusy
+                    OperationStatus::Pending
                 };
-                operation.result_code = Some("recovered_interrupted".into());
+                operation.result_code = Some(
+                    if operation.status == OperationStatus::Failed {
+                        "local_recovery_required"
+                    } else {
+                        "recovered_interrupted"
+                    }
+                    .into(),
+                );
                 operation.updated_unix = now;
             }
             if operation.kind == IntentKind::Install
                 && operation.status == OperationStatus::DeferredBusy
                 && operation.attempts >= 3
-                && now.saturating_sub(operation.created_unix) >= 24 * 60 * 60
             {
-                operation.attempts = 0;
-                operation.result_code = Some("deferred_busy".into());
+                operation.status = OperationStatus::Failed;
+                operation.result_code = Some("busy_retry_exhausted".into());
+                operation.updated_unix = now;
+            }
+            if operation.status == OperationStatus::DeferredBusy
+                && operation.result_code.as_deref() == Some("deferred_busy_auto")
+                && state
+                    .policies
+                    .get(&operation.component)
+                    .is_some_and(|policy| policy.mode != PolicyMode::Automatic)
+            {
+                operation.status = OperationStatus::Failed;
+                operation.result_code = Some("automatic_policy_changed".into());
                 operation.updated_unix = now;
             }
         }
@@ -840,7 +901,14 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
         .iter()
         .filter(|operation| operation.kind == IntentKind::Install)
     {
-        if let Err(error) = perform_apply(config, operation.component, false, false, false) {
+        if let Err(error) = perform_apply(
+            config,
+            operation.component,
+            false,
+            false,
+            false,
+            operation.result_code.as_deref() == Some("deferred_busy_auto"),
+        ) {
             eprintln!(
                 "pending {} install failed: {error}",
                 operation.component.as_str()
@@ -863,7 +931,7 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
                 .get(&attempt.component)
                 .is_some_and(|policy| policy.mode == PolicyMode::Automatic)
         {
-            perform_apply(config, attempt.component, false, false, false)?;
+            perform_apply(config, attempt.component, false, false, false, true)?;
         } else if let Err(error) = check {
             eprintln!(
                 "scheduled {} check deferred: {error}",
@@ -950,12 +1018,29 @@ fn require_linux_component(component: Component) -> chill_updates::Result<()> {
 /// accepts no component/path/command input, repairs every component marker,
 /// then asks systemd to restore the known service unit.
 fn rescue(config: &RootConfig) -> chill_updates::Result<()> {
+    let interrupted = config
+        .component_roots
+        .values()
+        .any(|root| root.join("transaction.json").exists());
+    if interrupted {
+        // A candidate can already be running when its parent helper is killed.
+        // Stop it before deleting/rolling back its slot; `start` alone is a no-op
+        // for an active, uncommitted executable.
+        let mut stop = Command::new("/usr/bin/systemctl");
+        stop.args(["stop", config.service_name.as_str()]);
+        run_bounded_backup(&mut stop, Duration::from_secs(30))?;
+    }
     for component in [Component::Server, Component::Web, Component::Themes] {
         let root = config
             .component_roots
             .get(&component)
             .ok_or_else(|| UpdateError::Security("component root missing".into()))?;
         recover_interrupted(root, Some(&activation_authorization(config, component)))?;
+    }
+    match fs::remove_file(&config.maintenance_flag) {
+        Ok(()) => File::open(config.maintenance_flag.parent().unwrap())?.sync_all()?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => return Err(error.into()),
     }
     let mut command = Command::new("/usr/bin/systemctl");
     command.args(["start", config.service_name.as_str()]);
@@ -1462,6 +1547,7 @@ struct LinuxHooks<'a> {
     client: reqwest::blocking::Client,
     stopped: bool,
     maintenance_generation_ns: Option<String>,
+    acceptance: Option<(Component, u64, String, Version)>,
 }
 
 impl<'a> LinuxHooks<'a> {
@@ -1491,6 +1577,7 @@ impl<'a> LinuxHooks<'a> {
             client,
             stopped: false,
             maintenance_generation_ns: None,
+            acceptance: None,
         })
     }
     fn systemctl(&self, action: &str) -> chill_updates::Result<()> {
@@ -1557,12 +1644,12 @@ impl InstallHooks for LinuxHooks<'_> {
                 "server did not reach bounded quiescence".into(),
             ));
         }
+        self.stopped = true;
         if let Err(error) = self.systemctl("stop") {
             let _ = fs::remove_file(&self.config.maintenance_flag);
             self.maintenance_generation_ns = None;
             return Err(error);
         }
-        self.stopped = true;
         Ok(())
     }
     fn backup(&mut self, component: Component, _: &Path) -> chill_updates::Result<String> {
@@ -1620,6 +1707,17 @@ impl InstallHooks for LinuxHooks<'_> {
             "retained-{}",
             OffsetDateTime::now_utc().unix_timestamp()
         ))
+    }
+    fn before_switch(&mut self, component: Component) -> chill_updates::Result<()> {
+        let (expected, sequence, digest, version) = self
+            .acceptance
+            .as_ref()
+            .ok_or_else(|| UpdateError::Security("missing root acceptance identity".into()))?;
+        if *expected != component {
+            return Err(UpdateError::Security("acceptance component changed".into()));
+        }
+        AntiRollbackStore::open_root(&self.config.trust_root)?
+            .accept_pending(component, *sequence, digest, version)
     }
     fn activate(&mut self, component: Component, _: &Path) -> chill_updates::Result<()> {
         let root = self
@@ -1686,17 +1784,19 @@ impl InstallHooks for LinuxHooks<'_> {
         Ok(())
     }
     fn end_quiescence(&mut self, _component: Component) -> chill_updates::Result<()> {
-        if self.stopped {
-            self.systemctl("start")?;
-            self.stopped = false;
-        }
+        let restarted = if self.stopped {
+            self.systemctl("start")
+        } else {
+            Ok(())
+        };
+        self.stopped = false;
         let result = match fs::remove_file(&self.config.maintenance_flag) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         };
         self.maintenance_generation_ns = None;
-        result
+        restarted.and(result)
     }
 }
 

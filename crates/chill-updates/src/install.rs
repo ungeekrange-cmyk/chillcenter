@@ -183,6 +183,11 @@ pub trait InstallHooks {
     fn is_idle(&mut self, component: Component) -> Result<bool>;
     fn begin_quiescence(&mut self, component: Component, force_interrupt: bool) -> Result<()>;
     fn backup(&mut self, component: Component, backup_root: &Path) -> Result<String>;
+    /// Persist privileged anti-rollback acceptance only after idle + backup,
+    /// immediately before a transaction can expose new executable bytes.
+    fn before_switch(&mut self, _component: Component) -> Result<()> {
+        Ok(())
+    }
     fn activate(&mut self, component: Component, installed_root: &Path) -> Result<()>;
     fn health_check(&mut self, component: Component, installed_root: &Path) -> Result<()>;
     fn end_quiescence(&mut self, component: Component) -> Result<()>;
@@ -353,6 +358,7 @@ fn apply_while_quiesced(
         ));
     }
     let new_target = PathBuf::from("releases").join(&leaf);
+    hooks.before_switch(request.verified.manifest.component)?;
     write_transaction_marker(
         &request.layout.component_root,
         &TransactionMarker {

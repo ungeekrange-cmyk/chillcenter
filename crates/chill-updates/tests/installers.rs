@@ -37,7 +37,9 @@ fn installer_shell_syntax_and_server_help_are_benign() {
         "unit-chillcenter-update-service",
         "unit-chillcenter-update-timer",
         "cmp -s \"$server\"",
-        "minisign -Vm \"$manifest\"",
+        "\"$MINISIGN\" -Vm \"$manifest\"",
+        "readonly MINISIGN=/usr/bin/minisign",
+        "\"$PYTHON\" -I -",
     ] {
         assert!(
             server_installer.contains(required),
