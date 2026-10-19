@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/chill-catalog", "crates/chill-domain", "crates/chill-server", "crates/chill-client", "crates/chill-player", "apps/desktop"]
+members = ["crates/chill-catalog", "crates/chill-domain", "crates/chill-server", "crates/chill-client", "crates/chill-player", "crates/chill-updates", "apps/desktop"]
 exclude = ["native/macos-render-probe"]
 resolver = "3"
 
@@ -21,6 +21,7 @@ chill-catalog = { path = "crates/chill-catalog" }
 chill-domain = { path = "crates/chill-domain" }
 chill-client = { path = "crates/chill-client" }
 chill-player = { path = "crates/chill-player" }
+chill-updates = { path = "crates/chill-updates" }
 
 [profile.release]
 lto = "thin"
