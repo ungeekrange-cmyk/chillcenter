@@ -1,8 +1,9 @@
 # ADR-0029 — Independent components, theme packs and verified updates
 
-- Status: **PROPOSED**; no updater, installer, trust key or release published.
+- Status: **ACCEPTED** by explicit user approval on 2026-10-19; implementation
+  and release verification remain separate from this decision.
 - Owner / author instance: `/root` / `/root`.
-- Reviewer instance: PENDING.
+- Reviewer instance: `/root/web_r3_review`; approved R2 subject to user gate.
 - Date: 2026-10-19.
 - Branch / base: `codex/component-updates-design` / `6cdb649b8c834c4173afd320da2c8da64867a84e`.
 - Revision: R2; reviewed commit/time: PENDING.
@@ -228,9 +229,10 @@ confirmed deployment scope; this design performs none.
 
 ## Approval / Validation
 
-- Independent ADR review: PENDING.
-- User gate: REQUIRED; currently PENDING. New downloaded-code/privilege trust
-  boundary must be approved before implementation/provisioning.
+- Independent ADR review: [APPROVED R2](reviews/ADR-0029-review-r2.md).
+- User gate: REQUIRED, [APPROVED_BY_USER](../../gates/G-ADR-0029-R2.md).
+  Evidence: human reply « oui je valide » on 2026-10-19. Acceptance metadata
+  does not rewrite the reviewed decision; its pre-acceptance hash is in the gate.
 - This document proposes behavior, not completed functionality or test evidence.
 - Sources checked 2026-10-19: [Tauri updater](https://tauri.app/plugin/updater/)
   (mandatory update signatures) and

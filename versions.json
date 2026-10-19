@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "mac": "0.7.0",
+  "server": "0.7.0",
+  "web": "0.7.0",
+  "themes": "0.7.0",
+  "api": "2026-10-14",
+  "theme_format": 1,
+  "theme_renderer": 1,
+  "database_schema": 1
+}
