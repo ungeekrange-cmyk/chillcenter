@@ -479,4 +479,74 @@ mod tests {
         let full_public_file = "untrusted comment: minisign public key test-only\nRWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3\n";
         PublicKey::decode(full_public_file).unwrap();
     }
+
+    #[test]
+    fn production_parser_verifies_signed_fixture_matrix() {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/vectors");
+        let public = std::fs::read_to_string(directory.join("test.pub")).unwrap();
+        let key_id = public
+            .lines()
+            .next()
+            .unwrap()
+            .split_ascii_whitespace()
+            .last()
+            .unwrap();
+        let installed = Version::new(0, 6, 0);
+        let context = VerificationContext {
+            now: OffsetDateTime::parse("2026-10-19T12:00:00Z", &Rfc3339).unwrap(),
+            expected_key_id: key_id,
+            component: Component::Server,
+            target: "linux-aarch64",
+            installed_version: &installed,
+            highest_sequence: 1,
+            runtime: RuntimeCompatibility {
+                api_version: Some(Version::new(2026, 10, 14)),
+                server_version: Some(installed.clone()),
+                database_schema: Some(3),
+                renderer_version: Some(1),
+                theme_format: Some(1),
+            },
+        };
+        for case in [
+            "valid",
+            "expired",
+            "future",
+            "replay",
+            "component",
+            "key",
+            "target",
+            "database",
+            "api",
+            "url",
+            "unknown",
+            "downgrade",
+            "duplicate",
+        ] {
+            let bytes = std::fs::read(directory.join(format!("{case}.json"))).unwrap();
+            let signature =
+                std::fs::read_to_string(directory.join(format!("{case}.json.minisig"))).unwrap();
+            let result = parse_and_verify_manifest(&bytes, &signature, &public, &context);
+            assert_eq!(result.is_ok(), case == "valid", "{case}: {result:?}");
+            if case == "valid" {
+                let mut tampered = bytes.clone();
+                tampered.push(b' ');
+                assert!(matches!(
+                    parse_and_verify_manifest(&tampered, &signature, &public, &context),
+                    Err(UpdateError::Signature(_))
+                ));
+                assert!(
+                    parse_and_verify_manifest(&bytes, &signature, "not a key", &context).is_err()
+                );
+                assert!(
+                    parse_and_verify_manifest(
+                        &vec![b' '; 1024 * 1024 + 1],
+                        &signature,
+                        &public,
+                        &context
+                    )
+                    .is_err()
+                );
+            }
+        }
+    }
 }

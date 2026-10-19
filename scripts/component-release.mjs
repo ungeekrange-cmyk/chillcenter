@@ -16,7 +16,7 @@ export function validateAssetInput(component,target,bytes){
    const units=new Set(["unit-chillcenter-service","unit-chillcenter-update-service","unit-chillcenter-update-timer"]),installers=new Set(["installer-linux","installer-web","installer-themes"]);
    if((!units.has(target)&&!installers.has(target))||bytes.length>65536||bytes.includes(0))throw Error("Invalid installer/unit asset");
    const text=bytes.toString("utf8");
-   if((units.has(target)&&!text.includes("[Unit]"))||(installers.has(target)&&!text.startsWith("#!/usr/bin/env bash")))throw Error("Invalid installer/unit format");
+   if((units.has(target)&&!text.includes("[Unit]"))||(installers.has(target)&&!/^#!\/(?:bin\/bash|usr\/bin\/env bash)\n/.test(text)))throw Error("Invalid installer/unit format");
   }else if(!/^(?:linux-(?:aarch64|armv7|x86_64)|updater-(?:aarch64-unknown-linux-gnu|armv7-unknown-linux-gnueabihf|x86_64-unknown-linux-gnu))$/.test(target)||!bytes.subarray(0,4).equals(Buffer.from([0x7f,69,76,70])))throw Error("Linux component requires a reviewed ELF binary");
  }else if((component==="web"&&target!=="web")||(component==="themes"&&target!=="universal")||bytes[0]!==0x50||bytes[1]!==0x4b)throw Error("Web/theme component requires a ZIP for its logical target");
  // Never sign an accidentally selected private key or credential text file.
