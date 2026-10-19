@@ -53,6 +53,129 @@ struct TransactionMarker {
     candidate_target: String,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ActivationAuthorization {
+    schema_version: u32,
+    operation_id: Uuid,
+    candidate_target: String,
+    pid: u32,
+    process_identity: String,
+    created_unix: u64,
+}
+
+/// Issue a one-use pre-start permit, bound to this still-running helper and its
+/// exact transaction. A leftover file after SIGKILL/power loss is not consent.
+pub fn authorize_activation(component_root: &Path, runtime_path: &Path) -> Result<()> {
+    #[cfg(all(not(test), target_os = "linux"))]
+    validate_root_owned_directory(
+        runtime_path
+            .parent()
+            .ok_or_else(|| UpdateError::Security("authorization has no parent".into()))?,
+    )?;
+    // Rollback starts and ordinary starts need no candidate authorization.
+    let bytes = match read_bounded_nofollow(&component_root.join("transaction.json"), 16 * 1024) {
+        Ok(bytes) => bytes,
+        Err(UpdateError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    let marker: TransactionMarker = crate::parse_strict_json(&bytes)?;
+    validate_marker(&marker)?;
+    if fs::read_link(component_root.join("current"))? != Path::new(&marker.candidate_target) {
+        return Ok(());
+    }
+    let pid = std::process::id();
+    let permit = ActivationAuthorization {
+        schema_version: 1,
+        operation_id: marker.operation_id,
+        candidate_target: marker.candidate_target,
+        pid,
+        process_identity: process_identity(pid)?,
+        created_unix: unix_seconds()?,
+    };
+    let temporary = runtime_path.with_extension(format!("tmp-{}", Uuid::new_v4()));
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    let mut file = options.open(&temporary)?;
+    file.write_all(&serde_json::to_vec(&permit)?)?;
+    file.sync_all()?;
+    fs::rename(&temporary, runtime_path)?;
+    File::open(runtime_path.parent().unwrap())?.sync_all()?;
+    Ok(())
+}
+
+fn unix_seconds() -> Result<u64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|_| UpdateError::Security("system clock predates epoch".into()))
+}
+
+#[cfg(target_os = "linux")]
+fn process_identity(pid: u32) -> Result<String> {
+    // PID + kernel boot ID + start ticks prevents PID reuse and reboot replay.
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
+    let (_, fields) = stat
+        .rsplit_once(") ")
+        .ok_or_else(|| UpdateError::Security("invalid process identity".into()))?;
+    let start = fields
+        .split_ascii_whitespace()
+        .nth(19)
+        .ok_or_else(|| UpdateError::Security("missing process start time".into()))?;
+    if !start.bytes().all(|byte| byte.is_ascii_digit()) || boot.trim().len() != 36 {
+        return Err(UpdateError::Security(
+            "invalid kernel process identity".into(),
+        ));
+    }
+    Ok(format!("{}:{start}", boot.trim()))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_identity(pid: u32) -> Result<String> {
+    // Desktop never grants Linux pre-start permits. This supports unit tests
+    // without pretending a foreign PID can be validated on another platform.
+    if pid != std::process::id() {
+        return Err(UpdateError::Security("foreign process".into()));
+    }
+    Ok(format!("test-process-{pid}"))
+}
+
+fn consume_activation_authorization(path: &Path, marker: &TransactionMarker) -> bool {
+    let Ok(bytes) = read_bounded_nofollow(path, 4096) else {
+        return false;
+    };
+    // Consume even invalid or expired bytes. Never leave reusable consent.
+    if fs::remove_file(path).is_err() {
+        return false;
+    }
+    if path
+        .parent()
+        .and_then(|parent| File::open(parent).ok())
+        .is_none_or(|file| file.sync_all().is_err())
+    {
+        return false;
+    }
+    let Ok(permit) = crate::parse_strict_json::<ActivationAuthorization>(&bytes) else {
+        return false;
+    };
+    let Ok(now) = unix_seconds() else {
+        return false;
+    };
+    permit.schema_version == 1
+        && permit.operation_id == marker.operation_id
+        && permit.candidate_target == marker.candidate_target
+        && permit.created_unix <= now
+        && now - permit.created_unix <= 60
+        && process_identity(permit.pid).is_ok_and(|identity| identity == permit.process_identity)
+}
+
 /// Integration hooks are implemented by the privileged Linux helper/server
 /// glue. Implementations must use fixed root-owned configuration and exact
 /// argv; no shell or service-owned executable is accepted.
@@ -82,10 +205,18 @@ pub fn apply_staged(
             "server payload must be one reviewed raw binary".into(),
         ));
     }
-    // Fresh idle status is generation-bound and exists only after the fixed
-    // maintenance flag has been created.
-    hooks.begin_quiescence(request.verified.manifest.component, request.force_interrupt)?;
-    let outcome = apply_while_quiesced(request, hooks);
+    // Downloading, extraction, validation and durable slot preparation never
+    // stop the running service. Only backup + pointer switch need quiescence.
+    let final_root = prepare_slot(request)?;
+    if let Err(error) =
+        hooks.begin_quiescence(request.verified.manifest.component, request.force_interrupt)
+    {
+        let _ = hooks.end_quiescence(request.verified.manifest.component);
+        fs::remove_dir_all(&final_root)?;
+        File::open(final_root.parent().unwrap())?.sync_all()?;
+        return Err(error);
+    }
+    let outcome = apply_while_quiesced(request, hooks, final_root);
     let resumed = hooks.end_quiescence(request.verified.manifest.component);
     match (outcome, resumed) {
         (Ok(value), Ok(())) => Ok(value),
@@ -94,15 +225,7 @@ pub fn apply_staged(
     }
 }
 
-fn apply_while_quiesced(
-    request: &ApplyRequest<'_>,
-    hooks: &mut dyn InstallHooks,
-) -> Result<ApplyResult> {
-    if !hooks.is_idle(request.verified.manifest.component)? && !request.force_interrupt {
-        return Err(UpdateError::Busy(
-            "work began before the final commit window".into(),
-        ));
-    }
+fn prepare_slot(request: &ApplyRequest<'_>) -> Result<PathBuf> {
     let releases = request.layout.component_root.join("releases");
     fs::create_dir_all(&releases)?;
     reject_symlink(&releases)?;
@@ -126,13 +249,69 @@ fn apply_while_quiesced(
     if request.verified.manifest.component == Component::Themes {
         validate_theme_package(&stage)?;
     }
+    finalize_slot(
+        &stage,
+        request.verified.manifest.component == Component::Server,
+        &stage,
+        0,
+    )?;
     #[cfg(unix)]
-    if request.verified.manifest.component == Component::Server {
+    {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(stage.join("payload"), fs::Permissions::from_mode(0o755))?;
+        fs::set_permissions(&releases, fs::Permissions::from_mode(0o755))?;
     }
     fs::rename(&stage, &final_root)?;
     File::open(&releases)?.sync_all()?;
+    Ok(final_root)
+}
+
+// Archives are untrusted. Publish only regular, durable, read-only data under
+// traversable root-owned directories; never rely on the helper's private umask.
+fn finalize_slot(path: &Path, server: bool, root: &Path, depth: usize) -> Result<()> {
+    if depth > 32 {
+        return Err(UpdateError::Security("slot tree too deep".into()));
+    }
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || (!metadata.is_dir() && !metadata.is_file()) {
+        return Err(UpdateError::Security(
+            "slot contains a non-regular entry".into(),
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if metadata.is_file() && metadata.nlink() != 1 {
+            return Err(UpdateError::Security("slot contains a hard link".into()));
+        }
+        let mode = if metadata.is_dir() || (server && path == root.join("payload")) {
+            0o755
+        } else {
+            0o644
+        };
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
+    }
+    if metadata.is_dir() {
+        for entry in fs::read_dir(path)? {
+            finalize_slot(&entry?.path(), server, root, depth + 1)?;
+        }
+    }
+    File::open(path)?.sync_all()?;
+    Ok(())
+}
+
+fn apply_while_quiesced(
+    request: &ApplyRequest<'_>,
+    hooks: &mut dyn InstallHooks,
+    final_root: PathBuf,
+) -> Result<ApplyResult> {
+    if !hooks.is_idle(request.verified.manifest.component)? && !request.force_interrupt {
+        fs::remove_dir_all(&final_root)?;
+        File::open(final_root.parent().unwrap())?.sync_all()?;
+        return Err(UpdateError::Busy(
+            "work began before the final commit window".into(),
+        ));
+    }
+    let leaf = final_root.file_name().unwrap();
 
     let current = request.layout.component_root.join("current");
     let previous_target = match fs::symlink_metadata(&current) {
@@ -311,16 +490,15 @@ pub fn recover_interrupted(
     };
     let marker: TransactionMarker = crate::parse_strict_json(&marker_bytes)?;
     validate_marker(&marker)?;
-    if let Some(path) = runtime_authorization
-        && let Ok(bytes) = read_bounded_nofollow(path, 1024)
-        && bytes == marker.candidate_target.as_bytes()
-    {
-        return Ok(RecoveryResult::Authorized);
-    }
     let current = component_root.join("current");
     let target = fs::read_link(&current)?;
     validate_slot_target(&target)?;
     let candidate_target = PathBuf::from(&marker.candidate_target);
+    if target == candidate_target
+        && runtime_authorization.is_some_and(|path| consume_activation_authorization(path, &marker))
+    {
+        return Ok(RecoveryResult::Authorized);
+    }
     let already_restored = marker
         .previous_target
         .as_ref()
@@ -614,10 +792,14 @@ mod tests {
         );
         assert!(component_root.join("transaction.json").exists());
         let authorization = temp.path().join("authorization");
-        fs::write(&authorization, b"releases/0.7.0-2").unwrap();
+        authorize_activation(&component_root, &authorization).unwrap();
         assert_eq!(
             recover_interrupted(&component_root, Some(&authorization)).unwrap(),
             RecoveryResult::Authorized
+        );
+        assert!(
+            !authorization.exists(),
+            "pre-start consent must be one-shot"
         );
         assert!(component_root.join("transaction.json").exists());
         assert_eq!(
@@ -630,5 +812,136 @@ mod tests {
         );
         assert!(!component_root.join("releases/0.7.0-2").exists());
         assert!(!component_root.join("transaction.json").exists());
+    }
+
+    #[test]
+    fn stale_forged_and_legacy_activation_files_cannot_authorize_a_candidate() {
+        for mutation in [
+            "legacy",
+            "expired",
+            "pid",
+            "identity",
+            "operation",
+            "target",
+        ] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("component");
+            fs::create_dir_all(root.join("releases/old")).unwrap();
+            fs::create_dir_all(root.join("releases/new")).unwrap();
+            create_symlink(Path::new("releases/new"), &root.join("current")).unwrap();
+            write_transaction_marker(
+                &root,
+                &TransactionMarker {
+                    schema_version: 1,
+                    operation_id: Uuid::new_v4(),
+                    previous_target: Some("releases/old".into()),
+                    candidate_target: "releases/new".into(),
+                },
+            )
+            .unwrap();
+            let auth = temp.path().join("authorization");
+            authorize_activation(&root, &auth).unwrap();
+            let mut permit: ActivationAuthorization =
+                crate::parse_strict_json(&fs::read(&auth).unwrap()).unwrap();
+            match mutation {
+                "expired" => permit.created_unix -= 61,
+                "pid" => permit.pid = u32::MAX,
+                "identity" => permit.process_identity = "another boot or reused PID".into(),
+                "operation" => permit.operation_id = Uuid::new_v4(),
+                "target" => permit.candidate_target = "releases/other".into(),
+                _ => (),
+            }
+            fs::write(
+                &auth,
+                if mutation == "legacy" {
+                    b"releases/new".to_vec()
+                } else {
+                    serde_json::to_vec(&permit).unwrap()
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                recover_interrupted(&root, Some(&auth)).unwrap(),
+                RecoveryResult::RolledBack,
+                "{mutation}"
+            );
+            assert_eq!(
+                fs::read_link(root.join("current")).unwrap(),
+                Path::new("releases/old")
+            );
+            assert!(!auth.exists());
+        }
+    }
+
+    #[test]
+    fn slot_is_durable_and_service_readable_before_maintenance() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("component");
+        let backups = temp.path().join("backups");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir(&backups).unwrap();
+        let artifact = temp.path().join("server");
+        fs::write(&artifact, b"new-server").unwrap();
+        let manifest = verified(b"new-server", "0.7.0", 2);
+        let layout = InstallLayout {
+            component_root: root.clone(),
+            backup_root: backups,
+        };
+        let request = ApplyRequest {
+            operation_id: Uuid::new_v4(),
+            verified: &manifest,
+            artifact: &artifact,
+            layout: &layout,
+            limits: &ExtractionLimits::default(),
+            allow_first_install: true,
+            force_interrupt: false,
+        };
+        struct BusyHooks {
+            root: PathBuf,
+            ended: bool,
+        }
+        impl InstallHooks for BusyHooks {
+            fn begin_quiescence(&mut self, _: Component, _: bool) -> Result<()> {
+                for path in [
+                    self.root.join("releases"),
+                    self.root.join("releases/0.7.0-2"),
+                    self.root.join("releases/0.7.0-2/payload"),
+                ] {
+                    assert_eq!(fs::metadata(path)?.permissions().mode() & 0o777, 0o755);
+                }
+                Err(UpdateError::Busy("active viewing".into()))
+            }
+            fn is_idle(&mut self, _: Component) -> Result<bool> {
+                panic!("busy must not enter commit window")
+            }
+            fn backup(&mut self, _: Component, _: &Path) -> Result<String> {
+                panic!("busy must not back up")
+            }
+            fn activate(&mut self, _: Component, _: &Path) -> Result<()> {
+                panic!("busy must not activate")
+            }
+            fn health_check(&mut self, _: Component, _: &Path) -> Result<()> {
+                panic!("busy must not health check")
+            }
+            fn end_quiescence(&mut self, _: Component) -> Result<()> {
+                self.ended = true;
+                Ok(())
+            }
+        }
+        let mut hooks = BusyHooks {
+            root: root.clone(),
+            ended: false,
+        };
+        assert!(matches!(
+            apply_staged(&request, &mut hooks),
+            Err(UpdateError::Busy(_))
+        ));
+        assert!(hooks.ended);
+        assert!(
+            !root.join("releases/0.7.0-2").exists(),
+            "busy attempt may be retried without slot collision"
+        );
+        assert!(!root.join("transaction.json").exists());
     }
 }

@@ -16,14 +16,14 @@ mod trust;
 pub use archive::{ArchiveKind, ExtractionLimits, extract_archive};
 pub use install::{
     ApplyRequest, ApplyResult, InstallHooks, InstallLayout, RecoveryResult, apply_staged,
-    recover_interrupted, verify_staged_artifact,
+    authorize_activation, recover_interrupted, verify_staged_artifact,
 };
 pub use manifest::{
     Asset, AssetFormat, Compatibility, Component, DatabaseCompatibility, RendererCompatibility,
     RuntimeCompatibility, SignedManifest, VerificationContext, VerifiedManifest, VersionBounds,
     parse_and_verify_manifest, parse_strict_json,
 };
-pub use scheduler::{ScheduledAttempt, due_attempts, record_retry};
+pub use scheduler::{ScheduledAttempt, due_attempts, due_attempts_for, record_retry};
 pub use state::{
     ComponentState, IntentKind, Operation, OperationStatus, PersistentState, Policy, PolicyMode,
     StateStore,

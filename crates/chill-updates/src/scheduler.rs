@@ -24,17 +24,33 @@ pub fn due_attempts(
     now: OffsetDateTime,
     local_offset: UtcOffset,
 ) -> Result<Vec<ScheduledAttempt>> {
+    due_attempts_for(
+        state,
+        now,
+        local_offset,
+        &[
+            Component::Mac,
+            Component::Server,
+            Component::Web,
+            Component::Themes,
+        ],
+    )
+}
+
+/// Admit only components this host can operate. Unsupported components must not
+/// consume their durable daily schedule merely because another host ticks.
+pub fn due_attempts_for(
+    state: &mut PersistentState,
+    now: OffsetDateTime,
+    local_offset: UtcOffset,
+    components: &[Component],
+) -> Result<Vec<ScheduledAttempt>> {
     let local = now.to_offset(local_offset);
     let date = local.date();
     let date_text = date.to_string();
     let mut due = Vec::new();
 
-    for component in [
-        Component::Mac,
-        Component::Server,
-        Component::Web,
-        Component::Themes,
-    ] {
+    for &component in components {
         let policy = state
             .policies
             .get(&component)
@@ -121,6 +137,34 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn host_scope_does_not_consume_another_hosts_daily_attempt() {
+        let mut state = PersistentState::default();
+        let linux = due_attempts_for(
+            &mut state,
+            at(3, 0),
+            UtcOffset::UTC,
+            &[Component::Server, Component::Web, Component::Themes],
+        )
+        .unwrap();
+        assert_eq!(linux.len(), 3);
+        assert!(
+            state
+                .components
+                .get(&Component::Mac)
+                .is_none_or(|entry| entry.last_scheduled_local_date.is_none())
+        );
+        let mac = due_attempts_for(
+            &mut state,
+            at(3, 1),
+            UtcOffset::UTC,
+            &[Component::Mac, Component::Themes],
+        )
+        .unwrap();
+        assert_eq!(mac.len(), 1);
+        assert_eq!(mac[0].component, Component::Mac);
     }
 
     #[test]
