@@ -1244,6 +1244,25 @@ fn local_offset() -> time::UtcOffset {
 mod tests {
     use super::*;
 
+    #[test]
+    fn embedded_updater_configuration_deserializes_before_builder_overrides() {
+        // Plugin initialization deserializes config BEFORE Builder::pubkey is
+        // applied. A missing pubkey prevented the whole native app from opening.
+        let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let config: tauri_plugin_updater::Config =
+            serde_json::from_value(config["plugins"]["updater"].clone()).unwrap();
+        assert_eq!(
+            STANDARD.decode(config.pubkey).unwrap(),
+            PUBLIC_KEY.as_bytes()
+        );
+        assert!(config.require_signed_version);
+        assert!(!config.dangerous_insecure_transport_protocol);
+        assert!(!config.dangerous_accept_invalid_certs);
+        assert!(!config.dangerous_accept_invalid_hostnames);
+        assert!(!config.allow_downgrades);
+        assert!(config.endpoints.is_empty());
+    }
+
     fn receipt(bytes: &[u8]) -> PendingRelease {
         PendingRelease {
             sequence: 7,
