@@ -1291,6 +1291,44 @@ mod tests {
         assert!(PendingStore::open(directory.path()).is_err());
     }
     #[test]
+    fn pending_receipt_refuses_same_sequence_substitution_but_allows_newer_recovery() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = PendingStore::open(directory.path()).unwrap();
+        let first = receipt(b"first signed manifest");
+        store
+            .save(&PendingState {
+                schema_version: PENDING_SCHEMA_VERSION,
+                releases: BTreeMap::from([(Component::Mac, first.clone())]),
+            })
+            .unwrap();
+        let mut changed = first.clone();
+        changed.manifest_base64 = STANDARD.encode(b"changed bytes");
+        changed.manifest_sha256 = hex_digest(b"changed bytes");
+        assert!(
+            store
+                .with_lock(|state| {
+                    let existing = state.releases.get(&Component::Mac).unwrap();
+                    if existing.sequence == changed.sequence && existing != &changed {
+                        return Err(error("substitution", "UPDATE_RECOVERY_REQUIRED"));
+                    }
+                    Ok(((), false))
+                })
+                .is_err()
+        );
+        let mut newer = changed;
+        newer.sequence += 1;
+        store
+            .with_lock(|state| {
+                state.releases.insert(Component::Mac, newer.clone());
+                Ok(((), true))
+            })
+            .unwrap();
+        assert_eq!(
+            store.get(Component::Mac).unwrap().unwrap().sequence,
+            first.sequence + 1
+        );
+    }
+    #[test]
     fn renderer_cannot_supply_consent_url_path_or_force() {
         for value in [
             json!({"action":"install","component":"mac","confirmed":true}),
