@@ -96,6 +96,7 @@ const MAX_PENDING_SIGNATURE_BYTES: usize = 8 * 1024;
 struct PendingRelease {
     sequence: u64,
     version: Version,
+    source_commit: String,
     manifest_sha256: String,
     manifest_base64: String,
     signature: String,
@@ -270,6 +271,11 @@ impl PendingStore {
         }
         for receipt in state.releases.values() {
             if receipt.sequence == 0
+                || receipt.source_commit.len() != 40
+                || !receipt
+                    .source_commit
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
                 || receipt.manifest_sha256.len() != 64
                 || !receipt
                     .manifest_sha256
@@ -306,6 +312,7 @@ impl PendingStore {
         let receipt = PendingRelease {
             sequence: verified.manifest.release_sequence,
             version: verified.manifest.version.clone(),
+            source_commit: verified.manifest.source_commit.clone(),
             manifest_sha256: hex_digest(bytes),
             manifest_base64: STANDARD.encode(bytes),
             signature: signature.to_owned(),
@@ -316,13 +323,19 @@ impl PendingStore {
         })?;
         self.with_lock(|state| {
             if let Some(existing) = state.releases.get(&component) {
-                if existing != &receipt {
+                if existing.sequence > receipt.sequence
+                    || (existing.sequence == receipt.sequence && existing != &receipt)
+                {
                     return Err(error(
                         "Une autre mise à jour acceptée doit être reprise exactement.",
                         "UPDATE_RECOVERY_REQUIRED",
                     ));
                 }
-                return Ok(((), false));
+                if existing == &receipt {
+                    return Ok(((), false));
+                }
+                state.releases.insert(component, receipt);
+                return Ok(((), true));
             }
             state.releases.insert(component, receipt);
             Ok(((), true))
@@ -463,6 +476,14 @@ impl UpdateHost {
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
             .and_then(|v| v["version"].as_str().map(str::to_owned))
             .unwrap_or_else(|| "0.7.0".into())
+    }
+    fn theme_source_commit(&self) -> Option<String> {
+        let path = self.directory.join("updates/themes/current/manifest.json");
+        std::fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+            .and_then(|value| value["source_commit"].as_str().map(str::to_owned))
+            .filter(|value| value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
     }
     pub fn policy(
         &self,
@@ -615,16 +636,14 @@ impl UpdateHost {
             .components
             .get(&component)
             .map_or(0, |s| s.highest_sequence);
+        let exact_pending = pending
+            .as_ref()
+            .is_some_and(|receipt| receipt.manifest_sha256 == digest);
         let installed = if let Some(receipt) = &pending {
             // A pending receipt is an exact-identity recovery exception, not a
             // general same-sequence exception. Rechecking the persisted bytes
             // below also catches corruption between acceptance and retry.
-            if receipt.manifest_sha256 != digest {
-                return Err(chill_updates::UpdateError::Security(
-                    "accepted manifest identity changed".into(),
-                ));
-            }
-            if installed == receipt.version {
+            if exact_pending && installed == receipt.version {
                 Version::new(0, 0, 0)
             } else {
                 installed
@@ -633,7 +652,11 @@ impl UpdateHost {
             installed
         };
         let highest = if let Some(receipt) = pending {
-            receipt.sequence.saturating_sub(1)
+            if exact_pending {
+                receipt.sequence.saturating_sub(1)
+            } else {
+                receipt.sequence
+            }
         } else {
             highest
         };
@@ -658,14 +681,19 @@ impl UpdateHost {
         };
         let verified =
             chill_updates::parse_and_verify_manifest(bytes, signature, PUBLIC_KEY, &context)?;
-        if let Some(receipt) = PendingStore::open(&self.directory)
-            .map_err(|_| {
-                chill_updates::UpdateError::Security("desktop pending receipt unavailable".into())
-            })?
-            .get(component)
-            .map_err(|_| {
-                chill_updates::UpdateError::Security("desktop pending receipt unavailable".into())
-            })?
+        if exact_pending
+            && let Some(receipt) = PendingStore::open(&self.directory)
+                .map_err(|_| {
+                    chill_updates::UpdateError::Security(
+                        "desktop pending receipt unavailable".into(),
+                    )
+                })?
+                .get(component)
+                .map_err(|_| {
+                    chill_updates::UpdateError::Security(
+                        "desktop pending receipt unavailable".into(),
+                    )
+                })?
             && (receipt.sequence != verified.manifest.release_sequence
                 || receipt.version != verified.manifest.version
                 || receipt.manifest_sha256 != digest)
@@ -764,7 +792,12 @@ impl UpdateHost {
                 self.theme_version()
             })
             .map_err(|_| error("Version installée invalide.", "UPDATE_STATE_UNAVAILABLE"))?;
-            if installed == receipt.version {
+            let installed_source_matches = if component == Component::Mac {
+                receipt.source_commit == env!("CHILL_SOURCE_COMMIT")
+            } else {
+                self.theme_source_commit().as_deref() == Some(receipt.source_commit.as_str())
+            };
+            if installed == receipt.version && installed_source_matches {
                 let state = self
                     .store()?
                     .read()
@@ -1108,6 +1141,7 @@ mod tests {
         PendingRelease {
             sequence: 7,
             version: Version::parse("0.7.1").unwrap(),
+            source_commit: "a".repeat(40),
             manifest_sha256: hex_digest(bytes),
             manifest_base64: STANDARD.encode(bytes),
             signature: "synthetic-signature".into(),
