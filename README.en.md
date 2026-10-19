@@ -2,7 +2,7 @@
 
 [Français](README.md) | **English**
 
-Your video library, on your own network. Derived from Cinéfolio: a lightweight
+Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).
 

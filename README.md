@@ -2,7 +2,7 @@
 
 **Français** | [English](README.en.md)
 
-Votre vidéothèque, sur votre réseau. Projet issu de Cinéfolio : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
+Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
 Version de référence du client Mac : **v0.6 — 0.6.0, build 7**.
 Livraison locale : `artifacts/macos/Chill Center-v0.6.app`.
