@@ -634,6 +634,19 @@ impl UpdateHost {
         bytes: &[u8],
         signature: &str,
     ) -> chill_updates::Result<VerifiedManifest> {
+        self.verify_install_using_key(component, bytes, signature, PUBLIC_KEY, KEY_ID)
+    }
+    /// Kept private so production always uses the embedded release key.  Tests
+    /// use this one seam to exercise real Minisign receipts made with an
+    /// ephemeral key, rather than depending on a production signing key.
+    fn verify_install_using_key(
+        &self,
+        component: Component,
+        bytes: &[u8],
+        signature: &str,
+        public_key: &str,
+        key_id: &str,
+    ) -> chill_updates::Result<VerifiedManifest> {
         let pending = PendingStore::open(&self.directory)
             .and_then(|store| store.get(component))
             .map_err(|_| {
@@ -654,9 +667,10 @@ impl UpdateHost {
             }
             // Continue this exact previously-valid transaction. Actual Mac
             // installation still requires a new native confirmation each time.
-            return self.verify_at(component, bytes, signature, accepted);
+            return self
+                .verify_at_using_key(component, bytes, signature, accepted, public_key, key_id);
         }
-        self.verify_current(component, bytes, signature)
+        self.verify_at_using_key(component, bytes, signature, now, public_key, key_id)
     }
     fn verify_at(
         &self,
@@ -1351,6 +1365,182 @@ mod tests {
         assert!(
             serde_json::from_value::<UpdateCommand>(json!({"action":"install","component":"mac"}))
                 .is_ok()
+        );
+    }
+
+    #[test]
+    fn minisign_pending_receipt_allows_only_the_exact_pre_expiry_manifest() {
+        use std::process::Command;
+        use time::format_description::well_known::Rfc3339;
+
+        let directory = tempfile::tempdir().unwrap();
+        let key_directory = tempfile::tempdir().unwrap();
+        let secret_key = key_directory.path().join("fixture.key");
+        let public_key = key_directory.path().join("fixture.pub");
+        assert!(
+            Command::new("/opt/homebrew/bin/minisign")
+                .args([
+                    "-G",
+                    "-W",
+                    "-s",
+                    secret_key.to_str().unwrap(),
+                    "-p",
+                    public_key.to_str().unwrap(),
+                ])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let public_key_text = fs::read_to_string(&public_key).unwrap();
+        let key_id = public_key_text
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().last())
+            .unwrap()
+            .to_owned();
+        let sign = |name: &str, bytes: &[u8]| {
+            let manifest = key_directory.path().join(format!("{name}.json"));
+            let signature = key_directory.path().join(format!("{name}.minisig"));
+            fs::write(&manifest, bytes).unwrap();
+            assert!(
+                Command::new("/opt/homebrew/bin/minisign")
+                    .args([
+                        "-S",
+                        "-s",
+                        secret_key.to_str().unwrap(),
+                        "-m",
+                        manifest.to_str().unwrap(),
+                        "-x",
+                        signature.to_str().unwrap(),
+                    ])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            fs::read_to_string(signature).unwrap()
+        };
+        let manifest = |source_commit: &str, expires_at: &str| {
+            serde_json::to_vec(&json!({
+                "schema_version": 1,
+                "component": "mac",
+                "version": "0.7.1",
+                "release_sequence": 7,
+                "release_tag": "mac-v0.7.1",
+                "source_commit": source_commit,
+                "issued_at": "2026-10-18T00:00:00Z",
+                "expires_at": expires_at,
+                "key_id": key_id,
+                "compatibility": {
+                    "os_arch": ["darwin-aarch64"],
+                    "api": {"min": "2026.10.14", "max": "2026.10.14"}
+                },
+                "assets": [{
+                    "target": "darwin-aarch64",
+                    "url": "https://github.com/ungeekrange-cmyk/chillcenter/releases/download/mac-v0.7.1/test-mac",
+                    "byte_length": 7,
+                    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "format": "raw",
+                    "tauri_signature": "test-only-tauri-signature"
+                }]
+            }))
+            .unwrap()
+        };
+        let exact_bytes = manifest(&"a".repeat(40), "2026-10-19T00:00:00Z");
+        let exact_signature = sign("exact", &exact_bytes);
+        let accepted = time::OffsetDateTime::parse("2026-10-18T12:00:00Z", &Rfc3339).unwrap();
+        let after_expiry = time::OffsetDateTime::parse("2026-10-20T00:00:00Z", &Rfc3339).unwrap();
+        let host = UpdateHost::new(directory.path().to_path_buf());
+
+        // The original, real Minisign signature was valid at the receipt time.
+        let accepted_verified = host
+            .verify_at_using_key(
+                Component::Mac,
+                &exact_bytes,
+                &exact_signature,
+                accepted,
+                &public_key_text,
+                &key_id,
+            )
+            .unwrap();
+        // A new discovery must never accept that expired publication.
+        assert!(
+            host.verify_at_using_key(
+                Component::Mac,
+                &exact_bytes,
+                &exact_signature,
+                after_expiry,
+                &public_key_text,
+                &key_id,
+            )
+            .is_err()
+        );
+
+        let store = PendingStore::open(directory.path()).unwrap();
+        store
+            .save(&PendingState {
+                schema_version: PENDING_SCHEMA_VERSION,
+                releases: BTreeMap::from([(
+                    Component::Mac,
+                    PendingRelease {
+                        sequence: accepted_verified.manifest.release_sequence,
+                        version: accepted_verified.manifest.version.clone(),
+                        source_commit: accepted_verified.manifest.source_commit.clone(),
+                        accepted_unix: accepted.unix_timestamp(),
+                        manifest_sha256: hex_digest(&exact_bytes),
+                        manifest_base64: STANDARD.encode(&exact_bytes),
+                        signature: exact_signature.clone(),
+                    },
+                )]),
+            })
+            .unwrap();
+        // Expiry is intentionally evaluated at acceptance only for this exact
+        // persisted signed byte sequence.
+        assert!(
+            host.verify_install_using_key(
+                Component::Mac,
+                &exact_bytes,
+                &exact_signature,
+                &public_key_text,
+                &key_id,
+            )
+            .is_ok()
+        );
+
+        let substituted_bytes = manifest(&"c".repeat(40), "2026-10-21T00:00:00Z");
+        let substituted_signature = sign("substituted", &substituted_bytes);
+        // A separately valid signature cannot substitute a different manifest
+        // with the same sequence while an exact receipt remains pending.
+        assert!(
+            host.verify_install_using_key(
+                Component::Mac,
+                &substituted_bytes,
+                &substituted_signature,
+                &public_key_text,
+                &key_id,
+            )
+            .is_err()
+        );
+
+        store
+            .with_lock(|state| {
+                state
+                    .releases
+                    .get_mut(&Component::Mac)
+                    .unwrap()
+                    .accepted_unix = after_expiry.unix_timestamp() + 1;
+                Ok(((), true))
+            })
+            .unwrap();
+        // A forged/future acceptance timestamp is never a recovery bypass.
+        assert!(
+            host.verify_install_using_key(
+                Component::Mac,
+                &exact_bytes,
+                &exact_signature,
+                &public_key_text,
+                &key_id,
+            )
+            .is_err()
         );
     }
 }
