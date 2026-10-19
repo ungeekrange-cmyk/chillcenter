@@ -8,10 +8,10 @@ import {execFileSync} from 'node:child_process';
 const temporary = mkdtempSync(join(tmpdir(), 'chill-update-test-key-'));
 const output = resolve('crates/chill-updates/tests/vectors');
 const minisign = process.env.MINISIGN || 'minisign';
+const hostileOnly = process.argv.includes('--hostile-only');
 try {
   execFileSync(minisign, ['-G', '-W', '-s', join(temporary, 'test.key'), '-p', join(temporary, 'test.pub')], {stdio: 'ignore'});
   mkdirSync(output, {recursive: true});
-  copyFileSync(join(temporary, 'test.pub'), join(output, 'test.pub'));
   const keyId = /public key (\w+)/.exec(readFileSync(join(temporary, 'test.pub'), 'utf8'))[1];
   const base = {
     schema_version: 1, component: 'server', version: '0.7.0', release_sequence: 2,
@@ -35,11 +35,50 @@ try {
     downgrade: m => {m.version = '0.5.0'; m.release_tag = 'server-v0.5.0';},
     duplicate: () => {},
   };
-  for (const [name, mutate] of Object.entries(cases)) {
-    const manifest = structuredClone(base); mutate(manifest);
-    let bytes = JSON.stringify(manifest, null, 2) + '\n';
-    if (name === 'duplicate') bytes = bytes.replace('"schema_version": 1', '"schema_version": 1, "schema_version": 1');
-    const path = join(output, `${name}.json`); writeFileSync(path, bytes);
-    execFileSync(minisign, ['-S', '-s', join(temporary, 'test.key'), '-m', path, '-x', path + '.minisig', '-t', 'TEST ONLY production parser vector'], {stdio: 'ignore'});
+  if (!hostileOnly) {
+    copyFileSync(join(temporary, 'test.pub'), join(output, 'test.pub'));
+    for (const [name, mutate] of Object.entries(cases)) {
+      const manifest = structuredClone(base); mutate(manifest);
+      let bytes = JSON.stringify(manifest, null, 2) + '\n';
+      if (name === 'duplicate') bytes = bytes.replace('"schema_version": 1', '"schema_version": 1, "schema_version": 1');
+      const path = join(output, `${name}.json`); writeFileSync(path, bytes);
+      execFileSync(minisign, ['-S', '-s', join(temporary, 'test.key'), '-m', path, '-x', path + '.minisig', '-t', 'TEST ONLY production parser vector'], {stdio: 'ignore'});
+    }
+  }
+  if (hostileOnly) {
+    const hostile = {
+      mac: {
+        target: 'darwin-aarch64', format: 'zip',
+        compatibility: {os_arch: ['darwin-aarch64']}, tauri_signature: 'dGVzdC1vbmx5',
+      },
+      web: {
+        target: 'linux-aarch64', format: 'raw',
+        compatibility: {os_arch: ['linux-aarch64']},
+      },
+      themes: {
+        target: 'any', format: 'zip',
+        compatibility: {os_arch: ['any'], renderer: {theme_format: 1, renderer_min: 1, renderer_max: 1}},
+      },
+    };
+    copyFileSync(join(temporary, 'test.pub'), join(output, 'hostile.pub'));
+    for (const [component, details] of Object.entries(hostile)) {
+      const manifest = {
+        ...base,
+        component,
+        release_tag: `${component}-v0.7.0`,
+        compatibility: details.compatibility,
+        assets: [{
+          target: details.target,
+          url: `https://github.com/ungeekrange-cmyk/chillcenter/releases/download/${component}-v0.7.0/test-${component}`,
+          byte_length: 7,
+          sha256: 'b'.repeat(64),
+          format: details.format,
+          ...(details.tauri_signature ? {tauri_signature: details.tauri_signature} : {}),
+        }],
+      };
+      const path = join(output, `hostile-${component}-valid.json`);
+      writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');
+      execFileSync(minisign, ['-S', '-s', join(temporary, 'test.key'), '-m', path, '-x', path + '.minisig', '-t', 'TEST ONLY hostile input vector'], {stdio: 'ignore'});
+    }
   }
 } finally { rmSync(temporary, {recursive: true, force: true}); }

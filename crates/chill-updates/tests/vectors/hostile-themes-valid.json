@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "component": "themes",
+  "version": "0.7.0",
+  "release_sequence": 2,
+  "release_tag": "themes-v0.7.0",
+  "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "issued_at": "2026-10-18T00:00:00Z",
+  "expires_at": "2026-11-18T00:00:00Z",
+  "key_id": "9905A839DC8B212D",
+  "compatibility": {
+    "os_arch": [
+      "any"
+    ],
+    "renderer": {
+      "theme_format": 1,
+      "renderer_min": 1,
+      "renderer_max": 1
+    }
+  },
+  "assets": [
+    {
+      "target": "any",
+      "url": "https://github.com/ungeekrange-cmyk/chillcenter/releases/download/themes-v0.7.0/test-themes",
+      "byte_length": 7,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "format": "zip"
+    }
+  ]
+}

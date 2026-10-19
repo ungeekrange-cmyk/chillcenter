@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "component": "mac",
+  "version": "0.7.0",
+  "release_sequence": 2,
+  "release_tag": "mac-v0.7.0",
+  "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "issued_at": "2026-10-18T00:00:00Z",
+  "expires_at": "2026-11-18T00:00:00Z",
+  "key_id": "9905A839DC8B212D",
+  "compatibility": {
+    "os_arch": [
+      "darwin-aarch64"
+    ]
+  },
+  "assets": [
+    {
+      "target": "darwin-aarch64",
+      "url": "https://github.com/ungeekrange-cmyk/chillcenter/releases/download/mac-v0.7.0/test-mac",
+      "byte_length": 7,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "format": "zip",
+      "tauri_signature": "dGVzdC1vbmx5"
+    }
+  ]
+}
