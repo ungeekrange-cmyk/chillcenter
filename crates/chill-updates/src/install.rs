@@ -1,11 +1,18 @@
 use crate::archive::{ArchiveKind, ExtractionLimits, extract_archive};
 use crate::manifest::{AssetFormat, Component, VerifiedManifest};
+use crate::theme::validate_theme_package;
+#[cfg(not(test))]
+use crate::trust::validate_root_owned_directory;
 use crate::{Result, UpdateError};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 #[derive(Clone, Debug)]
 pub struct InstallLayout {
@@ -30,6 +37,22 @@ pub struct ApplyResult {
     pub backup_id: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RecoveryResult {
+    None,
+    Authorized,
+    RolledBack,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct TransactionMarker {
+    schema_version: u32,
+    operation_id: Uuid,
+    previous_target: Option<String>,
+    candidate_target: String,
+}
+
 /// Integration hooks are implemented by the privileged Linux helper/server
 /// glue. Implementations must use fixed root-owned configuration and exact
 /// argv; no shell or service-owned executable is accepted.
@@ -47,7 +70,7 @@ pub fn apply_staged(
     hooks: &mut dyn InstallHooks,
 ) -> Result<ApplyResult> {
     validate_layout(request.layout)?;
-    verify_artifact(
+    verify_staged_artifact(
         request.artifact,
         request.verified.selected_asset.byte_length,
         &request.verified.selected_asset.sha256,
@@ -59,11 +82,8 @@ pub fn apply_staged(
             "server payload must be one reviewed raw binary".into(),
         ));
     }
-    if !hooks.is_idle(request.verified.manifest.component)? && !request.force_interrupt {
-        return Err(UpdateError::Busy(
-            "playback or conflicting work is active".into(),
-        ));
-    }
+    // Fresh idle status is generation-bound and exists only after the fixed
+    // maintenance flag has been created.
     hooks.begin_quiescence(request.verified.manifest.component, request.force_interrupt)?;
     let outcome = apply_while_quiesced(request, hooks);
     let resumed = hooks.end_quiescence(request.verified.manifest.component);
@@ -104,7 +124,7 @@ fn apply_while_quiesced(
     };
     extract_archive(request.artifact, &stage, kind, request.limits)?;
     if request.verified.manifest.component == Component::Themes {
-        validate_theme_tree(&stage, request.limits)?;
+        validate_theme_package(&stage)?;
     }
     #[cfg(unix)]
     if request.verified.manifest.component == Component::Server {
@@ -154,6 +174,17 @@ fn apply_while_quiesced(
         ));
     }
     let new_target = PathBuf::from("releases").join(&leaf);
+    write_transaction_marker(
+        &request.layout.component_root,
+        &TransactionMarker {
+            schema_version: 1,
+            operation_id: request.operation_id,
+            previous_target: previous_target
+                .as_ref()
+                .map(|target| target.to_string_lossy().into_owned()),
+            candidate_target: new_target.to_string_lossy().into_owned(),
+        },
+    )?;
     let new_link = request
         .layout
         .component_root
@@ -187,11 +218,20 @@ fn apply_while_quiesced(
         } else {
             fs::remove_file(&current)?;
             File::open(&request.layout.component_root)?.sync_all()?;
+            remove_transaction_marker(&request.layout.component_root)?;
+            if request.verified.manifest.component != Component::Server {
+                hooks.activate(
+                    request.verified.manifest.component,
+                    &request.layout.component_root,
+                )?;
+            }
         }
+        remove_transaction_marker(&request.layout.component_root)?;
         return Err(UpdateError::Security(format!(
             "health check failed; previous slot restored: {failure}"
         )));
     }
+    remove_transaction_marker(&request.layout.component_root)?;
     Ok(ApplyResult {
         installed: final_root,
         previous: previous_target.map(|target| request.layout.component_root.join(target)),
@@ -199,60 +239,11 @@ fn apply_while_quiesced(
     })
 }
 
-fn validate_theme_tree(root: &Path, limits: &ExtractionLimits) -> Result<()> {
-    let mut stack = vec![root.to_path_buf()];
-    let mut manifest_count = 0usize;
-    let mut entries = 0usize;
-    while let Some(directory) = stack.pop() {
-        for entry in fs::read_dir(directory)? {
-            let entry = entry?;
-            entries += 1;
-            if entries > limits.max_entries {
-                return Err(UpdateError::Security(
-                    "theme tree has too many entries".into(),
-                ));
-            }
-            let metadata = entry.file_type()?;
-            if metadata.is_symlink() {
-                return Err(UpdateError::Security("theme symlink refused".into()));
-            }
-            if metadata.is_dir() {
-                stack.push(entry.path());
-                continue;
-            }
-            if !metadata.is_file() {
-                return Err(UpdateError::Security("theme special file refused".into()));
-            }
-            let relative = entry
-                .path()
-                .strip_prefix(root)
-                .map_err(|_| UpdateError::Security("theme path escaped root".into()))?
-                .to_path_buf();
-            if relative == Path::new("manifest.json") {
-                manifest_count += 1;
-                continue;
-            }
-            let extension = relative
-                .extension()
-                .and_then(|value| value.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif") {
-                return Err(UpdateError::Security(
-                    "theme contains executable or unsupported asset type".into(),
-                ));
-            }
-        }
-    }
-    if manifest_count != 1 {
-        return Err(UpdateError::Security(
-            "theme requires one root manifest.json".into(),
-        ));
-    }
-    Ok(())
-}
-
-fn verify_artifact(path: &Path, expected_length: u64, expected_sha256: &str) -> Result<()> {
+pub fn verify_staged_artifact(
+    path: &Path,
+    expected_length: u64,
+    expected_sha256: &str,
+) -> Result<()> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() != expected_length
     {
@@ -279,14 +270,20 @@ fn verify_artifact(path: &Path, expected_length: u64, expected_sha256: &str) -> 
 }
 
 fn validate_layout(layout: &InstallLayout) -> Result<()> {
-    for root in [&layout.component_root, &layout.backup_root] {
-        if !root.is_absolute() {
-            return Err(UpdateError::Security(
-                "install roots must be absolute".into(),
-            ));
-        }
-        fs::create_dir_all(root)?;
-        reject_symlink(root)?;
+    if !layout.component_root.is_absolute() || !layout.backup_root.is_absolute() {
+        return Err(UpdateError::Security(
+            "install roots must be absolute".into(),
+        ));
+    }
+    #[cfg(not(test))]
+    validate_root_owned_directory(&layout.component_root)?;
+    #[cfg(test)]
+    reject_symlink(&layout.component_root)?;
+    let backup_metadata = fs::symlink_metadata(&layout.backup_root)?;
+    if backup_metadata.file_type().is_symlink() || !backup_metadata.is_dir() {
+        return Err(UpdateError::Security(
+            "service-owned backup root is not a real directory".into(),
+        ));
     }
     if layout.component_root.starts_with(&layout.backup_root)
         || layout.backup_root.starts_with(&layout.component_root)
@@ -296,6 +293,127 @@ fn validate_layout(layout: &InstallLayout) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+pub fn recover_interrupted(
+    component_root: &Path,
+    runtime_authorization: Option<&Path>,
+) -> Result<RecoveryResult> {
+    #[cfg(not(test))]
+    validate_root_owned_directory(component_root)?;
+    let marker_path = component_root.join("transaction.json");
+    let marker_bytes = match read_bounded_nofollow(&marker_path, 16 * 1024) {
+        Ok(bytes) => bytes,
+        Err(UpdateError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RecoveryResult::None);
+        }
+        Err(error) => return Err(error),
+    };
+    let marker: TransactionMarker = crate::parse_strict_json(&marker_bytes)?;
+    validate_marker(&marker)?;
+    if let Some(path) = runtime_authorization
+        && let Ok(bytes) = read_bounded_nofollow(path, 1024)
+        && bytes == marker.candidate_target.as_bytes()
+    {
+        return Ok(RecoveryResult::Authorized);
+    }
+    let current = component_root.join("current");
+    let target = fs::read_link(&current)?;
+    validate_slot_target(&target)?;
+    let candidate_target = PathBuf::from(&marker.candidate_target);
+    let already_restored = marker
+        .previous_target
+        .as_ref()
+        .is_some_and(|previous| target == Path::new(previous));
+    if target != candidate_target && !already_restored {
+        return Err(UpdateError::Security(
+            "current slot differs from interrupted transaction".into(),
+        ));
+    }
+    if !already_restored {
+        match &marker.previous_target {
+            Some(previous) => {
+                let previous = PathBuf::from(previous);
+                validate_slot_target(&previous)?;
+                let rollback = component_root.join(format!(".recover-{}", marker.operation_id));
+                create_symlink(&previous, &rollback)?;
+                fs::rename(rollback, &current)?;
+            }
+            None => fs::remove_file(&current)?,
+        }
+    }
+    File::open(component_root)?.sync_all()?;
+    let candidate = component_root.join(&marker.candidate_target);
+    let candidate_metadata = fs::symlink_metadata(&candidate)?;
+    if candidate_metadata.file_type().is_symlink() || !candidate_metadata.is_dir() {
+        return Err(UpdateError::Security(
+            "interrupted candidate release is not a directory".into(),
+        ));
+    }
+    fs::remove_dir_all(candidate)?;
+    remove_transaction_marker(component_root)?;
+    Ok(RecoveryResult::RolledBack)
+}
+
+fn write_transaction_marker(root: &Path, marker: &TransactionMarker) -> Result<()> {
+    validate_marker(marker)?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    let mut file = options.open(root.join("transaction.json"))?;
+    file.write_all(&serde_json::to_vec(marker)?)?;
+    file.sync_all()?;
+    File::open(root)?.sync_all()?;
+    Ok(())
+}
+
+fn remove_transaction_marker(root: &Path) -> Result<()> {
+    match fs::remove_file(root.join("transaction.json")) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    File::open(root)?.sync_all()?;
+    Ok(())
+}
+
+fn validate_marker(marker: &TransactionMarker) -> Result<()> {
+    if marker.schema_version != 1 {
+        return Err(UpdateError::Security(
+            "invalid transaction marker schema".into(),
+        ));
+    }
+    validate_slot_target(Path::new(&marker.candidate_target))?;
+    if let Some(previous) = &marker.previous_target {
+        validate_slot_target(Path::new(previous))?;
+        if previous == &marker.candidate_target {
+            return Err(UpdateError::Security(
+                "transaction slots are identical".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn read_bounded_nofollow(path: &Path, maximum: u64) -> Result<Vec<u8>> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    let file = options.open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > maximum {
+        return Err(UpdateError::Security("bounded file is invalid".into()));
+    }
+    let mut bytes = Vec::new();
+    file.take(maximum + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > maximum {
+        return Err(UpdateError::Security("bounded file exceeds limit".into()));
+    }
+    Ok(bytes)
 }
 
 fn validate_slot_target(target: &Path) -> Result<()> {
@@ -341,12 +459,18 @@ mod tests {
     struct Hooks {
         healthy: bool,
         activations: Vec<PathBuf>,
+        panic_activate: bool,
+        quiescing: bool,
     }
     impl InstallHooks for Hooks {
         fn is_idle(&mut self, _: Component) -> Result<bool> {
+            if !self.quiescing {
+                return Err(UpdateError::Busy("status predates maintenance flag".into()));
+            }
             Ok(true)
         }
         fn begin_quiescence(&mut self, _: Component, _: bool) -> Result<()> {
+            self.quiescing = true;
             Ok(())
         }
         fn backup(&mut self, _: Component, _: &Path) -> Result<String> {
@@ -354,6 +478,7 @@ mod tests {
         }
         fn activate(&mut self, _: Component, root: &Path) -> Result<()> {
             self.activations.push(root.to_path_buf());
+            assert!(!self.panic_activate, "synthetic crash after slot switch");
             Ok(())
         }
         fn health_check(&mut self, _: Component, _: &Path) -> Result<()> {
@@ -430,6 +555,8 @@ mod tests {
         let mut hooks = Hooks {
             healthy: false,
             activations: Vec::new(),
+            panic_activate: false,
+            quiescing: false,
         };
         assert!(apply_staged(&request, &mut hooks).is_err());
         assert_eq!(
@@ -438,5 +565,70 @@ mod tests {
         );
         assert!(component_root.join("releases/0.7.0-2/payload").exists());
         assert_eq!(hooks.activations.len(), 2);
+    }
+
+    #[test]
+    fn restart_boundary_recovers_previous_before_candidate_executes() {
+        let temp = tempfile::tempdir().unwrap();
+        let component_root = temp.path().join("component");
+        let backup_root = temp.path().join("backups");
+        fs::create_dir_all(component_root.join("releases/0.6.0-1")).unwrap();
+        fs::create_dir_all(&backup_root).unwrap();
+        create_symlink(
+            Path::new("releases/0.6.0-1"),
+            &component_root.join("current"),
+        )
+        .unwrap();
+        let artifact = temp.path().join("server");
+        File::create(&artifact)
+            .unwrap()
+            .write_all(b"new-server")
+            .unwrap();
+        let verified = verified(b"new-server", "0.7.0", 2);
+        let layout = InstallLayout {
+            component_root: component_root.clone(),
+            backup_root,
+        };
+        let request = ApplyRequest {
+            operation_id: Uuid::new_v4(),
+            verified: &verified,
+            artifact: &artifact,
+            layout: &layout,
+            limits: &ExtractionLimits::default(),
+            allow_first_install: false,
+            force_interrupt: false,
+        };
+        let mut hooks = Hooks {
+            healthy: true,
+            activations: Vec::new(),
+            panic_activate: true,
+            quiescing: false,
+        };
+        let crashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = apply_staged(&request, &mut hooks);
+        }));
+        assert!(crashed.is_err());
+        assert_eq!(
+            fs::read_link(component_root.join("current")).unwrap(),
+            PathBuf::from("releases/0.7.0-2")
+        );
+        assert!(component_root.join("transaction.json").exists());
+        let authorization = temp.path().join("authorization");
+        fs::write(&authorization, b"releases/0.7.0-2").unwrap();
+        assert_eq!(
+            recover_interrupted(&component_root, Some(&authorization)).unwrap(),
+            RecoveryResult::Authorized
+        );
+        assert!(component_root.join("transaction.json").exists());
+        assert_eq!(
+            recover_interrupted(&component_root, None).unwrap(),
+            RecoveryResult::RolledBack
+        );
+        assert_eq!(
+            fs::read_link(component_root.join("current")).unwrap(),
+            PathBuf::from("releases/0.6.0-1")
+        );
+        assert!(!component_root.join("releases/0.7.0-2").exists());
+        assert!(!component_root.join("transaction.json").exists());
     }
 }

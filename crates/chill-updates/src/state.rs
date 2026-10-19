@@ -125,6 +125,8 @@ impl Default for PersistentState {
 }
 
 pub struct StateStore {
+    #[allow(dead_code)]
+    root_handle: Option<File>,
     root: PathBuf,
     state_path: PathBuf,
     lock_path: PathBuf,
@@ -157,24 +159,52 @@ impl StateStore {
         if create {
             fs::create_dir_all(&root)?;
         }
-        reject_symlink(&root)?;
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         {
+            use std::os::fd::AsRawFd;
             use std::os::unix::fs::MetadataExt;
-            let metadata = fs::metadata(&root)?;
+            let root_handle = nofollow_directory_options().open(&root)?;
+            let metadata = root_handle.metadata()?;
             if metadata.uid() != owner_uid || metadata.mode() & 0o022 != 0 {
                 return Err(UpdateError::Security(
                     "state root owner/mode mismatch".into(),
                 ));
             }
+            let pinned_root = PathBuf::from(format!("/proc/self/fd/{}", root_handle.as_raw_fd()));
+            return Ok(Self {
+                state_path: pinned_root.join("state.json"),
+                lock_path: pinned_root.join("state.lock"),
+                root: pinned_root,
+                root_handle: Some(root_handle),
+                owner_uid,
+                owner_gid,
+            });
         }
-        Ok(Self {
-            state_path: root.join("state.json"),
-            lock_path: root.join("state.lock"),
-            root,
-            owner_uid,
-            owner_gid,
-        })
+        #[cfg(all(unix, not(target_os = "linux")))]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = fs::symlink_metadata(&root)?;
+            if metadata.file_type().is_symlink()
+                || metadata.uid() != owner_uid
+                || metadata.mode() & 0o022 != 0
+            {
+                return Err(UpdateError::Security(
+                    "state root owner/mode mismatch".into(),
+                ));
+            }
+            Ok(Self {
+                state_path: root.join("state.json"),
+                lock_path: root.join("state.lock"),
+                root,
+                root_handle: None,
+                owner_uid,
+                owner_gid,
+            })
+        }
+        #[cfg(not(unix))]
+        Err(UpdateError::Security(
+            "state storage requires Unix no-follow semantics".into(),
+        ))
     }
 
     pub fn read(&self) -> Result<PersistentState> {
@@ -451,6 +481,16 @@ fn nofollow_options() -> OpenOptions {
     options
 }
 
+#[cfg(target_os = "linux")]
+fn nofollow_directory_options() -> OpenOptions {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_DIRECTORY);
+    options
+}
+
 fn set_service_ownership(file: &File, uid: u32, gid: u32) -> Result<()> {
     #[cfg(unix)]
     {
@@ -463,15 +503,6 @@ fn set_service_ownership(file: &File, uid: u32, gid: u32) -> Result<()> {
             return Err(std::io::Error::last_os_error().into());
         }
         file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    }
-    Ok(())
-}
-
-fn reject_symlink(path: &Path) -> Result<()> {
-    if fs::symlink_metadata(path)?.file_type().is_symlink() {
-        return Err(UpdateError::Security(
-            "state root cannot be a symlink".into(),
-        ));
     }
     Ok(())
 }

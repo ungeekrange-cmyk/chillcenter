@@ -3,15 +3,19 @@ use chill_updates::{
     FIXED_GITHUB_REPOSITORY, GithubReleaseClient, InstallHooks, InstallLayout, IntentKind,
     OperationStatus, PolicyMode, RuntimeCompatibility, StateStore, TransportLimits, UpdateError,
     VerificationContext, apply_staged, due_attempts, parse_and_verify_manifest, parse_strict_json,
-    record_retry, validate_root_owned_file,
+    record_retry, recover_interrupted, validate_root_owned_directory, validate_root_owned_file,
+    verify_staged_artifact,
 };
+use reqwest::redirect::Policy as RedirectPolicy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+use std::net::{IpAddr, SocketAddr};
 use std::os::fd::AsRawFd;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -41,6 +45,9 @@ struct RootConfig {
     service_uid: u32,
     service_gid: u32,
     health_url: String,
+    status_url: String,
+    #[serde(default)]
+    health_resolve: Option<String>,
     health_ca_certificate: PathBuf,
     component_roots: BTreeMap<Component, PathBuf>,
     targets: BTreeMap<Component, String>,
@@ -69,6 +76,7 @@ struct AvailableReceipt {
     component: Component,
     target: String,
     release_tag: String,
+    cache_key: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -78,6 +86,23 @@ struct AvailabilityEntry {
     source_commit: String,
     release_sequence: u64,
     checked_unix: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BackupManifest {
+    format_version: u32,
+    schema_version: u32,
+    data_root: PathBuf,
+    entries: Vec<BackupEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BackupEntry {
+    path: String,
+    size: u64,
+    sha256: String,
 }
 
 fn main() {
@@ -109,7 +134,8 @@ fn run() -> chill_updates::Result<()> {
     } else {
         PathBuf::from(DEFAULT_CONFIG)
     };
-    let config = load_config(&config_path)?;
+    let recovery_only = arguments.first().map(String::as_str) == Some("recover");
+    let config = load_config(&config_path, recovery_only)?;
     match arguments.first().map(String::as_str) {
         Some("inspect") if arguments.len() == 1 => inspect(&config),
         Some("check") if arguments.len() == 2 => {
@@ -118,6 +144,19 @@ fn run() -> chill_updates::Result<()> {
         Some("manifest") if arguments.len() == 2 => {
             verify_cached(&config, parse_component(&arguments[1])?).map(|_| ())
         }
+        Some("recover") if arguments.len() == 2 => {
+            let component = parse_component(&arguments[1])?;
+            require_linux_component(component)?;
+            let root = config
+                .component_roots
+                .get(&component)
+                .ok_or_else(|| UpdateError::Security("component root missing".into()))?;
+            println!(
+                "{:?}",
+                recover_interrupted(root, Some(&activation_authorization(&config, component)))?
+            );
+            Ok(())
+        }
         Some("apply") | Some("install") => {
             if arguments.len() < 2 {
                 return Err(UpdateError::Invalid("component is required".into()));
@@ -125,6 +164,7 @@ fn run() -> chill_updates::Result<()> {
             let component = parse_component(&arguments[1])?;
             let first_install = arguments[0] == "install";
             let force = arguments.iter().any(|arg| arg == "--force");
+            let retry_accepted = arguments.iter().any(|arg| arg == "--retry-accepted");
             let confirmed = arguments
                 .iter()
                 .any(|arg| arg == &format!("--confirm-interrupt={CONFIRM_INTERRUPT}"));
@@ -133,14 +173,14 @@ fn run() -> chill_updates::Result<()> {
                     "--force requires --confirm-interrupt={CONFIRM_INTERRUPT}"
                 )));
             }
-            if arguments
-                .iter()
-                .skip(2)
-                .any(|arg| arg != "--force" && !arg.starts_with("--confirm-interrupt="))
-            {
+            if arguments.iter().skip(2).any(|arg| {
+                arg != "--force"
+                    && arg != "--retry-accepted"
+                    && !arg.starts_with("--confirm-interrupt=")
+            }) {
                 return Err(UpdateError::Invalid("unknown apply option".into()));
             }
-            perform_apply(&config, component, first_install, force)
+            perform_apply(&config, component, first_install, force, retry_accepted)
         }
         Some("policy") if arguments.len() == 6 => {
             let component = parse_component(&arguments[1])?;
@@ -183,12 +223,12 @@ fn run() -> chill_updates::Result<()> {
 
 fn print_help() {
     println!(
-        "chill-update {}\n\nUsage:\n  chill-update [--config PATH] inspect\n  chill-update [--config PATH] check COMPONENT\n  chill-update [--config PATH] manifest COMPONENT\n  chill-update [--config PATH] policy COMPONENT MODE HOUR MINUTE EXPECTED_REVISION\n  chill-update [--config PATH] intent COMPONENT check|install\n  chill-update [--config PATH] tick\n  chill-update [--config PATH] apply COMPONENT [--force --confirm-interrupt={CONFIRM_INTERRUPT}]\n  chill-update [--config PATH] install COMPONENT\n\nCOMPONENT is server, web, or themes on Linux. `install` is first-install only.\nNo command accepts a URL, repository, key, shell command, tag, or destination path.",
+        "chill-update {}\n\nUsage:\n  chill-update [--config PATH] inspect\n  chill-update [--config PATH] check COMPONENT\n  chill-update [--config PATH] manifest COMPONENT\n  chill-update [--config PATH] policy COMPONENT MODE HOUR MINUTE EXPECTED_REVISION\n  chill-update [--config PATH] intent COMPONENT check|install\n  chill-update [--config PATH] tick\n  chill-update [--config PATH] recover COMPONENT\n  chill-update [--config PATH] apply COMPONENT [--retry-accepted] [--force --confirm-interrupt={CONFIRM_INTERRUPT}]\n  chill-update [--config PATH] install COMPONENT\n\nCOMPONENT is server, web, or themes on Linux. `install` is first-install only.\n`--retry-accepted` is local root-only recovery and is never admitted by the LAN API.\nNo command accepts a URL, repository, key, shell command, tag, or destination path.",
         env!("CARGO_PKG_VERSION")
     );
 }
 
-fn load_config(path: &Path) -> chill_updates::Result<RootConfig> {
+fn load_config(path: &Path, recovery_only: bool) -> chill_updates::Result<RootConfig> {
     validate_root_owned_file(path, 128 * 1024)?;
     let bytes = read_bounded(path, 128 * 1024)?;
     let config: RootConfig = parse_strict_json(&bytes)?;
@@ -213,24 +253,23 @@ fn load_config(path: &Path) -> chill_updates::Result<RootConfig> {
             ));
         }
     }
-    for path in [
-        &config.public_key,
-        &config.server_config,
-        &config.health_ca_certificate,
-    ] {
+    for path in [&config.public_key, &config.server_config] {
         validate_root_owned_file(path, 1024 * 1024)?;
     }
-    for path in [
-        &config.state_root,
-        &config.trust_root,
-        &config.cache_root,
-        &config.backup_root,
-    ] {
+    if !recovery_only {
+        validate_root_owned_file(&config.health_ca_certificate, 1024 * 1024)?;
+    }
+    for path in [&config.state_root, &config.backup_root] {
         if !path.is_absolute() {
             return Err(UpdateError::Security(
                 "configured roots must be absolute".into(),
             ));
         }
+    }
+    validate_root_owned_directory(&config.trust_root)?;
+    validate_root_owned_directory(&config.cache_root)?;
+    for root in config.component_roots.values() {
+        validate_root_owned_directory(root)?;
     }
     if !config.maintenance_flag.is_absolute() || !config.quiescence_status.is_absolute() {
         return Err(UpdateError::Security(
@@ -240,10 +279,46 @@ fn load_config(path: &Path) -> chill_updates::Result<RootConfig> {
     let url = reqwest::Url::parse(&config.health_url)
         .map_err(|_| UpdateError::Invalid("invalid health URL".into()))?;
     if url.scheme() != "https"
-        || !matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
     {
         return Err(UpdateError::Security(
-            "health URL must be loopback HTTPS".into(),
+            "health URL must be bounded HTTPS without credentials".into(),
+        ));
+    }
+    if let Some(resolve) = &config.health_resolve {
+        let address: SocketAddr = resolve
+            .parse()
+            .map_err(|_| UpdateError::Invalid("invalid fixed health resolution".into()))?;
+        if !private_health_ip(address.ip()) || url.port_or_known_default() != Some(address.port()) {
+            return Err(UpdateError::Security(
+                "health resolution must be private and match the URL port".into(),
+            ));
+        }
+    } else if !matches!(
+        url.host_str(),
+        Some("127.0.0.1" | "localhost" | "[::1]" | "::1")
+    ) {
+        return Err(UpdateError::Security(
+            "non-loopback health URL requires fixed private resolution".into(),
+        ));
+    }
+    let status_url = reqwest::Url::parse(&config.status_url)
+        .map_err(|_| UpdateError::Invalid("invalid status URL".into()))?;
+    if status_url.scheme() != url.scheme()
+        || status_url.host_str() != url.host_str()
+        || status_url.port_or_known_default() != url.port_or_known_default()
+        || status_url.path() != "/api/2026-10-14/admin/updates"
+        || status_url.query().is_some()
+        || status_url.fragment().is_some()
+        || !status_url.username().is_empty()
+        || status_url.password().is_some()
+    {
+        return Err(UpdateError::Security(
+            "status URL must be the fixed same-origin update endpoint".into(),
         ));
     }
     Ok(config)
@@ -320,22 +395,31 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
                 "GitHub release identity differs from signed manifest".into(),
             ));
         }
-        let directory = config
-            .cache_root
-            .join(component.as_str())
-            .join(operation.id.to_string());
-        fs::create_dir_all(&directory)?;
-        write_new_sync(&directory.join("manifest.json"), &manifest_bytes)?;
-        write_new_sync(
-            &directory.join("manifest.json.minisig"),
-            signature.as_bytes(),
-        )?;
-        client.download_verified(
-            &verified.selected_asset.url,
-            &directory.join("payload"),
-            verified.selected_asset.byte_length,
-            &verified.selected_asset.sha256,
-        )?;
+        let cache_key = hex::encode(Sha256::digest(&manifest_bytes));
+        cleanup_component_cache(config, component, Some(&cache_key))?;
+        ensure_cache_headroom(config, verified.selected_asset.byte_length)?;
+        let directory = config.cache_root.join(component.as_str()).join(&cache_key);
+        if !directory.exists() {
+            fs::create_dir(&directory)?;
+            write_new_sync(&directory.join("manifest.json"), &manifest_bytes)?;
+            write_new_sync(
+                &directory.join("manifest.json.minisig"),
+                signature.as_bytes(),
+            )?;
+            client.download_verified(
+                &verified.selected_asset.url,
+                &directory.join("payload"),
+                verified.selected_asset.byte_length,
+                &verified.selected_asset.sha256,
+            )?;
+            File::open(&directory)?.sync_all()?;
+        } else {
+            verify_staged_artifact(
+                &directory.join("payload"),
+                verified.selected_asset.byte_length,
+                &verified.selected_asset.sha256,
+            )?;
+        }
         write_available(
             config,
             &AvailableReceipt {
@@ -344,6 +428,7 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
                 component,
                 target: target.clone(),
                 release_tag: verified.manifest.release_tag,
+                cache_key,
             },
         )?;
         publish_availability(
@@ -394,15 +479,21 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
     }
 }
 
+struct CachedVerification {
+    verified: chill_updates::VerifiedManifest,
+    manifest_sha256: String,
+    accepted_retry: bool,
+}
+
 fn verify_cached(
     config: &RootConfig,
     component: Component,
-) -> chill_updates::Result<chill_updates::VerifiedManifest> {
+) -> chill_updates::Result<CachedVerification> {
     let receipt = read_available(config, component)?;
     let directory = config
         .cache_root
         .join(component.as_str())
-        .join(receipt.operation_id.to_string());
+        .join(&receipt.cache_key);
     let manifest = read_bounded(&directory.join("manifest.json"), 1024 * 1024)?;
     let signature = String::from_utf8(read_bounded(
         &directory.join("manifest.json.minisig"),
@@ -411,13 +502,20 @@ fn verify_cached(
     .map_err(|_| UpdateError::Security("signature is not UTF-8".into()))?;
     let public_key = String::from_utf8(read_bounded(&config.public_key, 16 * 1024)?)
         .map_err(|_| UpdateError::Security("public key is not UTF-8".into()))?;
-    let installed = installed_version(config, component)?;
-    let highest = AntiRollbackStore::open_root(&config.trust_root)?.highest(component)?;
+    let manifest_sha256 = hex::encode(Sha256::digest(&manifest));
+    let trust = AntiRollbackStore::open_root(&config.trust_root)?;
+    let (highest, pending) = trust.verification_floor(component, &manifest_sha256)?;
+    let actual_installed = installed_version(config, component)?;
+    let verification_installed = if pending.is_some() {
+        Version::new(0, 0, 0)
+    } else {
+        actual_installed
+    };
     let context = verification_context(
         config,
         component,
         &receipt.target,
-        &installed,
+        &verification_installed,
         highest,
         OffsetDateTime::now_utc(),
     );
@@ -427,7 +525,19 @@ fn verify_cached(
             "available receipt does not match manifest".into(),
         ));
     }
-    Ok(verified)
+    if let Some(pending) = &pending
+        && (pending.sequence != verified.manifest.release_sequence
+            || pending.version != verified.manifest.version)
+    {
+        return Err(UpdateError::Security(
+            "accepted manifest identity changed during retry".into(),
+        ));
+    }
+    Ok(CachedVerification {
+        verified,
+        manifest_sha256,
+        accepted_retry: pending.is_some(),
+    })
 }
 
 fn perform_apply(
@@ -435,26 +545,28 @@ fn perform_apply(
     component: Component,
     first_install: bool,
     force: bool,
+    retry_accepted: bool,
 ) -> chill_updates::Result<()> {
     require_linux_component(component)?;
     let receipt = read_available(config, component)?;
-    let verified = verify_cached(config, component)?;
+    let cached = verify_cached(config, component)?;
+    if cached.accepted_retry && !retry_accepted {
+        return Err(UpdateError::Security(
+            "accepted failed/interrupted release requires local --retry-accepted".into(),
+        ));
+    }
+    let verified = cached.verified;
     let store = state_store(config)?;
     let operation =
         store.admit_intent(component, IntentKind::Install, OffsetDateTime::now_utc())?;
-    if operation.status != OperationStatus::Pending {
+    if operation.status != OperationStatus::Pending
+        && !(retry_accepted && operation.status == OperationStatus::Running)
+    {
         return Err(UpdateError::Busy(format!(
             "install operation {} is already {:?}",
             operation.id, operation.status
         )));
     }
-    store.transition(
-        operation.id,
-        OperationStatus::Pending,
-        OperationStatus::Running,
-        None,
-        OffsetDateTime::now_utc(),
-    )?;
     let component_root = config
         .component_roots
         .get(&component)
@@ -467,9 +579,91 @@ fn perform_apply(
     let artifact = config
         .cache_root
         .join(component.as_str())
-        .join(receipt.operation_id.to_string())
+        .join(&receipt.cache_key)
         .join("payload");
-    let mut hooks = LinuxHooks::new(config, verified.manifest.version.clone())?;
+    verify_staged_artifact(
+        &artifact,
+        verified.selected_asset.byte_length,
+        &verified.selected_asset.sha256,
+    )?;
+    let mut hooks = LinuxHooks::new(config)?;
+    let expected_target = PathBuf::from("releases").join(format!(
+        "{}-{}",
+        verified.manifest.version, verified.manifest.release_sequence
+    ));
+    let resumes_healthy_candidate = cached.accepted_retry
+        && !layout.component_root.join("transaction.json").exists()
+        && fs::read_link(layout.component_root.join("current"))
+            .ok()
+            .as_ref()
+            == Some(&expected_target);
+    if cached.accepted_retry
+        && !resumes_healthy_candidate
+        && !layout.component_root.join("transaction.json").exists()
+    {
+        let orphan = layout.component_root.join(&expected_target);
+        if let Ok(metadata) = fs::symlink_metadata(&orphan) {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(UpdateError::Security(
+                    "accepted retry candidate is not a directory".into(),
+                ));
+            }
+            fs::remove_dir_all(orphan)?;
+            File::open(&layout.component_root)?.sync_all()?;
+        }
+    }
+    if operation.status == OperationStatus::Pending {
+        store.transition(
+            operation.id,
+            OperationStatus::Pending,
+            OperationStatus::Running,
+            None,
+            OffsetDateTime::now_utc(),
+        )?;
+    }
+    let trust = AntiRollbackStore::open_root(&config.trust_root)?;
+    if let Err(error) = trust.accept_pending(
+        component,
+        verified.manifest.release_sequence,
+        &cached.manifest_sha256,
+        &verified.manifest.version,
+    ) {
+        let _ = store.transition(
+            operation.id,
+            OperationStatus::Running,
+            OperationStatus::Failed,
+            Some("trust_accept_failed"),
+            OffsetDateTime::now_utc(),
+        );
+        return Err(error);
+    }
+    if resumes_healthy_candidate {
+        let outcome = hooks.health_check(component, &layout.component_root.join(&expected_target));
+        if let Err(error) = outcome {
+            let _ = store.transition(
+                operation.id,
+                OperationStatus::Running,
+                OperationStatus::Failed,
+                Some("recovery_health_failed"),
+                OffsetDateTime::now_utc(),
+            );
+            return Err(error);
+        }
+        trust.commit_pending(
+            component,
+            verified.manifest.release_sequence,
+            &cached.manifest_sha256,
+        )?;
+        store.transition(
+            operation.id,
+            OperationStatus::Running,
+            OperationStatus::Succeeded,
+            Some("recovered_after_health"),
+            OffsetDateTime::now_utc(),
+        )?;
+        println!("installed={} recovered", verified.manifest.version);
+        return Ok(());
+    }
     let request = ApplyRequest {
         operation_id: operation.id,
         verified: &verified,
@@ -482,8 +676,11 @@ fn perform_apply(
     let outcome = apply_staged(&request, &mut hooks);
     match outcome {
         Ok(result) => {
-            AntiRollbackStore::open_root(&config.trust_root)?
-                .advance(component, verified.manifest.release_sequence)?;
+            trust.commit_pending(
+                component,
+                verified.manifest.release_sequence,
+                &cached.manifest_sha256,
+            )?;
             store.transition(
                 operation.id,
                 OperationStatus::Running,
@@ -535,7 +732,7 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
         .iter()
         .filter(|operation| operation.kind == IntentKind::Install)
     {
-        if let Err(error) = perform_apply(config, operation.component, false, false) {
+        if let Err(error) = perform_apply(config, operation.component, false, false, false) {
             eprintln!(
                 "pending {} install failed: {error}",
                 operation.component.as_str()
@@ -552,7 +749,7 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
                 .get(&attempt.component)
                 .is_some_and(|policy| policy.mode == PolicyMode::Automatic)
         {
-            perform_apply(config, attempt.component, false, false)?;
+            perform_apply(config, attempt.component, false, false, false)?;
         } else if let Err(error) = check {
             eprintln!(
                 "scheduled {} check deferred: {error}",
@@ -641,6 +838,246 @@ fn available_path(config: &RootConfig, component: Component) -> PathBuf {
         .join(component.as_str())
         .join("available.json")
 }
+
+fn cleanup_component_cache(
+    config: &RootConfig,
+    component: Component,
+    keep: Option<&str>,
+) -> chill_updates::Result<()> {
+    let root = config.cache_root.join(component.as_str());
+    match fs::create_dir(&root) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error.into()),
+    }
+    validate_root_owned_directory(&root)?;
+    for entry in fs::read_dir(&root)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name
+            .to_str()
+            .ok_or_else(|| UpdateError::Security("non-UTF8 cache entry refused".into()))?;
+        if name == "available.json" || keep == Some(name) {
+            continue;
+        }
+        if name.len() != 64 || !name.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(UpdateError::Security(
+                "unexpected cache entry refused".into(),
+            ));
+        }
+        validate_cache_tree(&entry.path(), 1024 * 1024 * 1024)?;
+        fs::remove_dir_all(entry.path())?;
+    }
+    File::open(&root)?.sync_all()?;
+    Ok(())
+}
+
+fn ensure_cache_headroom(config: &RootConfig, incoming: u64) -> chill_updates::Result<()> {
+    const GLOBAL_CACHE_MAX: u64 = 3 * 1024 * 1024 * 1024;
+    const HEADROOM: u64 = 128 * 1024 * 1024;
+    let used = validate_cache_tree(&config.cache_root, GLOBAL_CACHE_MAX)?;
+    if used.saturating_add(incoming) > GLOBAL_CACHE_MAX {
+        return Err(UpdateError::Security(
+            "global update cache quota exceeded".into(),
+        ));
+    }
+    let mut stats: libc::statvfs = unsafe { std::mem::zeroed() };
+    let path = std::ffi::CString::new(config.cache_root.as_os_str().as_encoded_bytes())
+        .map_err(|_| UpdateError::Security("cache path contains NUL".into()))?;
+    if unsafe { libc::statvfs(path.as_ptr(), &mut stats) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let available = (stats.f_bavail as u64).saturating_mul(stats.f_frsize as u64);
+    if available < incoming.saturating_add(HEADROOM) {
+        return Err(UpdateError::Busy(
+            "insufficient disk headroom for verified download".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_cache_tree(root: &Path, maximum: u64) -> chill_updates::Result<u64> {
+    let mut total = 0u64;
+    let mut entries = 0usize;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(directory) = stack.pop() {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            entries += 1;
+            if entries > 4096 {
+                return Err(UpdateError::Security("cache entry bound exceeded".into()));
+            }
+            let kind = entry.file_type()?;
+            if kind.is_symlink() {
+                return Err(UpdateError::Security("cache symlink refused".into()));
+            }
+            if kind.is_dir() {
+                stack.push(entry.path());
+            } else if kind.is_file() {
+                total = total
+                    .checked_add(entry.metadata()?.len())
+                    .ok_or_else(|| UpdateError::Security("cache size overflow".into()))?;
+                if total > maximum {
+                    return Err(UpdateError::Security("cache byte bound exceeded".into()));
+                }
+            } else {
+                return Err(UpdateError::Security("cache special file refused".into()));
+            }
+        }
+    }
+    Ok(total)
+}
+
+fn activation_authorization(config: &RootConfig, component: Component) -> PathBuf {
+    config
+        .maintenance_flag
+        .parent()
+        .unwrap_or(Path::new("/run/chillcenter-update"))
+        .join(format!("activate-{}", component.as_str()))
+}
+
+fn validate_backup_receipt(
+    receipt: &Path,
+    backup_root: &Path,
+    service_uid: u32,
+    started_unix: i64,
+) -> chill_updates::Result<String> {
+    if !receipt.is_absolute() || receipt.parent() != Some(backup_root) {
+        return Err(UpdateError::Security(
+            "backup receipt escaped the configured private root".into(),
+        ));
+    }
+    let identifier = receipt
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| UpdateError::Security("backup receipt identifier is invalid".into()))?;
+    Uuid::parse_str(identifier)
+        .map_err(|_| UpdateError::Security("backup receipt is not a UUID".into()))?;
+    let metadata = fs::symlink_metadata(receipt)?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_dir()
+        || metadata.uid() != service_uid
+        || metadata.mode() & 0o077 != 0
+        || metadata.mtime() < started_unix.saturating_sub(1)
+    {
+        return Err(UpdateError::Security(
+            "backup receipt directory owner, mode, or freshness is invalid".into(),
+        ));
+    }
+    let manifest: BackupManifest = parse_strict_json(&read_bounded(
+        &receipt.join("manifest.json"),
+        4 * 1024 * 1024,
+    )?)?;
+    if manifest.format_version != 1
+        || manifest.schema_version != 3
+        || manifest.data_root != backup_root.parent().unwrap_or(Path::new("/invalid"))
+        || manifest.entries.is_empty()
+        || manifest.entries.len() > 20_008
+    {
+        return Err(UpdateError::Security(
+            "backup manifest identity is invalid".into(),
+        ));
+    }
+    let mut expected = std::collections::BTreeSet::new();
+    let mut total = 0u64;
+    for entry in &manifest.entries {
+        if entry.path.contains('\\')
+            || entry.sha256.len() != 64
+            || !entry.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || Path::new(&entry.path)
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+            || !expected.insert(entry.path.clone())
+        {
+            return Err(UpdateError::Security("backup entry is invalid".into()));
+        }
+        total = total
+            .checked_add(entry.size)
+            .ok_or_else(|| UpdateError::Security("backup byte total overflow".into()))?;
+        if total > 1024 * 1024 * 1024 {
+            return Err(UpdateError::Security("backup exceeds byte bound".into()));
+        }
+        let path = receipt.join(&entry.path);
+        let file_metadata = fs::symlink_metadata(&path)?;
+        if file_metadata.file_type().is_symlink()
+            || !file_metadata.is_file()
+            || file_metadata.uid() != service_uid
+            || file_metadata.len() != entry.size
+            || hash_file(&path)? != entry.sha256
+        {
+            return Err(UpdateError::Security(
+                "backup entry hash/metadata mismatch".into(),
+            ));
+        }
+    }
+    for required in [
+        "catalog.sqlite",
+        "server-config.json",
+        "secrets/tls/certificate.pem",
+        "secrets/tls/service-key.pem",
+    ] {
+        if !expected.contains(required) {
+            return Err(UpdateError::Security(
+                "backup omits database, config, or TLS material".into(),
+            ));
+        }
+    }
+    let mut actual = std::collections::BTreeSet::new();
+    let mut stack = vec![receipt.to_path_buf()];
+    while let Some(directory) = stack.pop() {
+        for item in fs::read_dir(&directory)? {
+            let item = item?;
+            let kind = item.file_type()?;
+            if kind.is_symlink() {
+                return Err(UpdateError::Security("backup contains a symlink".into()));
+            }
+            if kind.is_dir() {
+                stack.push(item.path());
+            } else if kind.is_file() {
+                let relative = item
+                    .path()
+                    .strip_prefix(receipt)
+                    .map_err(|_| UpdateError::Security("backup path escaped".into()))?
+                    .to_string_lossy()
+                    .into_owned();
+                actual.insert(relative);
+            } else {
+                return Err(UpdateError::Security(
+                    "backup contains a special file".into(),
+                ));
+            }
+            if actual.len() + stack.len() > 20_009 {
+                return Err(UpdateError::Security("backup entry count exceeded".into()));
+            }
+        }
+    }
+    expected.insert("manifest.json".into());
+    if actual != expected {
+        return Err(UpdateError::Security(
+            "backup actual files differ from signed receipt".into(),
+        ));
+    }
+    File::open(receipt)?.sync_all()?;
+    File::open(backup_root)?.sync_all()?;
+    Ok(identifier.to_owned())
+}
+
+fn hash_file(path: &Path) -> chill_updates::Result<String> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
 fn write_available(config: &RootConfig, receipt: &AvailableReceipt) -> chill_updates::Result<()> {
     let path = available_path(config, receipt.component);
     let parent = path.parent().unwrap().to_path_buf();
@@ -663,6 +1100,11 @@ fn read_available(
         || receipt.component != component
         || receipt.target.len() > 128
         || receipt.release_tag.len() > 128
+        || receipt.cache_key.len() != 64
+        || !receipt
+            .cache_key
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
     {
         return Err(UpdateError::Security("available receipt is invalid".into()));
     }
@@ -676,7 +1118,8 @@ fn publish_availability(
 ) -> chill_updates::Result<()> {
     // UI-only snapshot. It is never consulted by signature, sequence, path, or
     // install decisions; those are revalidated from the root-owned cache/trust store.
-    let path = config.state_root.join("available.json");
+    let (state_handle, pinned_root) = pin_service_state_root(config)?;
+    let path = pinned_root.join("available.json");
     let mut entries: BTreeMap<Component, AvailabilityEntry> = match read_bounded(&path, 64 * 1024) {
         Ok(bytes) => parse_strict_json(&bytes)?,
         Err(UpdateError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -691,9 +1134,7 @@ fn publish_availability(
         ));
     }
     let bytes = serde_json::to_vec_pretty(&entries)?;
-    let temporary = config
-        .state_root
-        .join(format!(".available-{}.tmp", Uuid::new_v4()));
+    let temporary = pinned_root.join(format!(".available-{}.tmp", Uuid::new_v4()));
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -706,8 +1147,27 @@ fn publish_availability(
         return Err(std::io::Error::last_os_error().into());
     }
     fs::rename(&temporary, &path)?;
-    File::open(&config.state_root)?.sync_all()?;
+    state_handle.sync_all()?;
     Ok(())
+}
+
+fn pin_service_state_root(config: &RootConfig) -> chill_updates::Result<(File, PathBuf)> {
+    let handle = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_DIRECTORY)
+        .open(&config.state_root)?;
+    let metadata = handle.metadata()?;
+    if !metadata.is_dir()
+        || metadata.uid() != config.service_uid
+        || metadata.gid() != config.service_gid
+        || metadata.mode() & 0o022 != 0
+    {
+        return Err(UpdateError::Security(
+            "service state root owner or mode is invalid".into(),
+        ));
+    }
+    let pinned = PathBuf::from(format!("/proc/self/fd/{}", handle.as_raw_fd()));
+    Ok((handle, pinned))
 }
 
 fn read_bounded(path: &Path, maximum: u64) -> chill_updates::Result<Vec<u8>> {
@@ -740,25 +1200,35 @@ fn write_new_sync(path: &Path, bytes: &[u8]) -> chill_updates::Result<()> {
 
 struct LinuxHooks<'a> {
     config: &'a RootConfig,
-    expected_version: Version,
     client: reqwest::blocking::Client,
     stopped: bool,
     maintenance_generation_ns: Option<String>,
 }
 
 impl<'a> LinuxHooks<'a> {
-    fn new(config: &'a RootConfig, expected_version: Version) -> chill_updates::Result<Self> {
+    fn new(config: &'a RootConfig) -> chill_updates::Result<Self> {
         let certificate = reqwest::Certificate::from_pem(&read_bounded(
             &config.health_ca_certificate,
             1024 * 1024,
         )?)?;
-        let client = reqwest::blocking::Client::builder()
+        let mut builder = reqwest::blocking::Client::builder()
             .add_root_certificate(certificate)
-            .timeout(Duration::from_secs(10))
-            .build()?;
+            .redirect(RedirectPolicy::none())
+            .timeout(Duration::from_secs(10));
+        if let Some(resolve) = &config.health_resolve {
+            let host = reqwest::Url::parse(&config.health_url)
+                .map_err(|_| UpdateError::Invalid("invalid health URL".into()))?
+                .host_str()
+                .ok_or_else(|| UpdateError::Invalid("health URL has no host".into()))?
+                .to_owned();
+            let address: SocketAddr = resolve
+                .parse()
+                .map_err(|_| UpdateError::Invalid("invalid fixed health resolution".into()))?;
+            builder = builder.resolve(&host, address);
+        }
+        let client = builder.build()?;
         Ok(Self {
             config,
-            expected_version,
             client,
             stopped: false,
             maintenance_generation_ns: None,
@@ -830,14 +1300,12 @@ impl InstallHooks for LinuxHooks<'_> {
                 "server did not reach bounded quiescence".into(),
             ));
         }
-        if component == Component::Server {
-            if let Err(error) = self.systemctl("stop") {
-                let _ = fs::remove_file(&self.config.maintenance_flag);
-                self.maintenance_generation_ns = None;
-                return Err(error);
-            }
-            self.stopped = true;
+        if let Err(error) = self.systemctl("stop") {
+            let _ = fs::remove_file(&self.config.maintenance_flag);
+            self.maintenance_generation_ns = None;
+            return Err(error);
         }
+        self.stopped = true;
         Ok(())
     }
     fn backup(&mut self, component: Component, _: &Path) -> chill_updates::Result<String> {
@@ -848,15 +1316,46 @@ impl InstallHooks for LinuxHooks<'_> {
                 .get(&Component::Server)
                 .unwrap()
                 .join("current/payload");
-            let status = Command::new(binary)
+            let started = OffsetDateTime::now_utc().unix_timestamp();
+            let mut command = Command::new(binary);
+            command
                 .args(["--backup", "--config"])
                 .arg(&self.config.server_config)
-                .uid(self.config.service_uid)
-                .gid(self.config.service_gid)
-                .status()?;
-            if !status.success() {
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .current_dir("/usr/lib/chillcenter");
+            let uid = self.config.service_uid;
+            let gid = self.config.service_gid;
+            // SAFETY: these libc calls are async-signal-safe and execute in the
+            // child immediately before exec. Supplementary root groups are
+            // cleared before gid/uid are irreversibly dropped.
+            unsafe {
+                command.pre_exec(move || {
+                    if libc::setgroups(0, std::ptr::null()) != 0
+                        || libc::setgid(gid) != 0
+                        || libc::setuid(uid) != 0
+                    {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+            let output = command.output()?;
+            if !output.status.success() || output.stdout.len() > 4096 {
                 return Err(UpdateError::Invalid("offline server backup failed".into()));
             }
+            let line = std::str::from_utf8(&output.stdout)
+                .map_err(|_| UpdateError::Security("backup receipt is not UTF-8".into()))?
+                .trim();
+            let path = line
+                .strip_prefix("Sauvegarde terminée : ")
+                .ok_or_else(|| UpdateError::Security("backup receipt is missing".into()))?;
+            return validate_backup_receipt(
+                Path::new(path),
+                &self.config.backup_root,
+                self.config.service_uid,
+                started,
+            );
         }
         Ok(format!(
             "retained-{}",
@@ -864,41 +1363,74 @@ impl InstallHooks for LinuxHooks<'_> {
         ))
     }
     fn activate(&mut self, component: Component, _: &Path) -> chill_updates::Result<()> {
-        if component == Component::Server {
-            self.systemctl("restart")?;
-            self.stopped = false;
+        let root = self
+            .config
+            .component_roots
+            .get(&component)
+            .ok_or_else(|| UpdateError::Security("component root missing".into()))?;
+        let authorization = activation_authorization(self.config, component);
+        match fs::read_link(root.join("current")) {
+            Ok(target) => {
+                write_new_sync(&authorization, target.to_string_lossy().as_bytes())?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
+        let action = if self.stopped { "start" } else { "restart" };
+        let restarted = self.systemctl(action);
+        let removed = match fs::remove_file(&authorization) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        };
+        restarted?;
+        removed?;
+        self.stopped = false;
         Ok(())
     }
-    fn health_check(&mut self, component: Component, _: &Path) -> chill_updates::Result<()> {
-        let response = self
-            .client
-            .get(&self.config.health_url)
-            .send()?
-            .error_for_status()?;
+    fn health_check(
+        &mut self,
+        component: Component,
+        installed_root: &Path,
+    ) -> chill_updates::Result<()> {
+        let endpoint = if component == Component::Server {
+            &self.config.health_url
+        } else {
+            &self.config.status_url
+        };
+        let response = self.client.get(endpoint).send()?.error_for_status()?;
         let mut body = Vec::new();
         response.take(1024 * 1024 + 1).read_to_end(&mut body)?;
         if body.len() > 1024 * 1024 {
             return Err(UpdateError::Security("health response is too large".into()));
         }
         let value: serde_json::Value = parse_strict_json(&body)?;
-        let expected = self.expected_version.to_string();
+        let leaf = installed_root
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| UpdateError::Security("health slot has invalid name".into()))?;
+        let expected = leaf
+            .rsplit_once('-')
+            .map(|(version, _)| version)
+            .ok_or_else(|| UpdateError::Security("health slot has no sequence".into()))?;
+        Version::parse(expected)
+            .map_err(|_| UpdateError::Security("health slot version is invalid".into()))?;
         let actual = match component {
             Component::Server => value.get("version"),
-            Component::Web => value.pointer("/installed/web"),
-            Component::Themes => value.pointer("/installed/themes"),
+            Component::Web => value.pointer("/installed/web/version"),
+            Component::Themes => value.pointer("/installed/themes/version"),
             Component::Mac => None,
         }
         .and_then(|value| value.as_str());
-        if actual != Some(expected.as_str()) {
+        if actual != Some(expected) {
             return Err(UpdateError::Incompatible(
                 "health endpoint did not report installed version".into(),
             ));
         }
         Ok(())
     }
-    fn end_quiescence(&mut self, component: Component) -> chill_updates::Result<()> {
-        if component == Component::Server && self.stopped {
+    fn end_quiescence(&mut self, _component: Component) -> chill_updates::Result<()> {
+        if self.stopped {
             self.systemctl("start")?;
             self.stopped = false;
         }
@@ -926,4 +1458,13 @@ fn os_local_offset() -> chill_updates::Result<UtcOffset> {
         .map_err(|_| UpdateError::Invalid("OS local offset is outside supported range".into()))?;
     UtcOffset::from_whole_seconds(seconds)
         .map_err(|_| UpdateError::Invalid("OS local offset is invalid".into()))
+}
+
+fn private_health_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(value) => value.is_private() || value.is_loopback() || value.is_link_local(),
+        IpAddr::V6(value) => {
+            value.is_unique_local() || value.is_loopback() || value.is_unicast_link_local()
+        }
+    }
 }

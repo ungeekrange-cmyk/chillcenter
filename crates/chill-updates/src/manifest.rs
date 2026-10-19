@@ -476,5 +476,7 @@ mod tests {
         // enabled only for this fixture. Production verification above is false.
         public.verify(b"test", &signature, true).unwrap();
         assert!(public.verify(b"tampered", &signature, true).is_err());
+        let full_public_file = "untrusted comment: minisign public key test-only\nRWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3\n";
+        PublicKey::decode(full_public_file).unwrap();
     }
 }

@@ -13,6 +13,8 @@
   "service_uid": 997,
   "service_gid": 983,
   "health_url": "https://localhost:8443/api/2026-10-14/server",
+  "status_url": "https://localhost:8443/api/2026-10-14/admin/updates",
+  "health_resolve": "127.0.0.1:8443",
   "health_ca_certificate": "/etc/chillcenter/health-ca.pem",
   "component_roots": {
     "server": "/usr/lib/chillcenter/server",
