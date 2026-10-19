@@ -1,5 +1,12 @@
 # Index des décisions techniques
 
+[ADR0029](ADR-0029-component-releases-updates.md), **PROPOSED**, 19 octobre 2026,
+propriétaire `/root` : versions indépendantes Mac/serveur/web/thèmes, packs
+déclaratifs et mises à jour signées/planifiées. Nouvelle frontière de confiance
+à valider explicitement ; aucun updater, clé ou déploiement créé. Révision R2 :
+[revue indépendante approuvée sous réserve de validation utilisateur](reviews/ADR-0029-review-r2.md),
+hash de l'ADR `f825a8f688ec326358d552d8f1155b5cb080d44730a1dc7dbf79e56ebfcedcd7`.
+
 [ADR0028](ADR-0028-web-mp3-fallback.md) ([EN](ADR-0028-web-mp3-fallback.en.md)), ACCEPTED_BY_USER_CHANGE_REQUEST,17octobre2026 : repli MP3 AVI vers AAC dans le Worker FFmpeg web ; chemin natif conservé si accepté, plein écran mobile dans le geste, limite canvas iPhone explicite. Aucun transcodage serveur ou changement Mac/API.
 
 [ADR0027](ADR-0027-mobile-content-and-iphone-playback.md), ACCEPTED_BY_USER_CHANGE_REQUEST,17octobre2026 : contenu mobile d'abord, recherche repliée, rail paysage et repli ManagedMediaSource iPhone ; reprise tactile respectant les pauses serveur. Réserves de validation physique conservées.

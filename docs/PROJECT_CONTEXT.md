@@ -1,5 +1,27 @@
 # Contexte du projet
 
+## Mises à jour par composant — conception proposée, 19 octobre 2026
+
+Demande utilisateur : thèmes indépendants, versions visibles Mac/web/serveur,
+installateurs et releases GitHub, vérification/installation configurables,
+serveur automatique à 02 h locale et Mac toujours « Installer maintenant ».
+Le dépôt a été constaté PUBLIC (choix humain), main reste la branche par défaut.
+La suppression de la référence au projet d'origine des README FR/EN est publiée
+sur main à `ac85794`. Aucun runtime ni déploiement modifié.
+
+[ADR0029 R2](architecture/decisions/ADR-0029-component-releases-updates.md) reste
+**PROPOSED / USER_APPROVAL_PENDING**. Sa [revue indépendante R2](architecture/decisions/reviews/ADR-0029-review-r2.md)
+approuve la conception sous réserve du gate utilisateur : nouvelle clé de
+signature de releases (privée locale hors Git, publique embarquée), installateur
+privilégié séparé, politique automatique 02 h, risques résiduels LAN sans auth.
+Interruption forcée réservée à l'administrateur local ; installation normale
+différée pendant lectures/travaux. Premier rejet R1 conservé ; ne pas l'effacer.
+Contrat de calendrier/format de packs proposé dans [themes/README.md](../themes/README.md),
+avec version anglaise. Ressources existantes pas encore déplacées ni raccordées.
+29 tests documentaires/publication PASS ; aucune preuve runtime/updater/bundle
+ou Pi dans ce lot. Reprendre après validation explicite R2 ; ne pas créer de clé,
+helper privilégié ou signature par simple déduction de la demande précédente.
+
 ## Correctif web mobile R4 déployé — 17 octobre 2026
 
 Source **fa13d44**, build **67773f7877d3**, assets seuls livrés **20:50:15UTC**
