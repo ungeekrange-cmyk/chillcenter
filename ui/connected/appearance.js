@@ -39,12 +39,14 @@ window.refreshAppearance=async()=>{
   const pack=await loadThemePack();
   document.documentElement.dataset.tone=tone;
   const resolution=pack&&window.ChillThemePack.resolve(pack.manifest,{date,mode:r.appearance.mode,manual:r.appearance.manual},tone);
-  window.ChillThemePack.apply(resolution,{baseUrl:pack?.baseUrl||"themes/",assetUrls:pack?.assetUrls,defaultLogo:pack?.manifest.default_logo});
+  if(pack)window.ChillThemePack.apply(resolution,{baseUrl:pack.baseUrl,assetUrls:pack.assetUrls,defaultLogo:pack.manifest.default_logo});
+  else {document.documentElement.dataset.ambiance=r.ambiance||"off";$("brand-logo").src=r.ambiance?"branding/"+r.ambiance+"-"+tone+".svg":"branding/default.svg";}
   // The native bridge owns device-local preferences; no browser storage is introduced here.
   $("ambiance-mode").value=r.appearance.mode;
   $("ambiance-choice").value=r.appearance.manual;
   $("ambiance-choice-label").hidden=r.appearance.mode!=="manual";
-  $("ambiance-status").textContent=resolution?uiText("Ambiance ")+appearanceLabels[resolution.id]+uiText(" · sur ce Mac uniquement"):uiText("Sans ambiance · thème conservé");
+  const shown=resolution?.id||r.ambiance;
+  $("ambiance-status").textContent=shown?uiText("Ambiance ")+appearanceLabels[shown]+uiText(" · sur ce Mac uniquement"):uiText("Sans ambiance · thème conservé");
  }catch(e){
   if(e.code==="CLIENT_BUSY")appearanceRetry=setTimeout(refreshAppearance,500);
  }
