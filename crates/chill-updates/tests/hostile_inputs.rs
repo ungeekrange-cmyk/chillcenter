@@ -137,7 +137,12 @@ fn zip_special_duplicate_and_limit_inputs_are_refused_without_staging_residue() 
     );
     assert!(!duplicate_destination.exists());
 
-    type ZipCase<'a> = (&'a str, Vec<(&'a str, &'a [u8], u32)>, bool, ExtractionLimits);
+    type ZipCase<'a> = (
+        &'a str,
+        Vec<(&'a str, &'a [u8], u32)>,
+        bool,
+        ExtractionLimits,
+    );
     let cases: Vec<ZipCase<'_>> = vec![
         (
             "entry-limit",
