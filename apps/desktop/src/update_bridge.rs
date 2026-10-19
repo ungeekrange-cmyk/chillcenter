@@ -940,10 +940,11 @@ impl UpdateHost {
                 let due = tauri::async_runtime::spawn_blocking(move || {
                     copy.store()?
                         .update_scheduler(|state| {
-                            chill_updates::due_attempts(
+                            chill_updates::due_attempts_for(
                                 state,
                                 time::OffsetDateTime::now_utc(),
                                 local_offset(),
+                                &[Component::Mac, Component::Themes],
                             )
                         })
                         .map_err(|_| {
