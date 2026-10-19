@@ -1,5 +1,26 @@
 # Contexte du projet
 
+## Correctifs v0.7 — checkpoint local, 19 octobre 2026
+
+Source corrigée `3913267` (moteur revu `6041f4d`, delta configuration native) :
+huit constats sécurité et quatre défauts fonctionnels traités, vraie VM Linux
+ARM64/systemd utilisée sans contacter le Pi. Matrice TERM/KILL/occupation/reprise
+et deux tests root PASS ; suite Rust433 PASS/2 NFR ignorés, Node359 PASS,
+Clippy PASS. [Preuves et limites FR/EN](implementation/COMPONENT-UPDATES-FIXES-20261019.md).
+Revues indépendantes `3913267` : code **APPROVED_SCOPED**, sécurité **APPROVED**,
+huit HIGH clos. Revue tests **CHANGES_REQUESTED**, seul CU88-TEST-003 reste ouvert :
+parcours natif AppKit consentement/installation/redémarrage. Le delta natif passe
+8/8 tests SDK/crypto ; le vrai premier lancement QA avait révélé BUG0115, corrigé.
+Le bundle Mac candidat 0.7.0/build9 est construit, signé ad hoc et vérifié
+(48 dylibs arm64, libmpv API2.5). Paquets locaux non signés pour publication dans
+`/private/tmp/chillcenter-v07-packages.aeUI7U`, source runtime `3913267`.
+Le test QA isolé attend le clic « Annuler » ; lanceur
+`/private/tmp/chillcenter-qa-native-updates.LiX6KA/launch-isolated-qa.sh`, journal
+voisin `qa-native-updates.log`, état `PROMPT native consent queued`. Ce chemin
+local sert uniquement à reprendre la validation ; ne pas le présenter comme livraison.
+**Ne pas publier/annoncer v0.7 livrée avant ces gates.** Pi/NAS et web déployé
+intacts ; versions v0.6 et tous les anciens livrables conservés.
+
 ## Mises à jour par composant — implémentation en cours, 19 octobre 2026
 
 Demande utilisateur : thèmes indépendants, versions visibles Mac/web/serveur,

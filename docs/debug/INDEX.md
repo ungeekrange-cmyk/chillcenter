@@ -2,6 +2,13 @@
 
 ## Lecture de l'état courant
 
+19 octobre 2026, candidat corrigé : les huit constats sécurité et quatre défauts
+fonctionnels de BUG0113 disposent de corrections et de preuves Linux réelles
+sur VM isolée ; revues finales et validation native en cours, **pas de publication
+ni de contact Pi**. [Preuves FR/EN](../implementation/COMPONENT-UPDATES-FIXES-20261019.md).
+Le premier vrai lancement natif a révélé [BUG0115 configuration updater](BUG-0115-native-updater-bootstrap-config.md),
+corrigé dans `3913267`, retest natif restant. Les checkpoints ci-dessous sont historiques.
+
 19 octobre 2026 : [BUG0113 moteur de mise à jour privilégié](BUG-0113-component-updater-release-gate.md), **P1 OPEN / RELEASE_BLOCKED**, huit défauts Linux confirmés par revue indépendante. Aucune publication 0.7 ni installation Pi.
 [BUG0114 instabilité du test de timing des sous-titres](BUG-0114-subtitle-timing-test-instability.md), P2 tests, cause non confirmée ; aucun changement du lecteur pour masquer l'échec.
 

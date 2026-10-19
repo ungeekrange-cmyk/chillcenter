@@ -1,5 +1,18 @@
 # BUG0113 — Privileged component updater is not release-ready
 
+## Correction checkpoint — 19 October 2026
+
+Candidate `6041f4d` implements the eight security and four functional corrections.
+Real disposable Linux/systemd fault tests, root ledger tests, exact signed Mac
+expiry fixtures and the broad regression suites pass. See the bilingual
+[correction evidence](../implementation/COMPONENT-UPDATES-FIXES-20261019.en.md).
+Independent source `3913267` reviews: code APPROVED_SCOPED, security APPROVED
+(all eight prior HIGH findings closed); test findings 001/002/004/005 closed.
+**Release gate remains open only for CU88-TEST-003, the real native Mac
+consent/install/restart journey.** No Pi/NAS contact or deployment.
+The findings below describe the original adverse checkpoint, not a claim that
+the corrected implementation has already been approved for release.
+
 - Priority: P1; status: OPEN / RELEASE_BLOCKED.
 - Source candidate: `22a38ff50879837c32fc8d5ac7c7200f35c8eaa1`.
 - Architecture: accepted ADR0029 R2; acceptance of the design is not approval

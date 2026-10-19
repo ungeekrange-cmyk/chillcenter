@@ -1,0 +1,371 @@
++ /usr/bin/hostname
++ /usr/bin/id -u chillcenter
++ /usr/bin/systemctl stop chillcenter.service
++ /usr/bin/id -g chillcenter
++ /usr/bin/systemctl daemon-reload
++ /usr/bin/systemctl start chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/sbin/runuser -u chillcenter -- /usr/bin/test -r /usr/lib/chillcenter/server/current/payload
++ /usr/sbin/runuser -u chillcenter -- /usr/bin/touch /usr/lib/chillcenter/server/forbidden
+/usr/bin/touch: cannot touch '/usr/lib/chillcenter/server/forbidden': Permission denied
++ /usr/bin/systemctl stop chillcenter.service
++ /usr/bin/systemctl start chillcenter.service
++ /usr/bin/systemctl show chillcenter.service -p MainPID --value
++ /usr/lib/chillcenter/chill-update rescue
++ /usr/bin/systemctl show chillcenter.service -p MainPID --value
++ /usr/bin/systemctl restart chillcenter.service
++ /usr/bin/systemctl stop chillcenter.service
++ /usr/bin/systemctl start chillcenter.service
++ /usr/bin/systemctl restart chillcenter.service
+PASS actual sandbox: live one-shot token, active-candidate rescue, maintenance cleanup, idempotent rollback
++ /usr/lib/chillcenter/chill-update inspect
++ /usr/lib/chillcenter/chill-update policy server manual 2 0 4
+policy revision 5
++ /usr/lib/chillcenter/chill-update policy web manual 2 0 4
+policy revision 5
++ /usr/lib/chillcenter/chill-update policy themes manual 2 0 4
+policy revision 5
++ /usr/bin/minisign -S -s /etc/chillcenter/release.key -m /var/lib/chillcenter-update/cache/server/c8d3a86d6b149f24b7212d0c64441da17037c03cd52f54a532101a8ce8df2e38/manifest.json -x /var/lib/chillcenter-update/cache/server/c8d3a86d6b149f24b7212d0c64441da17037c03cd52f54a532101a8ce8df2e38/manifest.json.minisig
++ /usr/lib/chillcenter/chill-update intent server install
+ce9ea0c2-4d1d-4eac-9baf-620e7369ef95
++ /usr/bin/systemctl reset-failed chillcenter-update.service
++ /usr/bin/systemctl start --no-block chillcenter-update.service
++ /usr/bin/id -u chillcenter
++ /usr/bin/id -g chillcenter
++ /usr/bin/systemctl kill --kill-whom=main --signal=KILL chillcenter-update.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/lib/chillcenter/chill-update intent server install
+ce9ea0c2-4d1d-4eac-9baf-620e7369ef95
++ /usr/bin/systemctl reset-failed chillcenter-update.service
++ /usr/bin/systemctl start --no-block chillcenter-update.service
++ /usr/bin/id -u chillcenter
++ /usr/bin/id -g chillcenter
++ /usr/bin/systemctl kill --kill-whom=main --signal=TERM chillcenter-update.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl daemon-reload
++ /usr/bin/systemctl reset-failed chillcenter-update.service
++ /usr/bin/systemctl start --no-block chillcenter-update.service
++ /usr/bin/systemctl show chillcenter-update.service -p MainPID --value
++ /usr/bin/systemctl show chillcenter-update.service -p MainPID --value
++ /usr/bin/systemctl stop chillcenter.service
++ /usr/bin/systemctl start chillcenter.service
++ /usr/bin/systemctl kill --kill-whom=main --signal=KILL chillcenter-update.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl show chillcenter-update.service -p ActiveState --value
+PASS active-candidate ExecStopPost; ignores TERM: False
++ /usr/bin/systemctl reset-failed chillcenter-update.service
++ /usr/bin/systemctl start --no-block chillcenter-update.service
++ /usr/bin/systemctl show chillcenter-update.service -p MainPID --value
++ /usr/bin/systemctl show chillcenter-update.service -p MainPID --value
++ /usr/bin/systemctl stop chillcenter.service
++ /usr/bin/systemctl start chillcenter.service
++ /usr/bin/systemctl kill --kill-whom=main --signal=KILL chillcenter-update.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl is-active --quiet chillcenter.service
++ /usr/bin/systemctl show chillcenter-update.service -p ActiveState --value
+PASS active-candidate ExecStopPost; ignores TERM: True
++ /usr/bin/systemctl daemon-reload
+PASS actual root/systemd: signed offline cache, TERM/KILL during backup, descendant cleanup, post-activation ExecStopPost rollback
++ /usr/lib/chillcenter/chill-update tick
++ /usr/lib/chillcenter/chill-update tick
++ /usr/bin/minisign -S -s /etc/chillcenter/release.key -m /var/lib/chillcenter-update/cache/server/c8d3a86d6b149f24b7212d0c64441da17037c03cd52f54a532101a8ce8df2e38/manifest.json -x /var/lib/chillcenter-update/cache/server/c8d3a86d6b149f24b7212d0c64441da17037c03cd52f54a532101a8ce8df2e38/manifest.json.minisig
++ /usr/lib/chillcenter/chill-update tick
++ /usr/bin/minisign -S -s /etc/chillcenter/release.key -m /var/lib/chillcenter-update/cache/web/ebf945e5e32e827c363bfa57b9b14dfd24b8f07d25c371ddcf07ac02aae6c7ac/manifest.json -x /var/lib/chillcenter-update/cache/web/ebf945e5e32e827c363bfa57b9b14dfd24b8f07d25c371ddcf07ac02aae6c7ac/manifest.json.minisig
++ /usr/lib/chillcenter/chill-update intent web install
++ /usr/lib/chillcenter/chill-update apply web
++ /usr/lib/chillcenter/chill-update tick
+installed=/usr/lib/chillcenter/web/releases/0.7.0-1 backup=retained-1792447731
++ /usr/bin/minisign -S -s /etc/chillcenter/release.key -m /var/lib/chillcenter-update/cache/web/98411502289d387714cec0a1f457235598435cebe3d56762bb53577db0671aee/manifest.json -x /var/lib/chillcenter-update/cache/web/98411502289d387714cec0a1f457235598435cebe3d56762bb53577db0671aee/manifest.json.minisig
++ /usr/lib/chillcenter/chill-update tick
++ /usr/lib/chillcenter/chill-update policy web manual 2 0 5
+policy revision 6
++ /usr/lib/chillcenter/chill-update tick
+pending web install failed: operation is busy: server did not reach bounded quiescence
+PASS real HTTP Busy -> durable manual Deferred -> same-intent idle success; automatic origin/policy cancellation; signed web install/health
++ /usr/bin/minisign -S -s /etc/chillcenter/release.key -m /var/lib/chillcenter-update/cache/server/40fba08f92546c637b4a7e18ad2f80cd2a13a936519fbe4858e428ad72efb2b6/manifest.json -x /var/lib/chillcenter-update/cache/server/40fba08f92546c637b4a7e18ad2f80cd2a13a936519fbe4858e428ad72efb2b6/manifest.json.minisig
++ /usr/lib/chillcenter/chill-update manifest server
++ /usr/lib/chillcenter/chill-update apply server
++ /usr/lib/chillcenter/chill-update check server
++ /usr/lib/chillcenter/chill-update manifest server
++ /usr/lib/chillcenter/chill-update apply server --retry-accepted
++ /usr/bin/systemctl is-active --quiet chillcenter.service
+PASS production state machine: persisted automatic policy cancellation, retry cap, corrupt preflight terminalization, exact accepted-time expiry replay, local consent, real backup/health rollback
++ /usr/bin/systemctl show chillcenter.service -p ProtectSystem -p ReadWritePaths -p ProtectProc -p ProcSubset
+ReadWritePaths=/var/lib/chillcenter
+ProtectSystem=strict
+ProtectProc=invisible
+ProcSubset=pid
++ /usr/lib/chillcenter/chill-update --config /etc/chillcenter/updates.json recover server
+None
+PASS: real service UID root-slot boundary and root recovery preflight
+LIMITS: disposable Ubuntu ARM64 only; no Pi/NAS, physical Mac confirmation, power-cut/disk-full, or GitHub transport fault simulation.

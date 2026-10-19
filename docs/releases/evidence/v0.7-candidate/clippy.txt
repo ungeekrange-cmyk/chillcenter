@@ -1,0 +1,22 @@
+    Checking objc2-web-kit v0.3.2
+    Checking tao v0.37.1
+    Checking muda v0.20.0
+   Compiling tauri-macros v2.7.2
+    Checking window-vibrancy v0.8.1
+    Checking objc2-osa-kit v0.3.2
+    Checking rfd v0.16.0
+    Checking chill-server v0.7.0 (/private/tmp/chillcenter-fixes-web-parity/crates/chill-server)
+    Checking chill-player v0.1.0 (/private/tmp/chillcenter-fixes-web-parity/crates/chill-player)
+    Checking osakit v0.3.1
+   Compiling chillcenter-desktop v0.7.0 (/private/tmp/chillcenter-fixes-web-parity/apps/desktop)
+    Checking chill-client v0.1.0 (/private/tmp/chillcenter-fixes-web-parity/crates/chill-client)
+    Checking tauri-runtime v2.12.1
+    Checking wry v0.57.0
+    Checking chill-updates v0.1.0 (/private/tmp/chillcenter-fixes-web-parity/crates/chill-updates)
+    Checking chill-catalog v0.1.0 (/private/tmp/chillcenter-fixes-web-parity/crates/chill-catalog)
+    Checking tauri-runtime-wry v2.12.1
+    Checking tauri v2.12.3
+    Checking tauri-plugin-fs v2.7.0
+    Checking tauri-plugin-updater v2.14.0
+    Checking tauri-plugin-dialog v2.8.2
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 23.09s

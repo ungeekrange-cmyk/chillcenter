@@ -1,0 +1,1 @@
+PASS component settings: actual versions, native consent boundary, independent slow IPC/catalogue use, CAS policy, draft preservation and old-server fallback. Synthetic bridge only.

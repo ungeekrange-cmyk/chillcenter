@@ -1,0 +1,23 @@
+   Compiling chill-updates v0.1.0 (/private/tmp/chillcenter-fixes-web-parity/crates/chill-updates)
+   Compiling chillcenter-desktop v0.7.0 (/private/tmp/chillcenter-fixes-web-parity/apps/desktop)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.00s
+     Running unittests src/main.rs (/private/tmp/chillcenter-v07-mac-tests-target/debug/deps/chillcenter_desktop-4d4941bbdbfc3564)
+
+running 8 tests
+test update_bridge::tests::abandoned_download_is_removed_without_recursion ... ok
+test update_bridge::tests::only_one_instance_can_install_and_lock_is_released ... ok
+test update_bridge::tests::pending_store_rejects_unavailable_or_symlinked_disk_state ... ok
+test update_bridge::tests::embedded_updater_configuration_deserializes_before_builder_overrides ... ok
+test update_bridge::tests::renderer_cannot_supply_consent_url_path_or_force ... ok
+The secret key was saved as /var/folders/3g/4zwgw1ss1qlgk7fvqpjvbmmh0000gn/T/.tmpFsZHJd/fixture.key - Keep it secret!
+The public key was saved as /var/folders/3g/4zwgw1ss1qlgk7fvqpjvbmmh0000gn/T/.tmpFsZHJd/fixture.pub - That one can be public.
+
+Files signed using this key pair can be verified with the following command:
+
+minisign -Vm <file> -P RWSRH14ZsKOnYrbZtIQQUAmXJTlU6TBmzN1cyjKw8w7ceeKWNsX97FKt
+
+test update_bridge::tests::pending_receipt_survives_restart_only_for_exact_cached_manifest ... ok
+test update_bridge::tests::pending_receipt_refuses_same_sequence_substitution_but_allows_newer_recovery ... ok
+test update_bridge::tests::minisign_pending_receipt_allows_only_the_exact_pre_expiry_manifest ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.14s
