@@ -9,8 +9,11 @@ use chill_updates::{
 use semver::Version;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
+    fs::{self, File, OpenOptions},
+    io::{Read, Write},
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -79,6 +82,285 @@ struct AvailableRelease {
 }
 struct DownloadedAsset(PathBuf);
 struct InstallLease(std::fs::File);
+
+const PENDING_SCHEMA_VERSION: u32 = 1;
+const MAX_PENDING_MANIFEST_BYTES: usize = 64 * 1024;
+const MAX_PENDING_SIGNATURE_BYTES: usize = 8 * 1024;
+
+/// A device-local acceptance receipt is deliberately separate from the generic
+/// scheduler state.  It is the only exception to the monotonic sequence rule:
+/// it admits the exact signed manifest which failed after acceptance, never a
+/// different same-sequence release.
+#[derive(Clone, Debug, Deserialize, serde::Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct PendingRelease {
+    sequence: u64,
+    version: Version,
+    manifest_sha256: String,
+    manifest_base64: String,
+    signature: String,
+}
+
+#[derive(Default, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct PendingState {
+    schema_version: u32,
+    releases: BTreeMap<Component, PendingRelease>,
+}
+
+struct PendingStore {
+    root: PathBuf,
+    state: PathBuf,
+    lock: PathBuf,
+}
+
+impl PendingStore {
+    fn open(directory: &std::path::Path) -> Result<Self, UiError> {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+        let root = directory.join("updates/local-pending");
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&root)
+            .map_err(|_| {
+                error(
+                    "Stockage de reprise indisponible.",
+                    "UPDATE_STATE_UNAVAILABLE",
+                )
+            })?;
+        let metadata = fs::symlink_metadata(&root).map_err(|_| {
+            error(
+                "Stockage de reprise indisponible.",
+                "UPDATE_STATE_UNAVAILABLE",
+            )
+        })?;
+        if !metadata.is_dir()
+            || metadata.file_type().is_symlink()
+            || metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.mode() & 0o077 != 0
+        {
+            return Err(error(
+                "Stockage de reprise indisponible.",
+                "UPDATE_STATE_UNAVAILABLE",
+            ));
+        }
+        Ok(Self {
+            state: root.join("pending.json"),
+            lock: root.join("pending.lock"),
+            root,
+        })
+    }
+
+    fn with_lock<T>(
+        &self,
+        action: impl FnOnce(&mut PendingState) -> Result<(T, bool), UiError>,
+    ) -> Result<T, UiError> {
+        use std::os::{
+            fd::AsRawFd,
+            unix::fs::{MetadataExt, OpenOptionsExt},
+        };
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&self.lock)
+            .map_err(|_| {
+                error(
+                    "Verrou de reprise indisponible.",
+                    "UPDATE_STATE_UNAVAILABLE",
+                )
+            })?;
+        let metadata = lock.metadata().map_err(|_| {
+            error(
+                "Verrou de reprise indisponible.",
+                "UPDATE_STATE_UNAVAILABLE",
+            )
+        })?;
+        if !metadata.is_file()
+            || metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.mode() & 0o077 != 0
+            || unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0
+        {
+            return Err(error(
+                "Verrou de reprise indisponible.",
+                "UPDATE_STATE_UNAVAILABLE",
+            ));
+        }
+        let mut state = self.load()?;
+        let (value, changed) = action(&mut state)?;
+        if changed {
+            self.save(&state)?;
+        }
+        unsafe {
+            libc::flock(lock.as_raw_fd(), libc::LOCK_UN);
+        }
+        Ok(value)
+    }
+
+    fn load(&self) -> Result<PendingState, UiError> {
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        match OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&self.state)
+        {
+            Ok(mut file) => {
+                let metadata = file
+                    .metadata()
+                    .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+                if !metadata.is_file()
+                    || metadata.uid() != unsafe { libc::geteuid() }
+                    || metadata.mode() & 0o077 != 0
+                    || metadata.len() > 128 * 1024
+                {
+                    return Err(error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"));
+                }
+                let mut bytes = Vec::new();
+                file.read_to_end(&mut bytes)
+                    .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+                let state: PendingState = serde_json::from_slice(&bytes)
+                    .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+                Self::validate(&state)?;
+                Ok(state)
+            }
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(PendingState {
+                schema_version: PENDING_SCHEMA_VERSION,
+                releases: BTreeMap::new(),
+            }),
+            Err(_) => Err(error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE")),
+        }
+    }
+
+    fn save(&self, state: &PendingState) -> Result<(), UiError> {
+        use std::os::unix::fs::OpenOptionsExt;
+        Self::validate(state)?;
+        let bytes = serde_json::to_vec(state)
+            .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+        let temporary = self
+            .root
+            .join(format!(".pending-{}.tmp", uuid::Uuid::new_v4()));
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&temporary)
+            .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+        file.write_all(&bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+        fs::rename(&temporary, &self.state)
+            .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+        File::open(&self.root)
+            .and_then(|file| file.sync_all())
+            .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))
+    }
+
+    fn validate(state: &PendingState) -> Result<(), UiError> {
+        if state.schema_version != PENDING_SCHEMA_VERSION
+            || state.releases.len() > 2
+            || state
+                .releases
+                .keys()
+                .any(|component| !matches!(component, Component::Mac | Component::Themes))
+        {
+            return Err(error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"));
+        }
+        for receipt in state.releases.values() {
+            if receipt.sequence == 0
+                || receipt.manifest_sha256.len() != 64
+                || !receipt
+                    .manifest_sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
+                || receipt.signature.len() > MAX_PENDING_SIGNATURE_BYTES
+            {
+                return Err(error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"));
+            }
+            let bytes = STANDARD
+                .decode(&receipt.manifest_base64)
+                .map_err(|_| error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+            if bytes.is_empty()
+                || bytes.len() > MAX_PENDING_MANIFEST_BYTES
+                || hex_digest(&bytes) != receipt.manifest_sha256
+            {
+                return Err(error("Reprise indisponible.", "UPDATE_STATE_UNAVAILABLE"));
+            }
+        }
+        Ok(())
+    }
+
+    fn get(&self, component: Component) -> Result<Option<PendingRelease>, UiError> {
+        self.with_lock(|state| Ok((state.releases.get(&component).cloned(), false)))
+    }
+
+    fn accept(
+        &self,
+        component: Component,
+        verified: &VerifiedManifest,
+        bytes: &[u8],
+        signature: &str,
+    ) -> Result<(), UiError> {
+        let receipt = PendingRelease {
+            sequence: verified.manifest.release_sequence,
+            version: verified.manifest.version.clone(),
+            manifest_sha256: hex_digest(bytes),
+            manifest_base64: STANDARD.encode(bytes),
+            signature: signature.to_owned(),
+        };
+        Self::validate(&PendingState {
+            schema_version: PENDING_SCHEMA_VERSION,
+            releases: BTreeMap::from([(component, receipt.clone())]),
+        })?;
+        self.with_lock(|state| {
+            if let Some(existing) = state.releases.get(&component) {
+                if existing != &receipt {
+                    return Err(error(
+                        "Une autre mise à jour acceptée doit être reprise exactement.",
+                        "UPDATE_RECOVERY_REQUIRED",
+                    ));
+                }
+                return Ok(((), false));
+            }
+            state.releases.insert(component, receipt);
+            Ok(((), true))
+        })
+    }
+
+    fn commit(
+        &self,
+        component: Component,
+        verified: &VerifiedManifest,
+        bytes: &[u8],
+    ) -> Result<(), UiError> {
+        let digest = hex_digest(bytes);
+        self.with_lock(|state| {
+            let Some(receipt) = state.releases.get(&component) else {
+                return Err(error(
+                    "Acceptation de reprise absente.",
+                    "UPDATE_STATE_UNAVAILABLE",
+                ));
+            };
+            if receipt.sequence != verified.manifest.release_sequence
+                || receipt.version != verified.manifest.version
+                || receipt.manifest_sha256 != digest
+            {
+                return Err(error(
+                    "Identité de mise à jour modifiée.",
+                    "UPDATE_RECHECK_REQUIRED",
+                ));
+            }
+            state.releases.remove(&component);
+            Ok(((), true))
+        })
+    }
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
 impl InstallLease {
     fn acquire(directory: &std::path::Path) -> Result<Self, UiError> {
         use std::os::{
@@ -319,11 +601,33 @@ impl UpdateHost {
             self.theme_version()
         })
         .map_err(|_| chill_updates::UpdateError::Invalid("installed version".into()))?;
+        let pending = PendingStore::open(&self.directory)
+            .map_err(|_| {
+                chill_updates::UpdateError::Security("desktop pending receipt unavailable".into())
+            })?
+            .get(component)
+            .map_err(|_| {
+                chill_updates::UpdateError::Security("desktop pending receipt unavailable".into())
+            })?;
+        let digest = hex_digest(bytes);
         let highest = StateStore::open(self.directory.join("updates/local-state"))?
             .read()?
             .components
             .get(&component)
             .map_or(0, |s| s.highest_sequence);
+        let highest = if let Some(receipt) = pending {
+            // A pending receipt is an exact-identity recovery exception, not a
+            // general same-sequence exception. Rechecking the persisted bytes
+            // below also catches corruption between acceptance and retry.
+            if receipt.manifest_sha256 != digest {
+                return Err(chill_updates::UpdateError::Security(
+                    "accepted manifest identity changed".into(),
+                ));
+            }
+            receipt.sequence.saturating_sub(1)
+        } else {
+            highest
+        };
         let context = VerificationContext {
             now: time::OffsetDateTime::now_utc(),
             expected_key_id: KEY_ID,
@@ -343,7 +647,62 @@ impl UpdateHost {
                 theme_format: Some(1),
             },
         };
-        chill_updates::parse_and_verify_manifest(bytes, signature, PUBLIC_KEY, &context)
+        let verified =
+            chill_updates::parse_and_verify_manifest(bytes, signature, PUBLIC_KEY, &context)?;
+        if let Some(receipt) = PendingStore::open(&self.directory)
+            .map_err(|_| {
+                chill_updates::UpdateError::Security("desktop pending receipt unavailable".into())
+            })?
+            .get(component)
+            .map_err(|_| {
+                chill_updates::UpdateError::Security("desktop pending receipt unavailable".into())
+            })?
+            && (receipt.sequence != verified.manifest.release_sequence
+                || receipt.version != verified.manifest.version
+                || receipt.manifest_sha256 != digest)
+        {
+            return Err(chill_updates::UpdateError::Security(
+                "accepted manifest fields changed".into(),
+            ));
+        }
+        Ok(verified)
+    }
+
+    fn release_for_install(&self, component: Component) -> Result<AvailableRelease, UiError> {
+        if let Some(release) = self
+            .available
+            .lock()
+            .map_err(|_| error("Mise à jour occupée.", "UPDATE_BUSY"))?
+            .get(&component)
+            .cloned()
+        {
+            return Ok(release);
+        }
+        let Some(receipt) = PendingStore::open(&self.directory)?.get(component)? else {
+            return Err(error(
+                "Vérifiez les mises à jour avant d’installer.",
+                "UPDATE_CHECK_REQUIRED",
+            ));
+        };
+        let bytes = STANDARD.decode(&receipt.manifest_base64).map_err(|_| {
+            error(
+                "Reprise de mise à jour indisponible.",
+                "UPDATE_STATE_UNAVAILABLE",
+            )
+        })?;
+        let verified = self
+            .verify_current(component, &bytes, &receipt.signature)
+            .map_err(|_| {
+                error(
+                    "La mise à jour acceptée a expiré ou son identité a changé.",
+                    "UPDATE_RECHECK_REQUIRED",
+                )
+            })?;
+        Ok(AvailableRelease {
+            verified,
+            bytes,
+            signature: receipt.signature,
+        })
     }
     pub async fn install(
         self: &Arc<Self>,
@@ -380,18 +739,7 @@ impl UpdateHost {
         component: Component,
         rendering: Arc<AtomicBool>,
     ) -> Result<Value, UiError> {
-        let release = self
-            .available
-            .lock()
-            .map_err(|_| error("Mise à jour occupée.", "UPDATE_BUSY"))?
-            .get(&component)
-            .cloned()
-            .ok_or_else(|| {
-                error(
-                    "Vérifiez les mises à jour avant d’installer.",
-                    "UPDATE_CHECK_REQUIRED",
-                )
-            })?;
+        let release = self.release_for_install(component)?;
         let verified = self
             .verify_current(component, &release.bytes, &release.signature)
             .map_err(|_| {
@@ -484,17 +832,14 @@ impl UpdateHost {
                         "UPDATE_RECHECK_REQUIRED",
                     )
                 })?;
-            // Acceptance is durable before switching any executable bytes. A
-            // failed install keeps the sequence: recovery is local/explicit,
-            // never an online downgrade or an implicit verification bypass.
-            self.store()?
-                .record_sequence(component, verified.manifest.release_sequence)
-                .map_err(|_| {
-                    error(
-                        "Acceptation non enregistrée : aucune installation.",
-                        "UPDATE_STATE_UNAVAILABLE",
-                    )
-                })?;
+            // Persist the exact signed receipt before any executable mutation.
+            // A failed/interrupted install can only resume these same bytes.
+            PendingStore::open(&self.directory)?.accept(
+                component,
+                &verified,
+                &release.bytes,
+                &release.signature,
+            )?;
             tauri::async_runtime::spawn_blocking(move || {
                 let bytes = std::fs::read(&download.0)
                     .map_err(|_| error("Paquet indisponible.", "UPDATE_DOWNLOAD_FAILED"))?;
@@ -507,6 +852,15 @@ impl UpdateHost {
             })
             .await
             .map_err(|_| error("Installation interrompue.", "UPDATE_INSTALL_FAILED"))??;
+            self.store()?
+                .record_sequence(component, verified.manifest.release_sequence)
+                .map_err(|_| {
+                    error(
+                        "Installation terminée mais le reçu ne peut pas être finalisé.",
+                        "UPDATE_STATE_UNAVAILABLE",
+                    )
+                })?;
+            PendingStore::open(&self.directory)?.commit(component, &verified, &release.bytes)?;
             app.restart();
         }
         if component != Component::Themes {
@@ -523,14 +877,12 @@ impl UpdateHost {
                         "UPDATE_RECHECK_REQUIRED",
                     )
                 })?;
-            host.store()?
-                .record_sequence(component, verified.manifest.release_sequence)
-                .map_err(|_| {
-                    error(
-                        "Acceptation non enregistrée : aucun pack installé.",
-                        "UPDATE_STATE_UNAVAILABLE",
-                    )
-                })?;
+            PendingStore::open(&host.directory)?.accept(
+                component,
+                &verified,
+                &release.bytes,
+                &release.signature,
+            )?;
             let layout = chill_updates::InstallLayout {
                 component_root: host.directory.join("updates/themes"),
                 backup_root: host.directory.join("updates/theme-backups"),
@@ -560,6 +912,15 @@ impl UpdateHost {
                     "THEME_UPDATE_FAILED",
                 )
             })?;
+            host.store()?
+                .record_sequence(component, verified.manifest.release_sequence)
+                .map_err(|_| {
+                    error(
+                        "Pack installé mais reçu non finalisé.",
+                        "UPDATE_STATE_UNAVAILABLE",
+                    )
+                })?;
+            PendingStore::open(&host.directory)?.commit(component, &verified, &release.bytes)?;
             Ok::<_, UiError>(())
         })
         .await
@@ -695,6 +1056,16 @@ fn local_offset() -> time::UtcOffset {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn receipt(bytes: &[u8]) -> PendingRelease {
+        PendingRelease {
+            sequence: 7,
+            version: Version::parse("0.7.1").unwrap(),
+            manifest_sha256: hex_digest(bytes),
+            manifest_base64: STANDARD.encode(bytes),
+            signature: "synthetic-signature".into(),
+        }
+    }
     #[test]
     fn only_one_instance_can_install_and_lock_is_released() {
         let directory = tempfile::tempdir().unwrap();
@@ -710,6 +1081,50 @@ mod tests {
         std::fs::write(&path, b"fixture").unwrap();
         drop(DownloadedAsset(path.clone()));
         assert!(!path.exists());
+    }
+    #[test]
+    fn pending_receipt_survives_restart_only_for_exact_cached_manifest() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = PendingStore::open(directory.path()).unwrap();
+        let original = b"signed manifest bytes";
+        let receipt = receipt(original);
+        store
+            .save(&PendingState {
+                schema_version: PENDING_SCHEMA_VERSION,
+                releases: BTreeMap::from([(Component::Mac, receipt.clone())]),
+            })
+            .unwrap();
+        assert_eq!(
+            PendingStore::open(directory.path())
+                .unwrap()
+                .get(Component::Mac)
+                .unwrap(),
+            Some(receipt)
+        );
+        let path = directory.path().join("updates/local-pending/pending.json");
+        let mut changed: PendingState =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        changed
+            .releases
+            .get_mut(&Component::Mac)
+            .unwrap()
+            .manifest_base64 = STANDARD.encode(b"substituted bytes");
+        std::fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
+        assert!(
+            PendingStore::open(directory.path())
+                .unwrap()
+                .get(Component::Mac)
+                .is_err()
+        );
+    }
+    #[test]
+    fn pending_store_rejects_unavailable_or_symlinked_disk_state() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        assert!(PendingStore::open(file.path()).is_err());
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("updates")).unwrap();
+        std::os::unix::fs::symlink("/tmp", directory.path().join("updates/local-pending")).unwrap();
+        assert!(PendingStore::open(directory.path()).is_err());
     }
     #[test]
     fn renderer_cannot_supply_consent_url_path_or_force() {

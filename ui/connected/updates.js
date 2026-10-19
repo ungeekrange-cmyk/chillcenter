@@ -3,12 +3,13 @@
 (() => {
  const WEB_VERSION="__WEB_VERSION__";
  const visibleVersion=value=>typeof value?.version==="string"?value.version:null;
+ const isUnsupportedServerError=error=>error?.code==="UPDATE_SERVER_UNSUPPORTED"||error?.code==="ROUTE_NOT_FOUND"||error?.status===404;
  function commandForPolicy(component,policy,hour,minute,mode){
   if(!["mac","server","web","themes"].includes(component)||!["manual","check","automatic"].includes(mode)||!Number.isInteger(hour)||hour<0||hour>23||!Number.isInteger(minute)||minute<0||minute>59)throw Error("Invalid update policy");
   if(component==="mac"&&mode==="automatic")throw Error("Mac installation requires confirmation");
   return {component,mode,hour,minute,expected_revision:policy.revision};
  }
- if(typeof module!=="undefined")module.exports={visibleVersion,commandForPolicy};
+ if(typeof module!=="undefined")module.exports={visibleVersion,commandForPolicy,isUnsupportedServerError};
  if(typeof document==="undefined")return;
  const t=text=>globalThis.chillI18n?.t(text)||text,section=node("section"),summary=node("div"),rows=node("div"),note=node("p",undefined,"muted");
  section.id="update-settings";section.dataset.settingsCategory="general";section.append(node("h2",t("Versions et mises à jour")),summary,rows,note);$("admin-panel").querySelector(".admin-grid").append(section);
@@ -45,7 +46,7 @@
   }
   if(native)summary.append(node("p",t("Sur Mac, l’installation demande toujours votre validation. La vérification automatique fonctionne lorsque l’application est ouverte."),"muted"));
  }
- async function refresh(force=false){if(refreshing)return;refreshing=true;const before=visibleVersion((native?local:server)?.installed?.themes);try{local=await call({action:"status"});try{server=native?await call({action:"server_status"}):local;}catch(_){server={unsupported:true,installed:server?.installed};}const after=visibleVersion((native?local:server)?.installed?.themes);if(before&&after&&before!==after)void window.reloadThemePack?.();render(force);}catch(error){note.textContent=error.message||String(error);}finally{refreshing=false;lastRefresh=Date.now();}}
+ async function refresh(force=false){if(refreshing)return;refreshing=true;const before=visibleVersion((native?local:server)?.installed?.themes);try{local=await call({action:"status"});try{server=native?await call({action:"server_status"}):local;}catch(error){if(isUnsupportedServerError(error)){server={unsupported:true,installed:server?.installed};}else{note.textContent=error?.message||"État du serveur temporairement indisponible. Les dernières informations connues sont conservées.";}}const after=visibleVersion((native?local:server)?.installed?.themes);if(before&&after&&before!==after)void window.reloadThemePack?.();render(force);}catch(error){note.textContent=error.message||String(error);}finally{refreshing=false;lastRefresh=Date.now();}}
  new MutationObserver(()=>{if(!$("admin-panel").hidden)void refresh();}).observe($("admin-panel"),{attributes:true,attributeFilter:["hidden"]});
  window.chillUpdates={refresh};window.chillReady?.then(()=>{void refresh();setInterval(()=>{if(!document.hidden&&(!$("admin-panel").hidden||Date.now()-lastRefresh>=60000))void refresh();},10000);});
 })();

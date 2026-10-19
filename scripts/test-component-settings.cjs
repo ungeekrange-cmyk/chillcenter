@@ -11,12 +11,12 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
    localStorage.setItem("chillcenter-interface-language","fr");
    const media={id:"fixture-film",title:"Test movie",path:"fixture.mp4",category:"film",year:2026,genres:[],directors:[],cast:[],available:true,watched:false,rating:null,poster:null,series:null,season:null,episode:null};
    const policy={revision:1,mode:"automatic",hour:2,minute:0};
-   window.fixtureUpdates={calls:[],legacy:false,local:{installed:{mac:{version:"0.7.0"},themes:{version:"0.7.0"},api:"2026-10-14"},policies:{mac:{...policy,mode:"check"},themes:{...policy}},operations:[],available:{mac:{version:"0.7.1"}},timezone:"+01:00"},server:{installed:{server:{version:"0.7.0"},web:{version:"0.6.9"},themes:{version:"0.7.0"},api:"2026-10-14"},policies:{server:{...policy},web:{...policy},themes:{...policy}},operations:[],helper_available:true,timezone:"+01:00"}};
+   window.fixtureUpdates={calls:[],legacy:false,transient:false,local:{installed:{mac:{version:"0.7.0"},themes:{version:"0.7.0"},api:"2026-10-14"},policies:{mac:{...policy,mode:"check"},themes:{...policy}},operations:[],available:{mac:{version:"0.7.1"}},timezone:"+01:00"},server:{installed:{server:{version:"0.7.0"},web:{version:"0.6.9"},themes:{version:"0.7.0"},api:"2026-10-14"},policies:{server:{...policy},web:{...policy},themes:{...policy}},operations:[],helper_available:true,timezone:"+01:00"}};
    window.__TAURI__={core:{invoke:async(name,{command:c})=>{
     const f=fixtureUpdates;f.calls.push({name,...c});
     if(name==="update_command"){
      if(c.action==="status")return f.local;
-     if(c.action==="server_status")return f.legacy?{unsupported:true,installed:{server:{version:"0.6.0"}}}:f.server;
+     if(c.action==="server_status"){if(f.transient)throw {code:"UPDATE_SERVER_UNAVAILABLE",status:503,message:"Serveur temporairement indisponible."};return f.legacy?{unsupported:true,installed:{server:{version:"0.6.0"}}}:f.server;}
      if(c.action==="check")return new Promise(resolve=>{f.finishCheck=()=>resolve({operation:{status:"pending"}});});
      if(c.action==="policy"){Object.assign(f.local.policies[c.component],{mode:c.mode,hour:c.hour,minute:c.minute,revision:2});return {};}
      return {};
@@ -53,6 +53,11 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
   await page.locator("#admin-close").click();await page.locator(".media-card h2").click();
   assert.equal(await page.locator("#detail-title").textContent(),"Test movie","Catalogue remains usable during a held update request");
   await page.evaluate(()=>fixtureUpdates.finishCheck());await page.locator("#media-dialog .dialog-close").click();
+  await page.locator("#admin-toggle").click();await page.evaluate(async()=>{fixtureUpdates.transient=true;await window.chillUpdates.refresh(true);});
+  assert.match(await settings.textContent(),/Serveur · Serveur · 0.7.0/,"A 503 retains the last good server state");
+  assert.equal(await settings.locator("form").count(),5,"A transient server failure must not hide supported controls");
+  assert.match(await settings.locator("p.muted").last().textContent(),/temporairement indisponible/);
+  await page.evaluate(()=>fixtureUpdates.transient=false);
   await page.locator("#admin-toggle").click();await page.evaluate(async()=>{fixtureUpdates.legacy=true;await window.chillUpdates.refresh(true);});
   assert.match(await settings.textContent(),/Ce serveur ne gère pas encore/);
   assert.match(await settings.textContent(),/Serveur : 0.6.0/);
