@@ -358,7 +358,7 @@ fn apply_while_quiesced(
             "backup hook returned an unsafe identifier".into(),
         ));
     }
-    let new_target = PathBuf::from("releases").join(&leaf);
+    let new_target = PathBuf::from("releases").join(leaf);
     hooks.before_switch(request.verified.manifest.component)?;
     write_transaction_marker(
         &request.layout.component_root,
