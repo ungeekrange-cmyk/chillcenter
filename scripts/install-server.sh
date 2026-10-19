@@ -1,11 +1,13 @@
-#!/bin/bash
+#!/bin/bash -p
 # Generic first-install-only Linux installer. It consumes already downloaded,
 # inspectable local files; it never downloads or executes a remote script and
 # never mounts, remounts, writes, chowns, or probes the configured library.
 set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-unset PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE PYTHONINSPECT PYTHONWARNINGS
-readonly PYTHON=/usr/bin/python3
+unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE PYTHONINSPECT PYTHONWARNINGS
+# Debian/Ubuntu python3 is a root-owned symlink. Resolve the trusted system
+# entry, then validate the real executable before using isolated Python.
+readonly PYTHON="$(/usr/bin/readlink -f /usr/bin/python3)"
 readonly MINISIGN=/usr/bin/minisign
 readonly PINNED_RELEASE_KEY='RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
 readonly KEY_ID='18FD790B48C202F8'

@@ -13,9 +13,10 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 
 ROOTS = [pathlib.Path(p) for p in (
-    "/usr/lib/chillcenter", "/etc/chillcenter", "/var/lib/chillcenter-data",
+    "/usr/lib/chillcenter", "/etc/chillcenter", "/var/lib/chillcenter",
 )]
 SYSTEMD = pathlib.Path("/usr/lib/systemd/system")
 
@@ -26,7 +27,7 @@ def run(*args, check=True, **kwargs):
     print("+", " ".join(map(str, args)))
     return subprocess.run(args, check=check, text=True, **kwargs)
 
-def require_guard():
+def require_guard(resume=False):
     if os.environ.get("CHILL_UPDATE_DISPOSABLE_VM") != "1":
         die("set CHILL_UPDATE_DISPOSABLE_VM=1 explicitly")
     if os.geteuid() != 0:
@@ -36,6 +37,10 @@ def require_guard():
         die("hostname guard refused %r" % hostname)
     if pathlib.Path("/run/systemd/system").exists() is False:
         die("PID 1 is not systemd")
+    if resume:
+        config = json.loads(pathlib.Path('/etc/chillcenter/server.json').read_text())
+        require(config['data_dir'] == '/var/lib/chillcenter/data', 'not our isolated fixture')
+        return
     for path in ROOTS:
         if path.exists() or path.is_symlink():
             die("fixture host is not pristine: %s" % path)
@@ -63,7 +68,7 @@ def install_boundary_fixture(updater, server, repo):
     for p in ("data", "data/updates", "data/backups"):
         q = ROOTS[2] / p; q.mkdir(parents=True, mode=0o700); os.chown(q, uid, gid)
     for p in ("trust", "cache"):
-        (ROOTS[2] / p).mkdir(mode=0o700)
+        pathlib.Path('/var/lib/chillcenter-update', p).mkdir(parents=True, mode=0o700)
     shutil.copy2(updater, ROOTS[0] / "chill-update")
     shutil.copy2(server, ROOTS[0] / "server/releases/0.7.0-1/payload")
     os.chmod(ROOTS[0] / "chill-update", 0o755); os.chmod(ROOTS[0] / "server/releases/0.7.0-1/payload", 0o755)
@@ -72,17 +77,84 @@ def install_boundary_fixture(updater, server, repo):
     # is never a production signing key and no manifest is fetched from a network.
     run("/usr/bin/minisign", "-G", "-s", "/etc/chillcenter/release.key", "-p", "/etc/chillcenter/release.pub", "-W")
     os.chmod("/etc/chillcenter/release.key", 0o600)
-    config = {"listen":"127.0.0.1:18443", "data_dir":"/var/lib/chillcenter-data/data", "tls_names":["localhost","127.0.0.1"]}
+    config = {"listen":"127.0.0.1:18443", "data_dir":"/var/lib/chillcenter/data", "tls_names":["localhost","127.0.0.1"]}
     pathlib.Path("/etc/chillcenter/server.json").write_text(json.dumps(config))
     os.chown("/etc/chillcenter/server.json", 0, gid); os.chmod("/etc/chillcenter/server.json", 0o640)
     # Recovery commands only need trusted config paths; TLS is created by the real server.
-    updates = {"schema_version":1,"key_id":"synthetic-v07","public_key":"/etc/chillcenter/release.pub","state_root":"/var/lib/chillcenter-data/data/updates","trust_root":"/var/lib/chillcenter-data/trust","cache_root":"/var/lib/chillcenter-data/cache","backup_root":"/var/lib/chillcenter-data/data/backups","maintenance_flag":"/run/chillcenter-update/maintenance","quiescence_status":"/var/lib/chillcenter-data/data/updates/quiescence.json","server_config":"/etc/chillcenter/server.json","service_name":"chillcenter.service","service_uid":uid,"service_gid":gid,"health_url":"https://localhost:18443/api/2026-10-14/server","status_url":"https://localhost:18443/api/2026-10-14/admin/updates","health_resolve":"127.0.0.1:18443","health_ca_certificate":"/var/lib/chillcenter-data/data/tls/certificate.pem","component_roots":{"server":"/usr/lib/chillcenter/server","web":"/usr/lib/chillcenter/web","themes":"/usr/lib/chillcenter/themes"},"targets":{"server":"linux-aarch64","web":"web","themes":"universal"},"bootstrap_versions":{"server":"0.7.0","web":"0.0.0","themes":"0.0.0"},"api_version":"2026.10.14","database_schema":3,"renderer_version":1,"theme_format":1}
+    updates = {"schema_version":1,"key_id":"synthetic-v07","public_key":"/etc/chillcenter/release.pub","state_root":"/var/lib/chillcenter/data/updates","trust_root":"/var/lib/chillcenter/trust","cache_root":"/var/lib/chillcenter/cache","backup_root":"/var/lib/chillcenter/data/backups","maintenance_flag":"/run/chillcenter-update/maintenance","quiescence_status":"/var/lib/chillcenter/data/updates/quiescence.json","server_config":"/etc/chillcenter/server.json","service_name":"chillcenter.service","service_uid":uid,"service_gid":gid,"health_url":"https://localhost:18443/api/2026-10-14/server","status_url":"https://localhost:18443/api/2026-10-14/admin/updates","health_resolve":"127.0.0.1:18443","health_ca_certificate":"/var/lib/chillcenter/data/tls/certificate.pem","component_roots":{"server":"/usr/lib/chillcenter/server","web":"/usr/lib/chillcenter/web","themes":"/usr/lib/chillcenter/themes"},"targets":{"server":"linux-aarch64","web":"web","themes":"universal"},"bootstrap_versions":{"server":"0.7.0","web":"0.0.0","themes":"0.0.0"},"api_version":"2026.10.14","database_schema":3,"renderer_version":1,"theme_format":1}
     pathlib.Path("/etc/chillcenter/updates.json").write_text(json.dumps(updates))
     os.chmod("/etc/chillcenter/updates.json", 0o640)
     for name in ("chillcenter.service", "chillcenter-update.service"):
         shutil.copy2(repo / "deploy/updates" / name, SYSTEMD / name)
     run("/usr/bin/systemctl", "daemon-reload")
     return uid
+
+def refresh_fixture(repo, updater):
+    # May resume only this guarded disposable VM, never an arbitrary host.
+    run('/usr/bin/systemctl', 'stop', 'chillcenter.service')
+    for name in ('chillcenter.service', 'chillcenter-update.service'):
+        shutil.copy2(repo / 'deploy/updates' / name, SYSTEMD / name)
+    shutil.copy2(updater, ROOTS[0] / 'chill-update')
+    config_path = pathlib.Path('/etc/chillcenter/updates.json')
+    config = json.loads(config_path.read_text())
+    for item in ('trust', 'cache'):
+        directory = pathlib.Path('/var/lib/chillcenter-update', item)
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        config[item + '_root'] = str(directory)
+    config['health_ca_certificate'] = '/etc/chillcenter/health-ca.pem'
+    config_path.write_text(json.dumps(config))
+    # Match bootstrap ownership; no service-user-writable root configuration.
+    gid = int(run('/usr/bin/id', '-g', 'chillcenter', capture_output=True).stdout)
+    os.chown('/etc/chillcenter', 0, gid); os.chmod('/etc/chillcenter', 0o750)
+    os.chown('/etc/chillcenter/server.json', 0, gid)
+    run('/usr/bin/systemctl', 'daemon-reload')
+
+def activation_and_failure_boundaries():
+    root = ROOTS[0] / 'server'
+    old, new = 'releases/0.7.0-1', 'releases/0.7.0-2'
+    marker = root / 'transaction.json'
+    auth = pathlib.Path('/run/chillcenter-update/activate-server')
+    pathlib.Path('/run/chillcenter-update').mkdir(exist_ok=True, mode=0o755)
+    def candidate():
+        run('/usr/bin/systemctl', 'stop', 'chillcenter.service')
+        slot = root / new
+        slot.mkdir(exist_ok=True, mode=0o755)
+        shutil.copy2(root / old / 'payload', slot / 'payload')
+        os.chmod(slot / 'payload', 0o755)
+        operation = str(uuid.uuid4())
+        marker.write_text(json.dumps({'schema_version':1, 'operation_id':operation, 'previous_target':old, 'candidate_target':new}))
+        os.chmod(marker, 0o600)
+        (root / 'current').unlink(); (root / 'current').symlink_to(new)
+        # Exactly the production helper's process identity, held live while
+        # systemd runs its real +ExecStartPre command in its real sandbox.
+        stat = pathlib.Path('/proc/self/stat').read_text().rsplit(') ',1)[1].split()
+        identity = pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()+':'+stat[19]
+        auth.write_text(json.dumps({'schema_version':1, 'operation_id':operation, 'candidate_target':new,
+            'pid':os.getpid(), 'process_identity':identity, 'created_unix':int(time.time())}))
+        os.chmod(auth, 0o600)
+        run('/usr/bin/systemctl', 'start', 'chillcenter.service')
+        require(os.readlink(root / 'current') == new, 'valid live authorization was rejected under actual systemd sandbox')
+        require(not auth.exists(), 'authorization was not consumed exactly once')
+    candidate()
+    # Candidate is already active; an uncommitted transaction MUST stop it,
+    # restore the old slot and restart, not merely call start on an active PID.
+    before = run('/usr/bin/systemctl', 'show', 'chillcenter.service', '-p', 'MainPID', '--value', capture_output=True).stdout.strip()
+    pathlib.Path('/run/chillcenter-update/maintenance').write_text('synthetic interrupted operation')
+    run('/usr/lib/chillcenter/chill-update', 'rescue')
+    after = run('/usr/bin/systemctl', 'show', 'chillcenter.service', '-p', 'MainPID', '--value', capture_output=True).stdout.strip()
+    require(before != after and after != '0', 'rescue retained the active uncommitted process')
+    require(os.readlink(root / 'current') == old, 'rescue failed to restore old slot')
+    require(not pathlib.Path('/run/chillcenter-update/maintenance').exists(), 'rescue retained maintenance flag')
+    require(not marker.exists(), 'rescue retained transaction')
+    # Replay after a crash between candidate deletion and marker cleanup.
+    marker.write_text(json.dumps({'schema_version':1, 'operation_id':str(uuid.uuid4()), 'previous_target':old, 'candidate_target':new}))
+    run('/usr/bin/systemctl', 'restart', 'chillcenter.service')
+    require(not marker.exists(), 'idempotent recovery failed after candidate was already deleted')
+    # A second prestart cannot reuse the consumed permit.
+    candidate()
+    run('/usr/bin/systemctl', 'restart', 'chillcenter.service')
+    require(os.readlink(root / 'current') == old, 'one-shot authorization was reusable')
+    print('PASS actual sandbox: live one-shot token, active-candidate rescue, maintenance cleanup, idempotent rollback')
 
 def service_boundary(uid):
     run("/usr/bin/systemctl", "start", "chillcenter.service")
@@ -100,12 +172,18 @@ def main():
     parser.add_argument("--updater", required=True, type=pathlib.Path)
     parser.add_argument("--server", required=True, type=pathlib.Path)
     parser.add_argument("--repo", default=pathlib.Path(__file__).resolve().parents[1], type=pathlib.Path)
+    parser.add_argument('--resume-fixture', action='store_true')
     args = parser.parse_args()
-    require_guard()
+    require_guard(args.resume_fixture)
     for binary in (args.updater, args.server):
         require(binary.is_file() and os.access(binary, os.X_OK), "missing executable: %s" % binary)
-    uid = install_boundary_fixture(args.updater, args.server, args.repo)
+    uid = int(run('/usr/bin/id','-u','chillcenter',capture_output=True).stdout) if args.resume_fixture else install_boundary_fixture(args.updater, args.server, args.repo)
+    refresh_fixture(args.repo, args.updater)
     service_boundary(uid)
+    require(pathlib.Path('/etc/chillcenter').stat().st_uid == 0, 'systemd transferred configuration ownership to service')
+    certificate = pathlib.Path('/var/lib/chillcenter/data/tls/certificate.pem')
+    shutil.copy2(certificate, '/etc/chillcenter/health-ca.pem'); os.chown('/etc/chillcenter/health-ca.pem',0,0)
+    activation_and_failure_boundaries()
     # Exact live-root checks: Linux root-only ledger plus production recovery under
     # the real service sandbox.  These are intentionally fail-closed if the
     # cross-built binaries/Minisign/systemd image do not meet prerequisites.

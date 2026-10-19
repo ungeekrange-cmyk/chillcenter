@@ -17,6 +17,7 @@ pub struct PendingAcceptance {
     pub sequence: u64,
     pub manifest_sha256: String,
     pub version: Version,
+    pub accepted_unix: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -71,6 +72,18 @@ impl AntiRollbackStore {
         })
     }
 
+    pub fn pending(&self, component: Component) -> Result<Option<PendingAcceptance>> {
+        self.with_lock(|state| {
+            Ok((
+                state
+                    .components
+                    .get(&component)
+                    .and_then(|entry| entry.pending.clone()),
+                false,
+            ))
+        })
+    }
+
     /// An exact pending manifest may be retried at its accepted sequence. No
     /// other manifest receives this exception.
     pub fn verification_floor(
@@ -119,8 +132,14 @@ impl AntiRollbackStore {
                 sequence,
                 manifest_sha256: manifest_sha256.to_owned(),
                 version: version.clone(),
+                accepted_unix: time::OffsetDateTime::now_utc().unix_timestamp(),
             };
-            if entry.pending.as_ref() == Some(&candidate) && entry.highest_sequence == sequence {
+            if entry.pending.as_ref().is_some_and(|pending| {
+                pending.sequence == sequence
+                    && pending.manifest_sha256 == manifest_sha256
+                    && &pending.version == version
+            }) && entry.highest_sequence == sequence
+            {
                 return Ok(((), false));
             }
             if entry.pending.is_some() {
@@ -224,7 +243,7 @@ fn validate_state(state: &SequenceState) -> Result<()> {
         }
         if let Some(pending) = &entry.pending {
             validate_digest(&pending.manifest_sha256)?;
-            if pending.sequence != entry.highest_sequence {
+            if pending.sequence != entry.highest_sequence || pending.accepted_unix <= 0 {
                 return Err(UpdateError::Security(
                     "pending acceptance is not the highest sequence".into(),
                 ));
@@ -333,6 +352,7 @@ mod tests {
                         sequence: 7,
                         manifest_sha256: "a".repeat(64),
                         version: Version::parse("0.7.0").unwrap(),
+                        accepted_unix: 1_792_396_800,
                     }),
                 },
             )]),

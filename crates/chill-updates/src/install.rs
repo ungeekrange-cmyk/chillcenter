@@ -231,6 +231,7 @@ pub fn apply_staged(
 }
 
 fn prepare_slot(request: &ApplyRequest<'_>) -> Result<PathBuf> {
+    cleanup_transaction_temps(&request.layout.component_root)?;
     let releases = request.layout.component_root.join("releases");
     fs::create_dir_all(&releases)?;
     reject_symlink(&releases)?;
@@ -486,6 +487,7 @@ pub fn recover_interrupted(
 ) -> Result<RecoveryResult> {
     #[cfg(all(not(test), target_os = "linux"))]
     validate_root_owned_directory(component_root)?;
+    cleanup_transaction_temps(component_root)?;
     let marker_path = component_root.join("transaction.json");
     let marker_bytes = match read_bounded_nofollow(&marker_path, 16 * 1024) {
         Ok(bytes) => bytes,
@@ -497,19 +499,26 @@ pub fn recover_interrupted(
     let marker: TransactionMarker = crate::parse_strict_json(&marker_bytes)?;
     validate_marker(&marker)?;
     let current = component_root.join("current");
-    let target = fs::read_link(&current)?;
-    validate_slot_target(&target)?;
+    let target = match fs::read_link(&current) {
+        Ok(target) => {
+            validate_slot_target(&target)?;
+            Some(target)
+        }
+        Err(error)
+            if error.kind() == std::io::ErrorKind::NotFound && marker.previous_target.is_none() =>
+        {
+            None
+        }
+        Err(error) => return Err(error.into()),
+    };
     let candidate_target = PathBuf::from(&marker.candidate_target);
-    if target == candidate_target
+    if target.as_ref() == Some(&candidate_target)
         && runtime_authorization.is_some_and(|path| consume_activation_authorization(path, &marker))
     {
         return Ok(RecoveryResult::Authorized);
     }
-    let already_restored = marker
-        .previous_target
-        .as_ref()
-        .is_some_and(|previous| target == Path::new(previous));
-    if target != candidate_target && !already_restored {
+    let already_restored = target.as_deref() == marker.previous_target.as_deref().map(Path::new);
+    if target.as_ref() != Some(&candidate_target) && !already_restored {
         return Err(UpdateError::Security(
             "current slot differs from interrupted transaction".into(),
         ));
@@ -519,7 +528,7 @@ pub fn recover_interrupted(
             Some(previous) => {
                 let previous = PathBuf::from(previous);
                 validate_slot_target(&previous)?;
-                let rollback = component_root.join(format!(".recover-{}", marker.operation_id));
+                let rollback = component_root.join(format!(".recover-{}", Uuid::new_v4()));
                 create_symlink(&previous, &rollback)?;
                 fs::rename(rollback, &current)?;
             }
@@ -528,15 +537,48 @@ pub fn recover_interrupted(
     }
     File::open(component_root)?.sync_all()?;
     let candidate = component_root.join(&marker.candidate_target);
-    let candidate_metadata = fs::symlink_metadata(&candidate)?;
-    if candidate_metadata.file_type().is_symlink() || !candidate_metadata.is_dir() {
-        return Err(UpdateError::Security(
-            "interrupted candidate release is not a directory".into(),
-        ));
+    match fs::symlink_metadata(&candidate) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(UpdateError::Security(
+                "interrupted candidate release is not a directory".into(),
+            ));
+        }
+        Ok(_) => fs::remove_dir_all(candidate)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && already_restored => (),
+        Err(error) => return Err(error.into()),
     }
-    fs::remove_dir_all(candidate)?;
     remove_transaction_marker(component_root)?;
     Ok(RecoveryResult::RolledBack)
+}
+
+fn cleanup_transaction_temps(root: &Path) -> Result<()> {
+    let mut changed = false;
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(id) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(".transaction-"))
+            .and_then(|name| name.strip_suffix(".tmp"))
+        else {
+            continue;
+        };
+        if Uuid::parse_str(id).is_err() {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 16 * 1024 {
+            return Err(UpdateError::Security(
+                "invalid transaction temporary".into(),
+            ));
+        }
+        fs::remove_file(entry.path())?;
+        changed = true;
+    }
+    if changed {
+        File::open(root)?.sync_all()?;
+    }
+    Ok(())
 }
 
 fn write_transaction_marker(root: &Path, marker: &TransactionMarker) -> Result<()> {
@@ -547,9 +589,15 @@ fn write_transaction_marker(root: &Path, marker: &TransactionMarker) -> Result<(
     options
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
-    let mut file = options.open(root.join("transaction.json"))?;
+    let temporary = root.join(format!(".transaction-{}.tmp", Uuid::new_v4()));
+    let mut file = options.open(&temporary)?;
     file.write_all(&serde_json::to_vec(marker)?)?;
     file.sync_all()?;
+    // Atomic no-replace publication: recovery sees either no transaction or a
+    // complete durable marker, never a partially-written JSON document.
+    fs::hard_link(&temporary, root.join("transaction.json"))?;
+    File::open(root)?.sync_all()?;
+    fs::remove_file(temporary)?;
     File::open(root)?.sync_all()?;
     Ok(())
 }
@@ -603,7 +651,7 @@ fn read_bounded_nofollow(path: &Path, maximum: u64) -> Result<Vec<u8>> {
 fn validate_slot_target(target: &Path) -> Result<()> {
     let mut components = target.components();
     if components.next() != Some(std::path::Component::Normal("releases".as_ref()))
-        || components.next().is_none()
+        || !matches!(components.next(), Some(std::path::Component::Normal(_)))
         || components.next().is_some()
     {
         return Err(UpdateError::Security(
@@ -876,6 +924,44 @@ mod tests {
                 Path::new("releases/old")
             );
             assert!(!auth.exists());
+        }
+    }
+
+    #[test]
+    fn recovery_is_idempotent_after_candidate_deletion_and_first_install_rollback() {
+        for previous in [Some("releases/old".to_owned()), None] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path();
+            fs::create_dir(root.join("releases")).unwrap();
+            if let Some(previous) = &previous {
+                fs::create_dir(root.join(previous)).unwrap();
+                create_symlink(Path::new(previous), &root.join("current")).unwrap();
+            }
+            write_transaction_marker(
+                root,
+                &TransactionMarker {
+                    schema_version: 1,
+                    operation_id: Uuid::new_v4(),
+                    previous_target: previous,
+                    candidate_target: "releases/new".into(),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                recover_interrupted(root, None).unwrap(),
+                RecoveryResult::RolledBack
+            );
+            assert_eq!(
+                recover_interrupted(root, None).unwrap(),
+                RecoveryResult::None
+            );
+            let partial = root.join(format!(".transaction-{}.tmp", Uuid::new_v4()));
+            fs::write(&partial, b"{torn JSON").unwrap();
+            assert_eq!(
+                recover_interrupted(root, None).unwrap(),
+                RecoveryResult::None
+            );
+            assert!(!partial.exists());
         }
     }
 

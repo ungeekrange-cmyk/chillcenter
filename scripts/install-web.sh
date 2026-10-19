@@ -1,7 +1,9 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # Inspectable web-assets-only installer. Download/verification is performed by
 # chill-update; this wrapper never accepts a URL, path, tag, or repository.
 set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+unset BASH_ENV ENV CDPATH GLOBIGNORE
 [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo 'Run as root.' >&2; exit 2; }
 [[ $# -eq 0 ]] || { echo 'Usage: install-web.sh' >&2; exit 2; }
 readonly helper=/usr/lib/chillcenter/chill-update

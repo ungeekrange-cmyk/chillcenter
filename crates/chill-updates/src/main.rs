@@ -423,6 +423,14 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
         now,
     )?;
     let outcome = (|| {
+        if AntiRollbackStore::open_root(&config.trust_root)?
+            .pending(component)?
+            .is_some()
+        {
+            // Never evict the only exact recovery bytes when a newer release
+            // appears. Local root must finish the accepted transaction first.
+            return Err(UpdateError::Security("accepted release requires local --retry-accepted recovery before checking another release".into()));
+        }
         let client = GithubReleaseClient::new(TransportLimits::default())?;
         let candidate = client.find_latest(component)?.ok_or_else(|| {
             UpdateError::Invalid("no stable component release with signed manifest".into())
@@ -500,12 +508,12 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
         publish_availability(
             config,
             component,
-            AvailabilityEntry {
+            Some(AvailabilityEntry {
                 version: verified.manifest.version,
                 source_commit: verified.manifest.source_commit,
                 release_sequence: verified.manifest.release_sequence,
                 checked_unix: now.unix_timestamp(),
-            },
+            }),
         )?;
         Ok(Some(()))
     })();
@@ -522,6 +530,7 @@ fn perform_check(config: &RootConfig, component: Component) -> chill_updates::Re
             Ok(CheckResult::Available)
         }
         Ok(None) => {
+            publish_availability(config, component, None)?;
             store.transition(
                 operation.id,
                 OperationStatus::Running,
@@ -551,6 +560,16 @@ struct CachedVerification {
     accepted_retry: bool,
 }
 
+struct RootAcceptance {
+    component: Component,
+    sequence: u64,
+    digest: String,
+    version: Version,
+    issued: OffsetDateTime,
+    expires: OffsetDateTime,
+    automatic: bool,
+}
+
 fn verify_cached(
     config: &RootConfig,
     component: Component,
@@ -577,13 +596,25 @@ fn verify_cached(
     } else {
         actual_installed
     };
+    let verification_time = if let Some(pending) = &pending {
+        let accepted = OffsetDateTime::from_unix_timestamp(pending.accepted_unix)
+            .map_err(|_| UpdateError::Security("invalid root acceptance time".into()))?;
+        if accepted > OffsetDateTime::now_utc() {
+            return Err(UpdateError::Security(
+                "root acceptance is in the future".into(),
+            ));
+        }
+        accepted
+    } else {
+        OffsetDateTime::now_utc()
+    };
     let context = verification_context(
         config,
         component,
         &receipt.target,
         &verification_installed,
         highest,
-        OffsetDateTime::now_utc(),
+        verification_time,
     );
     let verified = parse_and_verify_manifest(&manifest, &signature, &public_key, &context)?;
     if verified.manifest.release_tag != receipt.release_tag {
@@ -615,19 +646,39 @@ fn perform_apply(
     automatic: bool,
 ) -> chill_updates::Result<()> {
     require_linux_component(component)?;
-    let receipt = read_available(config, component)?;
-    let cached = verify_cached(config, component)?;
+    let store = state_store(config)?;
+    let preflight = (|| {
+        Ok::<_, UpdateError>((
+            read_available(config, component)?,
+            verify_cached(config, component)?,
+        ))
+    })();
+    let (receipt, cached) = match preflight {
+        Ok(value) => value,
+        Err(error) => {
+            fail_component_intents(&store, component, "recheck_required")?;
+            return Err(error);
+        }
+    };
     // The service-owned operation ledger cannot authorize retrying a release
     // already accepted by root and then failed/interrupted. Only local root can.
     if cached.accepted_retry && !retry_accepted {
+        fail_component_intents(&store, component, "local_recovery_required")?;
         return Err(UpdateError::Security(
             "accepted release requires local --retry-accepted recovery".into(),
         ));
     }
+    if cached.accepted_retry && retry_accepted {
+        rescue(config)?;
+    }
+    reconcile_store(config, &store)?;
     let verified = cached.verified;
-    let store = state_store(config)?;
-    let operation =
-        store.admit_intent(component, IntentKind::Install, OffsetDateTime::now_utc())?;
+    let operation = store.admit_install(
+        component,
+        &cached.manifest_sha256,
+        automatic,
+        OffsetDateTime::now_utc(),
+    )?;
     if !matches!(
         operation.status,
         OperationStatus::Pending | OperationStatus::DeferredBusy
@@ -637,6 +688,35 @@ fn perform_apply(
             operation.id, operation.status
         )));
     }
+    if operation.automatic
+        && store
+            .read()?
+            .policies
+            .get(&component)
+            .is_some_and(|policy| policy.mode != PolicyMode::Automatic)
+    {
+        store.transition(
+            operation.id,
+            operation.status,
+            OperationStatus::Failed,
+            Some("automatic_policy_changed"),
+            OffsetDateTime::now_utc(),
+        )?;
+        return Err(UpdateError::Busy(
+            "automatic installation was disabled".into(),
+        ));
+    }
+    store.transition(
+        operation.id,
+        operation.status,
+        OperationStatus::Running,
+        None,
+        OffsetDateTime::now_utc(),
+    )?;
+    let _running = RunningOperation {
+        store: &store,
+        id: operation.id,
+    };
     let component_root = config
         .component_roots
         .get(&component)
@@ -657,12 +737,23 @@ fn perform_apply(
         &verified.selected_asset.sha256,
     )?;
     let mut hooks = LinuxHooks::new(config)?;
-    hooks.acceptance = Some((
+    hooks.acceptance = Some(RootAcceptance {
         component,
-        verified.manifest.release_sequence,
-        cached.manifest_sha256.clone(),
-        verified.manifest.version.clone(),
-    ));
+        sequence: verified.manifest.release_sequence,
+        digest: cached.manifest_sha256.clone(),
+        version: verified.manifest.version.clone(),
+        automatic: operation.automatic,
+        issued: OffsetDateTime::parse(
+            &verified.manifest.issued_at,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .map_err(|_| UpdateError::Security("invalid issuance time".into()))?,
+        expires: OffsetDateTime::parse(
+            &verified.manifest.expires_at,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .map_err(|_| UpdateError::Security("invalid expiry time".into()))?,
+    });
     let expected_target = PathBuf::from("releases").join(format!(
         "{}-{}",
         verified.manifest.version, verified.manifest.release_sequence
@@ -701,18 +792,6 @@ fn perform_apply(
         }
         File::open(&releases)?.sync_all()?;
     }
-    if matches!(
-        operation.status,
-        OperationStatus::Pending | OperationStatus::DeferredBusy
-    ) {
-        store.transition(
-            operation.id,
-            operation.status,
-            OperationStatus::Running,
-            None,
-            OffsetDateTime::now_utc(),
-        )?;
-    }
     let trust = AntiRollbackStore::open_root(&config.trust_root)?;
     if resumes_healthy_candidate {
         let outcome = hooks.health_check(component, &layout.component_root.join(&expected_target));
@@ -726,11 +805,6 @@ fn perform_apply(
             );
             return Err(error);
         }
-        trust.commit_pending(
-            component,
-            verified.manifest.release_sequence,
-            &cached.manifest_sha256,
-        )?;
         store.transition(
             operation.id,
             OperationStatus::Running,
@@ -738,6 +812,14 @@ fn perform_apply(
             Some("recovered_after_health"),
             OffsetDateTime::now_utc(),
         )?;
+        trust.commit_pending(
+            component,
+            verified.manifest.release_sequence,
+            &cached.manifest_sha256,
+        )?;
+        if let Err(error) = publish_availability(config, component, None) {
+            eprintln!("availability refresh failed: {error}");
+        }
         println!("installed={} recovered", verified.manifest.version);
         return Ok(());
     }
@@ -753,11 +835,6 @@ fn perform_apply(
     let outcome = apply_staged(&request, &mut hooks);
     match outcome {
         Ok(result) => {
-            trust.commit_pending(
-                component,
-                verified.manifest.release_sequence,
-                &cached.manifest_sha256,
-            )?;
             store.transition(
                 operation.id,
                 OperationStatus::Running,
@@ -765,6 +842,14 @@ fn perform_apply(
                 Some("installed"),
                 OffsetDateTime::now_utc(),
             )?;
+            trust.commit_pending(
+                component,
+                verified.manifest.release_sequence,
+                &cached.manifest_sha256,
+            )?;
+            if let Err(error) = publish_availability(config, component, None) {
+                eprintln!("availability refresh failed: {error}");
+            }
             println!(
                 "installed={} backup={}",
                 result.installed.display(),
@@ -789,7 +874,7 @@ fn perform_apply(
                     OperationStatus::Failed
                 },
                 Some(if deferred {
-                    if automatic {
+                    if operation.automatic {
                         "deferred_busy_auto"
                     } else {
                         "deferred_busy_manual"
@@ -804,34 +889,110 @@ fn perform_apply(
     }
 }
 
-fn tick(config: &RootConfig) -> chill_updates::Result<()> {
-    let offset = os_local_offset()?;
-    let store = state_store(config)?;
+/// Ensure every admitted install has a terminal outcome even on a preflight
+/// error. Drop never converts an already Deferred/Succeeded operation to Failed.
+struct RunningOperation<'a> {
+    store: &'a StateStore,
+    id: Uuid,
+}
+impl Drop for RunningOperation<'_> {
+    fn drop(&mut self) {
+        let _ = self.store.transition(
+            self.id,
+            OperationStatus::Running,
+            OperationStatus::Failed,
+            Some("interrupted_preflight"),
+            OffsetDateTime::now_utc(),
+        );
+    }
+}
+
+fn fail_component_intents(
+    store: &StateStore,
+    component: Component,
+    code: &str,
+) -> chill_updates::Result<()> {
+    store.update_scheduler(|state| {
+        for operation in &mut state.operations {
+            if operation.component == component
+                && operation.kind == IntentKind::Install
+                && matches!(
+                    operation.status,
+                    OperationStatus::Pending
+                        | OperationStatus::Running
+                        | OperationStatus::DeferredBusy
+                )
+            {
+                operation.status = OperationStatus::Failed;
+                operation.result_code = Some(code.to_owned());
+                operation.updated_unix = OffsetDateTime::now_utc().unix_timestamp();
+            }
+        }
+        Ok(())
+    })
+}
+
+fn reconcile_store(config: &RootConfig, store: &StateStore) -> chill_updates::Result<()> {
     // Reconcile under the helper lease, before coalescing new intents. Only
     // pre-acceptance crashes are automatically retryable; root-pending slots
     // require explicit local recovery, never a service-writable status field.
+    let trust = AntiRollbackStore::open_root(&config.trust_root)?;
     let recovery_required = [Component::Server, Component::Web, Component::Themes]
         .into_iter()
         .map(|component| {
-            let pending = read_available(config, component)
-                .ok()
-                .and_then(|receipt| {
-                    AntiRollbackStore::open_root(&config.trust_root)
-                        .ok()?
-                        .verification_floor(component, &receipt.cache_key)
-                        .ok()?
-                        .1
-                })
-                .is_some();
-            (component, pending)
+            trust
+                .pending(component)
+                .map(|pending| (component, pending.is_some()))
         })
-        .collect::<BTreeMap<_, _>>();
+        .collect::<chill_updates::Result<BTreeMap<_, _>>>()?;
     store.update_scheduler(|state| {
         let now = OffsetDateTime::now_utc().unix_timestamp();
         for operation in &mut state.operations {
+            if matches!(
+                operation.status,
+                OperationStatus::Pending | OperationStatus::Running | OperationStatus::DeferredBusy
+            ) && ((operation.automatic
+                && state
+                    .policies
+                    .get(&operation.component)
+                    .is_some_and(|policy| policy.mode != PolicyMode::Automatic))
+                || operation.attempts >= 3)
+            {
+                operation.status = OperationStatus::Failed;
+                operation.result_code = Some(
+                    if operation.attempts >= 3 {
+                        "retry_exhausted"
+                    } else {
+                        "automatic_policy_changed"
+                    }
+                    .into(),
+                );
+                operation.updated_unix = now;
+                continue;
+            }
+            if operation.kind == IntentKind::Install
+                && recovery_required
+                    .get(&operation.component)
+                    .copied()
+                    .unwrap_or(true)
+                && matches!(
+                    operation.status,
+                    OperationStatus::Pending
+                        | OperationStatus::Running
+                        | OperationStatus::DeferredBusy
+                )
+            {
+                operation.status = OperationStatus::Failed;
+                operation.result_code = Some("local_recovery_required".into());
+                operation.updated_unix = now;
+                continue;
+            }
             if operation.status == OperationStatus::Running {
                 operation.status = if operation.kind == IntentKind::Install
-                    && recovery_required[&operation.component]
+                    && recovery_required
+                        .get(&operation.component)
+                        .copied()
+                        .unwrap_or(true)
                 {
                     OperationStatus::Failed
                 } else {
@@ -869,6 +1030,13 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
         }
         Ok(())
     })?;
+    Ok(())
+}
+
+fn tick(config: &RootConfig) -> chill_updates::Result<()> {
+    let offset = os_local_offset()?;
+    let store = state_store(config)?;
+    reconcile_store(config, &store)?;
     let pending = store
         .read()?
         .operations
@@ -907,7 +1075,7 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
             false,
             false,
             false,
-            operation.result_code.as_deref() == Some("deferred_busy_auto"),
+            operation.automatic,
         ) {
             eprintln!(
                 "pending {} install failed: {error}",
@@ -1365,7 +1533,7 @@ fn read_available(
 fn publish_availability(
     config: &RootConfig,
     component: Component,
-    entry: AvailabilityEntry,
+    entry: Option<AvailabilityEntry>,
 ) -> chill_updates::Result<()> {
     // UI-only snapshot. It is never consulted by signature, sequence, path, or
     // install decisions; those are revalidated from the root-owned cache/trust store.
@@ -1378,7 +1546,11 @@ fn publish_availability(
         }
         Err(error) => return Err(error),
     };
-    entries.insert(component, entry);
+    if let Some(entry) = entry {
+        entries.insert(component, entry);
+    } else {
+        entries.remove(&component);
+    }
     if entries.len() > 4 {
         return Err(UpdateError::Security(
             "availability snapshot is unbounded".into(),
@@ -1497,9 +1669,17 @@ fn run_bounded_backup(command: &mut Command, deadline: Duration) -> chill_update
     let mut stdout_result = None;
     let mut overflow = false;
     let mut completed = 0;
-    while completed < 2 {
-        if started.elapsed() >= deadline {
+    let mut status;
+    loop {
+        status = child.try_wait()?;
+        if overflow || started.elapsed() >= deadline || (completed == 2 && status.is_some()) {
             break;
+        }
+        if completed == 2 {
+            // Closing both pipes precedes the kernel's exit/reap notification.
+            // It is not a timeout and must not kill a successful command.
+            thread::sleep(Duration::from_millis(2));
+            continue;
         }
         match receiver.recv_timeout(Duration::from_millis(20)) {
             Ok((is_stdout, Ok(bytes))) => {
@@ -1514,13 +1694,11 @@ fn run_bounded_backup(command: &mut Command, deadline: Duration) -> chill_update
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-        if child.try_wait()?.is_some() && completed == 2 {
-            break;
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                overflow = completed != 2;
+            }
         }
     }
-    let status = child.try_wait()?;
     if status.is_none() || overflow || completed != 2 {
         unsafe {
             libc::kill(-pid, libc::SIGKILL);
@@ -1547,7 +1725,7 @@ struct LinuxHooks<'a> {
     client: reqwest::blocking::Client,
     stopped: bool,
     maintenance_generation_ns: Option<String>,
-    acceptance: Option<(Component, u64, String, Version)>,
+    acceptance: Option<RootAcceptance>,
 }
 
 impl<'a> LinuxHooks<'a> {
@@ -1709,15 +1887,39 @@ impl InstallHooks for LinuxHooks<'_> {
         ))
     }
     fn before_switch(&mut self, component: Component) -> chill_updates::Result<()> {
-        let (expected, sequence, digest, version) = self
+        let acceptance = self
             .acceptance
             .as_ref()
             .ok_or_else(|| UpdateError::Security("missing root acceptance identity".into()))?;
-        if *expected != component {
+        if acceptance.component != component {
             return Err(UpdateError::Security("acceptance component changed".into()));
         }
-        AntiRollbackStore::open_root(&self.config.trust_root)?
-            .accept_pending(component, *sequence, digest, version)
+        if acceptance.automatic
+            && state_store(self.config)?
+                .read()?
+                .policies
+                .get(&component)
+                .is_some_and(|policy| policy.mode != PolicyMode::Automatic)
+        {
+            return Err(UpdateError::Busy(
+                "automatic installation was disabled".into(),
+            ));
+        }
+        let trust = AntiRollbackStore::open_root(&self.config.trust_root)?;
+        let now = OffsetDateTime::now_utc();
+        if trust.pending(component)?.is_none()
+            && (now < acceptance.issued || now >= acceptance.expires)
+        {
+            return Err(UpdateError::Security(
+                "release no longer valid at root acceptance".into(),
+            ));
+        }
+        trust.accept_pending(
+            component,
+            acceptance.sequence,
+            &acceptance.digest,
+            &acceptance.version,
+        )
     }
     fn activate(&mut self, component: Component, _: &Path) -> chill_updates::Result<()> {
         let root = self

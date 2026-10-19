@@ -26,7 +26,7 @@ fn root() -> tempfile::TempDir {
     // of a path passed to the production root-owned-path validator.
     let base = std::env::var_os("CHILL_UPDATE_ROOT_TEST_BASE")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| "/var/lib/chillcenter-data".into());
+        .unwrap_or_else(|| "/var/lib/chillcenter".into());
     assert!(
         base.is_absolute() && base.is_dir(),
         "missing safe test base: {base:?}"

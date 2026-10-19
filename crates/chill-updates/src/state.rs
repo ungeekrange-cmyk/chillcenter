@@ -81,6 +81,11 @@ pub struct Operation {
     pub updated_unix: i64,
     pub attempts: u8,
     pub result_code: Option<String>,
+    /// Intent identity only; never an authority to bypass the root trust ledger.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_sha256: Option<String>,
+    #[serde(default)]
+    pub automatic: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -248,8 +253,36 @@ impl StateStore {
         kind: IntentKind,
         now: OffsetDateTime,
     ) -> Result<Operation> {
+        self.admit_bound(component, kind, now, None, false)
+    }
+
+    /// Atomically claim queued component intent with its verified release and
+    /// origin. A crash cannot leave a partially-bound scheduled installation.
+    pub fn admit_install(
+        &self,
+        component: Component,
+        digest: &str,
+        automatic: bool,
+        now: OffsetDateTime,
+    ) -> Result<Operation> {
+        if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(UpdateError::Invalid(
+                "invalid intent manifest identity".into(),
+            ));
+        }
+        self.admit_bound(component, IntentKind::Install, now, Some(digest), automatic)
+    }
+
+    fn admit_bound(
+        &self,
+        component: Component,
+        kind: IntentKind,
+        now: OffsetDateTime,
+        digest: Option<&str>,
+        automatic: bool,
+    ) -> Result<Operation> {
         self.with_locked_state(|state| {
-            if let Some(existing) = state.operations.iter().rev().find(|operation| {
+            if let Some(existing) = state.operations.iter_mut().rev().find(|operation| {
                 operation.component == component
                     && operation.kind == kind
                     && matches!(
@@ -259,7 +292,24 @@ impl StateStore {
                             | OperationStatus::DeferredBusy
                     )
             }) {
-                return Ok((existing.clone(), false));
+                let mut changed = false;
+                if let Some(digest) = digest {
+                    if existing
+                        .manifest_sha256
+                        .as_deref()
+                        .is_some_and(|identity| identity != digest)
+                    {
+                        existing.status = OperationStatus::Failed;
+                        existing.result_code = Some("release_changed_recheck".into());
+                        changed = true;
+                    } else if existing.manifest_sha256.is_none() {
+                        // An API intent has no release identity until this first
+                        // root claim. Keep its explicit manual origin.
+                        existing.manifest_sha256 = Some(digest.to_owned());
+                        changed = true;
+                    }
+                }
+                return Ok((existing.clone(), changed));
             }
             if kind == IntentKind::Install
                 && state.operations.iter().any(|operation| {
@@ -294,6 +344,8 @@ impl StateStore {
                 updated_unix: now.unix_timestamp(),
                 attempts: 0,
                 result_code: None,
+                manifest_sha256: digest.map(str::to_owned),
+                automatic,
             };
             state.operations.push(operation.clone());
             trim_operations(state);
@@ -342,6 +394,31 @@ impl StateStore {
                 .saturating_add(u8::from(next == OperationStatus::Running));
             operation.result_code = result_code.map(str::to_owned);
             Ok((operation.clone(), true))
+        })
+    }
+
+    pub fn bind_manifest(&self, id: Uuid, digest: &str) -> Result<()> {
+        if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(UpdateError::Invalid(
+                "invalid intent manifest identity".into(),
+            ));
+        }
+        self.with_locked_state(|state| {
+            let operation = state
+                .operations
+                .iter_mut()
+                .find(|operation| operation.id == id)
+                .ok_or_else(|| UpdateError::Invalid("unknown operation id".into()))?;
+            if let Some(existing) = &operation.manifest_sha256 {
+                if existing != digest {
+                    return Err(UpdateError::Security(
+                        "selected release changed; check and install again".into(),
+                    ));
+                }
+                return Ok(((), false));
+            }
+            operation.manifest_sha256 = Some(digest.to_owned());
+            Ok(((), true))
         })
     }
 
@@ -460,6 +537,9 @@ fn validate_state(state: &PersistentState) -> Result<()> {
             .as_ref()
             .is_some_and(|value| value.len() > 128)
             || operation.attempts > 16
+            || operation.manifest_sha256.as_ref().is_some_and(|digest| {
+                digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
         {
             return Err(UpdateError::Security(
                 "persisted operation is outside bounds".into(),
@@ -510,6 +590,53 @@ fn set_service_ownership(file: &File, uid: u32, gid: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deferred_intent_keeps_its_exact_manifest_after_reopen() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = StateStore::open(temp.path()).unwrap();
+        let now = OffsetDateTime::now_utc();
+        let digest = "a".repeat(64);
+        let operation = store
+            .admit_install(Component::Server, &digest, true, now)
+            .unwrap();
+        assert!(operation.automatic);
+        store
+            .transition(
+                operation.id,
+                OperationStatus::Pending,
+                OperationStatus::Running,
+                None,
+                now,
+            )
+            .unwrap();
+        store
+            .transition(
+                operation.id,
+                OperationStatus::Running,
+                OperationStatus::DeferredBusy,
+                Some("deferred_busy_auto"),
+                now,
+            )
+            .unwrap();
+        drop(store);
+        let store = StateStore::open(temp.path()).unwrap();
+        let resumed = store
+            .admit_install(Component::Server, &digest, false, now)
+            .unwrap();
+        assert_eq!(resumed.id, operation.id);
+        assert_eq!(resumed.manifest_sha256.as_deref(), Some(digest.as_str()));
+        assert!(resumed.automatic, "recovery preserves automatic origin");
+        let changed = store
+            .admit_install(Component::Server, &"b".repeat(64), false, now)
+            .unwrap();
+        assert_eq!(changed.status, OperationStatus::Failed);
+        assert_eq!(
+            changed.result_code.as_deref(),
+            Some("release_changed_recheck")
+        );
+        assert_eq!(store.read().unwrap().operations.len(), 1);
+    }
 
     #[test]
     fn policy_cas_and_intent_coalescing_are_persistent() {

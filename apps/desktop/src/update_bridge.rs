@@ -97,6 +97,7 @@ struct PendingRelease {
     sequence: u64,
     version: Version,
     source_commit: String,
+    accepted_unix: i64,
     manifest_sha256: String,
     manifest_base64: String,
     signature: String,
@@ -271,6 +272,7 @@ impl PendingStore {
         }
         for receipt in state.releases.values() {
             if receipt.sequence == 0
+                || receipt.accepted_unix <= 0
                 || receipt.source_commit.len() != 40
                 || !receipt
                     .source_commit
@@ -309,10 +311,11 @@ impl PendingStore {
         bytes: &[u8],
         signature: &str,
     ) -> Result<(), UiError> {
-        let receipt = PendingRelease {
+        let mut receipt = PendingRelease {
             sequence: verified.manifest.release_sequence,
             version: verified.manifest.version.clone(),
             source_commit: verified.manifest.source_commit.clone(),
+            accepted_unix: time::OffsetDateTime::now_utc().unix_timestamp(),
             manifest_sha256: hex_digest(bytes),
             manifest_base64: STANDARD.encode(bytes),
             signature: signature.to_owned(),
@@ -323,6 +326,9 @@ impl PendingStore {
         })?;
         self.with_lock(|state| {
             if let Some(existing) = state.releases.get(&component) {
+                if existing.sequence == receipt.sequence {
+                    receipt.accepted_unix = existing.accepted_unix;
+                }
                 if existing.sequence > receipt.sequence
                     || (existing.sequence == receipt.sequence && existing != &receipt)
                 {
@@ -334,8 +340,20 @@ impl PendingStore {
                 if existing == &receipt {
                     return Ok(((), false));
                 }
-                state.releases.insert(component, receipt);
-                return Ok(((), true));
+            }
+            let accepted = time::OffsetDateTime::from_unix_timestamp(receipt.accepted_unix)
+                .map_err(|_| error("Reçu invalide.", "UPDATE_RECHECK_REQUIRED"))?;
+            let parse_time = |text: &str| {
+                time::OffsetDateTime::parse(text, &time::format_description::well_known::Rfc3339)
+                    .map_err(|_| error("Publication invalide.", "UPDATE_RECHECK_REQUIRED"))
+            };
+            if accepted < parse_time(&verified.manifest.issued_at)?
+                || accepted >= parse_time(&verified.manifest.expires_at)?
+            {
+                return Err(error(
+                    "Publication expirée : vérifiez à nouveau.",
+                    "UPDATE_RECHECK_REQUIRED",
+                ));
             }
             state.releases.insert(component, receipt);
             Ok(((), true))
@@ -477,14 +495,6 @@ impl UpdateHost {
             .and_then(|v| v["version"].as_str().map(str::to_owned))
             .unwrap_or_else(|| "0.7.0".into())
     }
-    fn theme_source_commit(&self) -> Option<String> {
-        let path = self.directory.join("updates/themes/current/manifest.json");
-        std::fs::read(path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .and_then(|value| value["source_commit"].as_str().map(str::to_owned))
-            .filter(|value| value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
-    }
     pub fn policy(
         &self,
         component: Component,
@@ -616,6 +626,45 @@ impl UpdateHost {
         bytes: &[u8],
         signature: &str,
     ) -> chill_updates::Result<VerifiedManifest> {
+        self.verify_at(component, bytes, signature, time::OffsetDateTime::now_utc())
+    }
+    fn verify_install(
+        &self,
+        component: Component,
+        bytes: &[u8],
+        signature: &str,
+    ) -> chill_updates::Result<VerifiedManifest> {
+        let pending = PendingStore::open(&self.directory)
+            .and_then(|store| store.get(component))
+            .map_err(|_| {
+                chill_updates::UpdateError::Security("pending receipt unavailable".into())
+            })?;
+        let now = time::OffsetDateTime::now_utc();
+        if let Some(receipt) = pending
+            && receipt.manifest_sha256 == hex_digest(bytes)
+        {
+            let accepted = time::OffsetDateTime::from_unix_timestamp(receipt.accepted_unix)
+                .map_err(|_| {
+                    chill_updates::UpdateError::Security("invalid acceptance time".into())
+                })?;
+            if accepted > now {
+                return Err(chill_updates::UpdateError::Security(
+                    "acceptance time is in the future".into(),
+                ));
+            }
+            // Continue this exact previously-valid transaction. Actual Mac
+            // installation still requires a new native confirmation each time.
+            return self.verify_at(component, bytes, signature, accepted);
+        }
+        self.verify_current(component, bytes, signature)
+    }
+    fn verify_at(
+        &self,
+        component: Component,
+        bytes: &[u8],
+        signature: &str,
+        now: time::OffsetDateTime,
+    ) -> chill_updates::Result<VerifiedManifest> {
         let installed = Version::parse(&if component == Component::Mac {
             env!("CARGO_PKG_VERSION").into()
         } else {
@@ -653,15 +702,19 @@ impl UpdateHost {
         };
         let highest = if let Some(receipt) = pending {
             if exact_pending {
-                receipt.sequence.saturating_sub(1)
+                if highest <= receipt.sequence {
+                    receipt.sequence.saturating_sub(1)
+                } else {
+                    highest
+                }
             } else {
-                receipt.sequence
+                highest.max(receipt.sequence)
             }
         } else {
             highest
         };
         let context = VerificationContext {
-            now: time::OffsetDateTime::now_utc(),
+            now,
             expected_key_id: KEY_ID,
             component,
             target: if component == Component::Mac {
@@ -696,6 +749,7 @@ impl UpdateHost {
                 })?
             && (receipt.sequence != verified.manifest.release_sequence
                 || receipt.version != verified.manifest.version
+                || receipt.source_commit != verified.manifest.source_commit
                 || receipt.manifest_sha256 != digest)
         {
             return Err(chill_updates::UpdateError::Security(
@@ -728,7 +782,7 @@ impl UpdateHost {
             )
         })?;
         let verified = self
-            .verify_current(component, &bytes, &receipt.signature)
+            .verify_install(component, &bytes, &receipt.signature)
             .map_err(|_| {
                 error(
                     "La mise à jour acceptée a expiré ou son identité a changé.",
@@ -770,21 +824,9 @@ impl UpdateHost {
         self.active.store(false, Ordering::Release);
         result
     }
-    async fn install_inner(
-        self: &Arc<Self>,
-        app: tauri::AppHandle,
-        component: Component,
-        rendering: Arc<AtomicBool>,
-    ) -> Result<Value, UiError> {
-        let release = self.release_for_install(component)?;
-        let verified = self
-            .verify_current(component, &release.bytes, &release.signature)
-            .map_err(|_| {
-                error(
-                    "La publication a expiré ou n’est plus compatible. Vérifiez à nouveau.",
-                    "UPDATE_RECHECK_REQUIRED",
-                )
-            })?;
+    /// Finalize only an already-installed exact slot. This never downloads or
+    /// installs expired bytes. Expiry remains mandatory on every install path.
+    fn finalize_installed_receipt(&self, component: Component) -> Result<Option<Version>, UiError> {
         if let Some(receipt) = PendingStore::open(&self.directory)?.get(component)? {
             let installed = Version::parse(&if component == Component::Mac {
                 env!("CARGO_PKG_VERSION").into()
@@ -795,9 +837,27 @@ impl UpdateHost {
             let installed_source_matches = if component == Component::Mac {
                 receipt.source_commit == env!("CHILL_SOURCE_COMMIT")
             } else {
-                self.theme_source_commit().as_deref() == Some(receipt.source_commit.as_str())
+                let current = self.directory.join("updates/themes/current");
+                fs::read_link(&current).ok()
+                    == Some(PathBuf::from(format!(
+                        "releases/{}-{}",
+                        receipt.version, receipt.sequence
+                    )))
+                    && chill_updates::validate_theme_package(&current).is_ok()
             };
             if installed == receipt.version && installed_source_matches {
+                let bytes = STANDARD
+                    .decode(&receipt.manifest_base64)
+                    .map_err(|_| error("Reçu invalide.", "UPDATE_RECHECK_REQUIRED"))?;
+                let verification_time =
+                    time::OffsetDateTime::from_unix_timestamp(receipt.accepted_unix)
+                        .map_err(|_| error("Reçu invalide.", "UPDATE_RECHECK_REQUIRED"))?;
+                if verification_time > time::OffsetDateTime::now_utc() {
+                    return Err(error("Reçu invalide.", "UPDATE_RECHECK_REQUIRED"));
+                }
+                let verified = self
+                    .verify_at(component, &bytes, &receipt.signature, verification_time)
+                    .map_err(|_| error("Reçu signé invalide.", "UPDATE_RECHECK_REQUIRED"))?;
                 let state = self
                     .store()?
                     .read()
@@ -817,16 +877,38 @@ impl UpdateHost {
                         .record_sequence(component, receipt.sequence)
                         .map_err(|_| error("Reçu non finalisé.", "UPDATE_STATE_UNAVAILABLE"))?;
                 }
-                PendingStore::open(&self.directory)?.commit(
-                    component,
-                    &verified,
-                    &release.bytes,
-                )?;
-                return Ok(
-                    json!({"installed":true,"recovered":true,"component":component.as_str(),"version":receipt.version.to_string()}),
-                );
+                PendingStore::open(&self.directory)?.commit(component, &verified, &bytes)?;
+                return Ok(Some(receipt.version));
             }
         }
+        Ok(None)
+    }
+    async fn install_inner(
+        self: &Arc<Self>,
+        app: tauri::AppHandle,
+        component: Component,
+        rendering: Arc<AtomicBool>,
+    ) -> Result<Value, UiError> {
+        if let Some(version) = self.finalize_installed_receipt(component)?
+            && !self
+                .available
+                .lock()
+                .map_err(|_| error("Mise à jour occupée.", "UPDATE_BUSY"))?
+                .contains_key(&component)
+        {
+            return Ok(
+                json!({"installed":true,"recovered":true,"component":component.as_str(),"version":version.to_string()}),
+            );
+        }
+        let release = self.release_for_install(component)?;
+        let verified = self
+            .verify_install(component, &release.bytes, &release.signature)
+            .map_err(|_| {
+                error(
+                    "La publication a expiré ou n’est plus compatible. Vérifiez à nouveau.",
+                    "UPDATE_RECHECK_REQUIRED",
+                )
+            })?;
         let root = self.directory.join("updates/downloads");
         let asset = verified.selected_asset.clone();
         let download = tauri::async_runtime::spawn_blocking(move || {
@@ -904,7 +986,7 @@ impl UpdateHost {
                 ));
             }
             let verified = self
-                .verify_current(component, &release.bytes, &release.signature)
+                .verify_install(component, &release.bytes, &release.signature)
                 .map_err(|_| {
                     error(
                         "Publication expirée ou incompatible : aucune installation.",
@@ -949,7 +1031,7 @@ impl UpdateHost {
         let version = verified.manifest.version.to_string();
         tauri::async_runtime::spawn_blocking(move || {
             let verified = host
-                .verify_current(component, &release.bytes, &release.signature)
+                .verify_install(component, &release.bytes, &release.signature)
                 .map_err(|_| {
                     error(
                         "Publication expirée ou incompatible : aucun pack installé.",
@@ -1142,6 +1224,7 @@ mod tests {
             sequence: 7,
             version: Version::parse("0.7.1").unwrap(),
             source_commit: "a".repeat(40),
+            accepted_unix: 1_792_396_800,
             manifest_sha256: hex_digest(bytes),
             manifest_base64: STANDARD.encode(bytes),
             signature: "synthetic-signature".into(),
