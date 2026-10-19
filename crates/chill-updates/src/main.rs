@@ -604,16 +604,14 @@ fn perform_apply(
     component: Component,
     first_install: bool,
     force: bool,
-    retry_accepted: bool,
+    _retry_accepted: bool,
 ) -> chill_updates::Result<()> {
     require_linux_component(component)?;
     let receipt = read_available(config, component)?;
     let cached = verify_cached(config, component)?;
-    if cached.accepted_retry && !retry_accepted {
-        return Err(UpdateError::Security(
-            "accepted failed/interrupted release requires local --retry-accepted".into(),
-        ));
-    }
+    // `verify_cached` admits a pending trust floor only when the exact signed
+    // digest/version/sequence is still present. A deferred automatic retry is
+    // therefore not a downgrade or a generic --retry-accepted bypass.
     let verified = cached.verified;
     let store = state_store(config)?;
     let operation =
@@ -621,8 +619,7 @@ fn perform_apply(
     if !matches!(
         operation.status,
         OperationStatus::Pending | OperationStatus::DeferredBusy
-    ) && !(retry_accepted && operation.status == OperationStatus::Running)
-    {
+    ) {
         return Err(UpdateError::Busy(format!(
             "install operation {} is already {:?}",
             operation.id, operation.status
@@ -791,8 +788,21 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
         let now = OffsetDateTime::now_utc().unix_timestamp();
         for operation in &mut state.operations {
             if operation.status == OperationStatus::Running {
-                operation.status = OperationStatus::DeferredBusy;
+                operation.status = if operation.kind == IntentKind::Check {
+                    OperationStatus::Pending
+                } else {
+                    OperationStatus::DeferredBusy
+                };
                 operation.result_code = Some("recovered_interrupted".into());
+                operation.updated_unix = now;
+            }
+            if operation.kind == IntentKind::Install
+                && operation.status == OperationStatus::DeferredBusy
+                && operation.attempts >= 3
+                && now.saturating_sub(operation.created_unix) >= 24 * 60 * 60
+            {
+                operation.attempts = 0;
+                operation.result_code = Some("deferred_busy".into());
                 operation.updated_unix = now;
             }
         }
@@ -806,7 +816,13 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
             matches!(
                 operation.status,
                 OperationStatus::Pending | OperationStatus::DeferredBusy
-            )
+            ) && (operation.kind != IntentKind::Install
+                || operation.status != OperationStatus::DeferredBusy
+                || (operation.attempts < 3
+                    && OffsetDateTime::now_utc()
+                        .unix_timestamp()
+                        .saturating_sub(operation.updated_unix)
+                        >= 15 * 60))
         })
         .collect::<Vec<_>>();
     for operation in pending

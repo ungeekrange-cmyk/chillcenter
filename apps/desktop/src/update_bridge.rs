@@ -615,7 +615,7 @@ impl UpdateHost {
             .components
             .get(&component)
             .map_or(0, |s| s.highest_sequence);
-        let highest = if let Some(receipt) = pending {
+        let installed = if let Some(receipt) = &pending {
             // A pending receipt is an exact-identity recovery exception, not a
             // general same-sequence exception. Rechecking the persisted bytes
             // below also catches corruption between acceptance and retry.
@@ -624,6 +624,15 @@ impl UpdateHost {
                     "accepted manifest identity changed".into(),
                 ));
             }
+            if installed == receipt.version {
+                Version::new(0, 0, 0)
+            } else {
+                installed
+            }
+        } else {
+            installed
+        };
+        let highest = if let Some(receipt) = pending {
             receipt.sequence.saturating_sub(1)
         } else {
             highest
@@ -748,6 +757,43 @@ impl UpdateHost {
                     "UPDATE_RECHECK_REQUIRED",
                 )
             })?;
+        if let Some(receipt) = PendingStore::open(&self.directory)?.get(component)? {
+            let installed = Version::parse(&if component == Component::Mac {
+                env!("CARGO_PKG_VERSION").into()
+            } else {
+                self.theme_version()
+            })
+            .map_err(|_| error("Version installée invalide.", "UPDATE_STATE_UNAVAILABLE"))?;
+            if installed == receipt.version {
+                let state = self
+                    .store()?
+                    .read()
+                    .map_err(|_| error("État indisponible.", "UPDATE_STATE_UNAVAILABLE"))?;
+                let highest = state
+                    .components
+                    .get(&component)
+                    .map_or(0, |entry| entry.highest_sequence);
+                if highest > receipt.sequence {
+                    return Err(error(
+                        "Séquence installée incohérente.",
+                        "UPDATE_RECHECK_REQUIRED",
+                    ));
+                }
+                if highest < receipt.sequence {
+                    self.store()?
+                        .record_sequence(component, receipt.sequence)
+                        .map_err(|_| error("Reçu non finalisé.", "UPDATE_STATE_UNAVAILABLE"))?;
+                }
+                PendingStore::open(&self.directory)?.commit(
+                    component,
+                    &verified,
+                    &release.bytes,
+                )?;
+                return Ok(
+                    json!({"installed":true,"recovered":true,"component":component.as_str(),"version":receipt.version.to_string()}),
+                );
+            }
+        }
         let root = self.directory.join("updates/downloads");
         let asset = verified.selected_asset.clone();
         let download = tauri::async_runtime::spawn_blocking(move || {
