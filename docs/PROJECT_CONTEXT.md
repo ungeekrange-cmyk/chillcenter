@@ -27,6 +27,21 @@ accord de livraison n'est implicite dans les tests de développement. Aucun tag
 0.7, paquet public, nouveau bundle livré ou déploiement Pi à ce stade. Préserver
 main, les anciens livrables et les travaux web indépendants.
 
+Checkpoint source figée **22a38ff50879837c32fc8d5ac7c7200f35c8eaa1** :
+**RELEASE_BLOCKED / CHANGES_REQUESTED**, huit HIGH Linux et quatre P1 fonctionnels
+confirmés par revues indépendantes. [Rapport de travail FR/EN](implementation/COMPONENT-UPDATES-20261019.md),
+[BUG0113](debug/BUG-0113-component-updater-release-gate.md) et
+[revue sécurité](reviews/component-updates-security-22a38ff.md).
+357/357 tests JS/docs et suite Rust sérialisée PASS (deux ignorés existants),
+Clippy/format PASS. Deux échecs de timing lecteur lors de runs antérieurs restent
+tracés dans [BUG0114](debug/BUG-0114-subtitle-timing-test-instability.md), pas corrigés
+par assouplissement du test. Build web 6dd3d04c9203, 98 fichiers, non déployé.
+Ne pas publier/installer le helper avant fermeture des défauts et preuves Linux
+root/systemd ; les tests unitaires ne constituent pas cette preuve.
+Bundle Mac de revue locale 0.7.0 build9 construit et vérifié (48 dylibs arm64,
+signature ad hoc) ; **non approuvé pour livraison, non publié**. Voir le rapport
+pour la provenance et les limites. Tous les anciens bundles restent conservés.
+
 ## Correctif web mobile R4 déployé — 17 octobre 2026
 
 Source **fa13d44**, build **67773f7877d3**, assets seuls livrés **20:50:15UTC**

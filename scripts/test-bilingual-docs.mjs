@@ -14,6 +14,7 @@ const pairs = [
   ['docs/architecture/OVERVIEW.md', 'docs/architecture/OVERVIEW.en.md'],
   ['docs/api/INTEGRATION-FR.md', 'docs/api/INTEGRATION-EN.md'],
   ['docs/updates/GUIDE-FR.md', 'docs/updates/GUIDE-EN.md'],
+  ['docs/implementation/COMPONENT-UPDATES-20261019.md', 'docs/implementation/COMPONENT-UPDATES-20261019.en.md'],
   ['themes/README.md', 'themes/README.en.md'],
   ['docs/releases/REL-V0.6.md', 'docs/releases/REL-V0.6.en.md'],
   ['docs/releases/REL-WEB-MOBILE-001.md', 'docs/releases/REL-WEB-MOBILE-001.en.md'],

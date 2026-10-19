@@ -2,6 +2,9 @@
 
 ## Lecture de l'état courant
 
+19 octobre 2026 : [BUG0113 moteur de mise à jour privilégié](BUG-0113-component-updater-release-gate.md), **P1 OPEN / RELEASE_BLOCKED**, huit défauts Linux confirmés par revue indépendante. Aucune publication 0.7 ni installation Pi.
+[BUG0114 instabilité du test de timing des sous-titres](BUG-0114-subtitle-timing-test-instability.md), P2 tests, cause non confirmée ; aucun changement du lecteur pour masquer l'échec.
+
 17octobre2026 : [BUG0112 bandeau persistant et zones caméra](BUG-0112-persistent-fullscreen-notice-cutouts.md), correctif web ciblé R4 : bandeau limité à2,5s, autre chemin WebKit et safe areas quatre côtés. Retest physique Safari toujours distinct ; aucune app native lancée sur la base d'une question de faisabilité.
 
 17octobre2026 : [BUG0111 vignettes/plein écran/recherche mobile](BUG-0111-mobile-posters-fullscreen-search.md), correctif web R3 en cours. Extension MP3 AVI de BUG0110 dans le Worker client ; preuves synthétiques et essai physique à distinguer.
