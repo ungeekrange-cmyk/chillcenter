@@ -1,6 +1,6 @@
 # Contexte du projet
 
-## Mises à jour par composant — conception proposée, 19 octobre 2026
+## Mises à jour par composant — implémentation en cours, 19 octobre 2026
 
 Demande utilisateur : thèmes indépendants, versions visibles Mac/web/serveur,
 installateurs et releases GitHub, vérification/installation configurables,
@@ -9,18 +9,23 @@ Le dépôt a été constaté PUBLIC (choix humain), main reste la branche par d�
 La suppression de la référence au projet d'origine des README FR/EN est publiée
 sur main à `ac85794`. Aucun runtime ni déploiement modifié.
 
-[ADR0029 R2](architecture/decisions/ADR-0029-component-releases-updates.md) reste
-**PROPOSED / USER_APPROVAL_PENDING**. Sa [revue indépendante R2](architecture/decisions/reviews/ADR-0029-review-r2.md)
-approuve la conception sous réserve du gate utilisateur : nouvelle clé de
+[ADR0029 R2](architecture/decisions/ADR-0029-component-releases-updates.md) est
+**ACCEPTED**, après validation humaine consignée dans le [gate R2](gates/G-ADR-0029-R2.md).
+Sa [revue indépendante R2](architecture/decisions/reviews/ADR-0029-review-r2.md)
+approuve la conception : nouvelle clé de
 signature de releases (privée locale hors Git, publique embarquée), installateur
 privilégié séparé, politique automatique 02 h, risques résiduels LAN sans auth.
 Interruption forcée réservée à l'administrateur local ; installation normale
 différée pendant lectures/travaux. Premier rejet R1 conservé ; ne pas l'effacer.
-Contrat de calendrier/format de packs proposé dans [themes/README.md](../themes/README.md),
-avec version anglaise. Ressources existantes pas encore déplacées ni raccordées.
-29 tests documentaires/publication PASS ; aucune preuve runtime/updater/bundle
-ou Pi dans ce lot. Reprendre après validation explicite R2 ; ne pas créer de clé,
-helper privilégié ou signature par simple déduction de la demande précédente.
+Contrat de calendrier/format dans [themes/README.md](../themes/README.md), avec
+version anglaise. Packs raccordés avec repli embarqué, versions et réglages
+indépendants en cours d'intégration sur branche isolée. Clé privée créée hors
+Git après le gate ; seule la clé publique est embarquée. Tests Rust hors GUI
+PASS, premiers tests des packs et de leur affichage PASS. Revue préparatoire de
+sécurité : plusieurs P1 updater/installateur à fermer avant publication. Aucun
+accord de livraison n'est implicite dans les tests de développement. Aucun tag
+0.7, paquet public, nouveau bundle livré ou déploiement Pi à ce stade. Préserver
+main, les anciens livrables et les travaux web indépendants.
 
 ## Correctif web mobile R4 déployé — 17 octobre 2026
 

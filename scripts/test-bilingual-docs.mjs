@@ -13,6 +13,8 @@ const pairs = [
   ['docs/README.md', 'docs/README.en.md'],
   ['docs/architecture/OVERVIEW.md', 'docs/architecture/OVERVIEW.en.md'],
   ['docs/api/INTEGRATION-FR.md', 'docs/api/INTEGRATION-EN.md'],
+  ['docs/updates/GUIDE-FR.md', 'docs/updates/GUIDE-EN.md'],
+  ['themes/README.md', 'themes/README.en.md'],
   ['docs/releases/REL-V0.6.md', 'docs/releases/REL-V0.6.en.md'],
   ['docs/releases/REL-WEB-MOBILE-001.md', 'docs/releases/REL-WEB-MOBILE-001.en.md'],
   ['docs/releases/REL-WEB-MOBILE-002.md', 'docs/releases/REL-WEB-MOBILE-002.en.md'],

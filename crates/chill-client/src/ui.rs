@@ -870,6 +870,14 @@ impl UiClient {
             cache: self.settings.playback_cache,
         })
     }
+    /// Short snapshot for independent settings requests, including before a
+    /// profile is selected. The caller releases the UI mutex before network I/O.
+    pub fn server_transport(&self) -> Result<Transport, UiError> {
+        self.connected
+            .as_ref()
+            .map(|connection| connection.transport.clone())
+            .ok_or_else(|| invalid("Connectez un serveur."))
+    }
     /// Advice captures a coherent, grouped local snapshot only on explicit submit.
     /// Never download the library or call a provider while holding the UI lock.
     pub fn recommendation_catalog(

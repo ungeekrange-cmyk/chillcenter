@@ -6,6 +6,7 @@ const systemTone=window.matchMedia("(prefers-color-scheme: dark)");
 let appearanceTimer=null,appearanceRetry=null;
 let themePackPromise=null;
 const loadThemePack=()=>themePackPromise||(themePackPromise=window.ChillThemePack.load().catch(()=>null));
+window.reloadThemePack=async()=>{themePackPromise=null;await refreshAppearance();};
 
 // Decoration is local, non-interactive and bounded. No animation loop on the JS thread.
 (() => {

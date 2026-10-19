@@ -45,6 +45,51 @@
     }
   ],
   "paths": {
+    "/admin/updates": {
+      "get": {
+        "tags": ["Administration"],
+        "operationId": "componentUpdates_get",
+        "description": "Actual installed versions, persisted policies and bounded operation status. Reading status never checks GitHub or installs software. Unsupported on servers older than 0.7.0 (404). See docs/updates/CONTRACT.md.",
+        "responses": {
+          "200": {"description": "Component status.", "content": {"application/json": {"schema": {"type": "object", "required": ["installed", "policies", "operations", "helper_available", "busy", "timezone"], "properties": {"installed": {"type": "object", "additionalProperties": true}, "policies": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/UpdatePolicy"}}, "operations": {"type": "array", "maxItems": 128, "items": {"type": "object", "additionalProperties": true}}, "helper_available": {"type": "boolean"}, "busy": {"type": "boolean"}, "timezone": {"type": "string"}}, "additionalProperties": true}}}},
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      },
+      "parameters": []
+    },
+    "/admin/updates/policy": {
+      "put": {
+        "tags": ["Administration"], "operationId": "componentUpdatePolicy_put",
+        "description": "Compare-and-set component policy. Manual, check-only or automatic; time is server OS local time. No URL, path, key, command or force field accepted.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdatePolicyRequest"}}}},
+        "responses": {"200": {"description": "Persisted policy.", "content": {"application/json": {"schema": {"type": "object", "properties": {"component": {"$ref": "#/components/schemas/ServerUpdateComponent"}, "policy": {"$ref": "#/components/schemas/UpdatePolicy"}}, "required": ["component", "policy"], "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
+      },
+      "post": {
+        "tags": ["Administration"], "operationId": "componentUpdatePolicy_post",
+        "description": "Compatibility alias of PUT on this same route.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdatePolicyRequest"}}}},
+        "responses": {"200": {"description": "Persisted policy.", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
+      },
+      "parameters": []
+    },
+    "/admin/updates/check": {
+      "post": {
+        "tags": ["Administration"], "operationId": "componentUpdateCheck_post",
+        "description": "Queue/coalesce a bounded check intent for the fixed GitHub repository. No download URL accepted. The root helper consumes the intent separately; this request does not block the catalogue.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateIntentRequest"}}}},
+        "responses": {"200": {"description": "Operation receipt, not installation success.", "content": {"application/json": {"schema": {"type": "object", "required": ["operation"], "properties": {"operation": {"type": "object", "additionalProperties": true}}, "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
+      },
+      "parameters": []
+    },
+    "/admin/updates/install": {
+      "post": {
+        "tags": ["Administration"], "operationId": "componentUpdateInstall_post",
+        "description": "Queue/coalesce installation of an independently verified compatible available component. Busy playback/jobs defer installation. Does not allow interrupt, forced restart, URL, tag, key or path. UPDATE_HELPER_NOT_INSTALLED if the separate local administrator installer has not configured the helper.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateIntentRequest"}}}},
+        "responses": {"200": {"description": "Operation receipt, not installation success.", "content": {"application/json": {"schema": {"type": "object", "required": ["operation"], "properties": {"operation": {"type": "object", "additionalProperties": true}}, "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
+      },
+      "parameters": []
+    },
     "/server": {
       "get": {
         "tags": [
@@ -3886,6 +3931,16 @@
   },
   "components": {
     "schemas": {
+      "ServerUpdateComponent": {"type": "string", "enum": ["server", "web", "themes"]},
+      "UpdateIntentRequest": {"type": "object", "required": ["component"], "properties": {"component": {"$ref": "#/components/schemas/ServerUpdateComponent"}}, "additionalProperties": false},
+      "UpdatePolicyRequest": {
+        "type": "object", "required": ["component", "mode", "hour", "minute", "expected_revision"],
+        "properties": {"component": {"$ref": "#/components/schemas/ServerUpdateComponent"}, "mode": {"type": "string", "enum": ["manual", "check", "automatic"]}, "hour": {"type": "integer", "minimum": 0, "maximum": 23}, "minute": {"type": "integer", "minimum": 0, "maximum": 59}, "expected_revision": {"type": "integer", "minimum": 1, "format": "uint64"}}, "additionalProperties": false
+      },
+      "UpdatePolicy": {
+        "type": "object", "required": ["mode", "hour", "minute", "revision"],
+        "properties": {"mode": {"type": "string", "enum": ["manual", "check", "automatic"]}, "hour": {"type": "integer", "minimum": 0, "maximum": 23}, "minute": {"type": "integer", "minimum": 0, "maximum": 59}, "revision": {"type": "integer", "minimum": 1, "format": "uint64"}}, "additionalProperties": true
+      },
       "Uuid": {
         "type": "string",
         "format": "uuid"

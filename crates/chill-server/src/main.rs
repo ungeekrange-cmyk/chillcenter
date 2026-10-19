@@ -20,6 +20,10 @@ async fn main() {
 
 async fn run() -> Result<(), String> {
     let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    if arguments.len() == 1 && arguments[0] == "--version" {
+        println!("chill-server {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     if let [
         export,
         source_flag,
@@ -105,6 +109,7 @@ async fn run() -> Result<(), String> {
         config: Arc::new(config),
     };
     let renewal_state = state.clone();
+    chill_server::updates_api::spawn_status_pulse(state.clone());
     if chill_server::archive_api::initialize_staging(&state).is_err() {
         eprintln!("IMPORT_STAGING_UNAVAILABLE");
     }
@@ -117,6 +122,9 @@ async fn run() -> Result<(), String> {
         daily.tick().await;
         loop {
             daily.tick().await;
+            let Some(_write_guard) = chill_server::updates_api::try_background_write() else {
+                continue;
+            };
             let config = renewal_state.config.clone();
             let renewed = tokio::task::spawn_blocking(move || {
                 tls::ensure(&config, time::OffsetDateTime::now_utc())

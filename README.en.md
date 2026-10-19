@@ -6,6 +6,13 @@ Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).
 
+**[Download the Apple Silicon Mac app v0.6](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.6/Chill-Center-v0.6-macos-arm64.zip)** · [All releases](https://github.com/ungeekrange-cmyk/chillcenter/releases)
+
+Upcoming Mac, server, web and theme deliveries are independently versioned in
+[versions.json](versions.json). Their signed update engine is being implemented
+and reviewed; no 0.7 download is claimed as delivered yet.
+[Theme packs](themes/README.en.md) document their calendar and precedence.
+
 Reference Mac client: **v0.6 — 0.6.0, build 7**.
 Local delivery: `artifacts/macos/Chill Center-v0.6.app`.
 See the [release notes and evidence](docs/releases/REL-V0.6.en.md) for fixes,

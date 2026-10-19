@@ -44,6 +44,26 @@ test("boot connects same-origin, restores nothing without a saved profile", asyn
   assert.equal(v.stage, "connected"); assert.equal(v.server_id, "srv"); assert.equal(v.profile_id, null); assert.equal(v.profiles.length, 1);
 });
 
+test("component updates use dated same-origin closed intent bodies only",async()=>{
+ const {b,calls}=make({"POST /admin/updates/install":ok({operation:{status:"pending"}}),"PUT /admin/updates/policy":ok({policy:{revision:2}})});
+ await b.invoke("update_command",{command:{action:"server_install",component:"web",force:true,url:"https://untrusted.invalid/",confirmed:true}});
+ assert.equal(calls.at(-1).url,BASE+"/admin/updates/install");
+ assert.deepEqual(JSON.parse(calls.at(-1).body),{component:"web"});
+ await b.invoke("update_command",{command:{action:"server_policy",component:"themes",mode:"check",hour:2,minute:0,expected_revision:1,path:"/not/accepted"}});
+ assert.deepEqual(JSON.parse(calls.at(-1).body),{component:"themes",mode:"check",hour:2,minute:0,expected_revision:1});
+ const count=calls.length;
+ await assert.rejects(b.invoke("update_command",{command:{action:"server_install",component:"mac"}}));
+ assert.equal(calls.length,count);
+});
+
+test("old-server update fallback keeps actual identity; transient failures stay errors",async()=>{
+ const old=make({"GET /server":ok({version:"0.6.0",api_version:"2026-10-14"})});
+ assert.deepEqual(await old.b.invoke("update_command",{command:{action:"status"}}),{unsupported:true,installed:{server:{version:"0.6.0"},api:"2026-10-14"}});
+ const busy=make({"GET /admin/updates":[503,{code:"BUSY"}]});
+ await assert.rejects(busy.b.invoke("update_command",{command:{action:"status"}}),e=>e.status===503);
+ assert.equal(busy.calls.length,1,"503 must not be hidden as an unsupported server");
+});
+
 test("boot refuses a server without required capabilities, without leaving a connection", async () => {
   const { ui } = make({ "GET /server": ok({ server_id: "old", capabilities: ["profiles"] }) });
   const v = await ui({ action: "boot" });

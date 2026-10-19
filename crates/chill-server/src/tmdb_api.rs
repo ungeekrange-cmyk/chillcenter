@@ -381,6 +381,13 @@ impl Default for TmdbJobService {
     }
 }
 impl TmdbJobService {
+    pub(crate) fn update_busy(&self) -> bool {
+        self.inflight.lock().map_or(true, |jobs| !jobs.is_empty())
+            || self
+                .jobs
+                .lock()
+                .map_or(true, |jobs| jobs.values().any(|job| !terminal(&job.status)))
+    }
     pub fn initialize(data_dir: &std::path::Path) -> Result<Self, String> {
         let service = Self::default();
         let path = data_dir.join("tmdb-jobs.json");

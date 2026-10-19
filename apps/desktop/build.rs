@@ -6,6 +6,8 @@ fn main() {
             "artwork_command",
             "admin_command",
             "ai_command",
+            "update_command",
+            "theme_command",
             "qa_result",
             "qa_deadline_probe",
         ]),

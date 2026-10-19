@@ -20,6 +20,30 @@ should use the date. Responses include `X-Chill-Api-Version: 2026-10-14`;
 Clients must ignore unknown response fields, but must never send undocumented
 fields in request bodies.
 
+## Independent component updates (server 0.7.0 and later)
+
+These are additive routes in the same dated API; `/api/v1` remains supported.
+`GET /admin/updates` reports actual installed server/web/theme versions, policies,
+bounded operation receipts, availability, helper readiness and the server OS local
+UTC offset. A status read does not contact GitHub or trigger installation.
+An older server returns 404: disable only these controls, not the catalogue.
+
+`PUT /admin/updates/policy` (also `POST /admin/updates/policy`) accepts exactly
+`component`, `mode`, `hour`, `minute`, `expected_revision`. Components are
+`server`, `web`, `themes`; modes are `manual`, `check`, `automatic`. Defaults
+are automatic at 02:00 local server time. Read the policy revision first; a
+concurrent change returns `UPDATE_STATE_CHANGED` and requires a fresh read.
+
+`POST /admin/updates/check` and `POST /admin/updates/install` accept only
+`{"component":"server"}` (or `web`/`themes`). A 200 is a queued/coalesced
+operation receipt, **not** installation success: poll status for the outcome.
+`UPDATE_HELPER_NOT_INSTALLED` means a local administrator must install the
+separate signed update helper. Playback and jobs defer installation.
+No route accepts an arbitrary URL, path, key, tag, shell command or forced
+interruption. Mac checks and explicitly confirmed installation are device-local,
+not server API operations. See the [integration contract](../updates/CONTRACT.md)
+and [approved security decision](../architecture/decisions/ADR-0029-component-releases-updates.md).
+
 ## TLS connection and LAN scope
 
 Chill Center targets a home LAN, without authentication. Anyone who can reach

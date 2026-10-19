@@ -8,7 +8,143 @@ mod ai_bridge;
 mod artwork_bridge;
 mod native_player;
 mod player_bridge;
+mod theme_bridge;
+mod update_bridge;
 use player_bridge::{PlayerCommand, PlayerHost};
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+enum ThemeCommand {
+    Load,
+}
+#[tauri::command]
+async fn theme_command(
+    state: tauri::State<'_, Arc<update_bridge::UpdateHost>>,
+    command: ThemeCommand,
+) -> Result<Value, UiError> {
+    let ThemeCommand::Load = command;
+    let directory = state.directory.clone();
+    tauri::async_runtime::spawn_blocking(move || theme_bridge::load(&directory))
+        .await
+        .map_err(|_| update_bridge::error("Thèmes indisponibles.", "THEME_UNAVAILABLE"))
+}
+#[tauri::command]
+async fn update_command(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Bridge>,
+    updates: tauri::State<'_, Arc<update_bridge::UpdateHost>>,
+    command: update_bridge::UpdateCommand,
+) -> Result<Value, UiError> {
+    use update_bridge::UpdateCommand as C;
+    let host = updates.inner().clone();
+    let command = match command {
+        C::Status => {
+            return tauri::async_runtime::spawn_blocking(move || host.snapshot())
+                .await
+                .map_err(|_| {
+                    update_bridge::error("État indisponible.", "UPDATE_STATE_UNAVAILABLE")
+                })?;
+        }
+        C::Check { component } => return host.check(component),
+        C::Policy {
+            component,
+            mode,
+            hour,
+            minute,
+            expected_revision,
+        } => {
+            return tauri::async_runtime::spawn_blocking(move || {
+                host.policy(component, mode, hour, minute, expected_revision)
+            })
+            .await
+            .map_err(|_| {
+                update_bridge::error("Réglage indisponible.", "UPDATE_STATE_UNAVAILABLE")
+            })?;
+        }
+        C::Install { component } => {
+            return host
+                .install(app, component, true, state.rendering.clone())
+                .await;
+        }
+        other => other,
+    };
+    let client = state.client.clone();
+    let transport = tauri::async_runtime::spawn_blocking(move || {
+        client
+            .lock()
+            .map_err(|_| update_bridge::error("Client indisponible.", "CLIENT_BUSY"))?
+            .server_transport()
+    })
+    .await
+    .map_err(|_| update_bridge::error("Client indisponible.", "CLIENT_BUSY"))??;
+    let (method, path, body) = match command {
+        C::ServerStatus => (chill_client::HttpMethod::GET, "/admin/updates", None),
+        C::ServerCheck { component } => (
+            chill_client::HttpMethod::POST,
+            "/admin/updates/check",
+            Some(serde_json::json!({"component":component})),
+        ),
+        C::ServerInstall {
+            component,
+            confirmed,
+        } => {
+            if !confirmed {
+                return Err(update_bridge::error(
+                    "Confirmez l’installation.",
+                    "UPDATE_CONFIRMATION_REQUIRED",
+                ));
+            }
+            (
+                chill_client::HttpMethod::POST,
+                "/admin/updates/install",
+                Some(serde_json::json!({"component":component})),
+            )
+        }
+        C::ServerPolicy {
+            component,
+            mode,
+            hour,
+            minute,
+            expected_revision,
+        } => (
+            chill_client::HttpMethod::PUT,
+            "/admin/updates/policy",
+            Some(
+                serde_json::json!({"component":component,"mode":mode,"hour":hour,"minute":minute,"expected_revision":expected_revision}),
+            ),
+        ),
+        _ => unreachable!(),
+    };
+    let full_path = format!("{}{path}", chill_client::API_PREFIX);
+    match transport
+        .request_json::<_, Value>(method.clone(), &full_path, body.as_ref())
+        .await
+    {
+        Ok(value) => Ok(value),
+        Err(chill_client::ClientError::Api { status, .. })
+            if status.as_u16() == 404 && method == chill_client::HttpMethod::GET =>
+        {
+            let identity: Value = transport
+                .get_json(&format!("{}/server", chill_client::API_PREFIX))
+                .await
+                .map_err(|_| {
+                    update_bridge::error("Serveur indisponible.", "UPDATE_SERVER_UNAVAILABLE")
+                })?;
+            Ok(
+                serde_json::json!({"unsupported":true,"installed":{"server":{"version":identity["version"]},"api":identity["api_version"]}}),
+            )
+        }
+        Err(chill_client::ClientError::Api { status, code }) => Err(UiError {
+            message: format!("Mise à jour : {code}. Rechargez les réglages avant de réessayer."),
+            code,
+            status: Some(status.as_u16()),
+        }),
+        Err(_) => Err(update_bridge::error(
+            "Vérification serveur indisponible. L’application reste utilisable.",
+            "UPDATE_SERVER_UNAVAILABLE",
+        )),
+    }
+}
 
 #[derive(Clone)]
 struct Bridge {
@@ -612,9 +748,13 @@ fn main() {
             directory
         };
         let client = UiClient::open(&directory).map_err(|e| std::io::Error::other(e.message))?;
+        let updates=Arc::new(update_bridge::UpdateHost::new(directory.clone()));
+        app.manage(updates.clone());
+        app.handle().plugin(update_bridge::plugin())?;
         let mut player = PlayerHost::default();
         player.cache_dir = directory.join("subtitle-cache");
         let rendering = player.rendering.clone();
+        updates.start_schedule(app.handle().clone(),rendering.clone());
         let assistant = Arc::new(
             ai_bridge::AiHost::open(directory.clone())
                 .map_err(|e| std::io::Error::other(e.message))?,
@@ -723,6 +863,8 @@ fn main() {
             artwork_command,
             admin_command,
             ai_command,
+            update_command,
+            theme_command,
             qa_deadline_probe,
             qa_result
         ])
@@ -784,7 +926,9 @@ fn main() {
         player_command,
         artwork_command,
         admin_command,
-        ai_command
+        ai_command,
+        update_command,
+        theme_command
     ]);
     builder
         .run(tauri::generate_context!())

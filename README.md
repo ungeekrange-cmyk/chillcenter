@@ -4,6 +4,13 @@
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
+**[Télécharger l’application Mac Apple Silicon v0.6](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.6/Chill-Center-v0.6-macos-arm64.zip)** · [Toutes les releases](https://github.com/ungeekrange-cmyk/chillcenter/releases)
+
+Les prochaines livraisons Mac, serveur, web et thèmes sont versionnées séparément
+dans [versions.json](versions.json). Leur moteur de mise à jour signé est en
+préparation/revue ; aucun téléchargement 0.7 n’est encore annoncé comme livré.
+Les [packs de thèmes](themes/README.md) décrivent leur calendrier et priorité.
+
 Version de référence du client Mac : **v0.6 — 0.6.0, build 7**.
 Livraison locale : `artifacts/macos/Chill Center-v0.6.app`.
 Consulter les [notes de version et preuves](docs/releases/REL-V0.6.md) pour les

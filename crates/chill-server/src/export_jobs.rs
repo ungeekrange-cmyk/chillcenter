@@ -53,6 +53,14 @@ impl Drop for SnapshotGuard {
 fn jobs() -> &'static Mutex<HashMap<PathBuf, HashMap<String, Job>>> {
     JOBS.get_or_init(Default::default)
 }
+pub(crate) fn update_busy(state: &AppState) -> bool {
+    let dir = state.config.data_dir.join("exports");
+    jobs().lock().map_or(true, |roots| {
+        roots
+            .get(&dir)
+            .is_some_and(|jobs| jobs.values().any(|job| job.status.state == "building"))
+    })
+}
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/admin/exports/{id}/status", get(status))

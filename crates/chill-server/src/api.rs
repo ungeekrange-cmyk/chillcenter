@@ -177,6 +177,7 @@ fn api_routes() -> Router<AppState> {
         .merge(crate::identity_api::routes())
         .merge(crate::tmdb_api::routes())
         .merge(crate::playback::routes())
+        .merge(crate::updates_api::routes())
         .route("/server", get(server))
         .route("/admin/library", get(library).put(update_library))
         .route("/profiles", get(profiles).post(create_profile))
@@ -248,6 +249,15 @@ async fn same_origin(
     // Synchronous checks live in their own function: no borrow of the request may stay alive across
     // the `.await` below, otherwise the middleware future stops being `Send`.
     check_browser_origin_and_host(&state, &request)?;
+    let _mutation = crate::updates_api::begin_mutation(request.method());
+    if crate::updates_api::maintenance_generation().is_some()
+        && !crate::updates_api::admitted_during_maintenance(request.method(), request.uri().path())
+    {
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "UPDATE_MAINTENANCE",
+        ));
+    }
     // Current routes are JSON only. Future media routes need per-read deadlines,
     // not a total playback deadline.
     tokio::time::timeout(std::time::Duration::from_secs(30), next.run(request))
@@ -1208,6 +1218,68 @@ mod tests {
             assert!(error["code"].is_string());
             assert!(uuid::Uuid::parse_str(error["request_id"].as_str().unwrap()).is_ok());
         }
+    }
+
+    #[tokio::test]
+    async fn component_update_routes_are_additive_versioned_and_closed() {
+        let (_dir, app) = setup();
+        for prefix in [crate::api_version::PREFIX, "/api/v1"] {
+            let response = app
+                .clone()
+                .oneshot(request(
+                    "GET",
+                    &format!("{prefix}/admin/updates"),
+                    Value::Null,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let status: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(
+                status["installed"]["server"]["version"],
+                env!("CARGO_PKG_VERSION")
+            );
+            assert_eq!(status["policies"]["server"]["hour"], 2);
+            assert_eq!(status["policies"]["server"]["mode"], "automatic");
+            for suffix in ["check", "install"] {
+                let invalid = app
+                    .clone()
+                    .oneshot(request(
+                        "POST",
+                        &format!("{prefix}/admin/updates/{suffix}"),
+                        json!({"component":"server","force":true}),
+                    ))
+                    .await
+                    .unwrap();
+                assert_eq!(invalid.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            }
+        }
+        let url = format!("{}/admin/updates/policy", crate::api_version::PREFIX);
+        let body =
+            json!({"component":"web","mode":"check","hour":3,"minute":15,"expected_revision":1});
+        let saved = app
+            .clone()
+            .oneshot(request("PUT", &url, body.clone()))
+            .await
+            .unwrap();
+        assert_eq!(saved.status(), StatusCode::OK);
+        let stale = app
+            .clone()
+            .oneshot(request("POST", &url, body))
+            .await
+            .unwrap();
+        assert_eq!(stale.status(), StatusCode::CONFLICT);
+        let status = app
+            .oneshot(request("GET", "/api/v1/admin/updates", Value::Null))
+            .await
+            .unwrap();
+        let status: Value =
+            serde_json::from_slice(&status.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(status["policies"]["web"]["revision"], 2);
+        assert_eq!(status["policies"]["web"]["hour"], 3);
     }
     #[tokio::test]
     async fn cancelled_queued_and_started_mutations_never_commit_late() {

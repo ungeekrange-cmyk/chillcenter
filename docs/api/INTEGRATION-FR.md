@@ -12,6 +12,32 @@ https://nom-ou-ip-du-serveur:8443/api/2026-10-14
 
 `/api/v1` reste un alias de compatibilité pour les anciens clients. Une nouvelle intégration doit utiliser la date. La réponse porte `X-Chill-Api-Version: 2026-10-14`; `GET /server` annonce aussi les versions et capacités réellement servies. Les réponses peuvent recevoir de nouveaux champs : un client doit ignorer les champs de réponse inconnus, mais ne doit jamais envoyer de champs inconnus dans les corps documentés.
 
+## Mises à jour indépendantes (serveur 0.7.0 et suivants)
+
+Ces routes sont ajoutées à la même API datée ; `/api/v1` reste pris en charge.
+`GET /admin/updates` expose les versions serveur/web/thèmes réellement installées,
+les politiques, les reçus d’opérations bornés, la disponibilité, l’état du helper
+et le décalage UTC local du système serveur. Cette lecture ne contacte pas GitHub
+et ne lance aucune installation. Un ancien serveur répond 404 : désactiver ces
+seuls contrôles, sans bloquer le catalogue.
+
+`PUT /admin/updates/policy` (également `POST /admin/updates/policy`) accepte
+exactement `component`, `mode`, `hour`, `minute`, `expected_revision`. Composants :
+`server`, `web`, `themes` ; modes : `manual`, `check`, `automatic`. Par défaut,
+installation automatique à 02:00 locale du serveur. Lire la révision d’abord ;
+`UPDATE_STATE_CHANGED` indique une modification concurrente et impose une relecture.
+
+`POST /admin/updates/check` et `POST /admin/updates/install` acceptent uniquement
+`{"component":"server"}` (ou `web`/`themes`). Une réponse 200 est un reçu de
+mise en file/coalescence, **pas** un succès d’installation : consulter l’état.
+`UPDATE_HELPER_NOT_INSTALLED` signifie qu’un administrateur local doit installer
+le helper signé distinct. Les lectures et travaux diffèrent l’installation.
+Aucune route n’accepte d’URL, chemin, clé, tag, commande shell ou interruption
+forcée. La vérification Mac et son installation explicitement confirmée restent
+locales à l’appareil, et non des opérations de l’API serveur. Voir le
+[contrat d’intégration](../updates/CONTRACT.md) et la
+[décision de sécurité approuvée](../architecture/decisions/ADR-0029-component-releases-updates.md).
+
 ## Connexion TLS et périmètre LAN
 
 Chill Center est prévu pour le réseau local du foyer, sans authentification. Toute personne pouvant atteindre l'API peut administrer le catalogue et choisir un profil. Ne l'exposez pas sur Internet et ne placez pas de proxy public devant elle.

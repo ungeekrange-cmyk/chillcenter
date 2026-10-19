@@ -480,6 +480,21 @@
     }
 
     async function invoke(name, args) {
+      if(name==="theme_command")throw Object.assign(new Error("Use same-origin theme resources"),{code:"THEME_HTTP_RESOURCE"});
+      if(name==="update_command"){
+        const c=args.command||{};
+        if(c.action==="status"||c.action==="server_status"){
+          try{return await request("GET","/admin/updates");}catch(error){
+            if(error.status!==404&&error.code!=="ROUTE_NOT_FOUND")throw error;
+            let identity={};try{identity=await request("GET","/server");}catch(_){}
+            return {unsupported:true,installed:{server:{version:identity.version},api:identity.api_version}};
+          }
+        }
+        if(!["server","web","themes"].includes(c.component))return unsupported();
+        if(c.action==="server_policy")return request("PUT","/admin/updates/policy",{body:{component:c.component,mode:c.mode,hour:c.hour,minute:c.minute,expected_revision:c.expected_revision}});
+        if(c.action==="server_check"||c.action==="server_install")return request("POST","/admin/updates/"+(c.action==="server_check"?"check":"install"),{body:{component:c.component}});
+        return unsupported();
+      }
       if (name === "ui_command") return ui(args.command);
       if (name === "artwork_command") return artworkCommand(args.target);
       if (name === "admin_command") return adminCommand(args.command);

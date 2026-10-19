@@ -505,6 +505,14 @@ pub fn initialize_staging(state: &AppState) -> Result<(), ApiError> {
 fn previews() -> &'static Mutex<HashMap<PathBuf, HashMap<String, Preview>>> {
     PREVIEWS.get_or_init(|| Mutex::new(HashMap::new()))
 }
+pub(crate) fn update_busy(state: &AppState) -> bool {
+    let dir = state.config.data_dir.join("imports");
+    previews().lock().map_or(true, |roots| {
+        roots
+            .get(&dir)
+            .is_some_and(|jobs| jobs.values().any(|job| job.busy.load(Ordering::Acquire)))
+    })
+}
 
 fn cleanup_previews(dir: &FsPath, records: &mut HashMap<PathBuf, HashMap<String, Preview>>) {
     let previews = records.entry(dir.to_path_buf()).or_default();

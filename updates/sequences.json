@@ -1,0 +1,6 @@
+{
+  "mac": {"version": "0.7.0", "sequence": 1},
+  "server": {"version": "0.7.0", "sequence": 1},
+  "web": {"version": "0.7.0", "sequence": 1},
+  "themes": {"version": "0.7.0", "sequence": 1}
+}

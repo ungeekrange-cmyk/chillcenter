@@ -84,7 +84,7 @@ binary="$target_dir/$resolved_target/release/chill-server"
 [ -f "$binary" ] || { echo "Cargo completed without the expected server binary: $binary" >&2; exit 1; }
 python3 "$helper" validate-elf --path "$binary" --target "$resolved_target"
 
-version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$project_dir/Cargo.toml" | head -n 1)"
+version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["server"])' "$project_dir/versions.json")"
 [ -n "$version" ] || { echo "Workspace version not found." >&2; exit 1; }
 source_commit="$(git -C "$project_dir" rev-parse HEAD)"
 root="$stage/chillcenter-server-$version-$resolved_target"

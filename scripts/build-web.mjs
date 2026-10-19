@@ -8,6 +8,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const versions=JSON.parse(readFileSync(join(root,"versions.json"),"utf8"));
 const ui = join(root, "ui/connected");
 const themes = join(root, "themes/default");
 const src = join(root, "web/src");
@@ -45,6 +46,7 @@ const patch = (file, from, to) => {
   writeFileSync(path, text.replaceAll(from, to));
 };
 patch("appearance.js", "sur ce Mac uniquement", "sur cet appareil uniquement");
+patch("updates.js", "__WEB_VERSION__", versions.web);
 
 let html = readFileSync(join(out, "index.html"), "utf8");
 const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css">`
@@ -68,11 +70,11 @@ files.sort();
 const build = createHash("sha256");
 for (const f of files) build.update(f).update(readFileSync(join(out, f)));
 const id = build.digest("hex").slice(0, 12);
-// Every local script, stylesheet and manifest URL of the page carries ?v=<build id>. The server ignores the query and caches static files for
+// Every local script, stylesheet and manifest URL carries ?v=<build id>. The server resolves retained release slots by that build id and caches static files for
 // an hour; the id makes a new build a new URL, so a browser never mixes old and new files after an update (no Service Worker over plain HTTP).
 const stamped = readFileSync(join(out, "index.html"), "utf8").replace(/(src|href)="([^":?#]+\.(?:js|css|webmanifest))"/g, (_, attr, url) => `${attr}="${url}?v=${id}"`);
 writeFileSync(join(out, "index.html"), stamped);
 const shell = ["./", ...files.filter(f => f !== "sw.js" && !f.endsWith(".md"))];
 writeFileSync(join(out, "sw.js"), readFileSync(join(src, "sw.js"), "utf8").replace("__BUILD__", id).replace("__SHELL__", JSON.stringify(shell)));
-writeFileSync(join(out, "build.json"), JSON.stringify({ version: "0.7.0", build: id, source: "ui/connected + web/src + themes/default", files: files.length + 1 }, null, 2) + "\n");
+writeFileSync(join(out, "build.json"), JSON.stringify({ version: versions.web, build: id, source: "ui/connected + web/src + themes/default", files: files.length + 1 }, null, 2) + "\n");
 console.log(`web: ${files.length + 1} fichiers, build ${id} -> ${out}`);

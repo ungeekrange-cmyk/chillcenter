@@ -28,6 +28,13 @@ static QUEUED: AtomicUsize = AtomicUsize::new(0);
 static SCAN_ACTIVE: AtomicBool = AtomicBool::new(false);
 static SCAN_PENDING: AtomicBool = AtomicBool::new(false);
 
+/// Detached jobs retain these reservations through their final SQLite write.
+pub(crate) fn update_busy() -> bool {
+    QUEUED.load(Ordering::Acquire) != 0
+        || SCAN_ACTIVE.load(Ordering::Acquire)
+        || SCAN_PENDING.load(Ordering::Acquire)
+}
+
 #[cfg(test)]
 thread_local! {
     static CONTENT_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -259,6 +266,12 @@ async fn enqueue_target(
     kind: FingerprintKind,
 ) -> Result<(), ApiError> {
     let slot = QueueSlot::reserve()?;
+    if crate::updates_api::maintenance_generation().is_some() {
+        return Err(ApiError(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "UPDATE_QUIESCING",
+        ));
+    }
     let media = target.media_id.clone();
     state
         .database
@@ -562,6 +575,9 @@ async fn run_scan_pump(state: AppState) {
 }
 
 pub(crate) async fn enqueue_scan_candidates(state: AppState) {
+    if crate::updates_api::maintenance_generation().is_some() {
+        return;
+    }
     SCAN_PENDING.store(true, Ordering::Release);
     if SCAN_ACTIVE
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
