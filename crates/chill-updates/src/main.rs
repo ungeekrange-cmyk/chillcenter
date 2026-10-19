@@ -18,10 +18,10 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::thread;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use time::{OffsetDateTime, UtcOffset};
 use uuid::Uuid;
 
@@ -176,7 +176,7 @@ fn run() -> chill_updates::Result<()> {
     let mut _lease = None;
     if matches!(
         arguments.first().map(String::as_str),
-        Some("check" | "apply" | "install" | "tick")
+        Some("check" | "apply" | "install" | "tick" | "rescue")
     ) {
         _lease = Some(HelperLease::acquire(&config)?);
     }
@@ -785,14 +785,14 @@ fn tick(config: &RootConfig) -> chill_updates::Result<()> {
     let offset = os_local_offset()?;
     let store = state_store(config)?;
     // A helper crash cannot leave a coalescing `running` operation forever.
-    // The next tick makes it terminal; admission/rate policy then determines a
-    // bounded fresh attempt rather than claiming that it is available.
+    // It becomes an explicit recoverable deferral; any retry still revalidates
+    // the signed cache/trust receipt before activation.
     store.update_scheduler(|state| {
         let now = OffsetDateTime::now_utc().unix_timestamp();
         for operation in &mut state.operations {
             if operation.status == OperationStatus::Running {
-                operation.status = OperationStatus::Failed;
-                operation.result_code = Some("interrupted".into());
+                operation.status = OperationStatus::DeferredBusy;
+                operation.result_code = Some("recovered_interrupted".into());
                 operation.updated_unix = now;
             }
         }
@@ -941,14 +941,10 @@ fn rescue(config: &RootConfig) -> chill_updates::Result<()> {
             .ok_or_else(|| UpdateError::Security("component root missing".into()))?;
         recover_interrupted(root, Some(&activation_authorization(config, component)))?;
     }
-    let status = Command::new("/usr/bin/systemctl")
-        .args(["start", config.service_name.as_str()])
-        .status()?;
-    if !status.success() {
-        return Err(UpdateError::Invalid(
-            "rescue could not start service".into(),
-        ));
-    }
+    let mut command = Command::new("/usr/bin/systemctl");
+    command.args(["start", config.service_name.as_str()]);
+    run_bounded_backup(&mut command, Duration::from_secs(30))
+        .map_err(|_| UpdateError::Invalid("rescue could not start service".into()))?;
     Ok(())
 }
 
@@ -1352,6 +1348,99 @@ fn write_new_sync(path: &Path, bytes: &[u8]) -> chill_updates::Result<()> {
     Ok(())
 }
 
+const BACKUP_OUTPUT_LIMIT: usize = 64 * 1024;
+
+/// Run a service-owned backup without allowing it to wedge the root updater or
+/// retain unbounded output. The child is a process-group leader so a timeout or
+/// pipe overflow terminates descendants as well as the direct child.
+fn run_bounded_backup(command: &mut Command, deadline: Duration) -> chill_updates::Result<Vec<u8>> {
+    use std::sync::mpsc;
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn()?;
+    let pid = child.id() as i32;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| UpdateError::Invalid("backup stdout missing".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| UpdateError::Invalid("backup stderr missing".into()))?;
+    let (sender, receiver) = mpsc::channel();
+    let stdout_sender = sender.clone();
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let result = stdout
+            .take((BACKUP_OUTPUT_LIMIT / 2 + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map(|_| bytes);
+        let _ = stdout_sender.send((true, result));
+    });
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let result = stderr
+            .take((BACKUP_OUTPUT_LIMIT / 2 + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map(|_| bytes);
+        let _ = sender.send((false, result));
+    });
+    let started = Instant::now();
+    let mut stdout_result = None;
+    let mut overflow = false;
+    let mut completed = 0;
+    while completed < 2 {
+        if started.elapsed() >= deadline {
+            break;
+        }
+        match receiver.recv_timeout(Duration::from_millis(20)) {
+            Ok((is_stdout, Ok(bytes))) => {
+                overflow |= bytes.len() > BACKUP_OUTPUT_LIMIT / 2;
+                if is_stdout {
+                    stdout_result = Some(bytes);
+                }
+                completed += 1;
+            }
+            Ok((_, Err(_))) => {
+                overflow = true;
+                break;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        if child.try_wait()?.is_some() && completed == 2 {
+            break;
+        }
+    }
+    let status = child.try_wait()?;
+    if status.is_none() || overflow || completed != 2 {
+        unsafe {
+            libc::kill(-pid, libc::SIGKILL);
+        }
+        let _ = child.wait();
+        while receiver.recv_timeout(Duration::from_millis(50)).is_ok() {}
+        return Err(UpdateError::Busy(
+            "offline server backup exceeded time or output bound".into(),
+        ));
+    }
+    let status = status.unwrap();
+    if !status.success() {
+        return Err(UpdateError::Invalid("offline server backup failed".into()));
+    }
+    // The pipes are read in creation order (stdout then stderr); only stdout
+    // carries the receipt, while stderr remains bounded diagnostic discard.
+    let stdout =
+        stdout_result.ok_or_else(|| UpdateError::Invalid("backup stdout unavailable".into()))?;
+    Ok(stdout)
+}
+
 struct LinuxHooks<'a> {
     config: &'a RootConfig,
     client: reqwest::blocking::Client,
@@ -1389,13 +1478,11 @@ impl<'a> LinuxHooks<'a> {
         })
     }
     fn systemctl(&self, action: &str) -> chill_updates::Result<()> {
-        let status = Command::new("/usr/bin/systemctl")
-            .args([action, self.config.service_name.as_str()])
-            .status()?;
-        if !status.success() {
-            return Err(UpdateError::Invalid(format!("systemctl {action} failed")));
-        }
-        Ok(())
+        let mut command = Command::new("/usr/bin/systemctl");
+        command.args([action, self.config.service_name.as_str()]);
+        run_bounded_backup(&mut command, Duration::from_secs(30))
+            .map(|_| ())
+            .map_err(|_| UpdateError::Invalid(format!("systemctl {action} failed")))
     }
     fn status(&self) -> chill_updates::Result<QuiescenceStatus> {
         let status: QuiescenceStatus =
@@ -1494,11 +1581,13 @@ impl InstallHooks for LinuxHooks<'_> {
                     Ok(())
                 });
             }
-            let output = command.output()?;
-            if !output.status.success() || output.stdout.len() > 4096 {
-                return Err(UpdateError::Invalid("offline server backup failed".into()));
+            let output = run_bounded_backup(&mut command, Duration::from_secs(120))?;
+            if output.len() > 4096 {
+                return Err(UpdateError::Invalid(
+                    "offline server backup receipt is too large".into(),
+                ));
             }
-            let line = std::str::from_utf8(&output.stdout)
+            let line = std::str::from_utf8(&output)
                 .map_err(|_| UpdateError::Security("backup receipt is not UTF-8".into()))?
                 .trim();
             let path = line
@@ -1643,5 +1732,27 @@ mod helper_tests {
         ] {
             assert!(abandoned_cache_temporary_kind(value).is_none());
         }
+    }
+
+    #[test]
+    fn bounded_backup_runner_handles_success_failure_output_and_process_groups() {
+        let mut success = Command::new("/bin/sh");
+        success.args(["-c", "printf 'receipt\\n'"]);
+        assert_eq!(
+            run_bounded_backup(&mut success, Duration::from_secs(1)).unwrap(),
+            b"receipt\n"
+        );
+
+        let mut failure = Command::new("/bin/sh");
+        failure.args(["-c", "echo failure >&2; exit 7"]);
+        assert!(run_bounded_backup(&mut failure, Duration::from_secs(1)).is_err());
+
+        let mut noisy = Command::new("/bin/sh");
+        noisy.args(["-c", "yes output"]);
+        assert!(run_bounded_backup(&mut noisy, Duration::from_secs(1)).is_err());
+
+        let mut hung_group = Command::new("/bin/sh");
+        hung_group.args(["-c", "sleep 30 & wait"]);
+        assert!(run_bounded_backup(&mut hung_group, Duration::from_millis(50)).is_err());
     }
 }
