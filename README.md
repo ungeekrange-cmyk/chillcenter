@@ -2,13 +2,15 @@
 
 **Français** | [English](README.en.md)
 
-Votre vidéothèque, sur votre réseau. Projet issu de Cinéfolio : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust.
+Votre vidéothèque, sur votre réseau. Projet issu de Cinéfolio : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
 Version de référence du client Mac : **v0.6 — 0.6.0, build 7**.
 Livraison locale : `artifacts/macos/Chill Center-v0.6.app`.
 Consulter les [notes de version et preuves](docs/releases/REL-V0.6.md) pour les
 corrections, les contrôles exécutés et les limites connues. Le projet reste en
-développement ; cette version ne publie ni ne déploie le serveur ou le client web.
+développement. Le client web a depuis reçu les correctifs
+[R4 — plein écran et zones caméra](docs/releases/REL-WEB-MOBILE-004.md),
+build `67773f7877d3`. Cette livraison web ne remplace pas le bundle Mac v0.6.
 
 ## Fonctionnalités
 
@@ -26,7 +28,7 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 
 Usage prévu : **réseau local de confiance du foyer**. Les profils ne sont pas des comptes authentifiés. Ne pas exposer le serveur sur Internet. Le client Mac demande d’accepter le certificat auto-généré lors de la première connexion.
 
-TMDB et les fonctions IA optionnelles utilisent des services externes. Configurez vos propres clés ; ne les ajoutez jamais au dépôt ni aux tickets. Le client web évolue dans un chantier séparé : cette préparation ne le modifie ni ne le déploie.
+TMDB et les fonctions IA optionnelles du client Mac utilisent des services externes. Configurez vos propres clés ; ne les ajoutez jamais au dépôt ni aux tickets. Les fonctions IA ne sont pas proposées dans le client web.
 
 ## Développer
 
@@ -47,6 +49,25 @@ bash scripts/package-macos.sh /chemin/absolu/Chill-Center-test.app
 ```
 
 Les bundles locaux sont signés ad hoc, non notariés. Les licences des bibliothèques embarquées doivent les accompagner.
+
+## Client web et PWA
+
+```sh
+node scripts/build-web.mjs
+node --test ui/connected/*.test.js ui/connected/tests/*.test.js web/test/*.test.js
+```
+
+Les fichiers générés dans `web/dist` sont servis par Chill Center, sur la même
+origine que l’API. Ils ne constituent pas un serveur autonome. Sur iPhone,
+ouvrir le site dans Safari, puis **Partager → Sur l’écran d’accueil** ; activer
+**Ouvrir comme app web** si proposé. Sur Android, utiliser l’installation
+proposée par le navigateur lorsque les conditions PWA sont réunies.
+
+L’application reste dépendante du serveur du foyer et des capacités du navigateur.
+Les safe areas protègent les commandes des encoches et poinçons ; Safari peut
+encore refuser le plein écran natif d’une vidéo Xvid rendue sur canvas. Les
+essais sur appareil restent distincts des tests Chromium. Aucune app native
+iOS/Android ni authentification Face ID n’est incluse.
 
 ## API et documentation
 

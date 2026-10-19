@@ -171,19 +171,16 @@ fn title_and_year(value: &str) -> (String, Option<i32>) {
                 .chars()
                 .rev()
                 .find(|c| !c.is_whitespace());
-            let after_marker = value[year.end()..]
-                .chars()
-                .find(|c| !c.is_whitespace());
+            let after_marker = value[year.end()..].chars().find(|c| !c.is_whitespace());
             // A plain terminal number is frequently part of a title (Blade
             // Runner 2049).  Treat a four-digit number as a release year only
             // when the filename marks it with a release delimiter or wrapper.
-            let marked = matches!((before, after), (Some('('), Some(')')) | (Some('['), Some(']')))
-                || before_marker.is_some_and(|c| matches!(c, '.' | '_' | '-'))
-                    && after_marker.is_some_and(|c| matches!(c, '.' | '_' | '-'));
-            marked
-                && content[..year.start()]
-                    .chars()
-                    .any(char::is_alphanumeric)
+            let marked = matches!(
+                (before, after),
+                (Some('('), Some(')')) | (Some('['), Some(']'))
+            ) || before_marker.is_some_and(|c| matches!(c, '.' | '_' | '-'))
+                && after_marker.is_some_and(|c| matches!(c, '.' | '_' | '-'));
+            marked && content[..year.start()].chars().any(char::is_alphanumeric)
         })
         .last();
     let (without_year, date) = if let Some(c) = year {

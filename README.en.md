@@ -3,13 +3,16 @@
 [Français](README.md) | **English**
 
 Your video library, on your own network. Derived from Cinéfolio: a lightweight
-Linux server and a macOS Apple Silicon client, written primarily in Rust.
+Linux server and a macOS Apple Silicon client, written primarily in Rust,
+plus a responsive web client installable on the Home Screen (PWA).
 
 Reference Mac client: **v0.6 — 0.6.0, build 7**.
 Local delivery: `artifacts/macos/Chill Center-v0.6.app`.
 See the [release notes and evidence](docs/releases/REL-V0.6.en.md) for fixes,
 executed checks and known limitations. The project is still in development;
-this release neither publishes nor deploys the server or web client.
+the web client has since received the
+[R4 fullscreen and camera-inset fixes](docs/releases/REL-WEB-MOBILE-004.en.md),
+build `67773f7877d3`. This web delivery does not replace the v0.6 Mac bundle.
 
 ## Features
 
@@ -32,9 +35,9 @@ Intended for a **trusted home LAN**. Profiles are not authenticated accounts.
 Do not expose the server to the Internet. The Mac client asks you to accept
 the self-generated certificate on first connection.
 
-TMDB and optional AI features use external services. Configure your own keys;
-never add them to the repository or issues. The web client is developed
-separately: this preparation neither modifies nor deploys it.
+TMDB and optional Mac-client AI features use external services. Configure your
+own keys; never add them to the repository or issues. AI features are not
+offered in the web client.
 
 ## Development
 
@@ -61,6 +64,23 @@ bash scripts/package-macos.sh /absolute/path/Chill-Center-test.app
 
 Local bundles are ad hoc signed, not notarized. Licences for bundled libraries
 must accompany them.
+
+## Web client and PWA
+
+```sh
+node scripts/build-web.mjs
+node --test ui/connected/*.test.js ui/connected/tests/*.test.js web/test/*.test.js
+```
+
+Generated files in `web/dist` are served by Chill Center on the same origin as
+the API; they are not a standalone server. On iPhone, open the site in Safari,
+then **Share → Add to Home Screen**; enable **Open as Web App** when offered.
+On Android, use the browser’s installation action when PWA requirements are met.
+
+The app still depends on the home server and browser capabilities. Safe areas
+keep controls clear of notches and camera cutouts; Safari may still refuse
+native fullscreen for canvas-rendered Xvid. Device tests remain separate from
+Chromium tests. No native iOS/Android app or Face ID authentication is included.
 
 ## API and documentation
 

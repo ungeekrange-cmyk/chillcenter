@@ -220,10 +220,9 @@ pub(super) async fn run(
                 continue;
             }
         };
-        let Some(candidate) = chill_catalog::metadata::exact_automatic_candidate(
-            &snapshot.media,
-            &candidates,
-        ) else {
+        let Some(candidate) =
+            chill_catalog::metadata::exact_automatic_candidate(&snapshot.media, &candidates)
+        else {
             bump(&service, &id, |j| {
                 j.processed += 1;
                 j.ambiguous += 1;

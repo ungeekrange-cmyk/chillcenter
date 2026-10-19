@@ -216,7 +216,11 @@ fn candidates_from_results(results: &Value, kind: &str) -> Vec<Candidate> {
 /// fallback label is considered only after there is no primary exact match.
 /// This keeps a duplicate or mismatched primary result ambiguous.
 fn exact_matches(media: &Media, candidates: &[Candidate], label: &str) -> Vec<Candidate> {
-    let kind = if media.category == "serie" { "tv" } else { "movie" };
+    let kind = if media.category == "serie" {
+        "tv"
+    } else {
+        "movie"
+    };
     let normalized = |value: &str| {
         value
             .chars()
@@ -268,9 +272,8 @@ where
         }
         let candidates = candidates_from_results(&fetch(query).await?, kind);
         if index == 0 {
-            let primary = crate::scanner::title_for_search(
-                media.series.as_deref().unwrap_or(&media.title),
-            );
+            let primary =
+                crate::scanner::title_for_search(media.series.as_deref().unwrap_or(&media.title));
             // A unique primary match wins, and multiple exact primary matches
             // remain ambiguous. Only zero exact matches permit the one retry.
             if !exact_matches(media, &candidates, &primary).is_empty() {
@@ -442,16 +445,25 @@ impl Tmdb {
             "movie"
         };
         let queries = search_queries(media, query);
-        if queries.iter().any(|query| query.is_empty() || query.len() > 500) {
+        if queries
+            .iter()
+            .any(|query| query.is_empty() || query.len() > 500)
+        {
             return Err("Recherche TMDB trop longue.".into());
         }
-        candidate_search_with(media, kind, queries, Duration::from_secs(1), |query| async move {
-            self.get_checked(
-                &format!("search/{kind}"),
-                &[("query", query.as_str()), ("include_adult", "false")],
-            )
-            .await
-        })
+        candidate_search_with(
+            media,
+            kind,
+            queries,
+            Duration::from_secs(1),
+            |query| async move {
+                self.get_checked(
+                    &format!("search/{kind}"),
+                    &[("query", query.as_str()), ("include_adult", "false")],
+                )
+                .await
+            },
+        )
         .await
     }
 
@@ -852,7 +864,10 @@ mod tests {
                 "Attack the Block".to_owned()
             ]
         );
-        assert_eq!(search_queries(&media, "Attack the Block"), ["Attack the Block"]);
+        assert_eq!(
+            search_queries(&media, "Attack the Block"),
+            ["Attack the Block"]
+        );
 
         media.title = "Spider-Man - No Way Home (2021) - 1080p".into();
         assert_eq!(

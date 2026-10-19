@@ -758,7 +758,10 @@ mod job_tests {
     }
     #[test]
     fn exact_match_uses_dashed_fallback_only_when_provider_used_it() {
-        let source = media("Attack the Block - - (2011) - - Unknown release note", Some(2011));
+        let source = media(
+            "Attack the Block - - (2011) - - Unknown release note",
+            Some(2011),
+        );
         let matched = vec![candidate("Attack the Block", Some(2011))];
         assert!(exact_candidate(&source, matched.clone(), false).is_none());
         assert!(exact_candidate(&source, matched, true).is_some());
