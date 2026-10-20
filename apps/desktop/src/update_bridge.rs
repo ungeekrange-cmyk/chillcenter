@@ -65,6 +65,35 @@ pub fn error(message: impl Into<String>, code: &str) -> UiError {
         code: code.into(),
     }
 }
+
+fn macos_post_consent_rendering_guard(rendering: &AtomicBool) -> Result<(), UiError> {
+    if rendering.load(Ordering::Acquire) {
+        return Err(error(
+            "Une lecture a commencé ; relancez l’installation après sa fin.",
+            "UPDATE_BUSY",
+        ));
+    }
+    Ok(())
+}
+
+/// Native confirmation is deliberately owned by the Rust orchestration path.
+/// The caller must still perform its pre-dialog guard before fetching any
+/// metadata; this helper preserves the second guard immediately after consent.
+pub(super) async fn confirm_macos_install(
+    app: &tauri::AppHandle,
+    version: &Version,
+    rendering: &AtomicBool,
+) -> Result<(), UiError> {
+    let (answer, receive) = tokio::sync::oneshot::channel();
+    app.dialog().message(format!("Installer Chill Center {version} et redémarrer maintenant ?\nInstall Chill Center {version} and restart now?"))
+        .title("Chill Center").kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom("Installer maintenant / Install now".into(),"Annuler / Cancel".into()))
+        .show(move |confirmed|{let _=answer.send(confirmed);});
+    if !receive.await.unwrap_or(false) {
+        return Err(error("Installation annulée.", "UPDATE_CANCELLED"));
+    }
+    macos_post_consent_rendering_guard(rendering)
+}
 pub struct UpdateHost {
     pub directory: PathBuf,
     active: AtomicBool,
@@ -996,20 +1025,7 @@ impl UpdateHost {
                 .restore_update(raw)
                 .map_err(|_| error("Métadonnées Mac invalides.", "UPDATE_SIGNATURE_INVALID"))?
                 .ok_or_else(|| error("Aucune version plus récente.", "UPDATE_NOT_NEWER"))?;
-            let (answer, receive) = tokio::sync::oneshot::channel();
-            app.dialog().message(format!("Installer Chill Center {} et redémarrer maintenant ?\nInstall Chill Center {} and restart now?",verified.manifest.version,verified.manifest.version))
-                .title("Chill Center").kind(MessageDialogKind::Warning)
-                .buttons(MessageDialogButtons::OkCancelCustom("Installer maintenant / Install now".into(),"Annuler / Cancel".into()))
-                .show(move |confirmed|{let _=answer.send(confirmed);});
-            if !receive.await.unwrap_or(false) {
-                return Err(error("Installation annulée.", "UPDATE_CANCELLED"));
-            }
-            if rendering.load(Ordering::Acquire) {
-                return Err(error(
-                    "Une lecture a commencé ; relancez l’installation après sa fin.",
-                    "UPDATE_BUSY",
-                ));
-            }
+            confirm_macos_install(&app, &verified.manifest.version, rendering.as_ref()).await?;
             let verified = self
                 .verify_install(component, &release.bytes, &release.signature)
                 .map_err(|_| {
@@ -1561,5 +1577,18 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn macos_post_consent_guard_keeps_the_existing_busy_code() {
+        let rendering = AtomicBool::new(true);
+        let error = macos_post_consent_rendering_guard(&rendering).unwrap_err();
+        assert_eq!(error.code, "UPDATE_BUSY");
+        assert_eq!(
+            error.message,
+            "Une lecture a commencé ; relancez l’installation après sa fin."
+        );
+        rendering.store(false, Ordering::Release);
+        assert!(macos_post_consent_rendering_guard(&rendering).is_ok());
     }
 }
