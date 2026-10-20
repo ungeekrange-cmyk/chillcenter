@@ -2,6 +2,14 @@
 
 ## v0.7.1 en préparation — 20 octobre 2026
 
+**Point d’arrêt actuel : autorisation attendue pour ADR0032 / BUG0119.**
+Les revues R4 sont favorables et le DMG est vérifié ; upload privé et preflight
+Pi seulement. Aucune sauvegarde fraîche, modification d’unité, interruption ou
+installation0.7.1 n’a été exécutée. Le filtre réseau existant interdit AF_NETLINK,
+nécessaire à la lecture des interfaces ; les deux probes éphémères confirment
+errno97 puis succès en ajoutant cette seule famille. L’unité réelle et le PID
+restent inchangés. Voir [le dossier courant](releases/REL-0.7.1-delivery.md).
+
 Demande explicite : découverte mDNS au lancement Mac, saisie manuelle masquée
 derrière un lien, API unique2026-10-14 avec suppression de l’aliasv1. Mac/serveur
 0.7.1 construits ; aucun remplacement Pi de ce lot encore exécuté à ce stade.

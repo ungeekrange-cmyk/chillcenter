@@ -2,6 +2,15 @@
 
 ## Lecture de l'état courant
 
+20octobre2026, lot0.7.1 non déployé : [BUG0119](BUG-0119-mdns-systemd-interface-family.md)
+**OPEN / USER_PERMISSION_REQUIRED**, filtre systemd bloquant la découverte Linux.
+[BUG0120](BUG-0120-discovery-before-https-bind.md) et
+[BUG0121](BUG-0121-discovery-saved-server-race.md) corrigés/revus localement ;
+[BUG0122](BUG-0122-private-deployment-operator-guards.md) outillage de déploiement
+corrigé,21tests et revues R4 favorables, aucun swap Pi effectué.
+Le [dossier0.7.1](../releases/REL-0.7.1-delivery.md) distingue DMG prêt et
+déploiement bloqué avant arrêt ; ne pas annoncer le Pi0.7.1.
+
 20 octobre 2026, déploiement Pi v0.7 : [BUG0118 empreinte d'unité systemd](BUG-0118-pi-unit-runtime-fingerprint.md)
 **FIXED / VERIFIED_PI_GUARD** dans `815b523`. Premier essai revenu automatiquement
 à l'ancienne paire serveur/web ; sauvegarde conservée. Seconde tentative PASS,

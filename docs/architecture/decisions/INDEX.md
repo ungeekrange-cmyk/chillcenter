@@ -1,5 +1,9 @@
 # Index des décisions techniques
 
+[ADR0032](ADR-0032-discovery-interface-enumeration.md), **PROPOSED / USER_APPROVAL_REQUIRED**,
+20octobre2026 : exception AF_NETLINK au filtre du service pour la découverte,
+nécessité prouvée par deux probes isolés, aucune unité réelle encore modifiée.
+
 [ADR0031](ADR-0031-single-canonical-api.md), PROPOSED implementation,20octobre2026 :
 demande explicite de supprimer les anciens alias et ne servir que2026-10-14 ;
 migration des appels/URL locales sans perte de cache, compatibilité web à prouver.
