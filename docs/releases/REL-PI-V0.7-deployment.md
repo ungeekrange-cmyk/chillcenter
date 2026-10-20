@@ -1,7 +1,15 @@
 # REL-PI-V0.7 — préparation legacy / legacy preparation
 
-**État / Status: `BLOCKED`.** Aucune connexion SSH, staging, arrêt de service ou
-mutation du Pi n’a été exécuté.
+**État / Status: `BLOCKED`.** Une tentative contrôlée a été rollbackée; aucun
+nouveau payload ne demeure en service.
+
+Tentative autorisée ultérieure: la bascule des nouveaux payloads a atteint ses
+contrôles de disponibilité, puis le garde de persistance a déclenché un rollback
+réussi. Le constat est un faux positif: `ExecStart` issu de `systemctl show`
+contenait le PID et l’horodatage dynamiques du nouveau processus, malgré les
+fichiers persistants inchangés. Aucun état de livraison n’est revendiqué par
+cette tentative; une nouvelle sauvegarde et revue restent requises. Voir le
+tracer [BUG0118](../debug/BUG-0118-pi-unit-runtime-fingerprint.md).
 
 Ce lot est limité à un Pi déjà installé: remplacement groupé du binaire serveur
 et de l’arbre web v0.7.0. Il n’exécute pas le premier installateur et ne crée ou

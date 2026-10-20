@@ -154,7 +154,7 @@ c=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro&immutable=1',uri=True)
 assert c.execute('pragma user_version').fetchone()[0]==3 and c.execute('pragma quick_check').fetchone()[0]=='ok'
 PY
 pre="$(mktemp -d "$CC_ROLLBACK_DIR/pre-v07.XXXXXX")"; chmod 0700 "$pre"
-fingerprint(){ { for p in "$CC_CONFIG" "$CC_CERT"; do stat -c '%n|%a|%u|%g|%s' "$p"; hash "$p"; done; for p in "$CC_DATA_DIR/library.json" "$CC_DATA_DIR/tmdb-token"; do if [ -e "$p" ]; then stat -c '%n|%a|%u|%g|%s' "$p"; hash "$p"; else printf '%s=absent\n' "$p"; fi; done; systemctl show "$CC_SERVICE" -p User -p Group -p ExecStart -p FragmentPath; }; }
+fingerprint(){ { for p in "$CC_CONFIG" "$CC_CERT"; do stat -c '%n|%a|%u|%g|%s' "$p"; hash "$p"; done; for p in "$CC_DATA_DIR/library.json" "$CC_DATA_DIR/tmdb-token"; do if [ -e "$p" ]; then stat -c '%n|%a|%u|%g|%s' "$p"; hash "$p"; else printf '%s=absent\n' "$p"; fi; done; systemctl show "$CC_SERVICE" -p User -p Group -p FragmentPath; systemctl cat "$CC_SERVICE" | sha256sum; }; }
 fingerprint >"$pre/before.fingerprint"
 [[ "$mode" != --preflight ]] || { printf 'preflight=PASS
 fingerprint=%s
