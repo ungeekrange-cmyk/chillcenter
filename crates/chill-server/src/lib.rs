@@ -5,6 +5,7 @@ pub mod archive_api;
 pub mod catalog_api;
 pub mod config;
 pub mod connection;
+pub mod discovery;
 pub mod export_jobs;
 pub mod fingerprint;
 pub mod identity_api;

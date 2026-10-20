@@ -1,6 +1,6 @@
 [package]
 name = "chill-server"
-version = "0.7.0"
+version = "0.7.1"
 edition.workspace = true
 license.workspace = true
 
@@ -8,6 +8,7 @@ license.workspace = true
 chill-domain.workspace = true
 chill-catalog.workspace = true
 chill-updates.workspace = true
+chill-discovery.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

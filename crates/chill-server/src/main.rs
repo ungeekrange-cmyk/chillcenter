@@ -108,6 +108,19 @@ async fn run() -> Result<(), String> {
         certificate: Arc::new(Mutex::new(certificates.schedule)),
         config: Arc::new(config),
     };
+    // A best-effort LAN hint only: the client still validates the configured
+    // HTTPS SAN and its pinned certificate before it can connect.
+    let discovery_server_id = state
+        .certificate
+        .lock()
+        .map_err(|_| "Certificat HTTPS indisponible.")?
+        .server_id
+        .clone();
+    let _discovery_advertiser = chill_server::discovery::start(
+        &discovery_server_id,
+        env!("CARGO_PKG_VERSION"),
+        state.config.listen,
+    );
     let renewal_state = state.clone();
     chill_server::updates_api::spawn_status_pulse(state.clone());
     if chill_server::archive_api::initialize_staging(&state).is_err() {
