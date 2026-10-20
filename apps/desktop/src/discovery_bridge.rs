@@ -6,10 +6,26 @@ use chill_client::ui::UiError;
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+#[derive(Debug)]
 pub enum DiscoveryCommand {
     Browse,
+}
+
+impl<'de> serde::Deserialize<'de> for DiscoveryCommand {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Request {
+            action: String,
+        }
+        match <Request as serde::Deserialize>::deserialize(deserializer)?
+            .action
+            .as_str()
+        {
+            "browse" => Ok(Self::Browse),
+            _ => Err(serde::de::Error::custom("unknown discovery action")),
+        }
+    }
 }
 
 pub fn unavailable() -> UiError {

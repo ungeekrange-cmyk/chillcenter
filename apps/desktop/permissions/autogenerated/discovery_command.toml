@@ -1,6 +1,11 @@
-$schema = "../schemas/desktop-schema.json"
+# Automatically generated - DO NOT EDIT!
 
 [[permission]]
 identifier = "allow-discovery-command"
-description = "Allows one bounded local Bonjour browse. It never accepts a certificate, opens a server connection, or accepts a user supplied address."
+description = "Enables the discovery_command command without any pre-configured scope."
 commands.allow = ["discovery_command"]
+
+[[permission]]
+identifier = "deny-discovery-command"
+description = "Denies the discovery_command command without any pre-configured scope."
+commands.deny = ["discovery_command"]
