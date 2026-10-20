@@ -19,7 +19,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
  for x in z.infolist():
   assert x.filename and not x.filename.startswith('/') and '..' not in x.filename.split('/')
   mode=x.external_attr >> 16
-  assert not mode or stat.S_ISREG(mode) or stat.S_ISDIR(mode)
+  assert stat.S_IFMT(mode) in (0,stat.S_IFREG,stat.S_IFDIR)
 PY
 }
 backup_ok(){ python3 -I - "$1" "$CC_DATA_DIR" <<'PY'
@@ -59,12 +59,21 @@ for k in ('old_binary','new_binary','old_web','new_web'):
 assert pathlib.Path(d['old_binary']).parent==j.parent and pathlib.Path(d['old_web']).parent==j.parent
 assert len(d['old_hash'])==len(d['new_hash'])==64
 PY
- local old_bin old_web new_bin new_web old_hash old_build new_hash new_build current
- { IFS= read -r old_bin; IFS= read -r old_web; IFS= read -r new_bin; IFS= read -r new_web; IFS= read -r old_hash; IFS= read -r old_build; IFS= read -r new_hash; IFS= read -r new_build; } < <(python3 -I - "$journal" <<'PY'
+ local receipt_state old_bin old_web new_bin new_web old_hash old_build new_hash new_build current
+ { IFS= read -r receipt_state; IFS= read -r old_bin; IFS= read -r old_web; IFS= read -r new_bin; IFS= read -r new_web; IFS= read -r old_hash; IFS= read -r old_build; IFS= read -r new_hash; IFS= read -r new_build; } < <(python3 -I - "$journal" <<'PY'
 import json,sys
-d=json.load(open(sys.argv[1])); print(*[d[x] for x in ('old_binary','old_web','new_binary','new_web','old_hash','old_web_build','new_hash','new_web_build')],sep='\n')
+d=json.load(open(sys.argv[1])); print(d['state'],*[d[x] for x in ('old_binary','old_web','new_binary','new_web','old_hash','old_web_build','new_hash','new_web_build')],sep='\n')
 PY
  )
+ # A durable receipt may exist before the final idle gate.  It has touched no
+ # service state, so recovery must prove that fact without stopping an active Pi.
+ if [[ "$receipt_state" == prepared ]]; then
+   [[ "$(hash "$CC_BINARY")" == "$old_hash" && "$(web_build_dir "$CC_WEB_DIR")" == "$old_build" ]] || die prepared_recovery_state_changed 1
+   [[ "$(systemctl is-active "$CC_SERVICE" || true)" == active ]] || die prepared_recovery_service_inactive 1
+   deadline=$((SECONDS + 60)); while (( SECONDS < deadline )); do tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server" 2>/dev/null | grep -qx 200 && break; sleep 1; done
+   tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server" | grep -qx 200 || die prepared_recovery_tls_health_failed 1
+   receipt_state=rollback_complete
+ else
  systemctl stop "$CC_SERVICE" || die recovery_stop_failed 1
  # Restore the web tree only from an observed, unambiguous state.
  if [[ -d "$old_web" ]]; then
@@ -78,15 +87,22 @@ PY
  # The same logic applies to the binary: never overwrite an unknown executable.
  if [[ -f "$old_bin" ]]; then
    if [[ -e "$CC_BINARY" ]]; then
-     [[ "$(hash "$CC_BINARY")" == "$new_hash" ]] || die recovery_binary_state_ambiguous 1
-     mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-failed-$(date -u +%Y%m%dT%H%M%SZ)" || die recovery_binary_quarantine_failed 1
+     current="$(hash "$CC_BINARY")"
+     if [[ "$current" == "$new_hash" ]]; then
+       mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-failed-$(date -u +%Y%m%dT%H%M%SZ)" || die recovery_binary_quarantine_failed 1
+     elif [[ "$current" == "$old_hash" ]]; then
+       [[ "$(hash "$old_bin")" == "$old_hash" ]] || die recovery_binary_copy_invalid 1
+       old_bin=""
+     else die recovery_binary_state_ambiguous 1; fi
    fi
-   mv -T "$old_bin" "$CC_BINARY" || die recovery_binary_restore_failed 1
+   [[ -z "$old_bin" ]] || mv -T "$old_bin" "$CC_BINARY" || die recovery_binary_restore_failed 1
  elif [[ -f "$CC_BINARY" && "$(hash "$CC_BINARY")" == "$old_hash" ]]; then :; else die recovery_binary_old_copy_missing 1; fi
  [[ "$(hash "$CC_BINARY")" == "$old_hash" && "$(web_build_dir "$CC_WEB_DIR")" == "$old_build" ]] || die recovery_verification_failed 1
  systemctl start "$CC_SERVICE" || die recovery_start_failed 1
  [[ "$(systemctl is-active "$CC_SERVICE" || true)" == active ]] || die recovery_service_inactive 1
+ deadline=$((SECONDS + 60)); while (( SECONDS < deadline )); do tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server" 2>/dev/null | grep -qx 200 && break; sleep 1; done
  tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server" | grep -qx 200 || die recovery_tls_health_failed 1
+ fi
  python3 -I - "$journal" <<'PY'
 import json,os,sys
 p=sys.argv[1]; d=json.load(open(p)); d['state']='rollback_complete'; f=open(p+'.new','w'); json.dump(d,f,sort_keys=True); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.new',p); fd=os.open(os.path.dirname(p),os.O_RDONLY); os.fsync(fd); os.close(fd)
@@ -137,7 +153,7 @@ c=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro&immutable=1',uri=True)
 assert c.execute('pragma user_version').fetchone()[0]==3 and c.execute('pragma quick_check').fetchone()[0]=='ok'
 PY
 pre="$(mktemp -d "$CC_ROLLBACK_DIR/pre-v07.XXXXXX")"; chmod 0700 "$pre"
-fingerprint(){ { for p in "$CC_BINARY" "$CC_CONFIG" "$CC_CERT" "$CC_WEB_DIR/build.json"; do stat -c '%n|%a|%u|%g|%s' "$p"; hash "$p"; done; if [ -e "$CC_DATA_DIR/library.json" ]; then stat -c '%n|%a|%u|%g|%s' "$CC_DATA_DIR/library.json"; hash "$CC_DATA_DIR/library.json"; else printf 'library_json=absent\n'; fi; systemctl show "$CC_SERVICE" -p User -p Group -p ExecStart -p FragmentPath; }; }
+fingerprint(){ { for p in "$CC_CONFIG" "$CC_CERT"; do stat -c '%n|%a|%u|%g|%s' "$p"; hash "$p"; done; for p in "$CC_DATA_DIR/library.json" "$CC_DATA_DIR/tmdb-token"; do if [ -e "$p" ]; then stat -c '%n|%a|%u|%g|%s' "$p"; hash "$p"; else printf '%s=absent\n' "$p"; fi; done; systemctl show "$CC_SERVICE" -p User -p Group -p ExecStart -p FragmentPath; }; }
 fingerprint >"$pre/before.fingerprint"
 [[ "$mode" != --preflight ]] || { printf 'preflight=PASS
 fingerprint=%s
@@ -153,13 +169,17 @@ import json,os,sys
 p=sys.argv[1]; f=open(p+'.new','x'); json.dump(dict(state='prepared',old_binary=sys.argv[2],old_web=sys.argv[3],new_binary=sys.argv[4],new_web=sys.argv[5],old_hash=sys.argv[6],new_hash=sys.argv[7],old_web_build=sys.argv[8],new_web_build=sys.argv[9]),f,sort_keys=True); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.new',p); d=os.open(os.path.dirname(p),os.O_RDONLY); os.fsync(d); os.close(d)
 PY
 state=running
+tls "$CC_BASE_URL/api/2026-10-14/admin/scan"|python3 -I -c 'import json,sys; assert json.load(sys.stdin).get("running") is False' || die scan_active_or_unknown 42
+[[ -z "$(grep -F "$(basename "$CC_BINARY")" <<<"$(ss -Htnp state established 2>/dev/null)" || true)" ]] || die active_client_socket_refusing_stop 42
+python3 -I - "$journal" <<'PY'
+import json,os,sys
+p=sys.argv[1]; d=json.load(open(p)); assert d['state']=='prepared'; d['state']='stopping'; f=open(p+'.new','w'); json.dump(d,f,sort_keys=True); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.new',p); fd=os.open(os.path.dirname(p),os.O_RDONLY); os.fsync(fd); os.close(fd)
+PY
 recover(){ rc=$?; set +e; trap '' HUP INT TERM; trap - EXIT; if [[ "$state" != complete && -f "$journal" ]]; then recover_transition || { printf 'recovery=FAILED journal=%s\n' "$journal" >&2; exit 1; }; fi; exit "$rc"; }
 trap recover EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-tls "$CC_BASE_URL/api/2026-10-14/admin/scan"|python3 -I -c 'import json,sys; assert json.load(sys.stdin).get("running") is False' || die scan_active_or_unknown 42
-[[ -z "$(grep -F "$(basename "$CC_BINARY")" <<<"$(ss -Htnp state established 2>/dev/null)" || true)" ]] || die active_client_socket_refusing_stop 42
 systemctl stop "$CC_SERVICE"; state=stopped; ! systemctl is-active --quiet "$CC_SERVICE" || die service_failed_to_stop 1
 out="$(timeout --signal=TERM --kill-after=15s 600s setsid /bin/bash -c 'set -e; child=; cleanup(){ [ -z "$child" ] || kill -TERM -- -"$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }; trap "cleanup; exit 124" TERM INT HUP; cd "$1"; runuser -u "$2" -- "$3" --backup --config "$4" </dev/null & child=$!; wait "$child"' -- /usr/lib/chillcenter "$CC_SERVICE_USER" "$CC_BINARY" "$CC_CONFIG")" || die backup_failed_or_timed_out 1
 backup="${out#Sauvegarde terminée : }"; [[ "$out" != "$backup" && "$backup" == "$CC_DATA_DIR/backups/"* ]] || die backup_receipt_refused 1; backup_ok "$backup"
