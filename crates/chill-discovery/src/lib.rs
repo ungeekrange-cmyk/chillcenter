@@ -32,6 +32,7 @@ pub struct DiscoveredServer {
 #[derive(Debug)]
 pub enum DiscoveryError {
     Mdns(mdns_sd::Error),
+    InterfaceEnumeration,
     InvalidServerId,
     InvalidVersion,
     InvalidListenAddress,
@@ -41,6 +42,7 @@ impl fmt::Display for DiscoveryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Mdns(error) => write!(f, "mDNS unavailable: {error}"),
+            Self::InterfaceEnumeration => f.write_str("LAN interfaces are unavailable"),
             Self::InvalidServerId => f.write_str("invalid discovery server id"),
             Self::InvalidVersion => f.write_str("invalid discovery version"),
             Self::InvalidListenAddress => f.write_str("discovery requires a LAN unicast listener"),
@@ -60,8 +62,8 @@ impl From<mdns_sd::Error> for DiscoveryError {
 /// Malformed, public, loopback, and oversized records are ignored.
 pub fn browse(timeout: Duration) -> Result<Vec<DiscoveredServer>, DiscoveryError> {
     let daemon = ServiceDaemon::new()?;
-    let receiver = daemon.browse(SERVICE_TYPE)?;
     let guard = BrowseGuard { daemon: &daemon };
+    let receiver = daemon.browse(SERVICE_TYPE)?;
     let deadline = Instant::now() + timeout.min(MAX_BROWSE);
     let mut records = Vec::new();
     let mut ids = BTreeSet::new();
@@ -114,9 +116,10 @@ impl Advertiser {
         if !bounded_text(version, MAX_VERSION_BYTES) {
             return Err(DiscoveryError::InvalidVersion);
         }
-        if !is_advertisable_address(listen.ip()) || listen.port() == 0 {
+        if listen.port() == 0 {
             return Err(DiscoveryError::InvalidListenAddress);
         }
+        let addresses = announcement_addresses(listen)?;
         let short = server_id.simple().to_string();
         let instance = format!("ChillCenter-{}", &short[..8]);
         let hostname = format!("chillcenter-{server_id}.local.");
@@ -132,13 +135,16 @@ impl Advertiser {
             SERVICE_TYPE,
             &instance,
             &hostname,
-            listen.ip(),
+            addresses.as_slice(),
             listen.port(),
             &properties[..],
         )?;
         let fullname = info.get_fullname().to_owned();
         let daemon = ServiceDaemon::new()?;
-        daemon.register(info)?;
+        if let Err(error) = daemon.register(info) {
+            let _ = daemon.shutdown();
+            return Err(error.into());
+        }
         Ok(Self { daemon, fullname })
     }
 }
@@ -216,6 +222,34 @@ fn is_advertisable_address(address: IpAddr) -> bool {
     }
 }
 
+fn announcement_addresses(listen: SocketAddr) -> Result<Vec<IpAddr>, DiscoveryError> {
+    if !listen.ip().is_unspecified() {
+        return is_advertisable_address(listen.ip())
+            .then_some(vec![listen.ip()])
+            .ok_or(DiscoveryError::InvalidListenAddress);
+    }
+    let interfaces = if_addrs::get_if_addrs().map_err(|_| DiscoveryError::InterfaceEnumeration)?;
+    let addresses = wildcard_lan_addresses(
+        interfaces
+            .into_iter()
+            .filter(|interface| interface.is_oper_up() && !interface.is_p2p())
+            .map(|interface| interface.ip()),
+    );
+    (!addresses.is_empty())
+        .then_some(addresses)
+        .ok_or(DiscoveryError::InvalidListenAddress)
+}
+
+fn wildcard_lan_addresses(addresses: impl IntoIterator<Item = IpAddr>) -> Vec<IpAddr> {
+    addresses
+        .into_iter()
+        .filter(|address| is_advertisable_address(*address))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(MAX_ADDRESSES)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,5 +313,36 @@ mod tests {
             Advertiser::start(ID, "0.7.1", "127.0.0.1:8443".parse().unwrap()),
             Err(DiscoveryError::InvalidListenAddress)
         ));
+    }
+
+    #[test]
+    fn concrete_binds_publish_only_their_exact_lan_address() {
+        assert_eq!(
+            announcement_addresses("10.0.0.12:8443".parse().unwrap()).unwrap(),
+            ["10.0.0.12".parse::<IpAddr>().unwrap()]
+        );
+        assert!(matches!(
+            announcement_addresses("127.0.0.1:8443".parse().unwrap()),
+            Err(DiscoveryError::InvalidListenAddress)
+        ));
+    }
+
+    #[test]
+    fn wildcard_filters_interfaces_to_lan_addresses_and_caps_them() {
+        let input = (1..=10)
+            .map(|last| IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, last)))
+            .chain([
+                "8.8.8.8".parse().unwrap(),
+                "127.0.0.1".parse().unwrap(),
+                "fe80::1".parse().unwrap(),
+                "fd12::2".parse().unwrap(),
+            ]);
+        let addresses = wildcard_lan_addresses(input);
+        assert_eq!(addresses.len(), MAX_ADDRESSES);
+        assert!(
+            addresses
+                .iter()
+                .all(|address| is_advertisable_address(*address))
+        );
     }
 }

@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+if-addrs = { version = "0.15", features = ["link-local"] }
 mdns-sd = { version = "=0.21.6", default-features = false }
 serde.workspace = true
 uuid.workspace = true
