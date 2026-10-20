@@ -2,6 +2,17 @@
 
 ## Lecture de l'état courant
 
+20 octobre 2026, clôture : [BUG0113 updater](BUG-0113-component-updater-release-gate.md)
+**FIXED / VERIFIED_LOCAL**, huit HIGH et quatre défauts fonctionnels clos,
+revues code/sécurité/tests favorables sur `3e174b9`. Dernier contrôle natif
+d'annulation réussi sans téléchargement ni mutation. BUG0115/0116/0117 corrigés
+et vérifiés ; publication des paquets séparée, aucun Pi/NAS contacté.
+
+20 octobre 2026 : [BUG0116 archive QA AppleDouble](BUG-0116-qa-tar-appledouble.md)
+corrigé/vérifié par installation native ; [BUG0117 minimum macOS du bundle](BUG-0117-macos-bundle-minimum-os.md)
+corrigé dans le packaging, vérification finale du paquet requise. Le bundle
+fourni requiert macOS 27+, pas 13+. Aucun Pi modifié.
+
 19 octobre 2026, candidat corrigé : les huit constats sécurité et quatre défauts
 fonctionnels de BUG0113 disposent de corrections et de preuves Linux réelles
 sur VM isolée ; revues finales et validation native en cours, **pas de publication

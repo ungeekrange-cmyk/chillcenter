@@ -1,0 +1,14 @@
+PASS production UpdateHost busy-before: UPDATE_BUSY; bundle hash and network counter unchanged
+PROMPT native consent queued; rendering will become active before acceptance
+PASS shared production consent guard returned UPDATE_BUSY; bundle hash and network counter unchanged
+PROMPT native consent queued via production helper
+PASS SDK verified and replaced isolated QA bundle; restart prompt shown
+PASS restarted actual QA executable after isolated replacement
+PROMPT native consent queued via production helper
+FAIL second-release consent was accepted unexpectedly
+PROMPT native consent queued via production helper
+FAIL second-release consent was accepted unexpectedly
+PROMPT native consent queued via production helper
+FAIL second-release consent was accepted unexpectedly
+PROMPT native consent queued via production helper
+PASS production native consent cancelled; no install or SDK download

@@ -4,20 +4,28 @@
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
-**[Télécharger l’application Mac Apple Silicon v0.6](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.6/Chill-Center-v0.6-macos-arm64.zip)** · [Toutes les releases](https://github.com/ungeekrange-cmyk/chillcenter/releases)
+**[Télécharger l’application Mac Apple Silicon v0.7 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-0.7.0-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7)
 
-Les prochaines livraisons Mac, serveur, web et thèmes sont versionnées séparément
-dans [versions.json](versions.json). Leur moteur de mise à jour signé est en
-préparation/revue ; aucun téléchargement 0.7 n’est encore annoncé comme livré.
-Les [packs de thèmes](themes/README.md) décrivent leur calendrier et priorité.
+Mac, serveur, web et thèmes sont versionnés séparément dans
+[versions.json](versions.json). Les versions installées et les réglages de mise
+à jour sont visibles dans **Configuration → Général**. Le Mac demande toujours
+« Installer maintenant » ; serveur/web/thèmes peuvent se mettre à jour à 02 h
+locale, hors lecture et travaux actifs. Les [packs de thèmes](themes/README.md)
+décrivent leur calendrier et priorité.
 
-Version de référence du client Mac : **v0.6 — 0.6.0, build 7**.
-Livraison locale : `artifacts/macos/Chill Center-v0.6.app`.
-Consulter les [notes de version et preuves](docs/releases/REL-V0.6.md) pour les
-corrections, les contrôles exécutés et les limites connues. Le projet reste en
-développement. Le client web a depuis reçu les correctifs
-[R4 — plein écran et zones caméra](docs/releases/REL-WEB-MOBILE-004.md),
-build `67773f7877d3`. Cette livraison web ne remplace pas le bundle Mac v0.6.
+| Composant 0.7.0 | Paquet et instructions |
+| --- | --- |
+| Mac Apple Silicon, build 9 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-0.7.0-macos-arm64.dmg), macOS 27+ pour ce bundle |
+| Serveur Linux ARM64 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-server-0.7.0-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
+| Client web/PWA | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-web-0.7.0-install.zip), serveur 0.7 requis |
+| Thèmes indépendants | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-themes-0.7.0-install.zip) |
+
+Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
+et les [notes de version et limites](docs/releases/REL-V0.7.md). Les manifestes
+signés sont dans les releases propres à chaque composant. Le serveur existant
+n’est pas mis à jour par cette publication ; la v0.6 et les anciens paquets
+restent disponibles. Ne pas lancer l’installateur initial sur une installation
+existante : il refuse volontairement de l’écraser.
 
 ## Fonctionnalités
 
@@ -53,6 +61,7 @@ Construire une application Mac dans une destination **neuve**, sans écraser un 
 
 ```sh
 bash scripts/package-macos.sh /chemin/absolu/Chill-Center-test.app
+python3 scripts/package-macos-dmg.py /chemin/absolu/Chill-Center-test.app /chemin/absolu/Chill-Center-test.dmg
 ```
 
 Les bundles locaux sont signés ad hoc, non notariés. Les licences des bibliothèques embarquées doivent les accompagner.

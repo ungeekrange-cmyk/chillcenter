@@ -1,5 +1,82 @@
 # Contexte du projet
 
+## v0.7 prête à publier — 20 octobre 2026
+
+Les derniers gates sont clos sur `3e174b9e6ed89e08f67e763c3b30028c15767080` :
+code APPROVED_SCOPED, sécurité APPROVED, tests APPROVED. Annulation native
+0.7.2 réellement réussie, confirmée humainement, sortie0 ; un GET de manifeste
+supplémentaire, aucun paquet0.7.2, arbre/exécutable/marqueur/signature inchangés.
+Les trois anciennes acceptations restent dans le journal, non requalifiées.
+435Rust/359Node PASS, deux NFR existants ignorés, packagingPython19 PASS.
+Les checkpoints bloqués ci-dessous sont historiques, ne pas les relancer.
+
+Publication explicitement demandée, sans Pi. Dossier de livraison neuf
+`/private/tmp/chillcenter-v07-final.E670In`, build web a1c12ba4a582/98fichiers.
+Finaliser le commit porteur des seules docs/rapports, reconstruire le Mac pour
+son SHA réel, signer tous les flux avant création des tags/releases indépendants,
+puis publier v0.7 avec DMG, serveurARM64, web, thèmes, provenance et sommes signées.
+Le script local `/private/tmp/chillcenter-v07-final-artifacts.mjs` prévoit le DMG.
+Conserver main comme défaut, visibilité PUBLIC existante et release/tagv0.6.
+Ni SSH, ni Pi, ni NAS, ni web déployé. Aucun test supplémentaire du lecteur requis.
+
+## DMG Mac demandé — 20 octobre 2026
+
+Installation manuelle désormais préparée au format standard DMG, application
+et raccourci Applications, instructions FR/EN ; updater interne `.app.tar.gz`
+inchangé. Générateur `scripts/package-macos-dmg.py`, cinq tests ciblés PASS,
+refus d'écrasement atomique et contrôle de signature avant création. Aucun
+lancement, remplacement ou installation d'application par le générateur.
+
+Candidat local :
+`/private/tmp/chillcenter-v07-dmg-ac52533/Chill-Center-0.7.0-macos-arm64.dmg`,
+46 881 214 octets, SHA256
+`7c352bdb708b5d53a6f8a332e7ff33a77c54017043c90a0427d28e64902c47a5`.
+App embarquée issue de `ac52533`, version0.7.0/build9, macOS27 minimum.
+`hdiutil verify` PASS ; montage réel lecture seule, raccourci vers /Applications,
+signature stricte et arborescence complète identique à l'app source vérifiés,
+puis volume éjecté. Hash de l'arbre applicatif
+`86a82895b4faceaa4edb06c16282714cb47a1062cca9667a503d09f9a9a088fd`.
+Cet essai de packaging ne clôt pas le gate d'annulation native ci-dessous.
+Pas de publication, fusion main, signature de production ou contact Pi.
+README/guides FR/EN et assemblage local de release prévoient le DMG en évidence.
+
+## Validation native v0.7 — 20 octobre 2026
+
+Source runtime/packaging figée `ac5253328da3bd2cb6a65e9913c0bbe5b8d3d33b` :
+revues indépendantes code APPROVED_SCOPED et sécurité APPROVED ; 435 tests Rust
+PASS, zéro échec, deux NFR existants ignorés ; Node359 PASS ; Python packaging14
+PASS. Helper natif commun privé extrait sans changer l'ordre confirmation,
+annulation et deuxième garde lecteur. Bundle neuf local
+`/private/tmp/chillcenter-v07-minos-ac52533/Chill Center.app`, signature stricte,
+48 dylibs et chargement libmpv vérifiés. Minimum réel **macOS 27+**, calculé sur
+49 Mach-O avant signature (BUG0117). Ne pas livrer les anciens candidats macOS13.
+
+Vrai SDK/AppKit : installation signée et redémarrage isolés réussis. Garde de
+lecture avant toute requête et lecture commençant pendant le prompt réussies,
+sans téléchargement ni changement du bundle. Nouveau consentement 0.7.2 bien
+affiché, mais trois callbacks d'acceptation ont été reçus alors que le scénario
+attend Annuler : le harness a refusé avant tout téléchargement/installation 0.7.2.
+La question humaine sur le bouton réellement utilisé est en attente : ne pas
+conclure à une erreur de clic ou à un bug du SDK sans cette précision.
+La revue tests conserve uniquement l'oracle d'annulation 0.7.2 comme gate.
+Aucune fenêtre QA encore ouverte ; ne pas relancer en boucle ni refaire le lecteur.
+
+QA séparée : source `7efb31c1e196c53cfa231dbcf043bf6ff1bc75ef`, dossier
+`/private/tmp/chillcenter-qa-native-updates.YNFPqL`, lanceur
+`launch-isolated-qa.sh second_cancel`, journal `qa-native-updates.log`, compteur
+`network.count`. Attendre la ligne PASS d'annulation, bundle inchangé et aucun
+GET d'archive 0.7.2, puis verdict indépendant final. Le QA se ferme après son
+redémarrage vérifié : absence de catalogue attendue, pas une panne de lancement.
+Le défaut AppleDouble du TAR QA est corrigé (BUG0116), échec conservé.
+
+**Aucune publication v0.7, signature avec clé de production, fusion main ou
+installation Pi à ce stade.** README/guides de distribution et rapports sont
+encore des modifications locales à intégrer après fermeture du gate ; préserver
+leur état. Script d'assemblage local préparé hors Git :
+`/private/tmp/chillcenter-v07-final-artifacts.mjs`. Produire ensuite les paquets
+depuis la source propre finale, vérifier, signer puis publier les quatre flux
+et v0.7 sans déplacer v0.6. Aucun contact Pi/NAS dans cette reprise.
+
 ## Correctifs v0.7 — checkpoint local, 19 octobre 2026
 
 Source corrigée `3913267` (moteur revu `6041f4d`, delta configuration native) :

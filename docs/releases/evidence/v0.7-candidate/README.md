@@ -21,5 +21,21 @@ the local paths named in their reports. No production private key, service
 certificate or household server address is included. Synthetic public keys and
 test-only key filenames are not production credentials.
 
-Native AppKit consent/install/restart is **not yet passed**. The isolated QA
-feature remains on a separate test branch and is absent from release builds.
+The final Rust transcript copy likewise omits its redundant terminal blank
+line; the original `/private/tmp/chillcenter-v07-ac52533-rust.log` remains
+unchanged and its original hash is recorded by the independent reviewer.
+
+Final 20 October evidence supplements the historical transcripts above:
+
+- `rust-final-ac52533.txt`: 435 PASS, zero failed, two existing NFR ignores.
+- `node-final-ac52533.txt`: 359 PASS, zero failed/skipped.
+- `native-consent-20261020.txt`: busy-before/busy-during PASS, genuine signed
+  installation/restart PASS, three adverse acceptance attempts preserved and
+  final production-helper cancellation PASS.
+- `native-loopback-20261020.txt`: only one 0.7.1 payload and four 0.7.2 metadata
+  requests; no 0.7.2 payload download.
+
+Native closure is independently approved in
+[the final test review](../../../reviews/component-updates-tests-3e174b9.md).
+The isolated QA feature remains on a separate branch and is absent from release
+builds; private test keys are never included in this evidence or packages.

@@ -2,16 +2,16 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-Status: 0.7.0 development/review candidate, **not a delivery**.
-The only Mac bundle published at this stage is [v0.6](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.6).
-Do not use the installers/helper in production before security approval and
-documented deployment testing.
+The [v0.7 release](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7)
+groups the four independently versioned 0.7.0 components. Publication does not
+install them on an existing server. Earlier releases remain available; see the
+[release evidence and limits](../releases/REL-V0.7.en.md).
 
 ## Four components
 
 | Component | Source version | Release tag | Installation |
 | --- | --- | --- | --- |
-| Apple Silicon Mac | `versions.json.mac` | `mac-vX.Y.Z` | `.app` archive, then native “Install now” confirmation |
+| Apple Silicon Mac | `versions.json.mac` | `mac-vX.Y.Z` | Manual DMG; native “Install now” confirmation for subsequent updates |
 | Linux server | `versions.json.server` | `server-vX.Y.Z` | Local administrator installer, non-root service |
 | Web/PWA client | `versions.json.web` | `web-vX.Y.Z` | Static server files, without replacing its binary |
 | Themes | `versions.json.themes` | `themes-vX.Y.Z` | Data/image pack, without rebuilding the application |
@@ -45,7 +45,7 @@ previous-version resources. Theme changes are detected in the background.
 ## Installation and trust
 
 An initial 0.7 installation is required to enable the mechanism: the 0.6 client
-cannot silently add a new trust key to itself. Artifacts will include a signed
+cannot silently add a new trust key to itself. Artifacts include a signed
 manifest, signature and provenance. Verify before execution; never use
 `curl | sudo sh`.
 
@@ -61,6 +61,54 @@ Mac packages remain ad-hoc signed and unnotarized: update signatures authenticat
 bytes but are not Apple notarization. The release public key is
 [release.pub](../../updates/release.pub), identity `18FD790B48C202F8`. The private
 key is never distributed or stored in Git.
+
+### Download and verify
+
+Use the complete distribution archives from v0.7, not GitHub's automatically
+generated source ZIP. Download the matching `.minisig` alongside each archive.
+Verify with an independently installed Minisign and the pinned public key below;
+do not establish trust merely from a key inside the downloaded archive.
+
+```sh
+minisign -Vm Chill-Center-server-0.7.0-linux-aarch64.tar.gz \
+  -P 'RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
+tar -xzf Chill-Center-server-0.7.0-linux-aarch64.tar.gz
+```
+
+The same verification applies to the Mac DMG, web install ZIP and themes install
+ZIP using their respective filenames. The Mac distribution is Apple Silicon
+only and **requires macOS 27+**, due to its bundled media libraries. Open the DMG,
+quit the old app, then drag **Chill Center** onto the **Applications** shortcut.
+Eject the disk and open the app from Applications. Keep the previous bundle for
+local rollback. This first install is manual, not an update from v0.6. The signed
+`.app.tar.gz` remains the internal updater payload; a DMG does not change trust
+keys, consent or update protocols.
+
+The server archive contains both ARM64 binaries, signed manifest/public key,
+`scripts/` and `deploy/updates/`. Keep that layout. A fresh Linux installation
+requires systemd, glibc 2.31+, Python 3.10+, Minisign, curl and a configured
+readable library; the helper does not mount storage. Inspect the script, then
+run it from the extracted root with your own absolute paths and LAN settings:
+
+```sh
+sudo ./scripts/install-server.sh \
+  --server "$PWD/chill-server" --updater "$PWD/chill-update" \
+  --release-pub "$PWD/release.pub" --manifest "$PWD/server-manifest.json" \
+  --manifest-signature "$PWD/server-manifest.json.minisig" \
+  --version 0.7.0 --library /absolute/read-only-library \
+  --listen LAN_ADDRESS:8443 --tls-name LAN_DNS_OR_IP
+```
+
+Replace the placeholders; no household address is built in. **Do not run this
+bootstrap against an existing installation.** Migration of a legacy server
+requires an administrator-controlled backup and separately planned installation.
+
+After a verified 0.7 server/helper installation, verify and extract the web or
+themes install ZIP and run its inspectable `scripts/install-web.sh` or
+`scripts/install-themes.sh` with sudo. These wrappers fetch the corresponding
+signed component stream and refuse active work; they do not replace the server
+binary or its configuration. A bundled payload ZIP can also be retained for
+audit; the wrapper does not take arbitrary local paths or release URLs.
 
 ## Maintainer publication
 

@@ -2,10 +2,33 @@
 
 **Français** | [English](COMPONENT-UPDATES-FIXES-20261019.en.md)
 
+## Clôture des vérifications — 20 octobre 2026
+
+Source runtime/packaging finale `3e174b9e6ed89e08f67e763c3b30028c15767080` :
+[code APPROVED_SCOPED](../reviews/component-updates-code-3e174b9.md),
+[sécurité APPROVED](../reviews/component-updates-security-3e174b9.md),
+[tests APPROVED](../reviews/component-updates-tests-3e174b9.md).
+Les huit HIGH et quatre défauts fonctionnels sont clos. Le dernier contrôle
+AppKit d'annulation 0.7.2 passe : un GET du seul manifeste, aucun téléchargement
+de paquet, arbre/exécutable/signature/marqueur inchangés et sortie 0. Les trois
+acceptations précédentes restent des observations QA défavorables conservées.
+La vraie installation signée, le redémarrage et les deux gardes lecteur passent.
+
+Régression runtime inchangée : **435 Rust PASS, zéro échec, deux NFR existants
+ignorés ; 359 Node PASS**. Packaging Python **19/19 PASS**, dont cinq tests DMG.
+DMG réel vérifié/monté en lecture seule, application identique au bundle signé,
+raccourci Applications et instructions FR/EN ; minimum réel macOS27 calculé
+sur les 49 Mach-O. Aucune signature Apple Developer/notarisation revendiquée.
+Les rapports séparent les sources revues des futurs commits porteurs de docs.
+Les [notes v0.7](../releases/REL-V0.7.md) et manifestes signés suivent la
+publication ; aucun Pi, NAS ou client web déployé n'a été contacté/modifié.
+
+## Checkpoint historique du 19 octobre
+
 Source de référence : `6041f4dc8acb6e14ea59bcb4e8ce6cec5d9edcaa`.
 Ce document complète le [checkpoint initial](COMPONENT-UPDATES-20261019.md),
-sans effacer les revues défavorables. **Candidat non publié : les validations
-natives Mac et les verdicts finaux restent des gates de publication.**
+sans effacer les revues défavorables. **À ce checkpoint historique, le candidat
+n'était pas publié et les gates natives/finales restaient ouvertes.**
 Le Pi, sa configuration, le client web déployé et le NAS n'ont pas été contactés.
 
 Delta `3913267` : le premier vrai lancement Tauri a révélé

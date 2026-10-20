@@ -1,0 +1,542 @@
+   Compiling chillcenter-desktop v0.7.0 (/private/tmp/chillcenter-fixes-web-parity/apps/desktop)
+   Compiling chill-updates v0.1.0 (/private/tmp/chillcenter-fixes-web-parity/crates/chill-updates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.64s
+     Running unittests src/lib.rs (target/debug/deps/chill_catalog-99245db95d1a4e2c)
+
+running 82 tests
+test assistant::tests::assistant_rating_requires_preview_validation ... ok
+test assistant::tests::preview_contains_only_requested_fields ... ok
+test assistant::tests::prompt_identifiers_hide_library_paths_and_resolve_locally ... ok
+test assistant::tests::rejects_arbitrary_fields_and_unknown_ids ... ok
+test assistant::tests::valid_plan_roundtrip ... ok
+test database::tests::batch_collection_add_is_atomic_bounded_idempotent_and_keeps_selection_order ... ok
+test database::tests::batch_collection_add_rolls_back_after_partial_sql_failure ... ok
+test database::tests::changing_tmdb_namespace_requires_a_new_association ... ok
+test database::tests::collection_and_rating_data_reopen_without_losing_legacy_media ... ok
+test database::tests::collection_deletion_never_deletes_media_or_resurrects_legacy_saga ... ok
+test database::tests::collections_migrate_once_allow_multiple_and_preserve_removals ... ok
+test database::tests::editable_presentation_persists_and_refresh_keeps_it ... ok
+test database::tests::empty_scan_preserves_last_success ... ok
+test database::tests::enrichment_preserves_custom_poster_and_concurrent_presentation_edits ... ok
+test database::tests::episode_reassociation_inherits_target_metadata_and_survives_provider_refresh ... ok
+test database::tests::existing_database_gains_optional_saga_artwork_without_rewriting_media ... ok
+test database::tests::explicit_null_clears_episode_but_omission_preserves_it ... ok
+test database::tests::explicit_provider_selection_replaces_old_group_but_preserves_in_flight_corrections ... ok
+test database::tests::forget_unavailable_is_atomic_cleans_memberships_and_keeps_files_and_collections ... ok
+test database::tests::invalid_assistant_change_is_atomic ... ok
+test database::tests::invalid_patch_does_not_persist ... ok
+test database::tests::lazily_imported_sagas_have_revisions_without_resetting_existing_cas ... ok
+test database::tests::missing_files_preserve_history ... ok
+test database::tests::missing_media_is_distinct_from_failed_or_corrupt_catalogue_reads ... ok
+test database::tests::old_catalogue_rows_load_with_presentation_defaults ... ok
+test database::tests::old_database_preserves_insertion_order_and_forgetting_cleans_order_only ... ok
+test database::tests::playlist_order_survives_reopen_append_remove_readd_and_legacy_writers ... ok
+test database::tests::playlist_reorder_rejects_stale_or_invalid_permutations_and_rolls_back_sql ... ok
+test database::tests::poster_restore_is_atomic_and_keeps_concurrent_import ... ok
+test database::tests::ratings_propagate_atomically_and_survive_scan_and_metadata ... ok
+test database::tests::recommendations_favour_saga_and_genres ... ok
+test database::tests::refresh_keeps_watched_and_manual_metadata ... ok
+test database::tests::saga_artwork_failure_rolls_back_and_reopens_without_losing_catalogue ... ok
+test database::tests::saga_images_are_independent_of_members_and_previous_selection_is_protected ... ok
+test database::tests::saga_rename_keeps_identity_membership_and_legacy_import_durable ... ok
+test database::tests::scan_budget_error_keeps_database_and_timestamp ... ok
+test database::tests::series_corrections_are_shared_without_overwriting_episode_data ... ok
+test database::tests::series_corrections_reject_invalid_and_collision_and_allow_clearing ... ok
+test database::tests::series_provider_allows_title_collision_but_rolls_back_sql_failure ... ok
+test database::tests::series_provider_refresh_keeps_manual_name_and_poster_on_missing_image ... ok
+test database::tests::series_provider_rejects_stale_group_but_preserves_concurrent_episode_edits ... ok
+test database::tests::series_provider_updates_all_seasons_and_preserves_episode_metadata_and_memberships ... ok
+test database::tests::series_synopsis_updates_all_members_but_not_episode_synopsis ... ok
+test database::tests::series_update_rolls_back_on_write_error ... ok
+test database::tests::settings_do_not_store_secrets ... ok
+test database::tests::source_group_normalizes_series_and_folder_spelling_without_merging_remakes ... ok
+test database::tests::source_root_keeps_unidentified_homonymous_series_apart ... ok
+test database::tests::tmdb_merge_preserves_edits_and_clears_in_flight ... ok
+test database::tests::unavailable_batch_rolls_back_if_any_sql_write_fails ... ok
+test database::tests::unavailable_removal_rechecks_latest_scan_and_does_not_change_timestamp ... ok
+test database::tests::unavailable_removal_waits_for_another_connection_and_rechecks_rediscovery ... ok
+test metadata::credential_tests::accepts_explicit_tmdb_credential_shapes_without_retaining_the_input ... ok
+test metadata::credential_tests::job_retry_classes_follow_http_status_without_retaining_response_details ... ok
+test metadata::tests::absent_or_invalid_presentation_is_not_invented ... ok
+test metadata::tests::automatic_filename_lookup_has_one_conservative_fallback_but_manual_lookup_has_none ... ok
+test metadata::tests::automatic_lookup_retries_only_after_no_primary_exact_match ... ok
+test metadata::tests::automatic_query_cleans_legacy_release_titles_but_manual_query_is_not_rewritten ... ok
+test metadata::tests::candidates_keep_provider_years_for_exact_year_disambiguation ... ok
+test metadata::tests::episode_uses_its_own_runtime_and_director_with_series_cast_fallback ... ok
+test metadata::tests::explicit_query_can_correct_a_series_association ... ok
+test metadata::tests::movie_presentation_reads_runtime_cast_and_only_directors ... ok
+test metadata::tests::series_provider_uses_shared_synopsis_and_rejects_invalid_fields ... ok
+test metadata::tests::theme_artwork_is_bounded_deduplicated_and_rejects_people_adult_and_unsafe_paths ... ok
+test poster::tests::downloaded_images_use_distinct_immutable_cache_files ... ok
+test poster::tests::imports_a_copy_without_changing_source_and_rejects_active_content ... ok
+test poster::tests::limits_image_bytes_before_allocating ... ok
+test poster::tests::thumbnail_is_a_bounded_jpeg_for_png_and_jpeg_without_mutating_source ... ok
+test poster::tests::thumbnail_rejects_svg_and_oversize_before_decode ... ok
+test process::tests::caps_output_before_collecting_large_data ... ok
+test scanner::tests::categories_and_accents ... ok
+test scanner::tests::episode_in_season_folder ... ok
+test scanner::tests::fallback_query_only_uses_repeated_release_separators ... ok
+test scanner::tests::missing_root_is_an_error ... ok
+test scanner::tests::movie_year_and_release ... ok
+test scanner::tests::plain_terminal_title_numbers_are_not_mistaken_for_years ... ok
+test scanner::tests::recursive_scan_ignores_non_video_and_symlinks ... ok
+test scanner::tests::release_cleaning_keeps_series_numbering_and_episode_titles ... ok
+test scanner::tests::release_cleaning_preserves_title_hyphens_parentheses_and_language_words ... ok
+test scanner::tests::release_separator_audio_video_and_empty_year_wrappers ... ok
+test scanner::tests::search_cleaning_ignores_orphaned_delimiters_but_keeps_complete_parentheticals ... ok
+test scanner::tests::seasons_and_episodes ... ok
+test scanner::tests::year_in_movie_title_is_preserved ... ok
+
+test result: ok. 82 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.26s
+
+     Running unittests src/lib.rs (target/debug/deps/chill_client-03def7722d0b3c81)
+
+running 53 tests
+test appearance::tests::all_calendar_boundaries_and_manual_off_are_local ... ok
+test artwork::tests::preview_is_a_closed_jpeg_data_uri ... ok
+test artwork::tests::preview_rejects_non_images_without_a_url_fallback ... ok
+test artwork_cache::tests::changed_reference_and_partial_migration_cannot_report_success ... ok
+test artwork_cache::tests::identical_bytes_share_blob_and_distinct_do_not ... ok
+test artwork_cache::tests::link_failure_falls_back_to_the_legacy_atomic_copy ... ok
+test artwork_cache::tests::migration_keeps_legacy_paths_and_never_touches_sqlite_sidecars ... ok
+test artwork_cache::tests::migration_rejects_a_symlink_profile_ancestor ... ok
+test artwork_cache::tests::profile_removal_does_not_remove_shared_blob_pool ... ok
+test artwork_cache::tests::publishing_does_not_scan_or_collect_pool_orphans ... ok
+test artwork_cache::tests::wrong_blob_and_symlink_are_rejected ... ok
+test catalog_cache::tests::cumulative_budget_counts_auxiliary_documents_and_first_page_items ... ok
+test catalog_cache::tests::deleted_profile_cache_is_purged_without_touching_siblings_or_symlink_targets ... ok
+test catalog_cache::tests::detached_publish_cancels_before_write_when_local_mutation_wins ... ok
+test catalog_cache::tests::image_cache_survives_restart_without_network_and_rejects_links ... ok
+test playback::tests::control_sse_accepts_chunked_comments_and_axum_pause_frame ... ok
+test playback::tests::control_sse_rejects_invalid_utf8_token_and_delimiters ... ok
+test playback::tests::profile_scope_cannot_inject_paths ... ok
+test playback_cache::tests::budgets_are_bounded_and_zero_disables_back_cache ... ok
+test tests::api_errors_keep_only_bounded_safe_codes_not_server_details ... ok
+test tests::certificate_requires_matching_san_and_current_validity ... ok
+test tests::content_range_body_must_be_exactly_the_declared_length ... ok
+test tests::content_range_must_match_requested_interval ... ok
+test tests::endpoint_rejects_http_and_path_escape ... ok
+test tests::key_change_after_known_expiry_is_recorded ... ok
+test tests::key_change_before_expiry_is_refused ... ok
+test tests::opaque_ids_cannot_inject_paths_or_headers ... ok
+test tests::pinned_transport_can_be_constructed_without_http_or_approval_bypass ... ok
+test tests::trust_store_round_trip_contains_public_material_only ... ok
+test tests::wildcard_dns_matches_one_label_only ... ok
+test ui::tests::addresses_are_editable_but_not_arbitrary_urls ... ok
+test ui::tests::benchmark_catalog_publication_memory ... ignored, isolated before/after memory benchmark, not a routine unit test
+test ui::tests::cache_settings_are_local_persistent_and_default_for_legacy_settings ... ok
+test ui::tests::catalog_query_only_emits_allowlisted_filters ... ok
+test ui::tests::expired_key_replacement_is_visible_but_same_key_renewal_is_not_mislabelled ... ok
+test ui::tests::failed_initial_connection_discards_provisional_trust_and_never_persists_it ... ok
+test ui::tests::failed_profile_switch_preserves_displayed_context_and_last_choice ... ok
+test ui::tests::language_is_local_persisted_and_legacy_settings_default_to_auto ... ok
+test ui::tests::legacy_library_update_does_not_send_the_new_optional_field ... ok
+test ui::tests::opaque_series_keys_are_explicit_on_the_wire ... ok
+test ui::tests::owned_publication_preserves_mirror_when_context_or_mutation_is_stale ... ok
+test ui::tests::persisted_catalog_navigation_never_needs_a_reachable_server ... ok
+test ui::tests::player_presentation_defaults_fullscreen_and_is_local_durable_and_transactional ... ok
+test ui::tests::profile_selection_and_consent_are_not_caller_forgeable ... ok
+test ui::tests::provider_and_unavailable_commands_are_closed_and_bounded ... ok
+test ui::tests::safe_api_codes_have_operation_specific_recovery ... ok
+test ui::tests::saga_artwork_commands_are_closed_and_scoped ... ok
+test ui::tests::series_edit_payload_is_closed_and_keeps_the_revision_outside_the_patch ... ok
+test ui::tests::settings_directory_sync_failure_is_explicit_and_reopen_reads_published_state ... ok
+test ui::tests::sync_generation_accepts_dirty_base_but_rejects_late_mutation ... ok
+test ui::tests::theme_persists_on_this_device ... ok
+test ui::tests::unchanged_publication_is_single_use_and_never_opens_a_cache ... ok
+test watch_clock::tests::real_time_and_boundary_are_prorated_without_credit_for_seeks_or_buffering ... ok
+
+test result: ok. 52 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running unittests examples/optimize-artwork-cache.rs (target/debug/examples/optimize_artwork_cache-343492b7dc81ddf8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/transport_probe.rs (target/debug/examples/transport_probe-36ffd6836c8fca9b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chill_domain-bbf7bb3e9b75a43e)
+
+running 74 tests
+test administration::tests::shared_series_cas_preserves_episode_personal_and_speed ... ok
+test administration::tests::unavailable_batch_is_atomic_and_protects_rediscovered_video ... ok
+test ai::tests::ai_saga_cap_counts_total_sagas_but_allows_existing_saga ... ok
+test ai::tests::ai_uses_common_helper_for_series_metadata_and_series_search ... ok
+test ai::tests::context_filters_personal_watched_and_common_availability_before_returning_media ... ok
+test ai::tests::context_is_profile_private_and_never_serializes_paths_or_posters ... ok
+test ai::tests::context_roundtrips_as_a_closed_client_dto_and_search_is_literal ... ok
+test ai::tests::duplicate_or_stale_plan_has_no_partial_write ... ok
+test ai::tests::other_profile_progress_does_not_stale_common_plan_and_saga_membership_bumps_revision ... ok
+test ai::tests::sqlite_failure_rolls_back_common_and_personal_ai_changes ... ok
+test catalog_browser::tests::episode_search_groups_before_paging_and_profile_filters_use_full_series ... ok
+test catalog_browser::tests::grouped_catalogue_reunites_case_and_accent_variants_but_not_a_remake ... ok
+test catalog_browser::tests::identified_homonymous_series_are_not_collapsed_into_one_card ... ok
+test catalog_delta::tests::checkpoint_budget_is_global_across_profiles ... ok
+test catalog_delta::tests::checkpoint_survives_reopen_and_keeps_four_revisions ... ok
+test catalog_delta::tests::legacy_generated_snapshots_are_not_retained_outside_signature_budget ... ok
+test fingerprint::tests::ambiguous_full_proof_and_partial_proof_never_merge ... ok
+test fingerprint::tests::automatic_proof_never_overwrites_a_protected_target_identity ... ok
+test fingerprint::tests::automatic_reassociation_rolls_back_on_mid_transaction_fault_and_retries ... ok
+test fingerprint::tests::changed_catalogue_location_makes_old_evidence_stale ... ok
+test fingerprint::tests::migration_conservatively_drops_unversioned_full_strength ... ok
+test fingerprint::tests::unique_full_proof_reassociates_all_profiles_and_playlists_atomically ... ok
+test import::playlist_images_are_profile_scoped_cas_and_archive_v2_roundtrips ... ok
+test import::tests::bad_references_mapping_stale_and_sql_failure_never_partially_import ... ok
+test import::tests::explicit_profile_mapping_is_injective_and_preserves_other_profiles ... ok
+test import::tests::new_profile_roundtrip_is_readonly_until_apply_atomic_and_idempotent ... ok
+test import::tests::successful_commit_never_requires_a_fallible_post_commit_read ... ok
+test legacy::tests::old_schema_without_collections_cannot_bypass_saga_member_or_collection_limits ... ok
+test legacy::tests::read_only_legacy_snapshot_roundtrips_common_and_synthetic_personal_data ... ok
+test metadata_edit::tests::inherits_series_metadata_and_removes_film_only_saga_without_personal_leak ... ok
+test provider_updates::tests::failed_custom_series_and_season_imports_remove_only_the_new_owned_image ... ok
+test provider_updates::tests::final_transaction_rejects_scan_committed_after_early_cas ... ok
+test provider_updates::tests::personal_activity_does_not_cancel_a_provider_match ... ok
+test provider_updates::tests::provider_media_cas_preserves_custom_poster_and_rejects_concurrent_change ... ok
+test provider_updates::tests::season_provider_is_keyed_by_tv_id_and_does_not_touch_episode_details ... ok
+test provider_updates::tests::series_provider_renames_atomically_but_keeps_episode_fields ... ok
+test provider_updates::tests::series_provider_revision_failure_rolls_back_metadata_and_revisions_together ... ok
+test provider_updates::tests::unknown_homonyms_keep_two_complete_source_groups_and_scoped_edits ... ok
+test reassociation::tests::confirmation_moves_stable_history_to_scanned_target_and_cas_protects_it ... ok
+test reassociation::tests::duplicate_heavy_proposals_are_paged_by_pair_with_relative_paths ... ok
+test recommendations::tests::grouped_watched_filter_is_profile_scoped_and_uses_series_metadata ... ok
+test recommendations::tests::related_matches_people_and_genres_not_year_and_groups_homonymous_series ... ok
+test snapshot::tests::captures_wal_without_mutating_source_and_rejects_future_schema_before_writes ... ok
+test store::tests::catalog_epoch_advances_for_committed_changes_and_not_rollback ... ok
+test store::tests::catalogue_page_is_bounded_and_filters_in_sqlite ... ok
+test store::tests::deleting_profile_is_personal_only ... ok
+test store::tests::export_is_portable_and_has_no_absolute_path_or_lease ... ok
+test store::tests::failed_identity_extension_rolls_back_catalogue_scan_marker_and_mapping ... ok
+test store::tests::group_ratings_only_touch_present_targeted_episodes ... ok
+test store::tests::group_ratings_without_series_names_use_effective_title_and_stay_personal ... ok
+test store::tests::media_cas_context_and_next_are_profile_bound ... ok
+test store::tests::mutable_import_is_disabled_until_a_complete_conflict_plan_exists ... ok
+test store::tests::next_ambiguous_numbering_is_not_a_confirmed_end_of_series ... ok
+test store::tests::next_flat_numbered_series_uses_source_ordinals_without_rewriting_metadata ... ok
+test store::tests::next_saga_rechecks_reordered_members_and_never_skips_an_unavailable_next ... ok
+test store::tests::next_series_stops_for_unknown_numbers_and_marks_a_known_season_transition ... ok
+test store::tests::ordered_nonfinal_pause_and_seek_events_persist_resume_without_credit ... ok
+test store::tests::playlist_duplicate_rename_is_conflict_and_does_not_change_revision_or_order ... ok
+test store::tests::playlists_order_conflicts_without_partial_write ... ok
+test store::tests::profiles_are_isolated_and_renaming_keeps_identity ... ok
+test store::tests::rating_can_be_removed_and_playlist_removal_revisions_atomically ... ok
+test store::tests::reassociation_requires_explicit_confirmation_and_keeps_personal_history ... ok
+test store::tests::saga_boundary_roundtrips_scanned_stable_ids_without_touching_personal_state ... ok
+test store::tests::scan_publishes_new_media_revision_without_legacy_catalog_warmup ... ok
+test store::tests::short_watch_requires_server_tail_proof_at_end_and_manual_false_stays_effective ... ok
+test store::tests::snapshot_rejects_a_scanner_commit_between_rows_and_revision ... ok
+test store::tests::sync_snapshot_carries_season_metadata_without_server_path ... ok
+test store::tests::validated_slow_playback_credit_is_real_time_not_video_duration ... ok
+test store::tests::verified_missing_file_marks_only_its_existing_catalogue_row_unavailable ... ok
+test store::tests::verified_missing_file_rejects_a_reassociated_path_without_mutation ... ok
+test store::tests::verified_missing_file_rolls_back_when_revision_update_fails ... ok
+test store::tests::watch_threshold_and_manual_reset_preserve_resume ... ok
+test types::tests::final_tenth_boundary_handles_large_durations ... ok
+test types::tests::next_video_legacy_response_remains_compatible_and_hint_is_additive ... ok
+
+test result: ok. 74 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.15s
+
+     Running unittests src/lib.rs (target/debug/deps/chill_player-58072371578824bd)
+
+running 19 tests
+test tests::arbitrary_loader_path_is_not_an_option ... ok
+test tests::cancellation_wakes_blocked_source ... ok
+test tests::client_api_requires_the_two_field_opengl_abi ... ok
+test tests::hls_segments_cannot_open_unpinned_http ... ok
+test tests::http_worker_cancellation_preserves_backpressure_then_allows_reuse ... ok
+test tests::http_worker_drop_joins_an_active_read ... ok
+test tests::installed_player_enables_bounded_one_minute_network_cache ... ok
+test tests::installed_player_uses_and_reapplies_device_cache_limits ... ok
+test tests::known_http_eof_and_empty_buffers_do_not_issue_a_range_request ... ok
+test tests::libmpv_keeps_bounded_readahead_alive_while_paused_without_reloading ... ok
+test tests::libmpv_reads_seeks_and_lists_fixture_tracks_through_stream_cb ... ok
+test tests::media_references_cannot_open_unpinned_http ... ok
+test tests::player_loads_installed_libmpv_when_available ... ok
+test tests::renderer_keeps_core_and_library_alive_until_renderer_drop ... ok
+test tests::single_flight_dispatch_queues_before_receive_and_repeats ... ok
+test tests::standalone_bundle_never_falls_back_to_homebrew ... ok
+test tests::stream_callback_request_allocation_is_capped ... ok
+test tests::subtitle_changes_keep_the_current_playing_or_paused_state ... ok
+test tests::transport_safety_options_cannot_be_overridden ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.27s
+
+     Running unittests examples/https_playback_smoke.rs (target/debug/examples/https_playback_smoke-fa00fe9fc458b478)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chill_server-6ebb6110f5c7643f)
+
+running 144 tests
+test api::tests::browser_and_dns_rebinding_requests_are_refused ... ok
+test api::tests::cancelled_queued_and_started_mutations_never_commit_late ... ok
+test api::tests::catalog_changes_contract_paging_profile_isolation_and_real_delta ... ok
+test api::tests::catalog_mirror_is_coherent_scoped_and_ignores_unrelated_progress ... ok
+test api::tests::catalog_revision_is_small_read_only_and_profile_scoped ... ok
+test api::tests::component_update_routes_are_additive_versioned_and_closed ... ok
+test api::tests::configurable_root_is_persisted_through_admin_api ... ok
+test api::tests::dated_and_v1_library_updates_keep_extra_locations_when_legacy_body_omits_them ... ok
+test api::tests::dated_contract_and_legacy_alias_share_data_and_errors ... ok
+test api::tests::default_https_port_is_accepted_for_a_redirected_443_but_names_and_other_ports_are_not ... ok
+test api::tests::http2_authority_without_host_is_accepted ... ok
+test api::tests::http_catalog_queries_are_paged_and_personal_state_is_isolated ... ok
+test api::tests::https_listener_still_refuses_an_origin_without_fetch_metadata ... ok
+test api::tests::interactive_reads_remain_responsive_during_large_snapshot_write ... ok
+test api::tests::legacy_title_series_api_keeps_web_reads_and_edits_without_merging_identities ... ok
+test api::tests::legacy_titles_equal_to_opaque_keys_cannot_select_or_edit_another_group ... ok
+test api::tests::plain_http_listener_accepts_only_its_own_origin_and_ports ... ok
+test api::tests::profile_rename_requires_current_revision_and_missing_profiles_are_404 ... ok
+test api::tests::same_origin_browser_is_accepted_and_cross_site_is_refused ... ok
+test api::tests::secrets_and_archives_are_https_only ... ok
+test api::tests::startup_recovers_interrupted_fingerprints_without_generic_open_mutating_jobs ... ok
+test api::tests::static_files_obey_the_same_guard_and_unknown_api_routes_stay_json_404 ... ok
+test api::tests::typed_errors_distinguish_configuration_database_and_invalid_values ... ok
+test api::tests::zero_profiles_is_bootstrappable ... ok
+test api_version::tests::framework_errors_are_json_and_preserve_http_metadata ... ok
+test archive_api::tests::archive_preview_refuses_traversal_unknown_versions_and_bad_checksums_without_database_writes ... ok
+test archive_api::tests::cancelled_http_inspection_reclaims_stage_but_keeps_real_worker_slot ... ok
+test archive_api::tests::export_file_bounds_live_disk_and_cancellation_before_writes ... ok
+test archive_api::tests::export_route_streams_checked_portable_zip_without_secrets_or_paths ... ok
+test archive_api::tests::imports_and_exports_share_one_disk_budget_and_reservation_ledger ... ok
+test archive_api::tests::restart_sweep_removes_only_expired_managed_staging_and_preserves_busy_files ... ok
+test archive_api::tests::staging_disk_accounts_orphans_plans_and_inflight_reservations_fail_closed ... ok
+test catalog_api::tests::aggregate_scan_budget_is_global_and_a_late_root_failure_cannot_publish ... ok
+test catalog_api::tests::two_library_roots_keep_same_filename_as_distinct_catalogue_items ... ok
+test config::tests::address_and_mount_are_not_fixed ... ok
+test config::tests::admin_change_is_persistent_and_revision_checked ... ok
+test config::tests::data_directory_rejects_symlinks_and_unsafe_permissions ... ok
+test config::tests::distributed_examples_default_to_loopback_not_a_household_target ... ok
+test config::tests::duplicate_or_overlapping_locations_are_refused ... ok
+test config::tests::extra_locations_are_persisted_and_legacy_updates_preserve_them ... ok
+test config::tests::extra_root_ids_are_distinct_and_primary_namespace_is_reserved ... ok
+test config::tests::failed_write_does_not_change_memory ... ok
+test config::tests::http_listener_is_optional_local_and_on_another_port ... ok
+test config::tests::invalid_roots_and_names_are_refused ... ok
+test config::tests::rename_publication_and_directory_durability_are_distinguished ... ok
+test config::tests::wildcard_and_public_unauthenticated_listeners_are_refused ... ok
+test connection::tests::capacity_is_bounded_and_returns_on_disconnect ... ok
+test connection::tests::silent_connections_are_dropped_and_return_their_permit ... ok
+test fingerprint::tests::changed_file_with_same_size_and_partial_invalidates_full_proof ... ok
+test fingerprint::tests::descriptor_modification_cancels_evidence ... ok
+test fingerprint::tests::lengths_are_bounded_before_conversion_for_armv7_large_files ... ok
+test fingerprint::tests::partial_is_rate_limited_and_suspends_before_reading ... ok
+test fingerprint::tests::root_change_cancels_before_any_evidence_is_returned ... ok
+test fingerprint::tests::scan_pump_advances_past_failed_row_and_first_page ... ok
+test identity_api::tests::proof_api_accepts_only_uuid_and_never_exposes_path_or_hash ... ok
+test legacy_export::tests::invalid_or_external_image_and_output_link_do_not_change_source ... ok
+test legacy_export::tests::live_wal_export_preserves_source_and_cached_provider_image_and_roundtrips ... ok
+test legacy_export::tests::replacing_validated_source_is_refused_before_any_archive_publication ... ok
+test media_stream::tests::descriptor_observation_marks_only_a_leaf_removed_after_its_parent_opens ... ok
+test media_stream::tests::descriptors_refuse_symlinks_escape_and_special_files ... ok
+test media_stream::tests::four_real_stalled_jobs_timeout_without_releasing_worker_slots ... ok
+test media_stream::tests::range_boundaries ... ok
+test media_stream::tests::subtitle_index_is_adjacent_bounded_and_never_follows_links ... ok
+test operations::tests::backup_captures_wal_posters_config_and_private_tls_without_nas ... ok
+test operations::tests::backup_layout_refuses_data_root_overlapping_an_extra_library_location ... ok
+test operations::tests::corrupt_hash_schema_traversal_and_no_confirmation_leave_target_bytes ... ok
+test operations::tests::dangerous_roots_are_rejected ... ok
+test operations::tests::live_lock_refuses_backup_and_restore_before_artifacts ... ok
+test operations::tests::recovery_handles_both_crash_boundaries_and_keeps_published_candidate ... ok
+test operations::tests::valid_restore_preserves_prior_tree_and_exact_operational_bytes ... ok
+test playback::tests::an_extra_root_is_selected_for_lease_reads_and_cannot_open_primary_files ... ok
+test playback::tests::buffering_and_unknown_duration_cannot_add_watch_credit ... ok
+test playback::tests::credit_requires_real_elapsed_and_continuous_final_window ... ok
+test playback::tests::credits_are_prorated_and_use_real_time_at_every_speed ... ok
+test playback::tests::exclusivity_expiry_and_restart ... ok
+test playback::tests::heartbeat_binds_revision_and_old_generation ... ok
+test playback::tests::live_lease_suspends_fingerprint_until_revoked ... ok
+test playback::tests::offers_are_bounded_and_confirmation_isolated_by_profile ... ok
+test playback::tests::only_a_missing_leaf_under_an_open_indexed_parent_is_classified_as_absent ... ok
+test playback::tests::profile_capacity_is_bounded_and_expired_entries_are_reusable ... ok
+test playback::tests::short_tail_pause_can_preserve_coverage_but_never_supply_it ... ok
+test playback::tests::short_tail_position_tolerance_never_substitutes_for_elapsed_coverage ... ok
+test playback::tests::short_tail_precise_duration_boundaries_and_all_speeds ... ok
+test playback::tests::short_tail_rejects_seek_gaps_buffered_advances_and_new_lease ... ok
+test playback::tests::short_tail_requires_complete_continuous_final_window_at_each_speed ... ok
+test playback::tests::transfer_ack_is_single_final_event_and_requires_current_generation ... ok
+test playback::tests::transfer_freezes_deadline_and_activates_once_after_it ... ok
+test playback_tests::changed_file_fails_closed_and_profile_deletion_revokes ... ok
+test playback_tests::five_real_seconds_at_double_speed_accumulate_across_two_leases ... ok
+test playback_tests::idle_streams_reclaim_capacity_even_if_the_lease_stays_active ... ok
+test playback_tests::missing_indexed_leaf_marks_only_that_media_unavailable_and_never_grants_a_lease ... ok
+test playback_tests::ordered_resume_release_rewind_and_late_device ... ok
+test playback_tests::release_reclaims_all_unpolled_stream_slots ... ok
+test playback_tests::release_revokes_remaining_body_and_root_change_revokes_all ... ok
+test playback_tests::root_change_and_profile_deletion_reclaim_unpolled_streams ... ok
+test playback_tests::short_video_eof_works_with_unchanged_native_and_web_payloads_on_both_api_bases ... ok
+test playback_tests::streaming_body_slots_are_bounded_and_released_on_disconnect ... ok
+test playback_tests::transfer_endpoints_require_confirmation_then_ack_once ... ok
+test playback_tests::two_profiles_range_and_active_conflict ... ok
+test sync_api::tests::delta_reports_one_add_update_and_delete ... ok
+test sync_api::tests::durable_revision_has_no_process_nonce ... ok
+test sync_api::tests::generation_survives_restart_and_rejects_symlinks ... ok
+test sync_api::tests::retained_admission_accounting_matches_the_prior_snapshot_wire_shape ... ok
+test sync_api::tests::sync_memory_10k_production_route ... ignored, manual RSS comparison harness
+test tls::tests::changed_address_reissues_with_same_key ... ok
+test tls::tests::cold_boot_clock_and_corrupted_restored_certificate_are_not_reused ... ok
+test tls::tests::https_config_loads_with_workspace_crypto_features ... ok
+test tls::tests::renewal_keeps_key_and_identity_but_changes_certificate ... ok
+test tmdb_api::job_tests::exact_match_cleans_legacy_audio_video_suffixes ... ok
+test tmdb_api::job_tests::exact_match_refuses_ambiguity_and_year_mismatch ... ok
+test tmdb_api::job_tests::exact_match_uses_dashed_fallback_only_when_provider_used_it ... ok
+test tmdb_api::job_tests::polling_dto_stays_compact_while_recovery_retains_full_worklist ... ok
+test tmdb_api::job_tests::recovered_active_job_is_retryable_without_media_or_secret ... ok
+test tmdb_api::tests::candidate_dto_never_serializes_a_provider_image_url ... ok
+test tmdb_api::tests::provider_failure_is_a_redacted_gateway_error ... ok
+test tmdb_api::worker::tests::ambiguity_is_no_write_and_not_a_retryable_provider_failure ... ok
+test tmdb_api::worker::tests::cancellation_while_paused_or_during_detail_never_writes_or_completes ... ok
+test tmdb_api::worker::tests::concurrent_manual_change_wins_cas_and_downloaded_artwork_is_cleaned ... ok
+test tmdb_api::worker::tests::credentials_are_private_typed_redacted_rejected_and_deleted ... ok
+test tmdb_api::worker::tests::duplicate_ids_and_missing_media_have_consistent_total_and_processed_counts ... ok
+test tmdb_api::worker::tests::empty_job_completes_without_loading_a_provider ... ok
+test tmdb_api::worker::tests::exhausted_transient_and_permanent_failures_are_never_counted_as_ambiguity ... ok
+test tmdb_api::worker::tests::explicit_implicit_and_auto_3001_worklists_are_rejected_without_spawn_or_truncation ... ok
+test tmdb_api::worker::tests::failed_persistence_refuses_creation_before_mutation_and_returns_its_reservation ... ok
+test tmdb_api::worker::tests::interrupted_real_worker_recovers_redacted_state_and_can_retry ... ok
+test tmdb_api::worker::tests::jobs_share_one_provider_slot_and_cancelled_queue_never_makes_requests ... ok
+test tmdb_api::worker::tests::oversized_http_worklist_is_a_redacted_413_before_large_vector_or_worker_creation ... ok
+test tmdb_api::worker::tests::playback_between_search_and_detail_resumes_the_same_item ... ok
+test tmdb_api::worker::tests::portable_export_excludes_stored_tmdb_secret_and_worker_state ... ok
+test tmdb_api::worker::tests::preexisting_manual_values_are_filled_around_and_custom_posters_are_skipped ... ok
+test tmdb_api::worker::tests::repeated_cancellation_start_retry_and_auto_cannot_replace_owned_task_slots ... ok
+test tmdb_api::worker::tests::retry_history_stays_at_eight_and_expired_records_are_pruned_durably_on_restart_or_read ... ok
+test tmdb_api::worker::tests::serialized_state_budget_refuses_before_map_or_disk_mutation ... ok
+test tmdb_api::worker::tests::spawned_worker_writes_metadata_artwork_counters_and_terminal_state ... ok
+test tmdb_api::worker::tests::startup_streams_and_prunes_old_history_and_preserves_oversized_or_malformed_state ... ok
+test tmdb_api::worker::tests::transient_search_and_detail_retry_three_times_with_rate_and_backoff ... ok
+test updates_api::tests::actual_versions_and_closed_request_fields ... ok
+test updates_api::tests::maintenance_allows_existing_playback_not_new_work ... ok
+test web_static::tests::mime_table_is_closed ... ok
+test web_static::tests::only_plain_relative_names_are_served ... ok
+test web_static::tests::opened_pages_resolve_retained_bundled_theme_hashes ... ok
+test web_static::tests::opened_pages_resolve_their_retained_build_not_new_bytes ... ok
+test web_static::tests::symbolic_links_and_missing_roots_are_refused ... ok
+test web_static::tests::theme_route_never_serves_active_or_undeclared_content ... ok
+
+test result: ok. 143 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 34.30s
+
+     Running unittests src/main.rs (target/debug/deps/chill_server-a5630c4d980b7721)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/legacy_cli.rs (target/debug/deps/legacy_cli-9b51896afac9a573)
+
+running 2 tests
+test actual_cli_exports_without_starting_server_or_overwriting_destination ... ok
+test actual_cli_rejects_future_source_schema_before_output_or_source_mutation ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.99s
+
+     Running unittests src/lib.rs (target/debug/deps/chill_updates-d23e3496b999cb1a)
+
+running 18 tests
+test archive::tests::extracts_regular_tar_and_rejects_traversal ... ok
+test install::tests::recovery_is_idempotent_after_candidate_deletion_and_first_install_rollback ... ok
+test install::tests::restart_boundary_recovers_previous_before_candidate_executes ... ok
+test install::tests::rootless_simulation_rolls_back_failed_health_and_retains_new_release ... ok
+test install::tests::slot_is_durable_and_service_readable_before_maintenance ... ok
+test install::tests::stale_forged_and_legacy_activation_files_cannot_authorize_a_candidate ... ok
+test manifest::tests::official_synthetic_minisign_vector_verifies_exact_bytes ... ok
+test manifest::tests::production_parser_verifies_signed_fixture_matrix ... ok
+test manifest::tests::strict_parser_rejects_nested_duplicate_keys ... ok
+test scheduler::tests::bounded_retry_is_not_a_busy_loop ... ok
+test scheduler::tests::host_scope_does_not_consume_another_hosts_daily_attempt ... ok
+test scheduler::tests::missed_time_runs_once_per_local_date ... ok
+test state::tests::deferred_intent_keeps_its_exact_manifest_after_reopen ... ok
+test state::tests::policy_cas_and_intent_coalescing_are_persistent ... ok
+test theme::tests::exact_theme_tree_decodes_and_rejects_undeclared_file ... ok
+test theme::tests::metadata_refuses_gaps_ambiguous_dates_and_active_tokens ... ok
+test transport::tests::only_fixed_release_urls_are_accepted ... ok
+test trust::tests::pending_acceptance_requires_exact_digest_and_highest_sequence ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running unittests src/main.rs (target/debug/deps/chill_update-13426b7740e38642)
+
+running 3 tests
+test helper_tests::bounded_backup_runner_handles_success_failure_output_and_process_groups ... ok
+test helper_tests::cleanup_only_recognizes_our_bounded_atomic_cache_temporary_names ... ok
+test helper_tests::interrupted_download_never_publishes_a_partial_digest_and_retries_exact_bytes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/hostile_inputs.rs (target/debug/deps/hostile_inputs-4ad5c7f956d417b1)
+
+running 4 tests
+test corrupt_state_is_refused_and_completed_history_is_trimmed ... ok
+test raw_artifact_hash_and_byte_bounds_are_exact ... ok
+test signed_mac_web_and_theme_fixtures_reach_the_production_verifier ... ok
+test zip_special_duplicate_and_limit_inputs_are_refused_without_staging_residue ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.07s
+
+     Running tests/installers.rs (target/debug/deps/installers-2283c86c0f7d6548)
+
+running 1 test
+test installer_shell_syntax_and_server_help_are_benign ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/linux_root.rs (target/debug/deps/linux_root-dcb87e9a09c04fb6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/chillcenter_desktop-a3c898194c0dc2cd)
+
+running 37 tests
+test admin_bridge::tests::commands_reject_paths_urls_and_unknown_fields ... ok
+test admin_bridge::tests::publication_never_overwrites_racing_destination_and_cleans_temporary ... ok
+test admin_bridge::tests::rejects_links_and_large_archives_without_mutating_source ... ok
+test ai_bridge::tests::advice_preview_contains_only_selected_grouped_metadata_without_paths ... ok
+test ai_bridge::tests::cancellation_during_apply_is_confirmed_and_preserves_state ... ok
+test ai_bridge::tests::cancellation_settles_pending_work_without_a_preview ... ok
+test ai_bridge::tests::commands_and_settings_are_closed ... ok
+test ai_bridge::tests::late_success_after_cancellation_never_becomes_preview ... ok
+test ai_bridge::tests::search_and_unknown_changes_are_rejected ... ok
+test ai_bridge::tests::settings_are_private_atomic_and_roundtrip ... ok
+test ai_bridge::tests::timeout_settles_without_a_plan ... ok
+test artwork_bridge::tests::closed_target_rejects_unknown_fields_and_invalid_ids ... ok
+test artwork_bridge::tests::reads_regular_image_without_mutating_source_and_rejects_links_or_oversize ... ok
+test artwork_bridge::tests::series_and_season_artwork_targets_use_only_fixed_scoped_routes ... ok
+test native_player::deadline_clock_tests::backward_wall_clock_never_extends_monotonic_expiry ... ok
+test native_player::deadline_clock_tests::framebuffer_stays_black_until_the_new_generation_is_loaded ... ok
+test native_player::deadline_clock_tests::oversized_framebuffers_keep_ratio_and_normal_retina_size ... ok
+test native_player::deadline_clock_tests::wall_clock_expiry_covers_a_monotonic_clock_that_did_not_advance_during_suspend ... ok
+test native_player::preferred_audio_tests::non_normalizable_preference_never_matches_an_untagged_track_before_original ... ok
+test native_player::reload_phase_tests::a_completed_position_restarts_but_partial_playback_keeps_its_resume ... ok
+test native_player::reload_phase_tests::new_load_failure_is_not_masked ... ok
+test native_player::reload_phase_tests::normal_eof_after_loaded_is_processed ... ok
+test native_player::reload_phase_tests::old_stop_before_new_started_is_ignored ... ok
+test native_player::reload_phase_tests::repeated_reloads_each_ignore_only_pre_start_stop ... ok
+test player_bridge::language_tests::supported_and_absent_preferences_have_one_shared_key ... ok
+test theme_bridge::tests::bundled_theme_hashes_and_fallback_are_valid ... ok
+test theme_bridge::tests::invalid_calendar_tokens_and_references_are_refused ... ok
+test theme_bridge::tests::only_known_png_names_are_read ... ok
+test update_bridge::tests::abandoned_download_is_removed_without_recursion ... ok
+test update_bridge::tests::embedded_updater_configuration_deserializes_before_builder_overrides ... ok
+test update_bridge::tests::macos_post_consent_guard_keeps_the_existing_busy_code ... ok
+test update_bridge::tests::minisign_pending_receipt_allows_only_the_exact_pre_expiry_manifest ... The secret key was saved as /var/folders/3g/4zwgw1ss1qlgk7fvqpjvbmmh0000gn/T/.tmp287e7W/fixture.key - Keep it secret!
+The public key was saved as /var/folders/3g/4zwgw1ss1qlgk7fvqpjvbmmh0000gn/T/.tmp287e7W/fixture.pub - That one can be public.
+
+Files signed using this key pair can be verified with the following command:
+
+minisign -Vm <file> -P RWQgB+sgQtbY5Or9zORLklexdxSU+r6fYIYj3TDjOzhnj2+hcSgukENl
+
+ok
+test update_bridge::tests::only_one_instance_can_install_and_lock_is_released ... ok
+test update_bridge::tests::pending_receipt_refuses_same_sequence_substitution_but_allows_newer_recovery ... ok
+test update_bridge::tests::pending_receipt_survives_restart_only_for_exact_cached_manifest ... ok
+test update_bridge::tests::pending_store_rejects_unavailable_or_symlinked_disk_state ... ok
+test update_bridge::tests::renderer_cannot_supply_consent_url_path_or_force ... ok
+
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s

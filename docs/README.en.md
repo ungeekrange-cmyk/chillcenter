@@ -2,7 +2,7 @@
 
 [Français](README.md) | **English**
 
-Bilingual reference documentation for the v0.6 Mac client and API 2026-10-14.
+Bilingual reference documentation for components 0.7.0, v0.6 and API 2026-10-14.
 Each document pair carries the same guarantees, identifiers, limits and
 caveats; examples do not contain home configuration. The OpenAPI contract
 remains a single language-independent specification. A documentation change
@@ -13,7 +13,9 @@ does not imply a new bundle or deployment.
 | Overview and building | [README](../README.md) | [README](../README.en.md) |
 | Current architecture summary | [Architecture](architecture/OVERVIEW.md) | [Architecture](architecture/OVERVIEW.en.md) |
 | Third-party API integration | [Guide API](api/INTEGRATION-FR.md) | [API guide](api/INTEGRATION-EN.md) |
-| Independent versions and updates, candidate | [Guide](updates/GUIDE-FR.md) | [Guide](updates/GUIDE-EN.md) |
+| Independent versions and updates | [Guide](updates/GUIDE-FR.md) | [Guide](updates/GUIDE-EN.md) |
+| v0.7: release notes and limits | [Release](releases/REL-V0.7.md) | [Release](releases/REL-V0.7.en.md) |
+| v0.7: corrections and final evidence | [Rapport](implementation/COMPONENT-UPDATES-FIXES-20261019.md) | [Report](implementation/COMPONENT-UPDATES-FIXES-20261019.en.md) |
 | Components 0.7: evidence and publication block | [Rapport](implementation/COMPONENT-UPDATES-20261019.md) | [Report](implementation/COMPONENT-UPDATES-20261019.en.md) |
 | Theme packs and calendar | [Thèmes](../themes/README.md) | [Themes](../themes/README.en.md) |
 | v0.6 delivery and known limitations | [Release](releases/REL-V0.6.md) | [Release](releases/REL-V0.6.en.md) |

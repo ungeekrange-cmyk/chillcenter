@@ -1,10 +1,11 @@
-# Chill Center v0.7 — notes de version candidates
+# Chill Center v0.7 — notes de version
 
 **Français** | [English](REL-V0.7.en.md)
 
-**Non publiée.** Les sources et paquets candidats ne remplacent pas la v0.6
-livrée. La publication attend la validation native Mac ; aucune installation
-sur le Pi n'est prévue dans cette demande.
+Distribution de quatre composants 0.7.0. La publication GitHub ne met pas à jour
+les installations existantes : **aucun Pi, NAS ou client web déployé n'est
+modifié**. Les tags, manifestes signés et `PROVENANCE.json` des paquets fixent
+la source exacte de la livraison. La v0.6 et ses paquets restent conservés.
 
 ## Composants 0.7.0
 
@@ -25,28 +26,43 @@ sur le Pi n'est prévue dans cette demande.
 ## Correctifs et vérification
 
 Les huit constats de sécurité et les quatre défauts fonctionnels de l'updater
-sont corrigés dans le candidat. Revues code et sécurité favorables sur
-`3913267`, sans changement du client web déployé, du Pi, de sa configuration
-ni du NAS. La revue tests ne conserve qu'un blocage : le parcours AppKit réel.
+sont corrigés. Source runtime/packaging revue : `3e174b9`, avec revues
+indépendantes code, sécurité et tests ; les rejets des candidats précédents
+restent conservés dans `docs/reviews`.
 
-Suite de référence : 433 tests Rust réussis, deux harnesses NFR préexistants
-ignorés ; 359 tests JavaScript/web/documentation réussis. Le delta natif passe
-8 tests ciblés, dont désérialisation réelle du SDK et signature Minisign avec
-clé de test éphémère. Deux tests root Linux réels, matrice systemd TERM/KILL,
+Suite finale runtime : 435 tests Rust réussis, deux harnesses NFR préexistants
+ignorés ; 359 tests JavaScript/web/documentation réussis. Les 19 tests Python
+de packaging passent. Le delta updater passe 9 tests ciblés, dont
+désérialisation réelle du SDK et signature Minisign avec clé de test éphémère.
+Deux tests root Linux réels, matrice systemd TERM/KILL,
 occupation/reprise et retour arrière réussis sur VM Ubuntu ARM64 isolée.
 
-Le premier lancement natif a révélé un champ obligatoire de clé publique absent
-dans la configuration du SDK : BUG0115 corrigé avant publication. Le parcours
-de consentement, installation et redémarrage reste à valider humainement.
+Le vrai parcours AppKit/SDK a vérifié : rejet de signature invalide, garde
+lecteur avant toute requête, lecture débutant pendant la confirmation,
+installation signée, vrai redémarrage, nouveau consentement pour une version
+suivante et annulation sans téléchargement ni modification. Clés de test
+éphémères uniquement. Les échecs QA antérieurs sont conservés, pas requalifiés.
+BUG0115 (configuration SDK), BUG0116 (AppleDouble dans le TAR QA) et BUG0117
+(minimum macOS incorrect) ont été corrigés avant publication.
 
 [Preuves détaillées et limites FR/EN](../implementation/COMPONENT-UPDATES-FIXES-20261019.md).
 
 ## Installation et limites
 
-Les paquets ne seront annoncés installables qu'après leur signature et leur
-publication. Ne pas utiliser un script téléchargé isolément : l'installateur
+Installation Mac manuelle : DMG en lecture seule, application et raccourci
+Applications pour glisser-déposer, instructions FR/EN. Le `.app.tar.gz` signé
+reste réservé au mécanisme de mise à jour interne ; le DMG ne le remplace pas.
+
+Le DMG Apple Silicon fourni nécessite **macOS 27+** à cause des bibliothèques
+multimédias embarquées ; il contient une app signée ad hoc, non notariée.
+Vérifier la signature Minisign de chaque paquet téléchargé. Ne pas utiliser
+un script téléchargé isolément : l'installateur
 serveur utilise aussi les unités `deploy/updates`, le helper et les manifestes
-signés. Lire les [instructions FR/EN](../updates/GUIDE-FR.md) avant installation.
+signés. Le paquet serveur est Linux ARM64, glibc 2.31+, avec systemd et
+Python 3.10+. L'installateur initial **refuse une installation existante** :
+la migration d'un ancien serveur doit être préparée séparément. Les installateurs
+web/thèmes exigent le serveur/helper 0.7. Lire les
+[instructions FR/EN](../updates/GUIDE-FR.md) avant installation.
 
 Usage réservé au réseau local de confiance, sans authentification. Ne pas
 exposer le serveur à Internet. Aucun transcodage serveur, aucune écriture NAS.

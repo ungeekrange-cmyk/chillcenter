@@ -1,0 +1,6 @@
+GET /latest.json 200
+GET /Chill-Center-QA_0.7.1_aarch64.app.tar.gz 200
+GET /second.json 200
+GET /second.json 200
+GET /second.json 200
+GET /second.json 200

@@ -1,9 +1,11 @@
-# Chill Center v0.7 — candidate release notes
+# Chill Center v0.7 — release notes
 
 [Français](REL-V0.7.md) | **English**
 
-**Unpublished.** Candidate sources and packages do not replace delivered v0.6.
-Publication awaits native Mac validation; no Pi installation is part of this request.
+A distribution of four 0.7.0 components. GitHub publication does not update
+existing installations: **no Pi, NAS or deployed web client is modified**.
+Tags, signed manifests and package `PROVENANCE.json` bind the exact delivery
+source. The v0.6 release and its packages remain preserved.
 
 ## Components 0.7.0
 
@@ -22,28 +24,41 @@ Publication awaits native Mac validation; no Pi installation is part of this req
 
 ## Corrections and verification
 
-The candidate corrects the eight security findings and four updater functional
-defects. Code and security reviews approve `3913267`; no deployed web files,
-Pi binary/configuration or NAS were touched. The test review retains one blocker:
-the genuine AppKit journey.
+The eight security findings and four updater functional defects are corrected.
+Reviewed runtime/packaging source: `3e174b9`, with independent code, security and
+test reviews. Adverse reviews of earlier candidates remain in `docs/reviews`.
 
-Reference suite: 433 Rust tests passed, two pre-existing NFR harnesses ignored;
-359 JavaScript/web/documentation tests passed. The native delta passes eight
-targeted tests, including real SDK deserialization and ephemeral-key Minisign
-verification. Two actual Linux root tests and the systemd TERM/KILL, busy/retry
+Final runtime suite: 435 Rust tests passed, two pre-existing NFR harnesses ignored;
+359 JavaScript/web/documentation tests passed. All 19 Python packaging tests
+passed. The updater delta passes nine targeted tests, including real SDK
+deserialization and ephemeral-key Minisign verification. Two actual Linux root
+tests and the systemd TERM/KILL, busy/retry
 and rollback matrix passed in an isolated Ubuntu ARM64 VM.
 
-The first native launch exposed a missing mandatory SDK public-key field:
-BUG0115 was corrected before publication. The consent/install/restart journey
-still requires human validation.
+The genuine AppKit/SDK journey verified invalid-signature rejection, busy
+admission before requests, rendering starting during the native prompt, signed
+installation, actual restart, fresh consent for a later release and cancellation
+without download or mutation. Only ephemeral test keys were used. Earlier QA
+failures remain adverse evidence, not relabelled passes. BUG0115 (SDK config),
+BUG0116 (QA TAR AppleDouble) and BUG0117 (incorrect macOS minimum) were corrected
+before publication.
 
 [Detailed bilingual evidence and limits](../implementation/COMPONENT-UPDATES-FIXES-20261019.en.md).
 
 ## Installation and limits
 
-Packages will not be advertised as installable until signed and published.
-Do not download a standalone installer script without its required files: server
+Manual Mac installation: read-only DMG with the app, an Applications shortcut
+for drag-and-drop, and FR/EN instructions. The signed `.app.tar.gz` remains the
+internal update payload; the DMG does not replace that mechanism.
+
+The supplied Apple Silicon DMG **requires macOS 27+** due to its bundled media
+libraries; its app is ad-hoc signed and not notarized. Verify each downloaded
+package's Minisign signature. Do not download a standalone installer script
+without its required files: server
 installation also needs `deploy/updates` units, helper and signed manifests.
+The server package targets ARM64 Linux with glibc 2.31+, systemd and Python 3.10+.
+The initial installer **refuses an existing installation**: migration of a legacy
+server must be planned separately. Web/theme installers require server/helper 0.7.
 Read the [bilingual update instructions](../updates/GUIDE-EN.md) before installing.
 
 Trusted household LAN only, without authentication. Do not expose the server

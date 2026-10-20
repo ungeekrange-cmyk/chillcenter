@@ -3,7 +3,7 @@
 - Priority: P1, discovered before v0.7 publication.
 - Affected source: `6041f4d` and earlier component-update candidates.
 - Correction: `3913267e98f82eeca5f7c627490fbdd019636177`.
-- Status: FIXED_IN_SOURCE / NATIVE_RETEST_PENDING; not a delivered release.
+- Status: FIXED / VERIFIED_NATIVE, 20 October 2026; not yet delivered.
 
 ## Observation and cause
 
@@ -34,12 +34,15 @@ actual JSON through the actual SDK Config deserializer. It checks the exact
 decoded public key, signed-version requirement, empty endpoint list and disabled
 insecure transport/certificate/hostname/downgrade switches.
 
-The isolated AppKit confirmation/install/restart journey must still run. Its
-first failed launch is retained as adverse evidence rather than relabelled PASS.
+The isolated AppKit confirmation/install/restart journey passed on 20 October
+2026, including actual SDK replacement and the restarted executable's marker.
+The first failed launch remains adverse evidence rather than being relabelled
+PASS. Publication is still separately gated by the final test review.
 
 ## Résumé français
 
 Le vrai démarrage Tauri échouait avant l'affichage, car le SDK exige `pubkey`
 dans le JSON avant d'appliquer la clé publique fixée par le code. Le champ
 public manquant et un test de désérialisation du SDK ont été ajoutés. Aucun
-secret ni contournement TLS ; essai natif final encore requis avant publication.
+secret ni contournement TLS ; vraie installation et redémarrage isolés réussis
+le 20 octobre 2026. La publication reste soumise à la revue tests finale.

@@ -1,9 +1,11 @@
 # Index des décisions techniques
 
-[ADR0029](ADR-0029-component-releases-updates.md), **PROPOSED**, 19 octobre 2026,
+[ADR0029](ADR-0029-component-releases-updates.md), **ACCEPTED R2**, 19 octobre 2026,
 propriétaire `/root` : versions indépendantes Mac/serveur/web/thèmes, packs
 déclaratifs et mises à jour signées/planifiées. Nouvelle frontière de confiance
-à valider explicitement ; aucun updater, clé ou déploiement créé. Révision R2 :
+validée explicitement par le [gate utilisateur R2](../../gates/G-ADR-0029-R2.md).
+La clé privée reste hors Git ; l'acceptation de conception n'est pas une
+approbation de publication ou de déploiement. Révision R2 :
 [revue indépendante approuvée sous réserve de validation utilisateur](reviews/ADR-0029-review-r2.md),
 hash de l'ADR `f825a8f688ec326358d552d8f1155b5cb080d44730a1dc7dbf79e56ebfcedcd7`.
 

@@ -2,10 +2,33 @@
 
 [Français](COMPONENT-UPDATES-FIXES-20261019.md) | **English**
 
+## Verification closure — 20 October 2026
+
+Final runtime/packaging source `3e174b9e6ed89e08f67e763c3b30028c15767080`:
+[code APPROVED_SCOPED](../reviews/component-updates-code-3e174b9.md),
+[security APPROVED](../reviews/component-updates-security-3e174b9.md),
+[tests APPROVED](../reviews/component-updates-tests-3e174b9.md).
+All eight HIGH findings and four functional defects are closed. The last
+native 0.7.2 cancellation check passes: one metadata GET, no payload download,
+unchanged tree/executable/signature/marker and process exit 0. Three preceding
+acceptances remain preserved adverse QA observations. Real signed installation,
+restart and both rendering guards pass.
+
+Unchanged runtime regression: **435 Rust PASS, zero failures, two existing NFR
+ignores; 359 Node PASS**. Python packaging **19/19 PASS**, including five DMG
+tests. Actual DMG verified/mounted read-only, app identical to signed source,
+Applications shortcut and FR/EN instructions; real macOS27 minimum derived
+from all 49 Mach-O files. No Apple Developer signature/notarization is claimed.
+Reports distinguish reviewed source from later documentation carrier commits.
+The [v0.7 notes](../releases/REL-V0.7.en.md) and signed manifests track
+publication; no Pi, NAS or deployed web client was contacted/changed.
+
+## Historical checkpoint of 19 October
+
 Reference source: `6041f4dc8acb6e14ea59bcb4e8ce6cec5d9edcaa`.
 This supplements the [initial checkpoint](COMPONENT-UPDATES-20261019.en.md),
-without overwriting adverse reviews. **Unpublished candidate: native Mac
-validation and final independent verdicts remain publication gates.**
+without overwriting adverse reviews. **At this historical checkpoint, the
+candidate was unpublished and native/final gates remained open.**
 The Pi, its configuration, deployed web client and NAS have not been contacted.
 
 Delta `3913267`: the first actual Tauri launch exposed

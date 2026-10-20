@@ -1,5 +1,18 @@
 # BUG0113 — Privileged component updater is not release-ready
 
+## Closure — 20 October 2026
+
+**FIXED / VERIFIED_LOCAL**, source `3e174b9e6ed89e08f67e763c3b30028c15767080`.
+Independent code APPROVED_SCOPED, security APPROVED and tests APPROVED:
+[final test report](../reviews/component-updates-tests-3e174b9.md).
+The final native cancel check passes with no payload request/mutation; signed
+SDK installation/restart and busy-before/busy-during guards are proved.
+435 Rust PASS/2 existing NFR ignores, 359 Node PASS and 19 packaging tests PASS;
+real isolated Linux/systemd evidence remains applicable. All eight security
+findings and four functional defects are closed. This closes the source gate,
+not a claim of Pi deployment. Public package verification remains a separate
+release step. Historical adverse checkpoints below are preserved verbatim.
+
 ## Correction checkpoint — 19 October 2026
 
 Candidate `6041f4d` implements the eight security and four functional corrections.

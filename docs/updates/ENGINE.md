@@ -1,7 +1,9 @@
 # Component update engine
 
-Status: implementation candidate only. No Pi, NAS, GitHub release, tag, service,
-production release, or live configuration was changed by this work.
+Implementation and trust boundaries for components 0.7.0. Current publication
+status and immutable provenance belong to the [release record](../releases/REL-V0.7.en.md)
+and signed component manifests. No Pi, NAS, deployed service or live configuration
+was changed while preparing this release.
 
 ## Boundary
 
@@ -14,11 +16,11 @@ the pinned full Minisign public-key file, and a separate root-owned monotonic
 sequence ledger. Service-owned state is never trusted for anti-rollback.
 
 The production private key is neither generated nor read by this crate. The
-only test signature is the public synthetic vector from `minisign-verify`; no
-matching private key is present. Mac assets carry an optional manifest field
+tests use public synthetic vectors or disposable, locally generated test keys;
+no test private key is committed or distributed. Mac assets carry a manifest field
 `tauri_signature`; it is mandatory for `mac` and forbidden for other component
-assets. The Mac integration must still use Tauri's mandatory explicit install
-confirmation.
+assets. The Mac integration uses Tauri's explicit native install confirmation,
+with rendering guards before discovery and again after human consent.
 
 ## Public Rust seams
 
@@ -115,7 +117,7 @@ The installer script itself must come from an externally Minisign-verified
 release bundle before it is run as root: no script can authenticate its own
 already executing instructions. Future helper replacement needs a separately signed updater target and a helper
 version compatible with the manifest schema; no helper self-update path claims
-success in this candidate.
+success in this release.
 
 `scripts/install-web.sh` and `scripts/install-themes.sh` invoke only fixed
 component operations and compare server binary, server config and TLS
@@ -129,7 +131,7 @@ HTML, SVG, undeclared files, links, APNG and special files fail closed.
 Checked against primary package documentation on 2026-10-19 and pinned where
 security or parsing behavior matters:
 
-- Rust 1.99.0 / edition 2024 (workspace supported toolchain)
+- Rust 1.99.1 / edition 2024 (workspace supported toolchain)
 - `minisign-verify` 0.3.0 (exact; prehashed verification, legacy disabled)
 - `semver` 1.0.28, `zip` 9.0.3 and `time` 0.3.55 (exact)
 - workspace `reqwest` 0.13 (resolved 0.13.5, Rustls)
@@ -145,10 +147,14 @@ fixed release URLs, safe TAR/traversal, policy CAS/coalescing, once-per-date and
 bounded retry scheduling, exact theme tree/PNG decode, a rootless health-failure
 rollback, and a fault-injected crash immediately after slot switch followed by
 pre-start recovery.
-Network GitHub release discovery, real systemd/account installation, real Pi,
-NAS, TLS rotation, disk-full and published package smoke remain `NOT_RUN`.
-These unsupported/unexecuted paths return errors; they are not stub successes.
+An isolated Ubuntu ARM64 VM exercised the real production systemd units, root
+ledger and signed test packages: admission during active work, bounded backup,
+TERM/KILL at privileged transitions, rollback, restart/readiness and exact
+accepted retry. This is not a test on the household Pi. See the
+[correction evidence](../implementation/COMPONENT-UPDATES-FIXES-20261019.en.md)
+and independent exact-source reviews for the detailed verdicts and native proof.
 
-This security-sensitive candidate requires independent security approval of the
-exact commit before any DEV merge or deployment. Code/test review and packaging
-remain separately owned by the integration coordinator.
+Physical Pi/NAS throughput, TLS annual rotation, power loss and disk-full tests
+remain unexecuted. Published-package verification is a separate release gate;
+passing local tests does not claim a Pi deployment. No unsupported path is a
+stub success. The old adverse reviews are retained, not retroactively approved.
