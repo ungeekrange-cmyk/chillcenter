@@ -43,9 +43,9 @@ class OperatorRecoveryTests(unittest.TestCase):
             "systemctl": "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$CC_FIXTURE_LOG\"\ncase \"$1\" in is-active) [ \"$(cat \"$CC_FIXTURE_STATE\")\" = active ] && { echo active; exit 0; } || exit 3;; stop) echo stopped >\"$CC_FIXTURE_STATE\";; start) echo active >\"$CC_FIXTURE_STATE\";; show) printf 'User=fixture\\nGroup=fixture\\nExecStart=/fixture/chill-server\\nFragmentPath=/fixture.service\\n';; esac\n",
             "curl": "#!/bin/sh\nurl=; for x in \"$@\"; do url=$x; done; case \"$url\" in */admin/scan) n=0; [ -z \"$CC_FIXTURE_SCAN_COUNT\" ] || { n=$(cat \"$CC_FIXTURE_SCAN_COUNT\" 2>/dev/null || echo 0); n=$((n+1)); echo $n >\"$CC_FIXTURE_SCAN_COUNT\"; }; [ \"$CC_FIXTURE_BUSY_SECOND\" = yes ] && [ \"$n\" -ge 2 ] && printf '{\\\"running\\\":true}\\n' || printf '{\\\"running\\\":false}\\n';; */build.json) cat \"$CC_FIXTURE_WEB/build.json\";; *) printf '200\\n';; esac\n",
             "runuser": "#!/bin/sh\nexit 0\n", "ss": "#!/bin/sh\nexit 0\n",
-            "timeout": "#!/bin/sh\nwhile [ \"$1\" != setsid ]; do shift; done; exec \"$@\"\n", "setsid": "#!/bin/sh\nexec \"$@\"\n",
+            "timeout": "#!/bin/sh\nwhile [ $# -gt 0 ]; do case \"$1\" in --*) shift;; *s) shift;; *) break;; esac; done; exec \"$@\"\n", "setsid": "#!/bin/sh\nexec \"$@\"\n",
             "mv": "#!/bin/sh\n[ \"$1\" = -T ] && shift\nexec /bin/mv \"$@\"\n",
-            "runuser": "#!/bin/sh\nprintf 'Sauvegarde terminée : %s/backups/snapshot\\n' \"$CC_DATA_DIR\"\n",
+            "runuser": "#!/bin/sh\n[ \"$CC_FIXTURE_BACKUP_FAIL\" = yes ] && exit 70\nprintf 'Sauvegarde terminée : %s/backups/snapshot\\n' \"$CC_DATA_DIR\"\n",
             "chown": "#!/bin/sh\nexit 0\n", "install": "#!/bin/sh\nprev=; for x; do src=$prev; dst=$x; prev=$x; done; cp \"$src\" \"$dst\"; chmod 755 \"$dst\"\n",
             "stat": "#!/bin/sh\ncase \"$2\" in '%a:%u:%g') echo 700:0:0;; '%d') echo 1;; *) echo fixture-stat;; esac\n",
         }.items():
@@ -106,7 +106,7 @@ class OperatorRecoveryTests(unittest.TestCase):
         result = self._recover()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.binary.read_text(), "old-server")
-        self.assertTrue((self.rollback / "v07-transition.json").exists())
+        self.assertFalse((self.rollback / "v07-transition.json").exists())
 
     def test_recovery_after_copy_before_binary_rename_keeps_old_current(self):
         old_bin = self.rollback / "old-server"; old_bin.write_text("old-server")
@@ -159,6 +159,15 @@ class OperatorRecoveryTests(unittest.TestCase):
         blocked = subprocess.run(["bash", str(self.script), "--deploy"], env=env, text=True, capture_output=True)
         self.assertEqual(blocked.returncode, 42, blocked.stderr)
         self.assertNotIn("stop fixture", log.read_text())
+        recovered = subprocess.run(["bash", str(self.script), "--recover"], env=env, text=True, capture_output=True)
+        self.assertEqual(recovered.returncode, 0, recovered.stderr)
+        log.unlink()
+        env |= {"CC_FIXTURE_BUSY_SECOND":"", "CC_FIXTURE_SCAN_COUNT":str(self.tmp / "failure-scan-count"), "CC_FIXTURE_BACKUP_FAIL":"yes"}
+        failed_backup = subprocess.run(["bash", str(self.script), "--deploy"], env=env, text=True, capture_output=True)
+        self.assertNotEqual(failed_backup.returncode, 0)
+        self.assertEqual(self.state.read_text().strip(), "active")
+        self.assertFalse((self.rollback / "v07-transition.json").exists())
+        self.assertIn("stop fixture", log.read_text())
 
     def test_closed_modes_and_unsafe_zip_regressions(self):
         self.assertNotEqual(subprocess.run(["bash", str(SOURCE)], text=True, capture_output=True).returncode, 0)

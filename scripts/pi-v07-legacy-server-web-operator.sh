@@ -53,7 +53,7 @@ recover_transition(){
 import hashlib,json,pathlib,sys
 j,b,w=map(pathlib.Path,sys.argv[1:]); d=json.loads(j.read_bytes())
 required={'old_binary','new_binary','old_web','new_web','old_hash','new_hash','old_web_build','new_web_build','state'}
-assert required <= set(d) and d['state'] in {'prepared','swapping','started','rollback_complete'}
+assert required <= set(d) and d['state'] in {'prepared','stopping','swapping','started','rollback_complete'}
 for k in ('old_binary','new_binary','old_web','new_web'):
  p=pathlib.Path(d[k]); assert p.is_absolute() and str(p).startswith(str(j.parent)+'/')
 assert pathlib.Path(d['old_binary']).parent==j.parent and pathlib.Path(d['old_web']).parent==j.parent
@@ -108,6 +108,7 @@ import json,os,sys
 p=sys.argv[1]; d=json.load(open(p)); d['state']='rollback_complete'; f=open(p+'.new','w'); json.dump(d,f,sort_keys=True); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.new',p); fd=os.open(os.path.dirname(p),os.O_RDONLY); os.fsync(fd); os.close(fd)
 PY
  printf 'recovery=PASS\n'
+ rm -f -- "$journal"
 }
 if [[ "$mode" == --recover ]]; then
  [[ -d "$CC_ROLLBACK_DIR" && ! -L "$CC_ROLLBACK_DIR" && -f "$journal" && ! -L "$journal" ]] || die recovery_journal_required 2
@@ -170,7 +171,15 @@ p=sys.argv[1]; f=open(p+'.new','x'); json.dump(dict(state='prepared',old_binary=
 PY
 state=running
 tls "$CC_BASE_URL/api/2026-10-14/admin/scan"|python3 -I -c 'import json,sys; assert json.load(sys.stdin).get("running") is False' || die scan_active_or_unknown 42
-[[ -z "$(grep -F "$(basename "$CC_BINARY")" <<<"$(ss -Htnp state established 2>/dev/null)" || true)" ]] || die active_client_socket_refusing_stop 42
+python3 -I - "$CC_DATA_DIR/tmdb-jobs.json" <<'PY'
+import json,os,stat,sys
+try:s=os.lstat(sys.argv[1])
+except FileNotFoundError:raise SystemExit(0)
+assert stat.S_ISREG(s.st_mode) and s.st_size<=2097152
+for x in json.load(open(sys.argv[1],'rb')).values():assert x.get('status') in {'completed','failed','cancelled'}
+PY
+sockets="$(ss -Htnp state established 2>/dev/null)" || die socket_inspection_failed 2
+[[ -z "$(grep -F "$(basename "$CC_BINARY")" <<<"$sockets" || true)" ]] || die active_client_socket_refusing_stop 42
 python3 -I - "$journal" <<'PY'
 import json,os,sys
 p=sys.argv[1]; d=json.load(open(p)); assert d['state']=='prepared'; d['state']='stopping'; f=open(p+'.new','w'); json.dump(d,f,sort_keys=True); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.new',p); fd=os.open(os.path.dirname(p),os.O_RDONLY); os.fsync(fd); os.close(fd)
@@ -181,7 +190,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 systemctl stop "$CC_SERVICE"; state=stopped; ! systemctl is-active --quiet "$CC_SERVICE" || die service_failed_to_stop 1
-out="$(timeout --signal=TERM --kill-after=15s 600s setsid /bin/bash -c 'set -e; child=; cleanup(){ [ -z "$child" ] || kill -TERM -- -"$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }; trap "cleanup; exit 124" TERM INT HUP; cd "$1"; runuser -u "$2" -- "$3" --backup --config "$4" </dev/null & child=$!; wait "$child"' -- /usr/lib/chillcenter "$CC_SERVICE_USER" "$CC_BINARY" "$CC_CONFIG")" || die backup_failed_or_timed_out 1
+out="$(timeout --signal=TERM --kill-after=20s 600s /bin/bash -c 'set -e; child=; cleanup(){ [ -z "$child" ] || { kill -TERM -- -"$child" 2>/dev/null || true; sleep 2; kill -KILL -- -"$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }; }; trap "cleanup; exit 124" TERM INT HUP; cd "$1"; setsid runuser -u "$2" -- "$3" --backup --config "$4" </dev/null & child=$!; wait "$child"' -- /usr/lib/chillcenter "$CC_SERVICE_USER" "$CC_BINARY" "$CC_CONFIG")" || die backup_failed_or_timed_out 1
 backup="${out#Sauvegarde terminée : }"; [[ "$out" != "$backup" && "$backup" == "$CC_DATA_DIR/backups/"* ]] || die backup_receipt_refused 1; backup_ok "$backup"
 install -o root -g root -m 0755 "$CC_BINARY" "$old_bin"; [[ "$(hash "$old_bin")" == "$CC_EXPECTED_OLD_BINARY_SHA256" ]] || die old_binary_backup_mismatch 1
 mv -T "$CC_WEB_DIR" "$old_web"; mv -T "$new_web" "$CC_WEB_DIR"; mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-replaced-$(date -u +%Y%m%dT%H%M%SZ)"; mv -T "$new_bin" "$CC_BINARY"
