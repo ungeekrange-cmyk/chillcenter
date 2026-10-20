@@ -1,5 +1,13 @@
 # Index des décisions techniques
 
+[ADR0031](ADR-0031-single-canonical-api.md), PROPOSED implementation,20octobre2026 :
+demande explicite de supprimer les anciens alias et ne servir que2026-10-14 ;
+migration des appels/URL locales sans perte de cache, compatibilité web à prouver.
+
+[ADR0030](ADR-0030-lan-server-discovery.md), USER_APPROVED_SCOPE,20octobre2026 :
+découverte mDNS bornée Mac/serveur0.7.1, connexion HTTPS et validation de confiance
+inchangées, saisie manuelle cachée derrière un lien de secours.
+
 [ADR0029](ADR-0029-component-releases-updates.md), **ACCEPTED R2**, 19 octobre 2026,
 propriétaire `/root` : versions indépendantes Mac/serveur/web/thèmes, packs
 déclaratifs et mises à jour signées/planifiées. Nouvelle frontière de confiance

@@ -310,6 +310,8 @@ impl ServerEndpoint {
             return Err(ClientError::InvalidRequestPath(path.into()));
         }
         let mut url = self.base_url.clone();
+        // Old local catalogue mirrors can contain artwork references from v1.
+        // This is a read-side URL migration, not a second server API version.
         if let Some(suffix) = path.strip_prefix("/api/v1/") {
             url.set_path(&format!("{API_PREFIX}/{suffix}"));
         } else {
@@ -580,8 +582,7 @@ impl Transport {
         let status = response.status();
         // Only the closed catalogue snapshot routes carry a bounded full mirror
         // manifest. Keep all other JSON endpoints at the established 4 MiB cap.
-        let snapshot =
-            path.starts_with("/api/v1/profiles/") || path.starts_with("/api/2026-10-14/profiles/");
+        let snapshot = path.starts_with("/api/2026-10-14/profiles/");
         let max_json = if snapshot
             && (path.contains("/catalog/snapshot") || path.contains("/catalog/changes"))
         {
@@ -701,7 +702,7 @@ impl Transport {
                 "identifiant média ou session invalide".into(),
             ));
         }
-        let path = format!("/api/v1/media/{media_id}/stream");
+        let path = format!("/api/2026-10-14/media/{media_id}/stream");
         let read = self.read_range_with_headers(
             &path,
             start,
@@ -962,8 +963,18 @@ mod tests {
         assert!(ServerEndpoint::parse("id", "http://pi.lan").is_err());
         let endpoint = ServerEndpoint::parse("id", "https://pi.lan:8443").unwrap();
         assert_eq!(
-            endpoint.request_url("/api/v1/server").unwrap().path(),
+            endpoint
+                .request_url("/api/2026-10-14/server")
+                .unwrap()
+                .path(),
             "/api/2026-10-14/server"
+        );
+        assert_eq!(
+            endpoint
+                .request_url("/api/v1/profiles/p/media/m/artwork")
+                .unwrap()
+                .path(),
+            "/api/2026-10-14/profiles/p/media/m/artwork"
         );
         assert!(endpoint.request_url("//attacker.invalid/x").is_err());
         assert!(endpoint.request_url("/api/../admin").is_err());

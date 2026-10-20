@@ -12,6 +12,9 @@ function memory() { const m = new Map(); return { getItem: k => m.get(k) ?? null
 function server(routes) {
   const calls = [];
   const fetch = async (url, init = {}) => {
+    // The retired alias must never leave the shipped browser adapter, including
+    // requests made after reading old catalogue/poster references from storage.
+    assert.ok(url.startsWith(BASE + "/"), `non-canonical API request: ${url}`);
     calls.push({ url, method: init.method || "GET", body: init.body, headers: init.headers });
     const key = (init.method || "GET") + " " + url.replace(BASE, "").split("?")[0];
     const r = routes[key];
@@ -121,6 +124,19 @@ test("artwork becomes a blob URL once; TMDB status uses the explicit API", async
   assert.equal(calls.filter(c => c.url.endsWith("/artwork")).length, 1);
   const tmdb = make({ "GET /admin/tmdb": ok({ configured: false }) }); await tmdb.ui({ action: "boot" });
   assert.deepEqual(await tmdb.ui({ action: "tmdb_status" }), { configured: false });
+});
+
+test("legacy poster references do not become legacy network requests", async () => {
+  const { ui, calls } = make({
+    [`GET /profiles/${P}/media/${M}`]: ok({ media: { id: M, title: "Cached title", poster: `/api/v1/profiles/${P}/media/${M}/artwork` }, revision: 1 }),
+    [`GET /profiles/${P}/media/${M}/artwork`]: [200, "", { size: 10 }],
+    [`GET /profiles/${P}/series/123/seasons/1/artwork`]: [200, "", { size: 10 }],
+  });
+  await ui({ action: "boot" }); await ui({ action: "select_profile", id: P });
+  await ui({ action: "media_detail", media_id: M });
+  await ui({ action: "artwork", media_id: M });
+  await ui({ action: "season_artwork", tv_id: 123, season: 1 });
+  assert.ok(calls.every(c => c.url.startsWith("/api/2026-10-14/")));
 });
 
 test("delayed artwork cannot republish after a mutation or profile switch", async () => {

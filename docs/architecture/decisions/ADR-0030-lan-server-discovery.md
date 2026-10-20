@@ -17,7 +17,9 @@ certificat, compte, montage ou fichier NAS n’est modifié.
 Use mDNS/DNS-SD `_chillcenter._tcp.local.`. The server announces only its stable
 UUID, protocol=https, API2026-10-14, component version and configured HTTPS port.
 No media path, profile name or credential is announced. Advertise LAN interface
-addresses for wildcard listeners, or the concrete LAN bind address. Public and
+addresses for a wildcard listener in the reusable discovery helper, or the
+concrete LAN bind address. Current server configuration deliberately permits
+only concrete LAN listeners; this change does not broaden that policy. Public and
 loopback addresses are excluded. If multicast is unavailable, the server remains
 usable through ordinary HTTPS and the client offers retry/manual entry.
 
@@ -49,7 +51,7 @@ with no arbitrary URL/hostname argument. Service advertisement failure is nonfat
 Required: bounded parser/command tests, wildcard/concrete listener tests, native
 UI hidden fallback/retry/multiple/stale/saved-session tests, compiled Mac/server
 checks and actual LAN announcement/browse. Preserve strict HTTPS trust and dated
-API aliases. Before Pi swap: private consistent backup, exact old/new binary
+API routes (ADR0031 separately retires the old alias). Before Pi swap: private consistent backup, exact old/new binary
 hashes, idle gate and rollback. After: running version0.7.1, web tree unchanged,
 settings/TLS/unit and catalogue semantic state preserved. GUI/OS permission
 limitations must be reported, never described as passing tests.

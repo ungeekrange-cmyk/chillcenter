@@ -178,7 +178,7 @@ impl SyncTask {
         }
     }
     async fn fetch_changes(&self) -> Result<SyncResult, UiError> {
-        let path = format!("/api/v1/profiles/{}/catalog/changes", self.profile);
+        let path = format!("/api/2026-10-14/profiles/{}/catalog/changes", self.profile);
         let mut first: Value = self
             .transport
             .json_with_options(
@@ -288,7 +288,7 @@ impl SyncTask {
     /// Compatibility only: an old server has no additive changes route. This
     /// still runs as a detached SyncTask, never under UiClient's mutex.
     async fn fetch_legacy_snapshot(&self) -> Result<SyncResult, UiError> {
-        let path = format!("/api/v1/profiles/{}/catalog/snapshot", self.profile);
+        let path = format!("/api/2026-10-14/profiles/{}/catalog/snapshot", self.profile);
         let mut first: Value = self
             .transport
             .json_with_options(
@@ -655,7 +655,7 @@ impl LocalCatalog {
         &self,
         transport: &Transport,
     ) -> Result<Option<(Vec<SyncMedia>, Value)>, UiError> {
-        let path = format!("/api/v1/profiles/{}/catalog/snapshot", self.profile);
+        let path = format!("/api/2026-10-14/profiles/{}/catalog/snapshot", self.profile);
         let known = self.document.as_ref().and_then(|v| v["revision"].as_str());
         let mut first: Value = transport
             .json_with_options(
@@ -840,11 +840,14 @@ impl LocalCatalog {
             endpoint: if kind == "season" {
                 let (tv, season) = id.split_once(':').unwrap();
                 format!(
-                    "/api/v1/profiles/{}/series/{tv}/seasons/{season}/artwork",
+                    "/api/2026-10-14/profiles/{}/series/{tv}/seasons/{season}/artwork",
                     self.profile
                 )
             } else {
-                format!("/api/v1/profiles/{}/{kind}/{id}/artwork", self.profile)
+                format!(
+                    "/api/2026-10-14/profiles/{}/{kind}/{id}/artwork",
+                    self.profile
+                )
             },
             gate: self.gate.clone(),
             budget: self.budget.clone(),
@@ -967,7 +970,7 @@ mod tests {
             transport,
             directory: directory.clone(),
             key: "key".into(),
-            endpoint: "/api/v1/no-network".into(),
+            endpoint: "/api/2026-10-14/no-network".into(),
             gate: Arc::new(tokio::sync::Semaphore::new(1)),
             budget: Arc::new(Mutex::new(0)),
             pool: dir.path().join("pool"),

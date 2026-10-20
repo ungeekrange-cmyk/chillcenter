@@ -29,7 +29,7 @@ impl Transport {
         }
         json(
             self.asynchronous
-                .post(self.endpoint.request_url("/api/v1/admin/imports")?)
+                .post(self.endpoint.request_url("/api/2026-10-14/admin/imports")?)
                 .header(reqwest::header::CONTENT_TYPE, "application/zip")
                 .header(reqwest::header::CONTENT_LENGTH, size)
                 .timeout(Duration::from_secs(600))
@@ -46,7 +46,7 @@ impl Transport {
             .asynchronous
             .get(
                 self.endpoint
-                    .request_url(&format!("/api/v1/admin/exports/{id}"))?,
+                    .request_url(&format!("/api/2026-10-14/admin/exports/{id}"))?,
             )
             .timeout(Duration::from_secs(600))
             .send()

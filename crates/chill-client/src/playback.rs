@@ -98,7 +98,7 @@ fn subtitle_path(profile: &str, lease: &Lease) -> Result<String, ClientError> {
         return Err(ClientError::InvalidRequestPath("média invalide".into()));
     }
     Ok(format!(
-        "/api/v1/profiles/{profile}/media/{}/subtitles",
+        "/api/2026-10-14/profiles/{profile}/media/{}/subtitles",
         lease.media_id
     ))
 }
@@ -112,7 +112,9 @@ fn profile_path(profile: &str, operation: &str) -> Result<String, ClientError> {
     if !is_opaque_id(profile) {
         return Err(ClientError::InvalidRequestPath("profil invalide".into()));
     }
-    Ok(format!("/api/v1/profiles/{profile}/playback/{operation}"))
+    Ok(format!(
+        "/api/2026-10-14/profiles/{profile}/playback/{operation}"
+    ))
 }
 pub fn valid_speed_value(speed: f64) -> bool {
     chill_domain::valid_speed(speed)
@@ -290,7 +292,7 @@ impl Transport {
             return Err(ClientError::InvalidRequestPath("média invalide".into()));
         }
         self.get_json(&format!(
-            "/api/v1/profiles/{profile}/media/{media}/playback-info"
+            "/api/2026-10-14/profiles/{profile}/media/{media}/playback-info"
         ))
         .await
     }
@@ -361,8 +363,10 @@ impl Transport {
                 "profil ou média invalide".into(),
             ));
         }
-        self.get_json(&format!("/api/v1/profiles/{profile}/media/{media}/state"))
-            .await
+        self.get_json(&format!(
+            "/api/2026-10-14/profiles/{profile}/media/{media}/state"
+        ))
+        .await
     }
 }
 #[cfg(test)]
@@ -411,7 +415,7 @@ mod tests {
         }
         assert_eq!(
             profile_path("profile-id", "progress").unwrap(),
-            "/api/v1/profiles/profile-id/playback/progress"
+            "/api/2026-10-14/profiles/profile-id/playback/progress"
         );
     }
 }

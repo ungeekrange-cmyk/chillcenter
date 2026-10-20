@@ -112,7 +112,7 @@ fn target_path(profile: &str, target: ArtworkTarget) -> Result<(String, u64), Ui
         } => {
             uuid::Uuid::parse_str(&media_id).map_err(|_| err("Média invalide."))?;
             Ok((
-                format!("/api/v1/profiles/{profile}/media/{media_id}/series/poster"),
+                format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/series/poster"),
                 expected_revision,
             ))
         }
@@ -122,7 +122,7 @@ fn target_path(profile: &str, target: ArtworkTarget) -> Result<(String, u64), Ui
         } => {
             uuid::Uuid::parse_str(&media_id).map_err(|_| err("Média invalide."))?;
             Ok((
-                format!("/api/v1/profiles/{profile}/media/{media_id}/season/poster"),
+                format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/season/poster"),
                 expected_revision,
             ))
         }
@@ -132,7 +132,7 @@ fn target_path(profile: &str, target: ArtworkTarget) -> Result<(String, u64), Ui
         } => {
             uuid::Uuid::parse_str(&id).map_err(|_| err("Liste invalide."))?;
             Ok((
-                format!("/api/v1/profiles/{profile}/playlists/{id}/poster"),
+                format!("/api/2026-10-14/profiles/{profile}/playlists/{id}/poster"),
                 expected_revision,
             ))
         }
@@ -142,7 +142,7 @@ fn target_path(profile: &str, target: ArtworkTarget) -> Result<(String, u64), Ui
         } => {
             uuid::Uuid::parse_str(&media_id).map_err(|_| err("Média invalide."))?;
             Ok((
-                format!("/api/v1/profiles/{profile}/media/{media_id}/poster"),
+                format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/poster"),
                 expected_revision,
             ))
         }
@@ -154,7 +154,7 @@ fn target_path(profile: &str, target: ArtworkTarget) -> Result<(String, u64), Ui
                 return Err(err("Saga invalide."));
             };
             Ok((
-                format!("/api/v1/profiles/{profile}/sagas/{id}/poster"),
+                format!("/api/2026-10-14/profiles/{profile}/sagas/{id}/poster"),
                 expected_revision,
             ))
         }
@@ -233,7 +233,10 @@ mod tests {
             .unwrap();
             assert_eq!(
                 target_path("profile", target).unwrap(),
-                (format!("/api/v1/profiles/profile/media/{id}/{suffix}"), 7)
+                (
+                    format!("/api/2026-10-14/profiles/profile/media/{id}/{suffix}"),
+                    7
+                )
             );
             assert!(serde_json::from_value::<ArtworkTarget>(serde_json::json!({"kind":kind,"media_id":id,"expected_revision":7,"path":"/nas/private.png"})).is_err());
             let invalid = serde_json::from_value::<ArtworkTarget>(

@@ -9,7 +9,7 @@ const spec = JSON.parse(readFileSync(specPath, 'utf8'));
 const fail = (message) => { console.error(`API contract: ${message}`); process.exitCode = 1; };
 if (spec.openapi !== '3.1.0') fail('OpenAPI 3.1.0 attendu');
 if (spec.info?.version !== '2026-10-14') fail('version datée attendue');
-if (!spec.servers?.some(({ url }) => url.includes('/api/2026-10-14'))) fail('serveur canonique manquant');
+if (spec.servers?.length !== 1 || !spec.servers[0].url.endsWith('/api/2026-10-14')) fail('une seule base canonique attendue');
 if (!spec.paths || Object.keys(spec.paths).length < 35) fail('couverture de routes insuffisante');
 const operationIds = new Set();
 for (const [path, item] of Object.entries(spec.paths ?? {})) {
@@ -32,7 +32,7 @@ if (schemas.TmdbConfig?.properties?.credential?.writeOnly !== true) fail('secret
 if (schemas.Media?.properties?.path?.description?.includes('jamais URL NAS') !== true) fail('le chemin média doit rester non exposant');
 const serverSource = readFileSync(join(root, 'crates/chill-server/src/api.rs'), 'utf8');
 const versionSource = readFileSync(join(root, 'crates/chill-server/src/api_version.rs'), 'utf8');
-if (!serverSource.includes('.nest(crate::api_version::PREFIX') || !serverSource.includes('.nest("/api/v1"')) fail('routes canonique et compatibilité v1 attendues');
+if (!serverSource.includes('.nest(crate::api_version::PREFIX') || serverSource.includes('.nest("/api/v1"')) fail('seule la route canonique doit être servie');
 if (!/VERSION\s*:\s*&str\s*=\s*"2026-10-14"/.test(versionSource)) fail('version Rust et OpenAPI divergent');
 const requiredPaths = [
   '/server', '/profiles', '/admin/library', '/admin/scan', '/profiles/{profile}/catalog',
@@ -50,7 +50,7 @@ const routerFiles = [
   'crates/chill-server/src/ai_api.rs',
   'crates/chill-server/src/archive_api.rs',
   'crates/chill-server/src/export_jobs.rs'
-  , 'crates/chill-server/src/sync_api.rs'
+  , 'crates/chill-server/src/sync_api.rs', 'crates/chill-server/src/updates_api.rs'
 ];
 const routerRoutes = new Map();
 for (const file of routerFiles) {

@@ -521,7 +521,7 @@ async fn propose(
         let context: AiContext = transport
             .json_with_options(
                 HttpMethod::GET,
-                &format!("/api/v1/profiles/{profile}/ai/context"),
+                &format!("/api/2026-10-14/profiles/{profile}/ai/context"),
                 None::<&Value>,
                 &query,
                 &[],
@@ -642,7 +642,7 @@ pub fn apply(job: Arc<Mutex<Job>>, confirmed: bool) -> Result<Value, UiError> {
         let result = transport
             .request_json::<_, Value>(
                 HttpMethod::POST,
-                &format!("/api/v1/profiles/{profile}/ai/apply"),
+                &format!("/api/2026-10-14/profiles/{profile}/ai/apply"),
                 Some(&body),
             )
             .await;

@@ -316,7 +316,7 @@ pub async fn export(job: Arc<Mutex<Job>>) {
         let (transport, flag) = handles(&job)?;
         let started: Value = cancellable(&flag, async {
             transport
-                .request_json::<(), Value>(HttpMethod::POST, "/api/v1/admin/exports", None)
+                .request_json::<(), Value>(HttpMethod::POST, "/api/2026-10-14/admin/exports", None)
                 .await
                 .map_err(Into::into)
         })
@@ -341,7 +341,7 @@ pub async fn export(job: Arc<Mutex<Job>>) {
             }
             let status: Value = cancellable(&flag, async {
                 transport
-                    .get_json(&format!("/api/v1/admin/exports/{id}/status"))
+                    .get_json(&format!("/api/2026-10-14/admin/exports/{id}/status"))
                     .await
                     .map_err(Into::into)
             })
@@ -401,7 +401,7 @@ pub async fn plan(job: Arc<Mutex<Job>>, mapping: ImportMapping) {
             transport
                 .request_json(
                     HttpMethod::POST,
-                    &format!("/api/v1/admin/imports/{id}/plan"),
+                    &format!("/api/2026-10-14/admin/imports/{id}/plan"),
                     Some(&mapping),
                 )
                 .await
@@ -443,7 +443,7 @@ pub async fn apply(job: Arc<Mutex<Job>>) {
         transport
             .request_json(
                 HttpMethod::POST,
-                &format!("/api/v1/admin/imports/{id}/apply"),
+                &format!("/api/2026-10-14/admin/imports/{id}/apply"),
                 Some(&json!({"plan_id":plan,"confirmed":true})),
             )
             .await
@@ -454,9 +454,9 @@ pub async fn apply(job: Arc<Mutex<Job>>) {
 }
 async fn cleanup(transport: Transport, preview: Option<String>, export: Option<String>) {
     for path in preview
-        .map(|id| format!("/api/v1/admin/imports/{id}"))
+        .map(|id| format!("/api/2026-10-14/admin/imports/{id}"))
         .into_iter()
-        .chain(export.map(|id| format!("/api/v1/admin/exports/{id}/cancel")))
+        .chain(export.map(|id| format!("/api/2026-10-14/admin/exports/{id}/cancel")))
     {
         let _ = transport
             .request_json::<(), Value>(HttpMethod::DELETE, &path, None)

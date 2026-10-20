@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let transport = Transport::new(endpoint, Arc::new(RwLock::new(trust)), None)?;
     let runtime = tokio::runtime::Runtime::new()?;
     let (profile, other, media, grant) = runtime.block_on(async {
-        let existing: Value = transport.get_json("/api/v1/profiles").await?;
+        let existing: Value = transport.get_json("/api/2026-10-14/profiles").await?;
         if existing.as_array().is_none_or(|p| !p.is_empty()) {
             return Err::<_, Box<dyn Error>>("Fixture must have an empty profiles list.".into());
         }
@@ -38,18 +38,18 @@ fn main() -> Result<(), Box<dyn Error>> {
             let p: Value = transport
                 .request_json(
                     HttpMethod::POST,
-                    "/api/v1/profiles",
+                    "/api/2026-10-14/profiles",
                     Some(&json!({"name":name})),
                 )
                 .await?;
             ids.push(p["id"].as_str().ok_or("profile id")?.to_owned());
         }
         let _: Value = transport
-            .request_json::<(), Value>(HttpMethod::POST, "/api/v1/admin/scan", None)
+            .request_json::<(), Value>(HttpMethod::POST, "/api/2026-10-14/admin/scan", None)
             .await?;
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            let s: Value = transport.get_json("/api/v1/admin/scan").await?;
+            let s: Value = transport.get_json("/api/2026-10-14/admin/scan").await?;
             if s["running"] == false {
                 if s["last_error"] != Value::Null {
                     return Err("Fixture scan failed.".into());
@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         let page: Value = transport
-            .get_json(&format!("/api/v1/profiles/{}/catalog", ids[0]))
+            .get_json(&format!("/api/2026-10-14/profiles/{}/catalog", ids[0]))
             .await?;
         let media = page["items"][0]["id"]
             .as_str()

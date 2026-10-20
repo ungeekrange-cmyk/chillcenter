@@ -17,6 +17,22 @@
  function connect(authority,token,attempts=0){if(invalid(token))return;if(document.body.getAttribute("aria-busy")==="true"){if(attempts<60)return setTimeout(()=>connect(authority,token,attempts+1),100);return result(text("La connexion enregistrée est toujours en cours.","The saved connection is still in progress."),true);}manual=true;const form=document.getElementById("connect-form"),address=document.getElementById("address");if(!form||!address)return;address.value="https://"+authority;form.requestSubmit();}
  function choices(servers,token){const p=panel();if(!p||manual||token!==generation)return;p.replaceChildren();const label=document.createElement("p");label.textContent=text("Plusieurs serveurs trouvés. Choisissez celui auquel vous connecter.","Several servers were found. Choose the one to connect to.");p.append(label);const list=document.createElement("div");for(const server of servers){for(const address of server.addresses||[]){const b=document.createElement("button");b.type="button";b.textContent=`${server.name} (${address})`;b.onclick=()=>connect(address,token);list.append(b);}}p.append(list);}
  async function search(){if(searching||manual||currentConnection())return;searching=true;const token=++generation;result(text("Recherche de serveurs sur votre réseau local…","Searching for servers on your local network…"));try{const response=await invoke({action:"browse"});if(invalid(token))return;const servers=Array.isArray(response?.servers)?response.servers:[];if(servers.length===1&&servers[0].addresses?.length===1)connect(servers[0].addresses[0],token);else if(servers.length)choices(servers,token);else result(text("Aucun serveur trouvé sur le réseau local.","No server was found on the local network."),true);}catch(_){if(!invalid(token))result(text("La recherche locale est indisponible.","Local search is unavailable."),true);}finally{searching=false;}}
- function install(){if(!ready())return setTimeout(install,20);const form=document.getElementById("connect-form"),address=document.getElementById("address");form.hidden=true;form.addEventListener("submit",()=>{manual=true;generation++;});address.addEventListener("input",()=>{manual=true;generation++;});document.addEventListener("click",event=>{if(event.target.closest("#server-switch,#reject-trust")){manual=true;generation++;}},true);const host=form.parentElement||form;const link=document.createElement("button");link.id="native-discovery-reveal";link.type="button";link.className="secondary";link.textContent=text("Vous ne trouvez pas votre serveur ?","Can't find your server?");link.onclick=showManual;const p=document.createElement("section");p.id="native-discovery";p.setAttribute("aria-live","polite");host.insertBefore(link,form);host.insertBefore(p,form);search();}
+ function install(){
+   if(!ready())return setTimeout(install,20);
+   const form=document.getElementById("connect-form"),address=document.getElementById("address");
+   const cancelDiscovery=()=>{manual=true;generation++;};
+   form.hidden=true;
+   form.addEventListener("submit",cancelDiscovery);
+   address.addEventListener("input",cancelDiscovery);
+   // Saved-server buttons bypass the form. Capture the explicit click before
+   // their ordinary connection handler, even if that connection fails later.
+   document.addEventListener("click",event=>{
+     if(event.target.closest("#server-switch,#reject-trust,#saved-servers button"))cancelDiscovery();
+   },true);
+   const host=form.parentElement||form;
+   const link=document.createElement("button");link.id="native-discovery-reveal";link.type="button";link.className="secondary";link.textContent=text("Vous ne trouvez pas votre serveur ?","Can't find your server?");link.onclick=showManual;
+   const p=document.createElement("section");p.id="native-discovery";p.setAttribute("aria-live","polite");
+   host.insertBefore(link,form);host.insertBefore(p,form);search();
+ }
  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",install,{once:true});else install();
 })();

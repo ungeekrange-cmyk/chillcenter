@@ -14,15 +14,16 @@ served by each instance at `GET /api/2026-10-14/openapi.json`. The version is a
 https://nom-ou-ip-du-serveur:8443/api/2026-10-14
 ```
 
-`/api/v1` remains a compatibility alias for older clients. New integrations
-should use the date. Responses include `X-Chill-Api-Version: 2026-10-14`;
+Since server0.7.1, `/api/v1` is retired and returns404; the dated base is the
+only served API. Third-party integrations must migrate their request prefix.
+Responses include `X-Chill-Api-Version: 2026-10-14`;
 `GET /server` also advertises versions and capabilities actually served.
 Clients must ignore unknown response fields, but must never send undocumented
 fields in request bodies.
 
 ## Independent component updates (server 0.7.0 and later)
 
-These are additive routes in the same dated API; `/api/v1` remains supported.
+These are additive routes in the same dated API; no legacy alias is served.
 `GET /admin/updates` reports actual installed server/web/theme versions, policies,
 bounded operation receipts, availability, helper readiness and the server OS local
 UTC offset. A status read does not contact GitHub or trigger installation.
@@ -148,8 +149,8 @@ it. This GET suits browsers without the Mac's SQLite mirror: unchanged means
 keep the current view; changed means reload through the existing mechanism.
 It is neither a delta nor an atomic catalogue capture. On older servers, only
 `404 ROUTE_NOT_FOUND` permits fallback to ordinary reloading; a profile/network
-error does not mean “unchanged”. Compatible addition to 2026-10-14, also under
-v1; historically absent from Pi source ffcc6349 at the 15 October check.
+error does not mean “unchanged”. Compatible addition to2026-10-14;
+historically absent from Pi source ffcc6349 at the15October check.
 
 `POST /profiles/{profile}/catalog/changes` accepts `{ "known_revision": "…" }`.
 If unchanged, it returns `{ "revision": "…", "unchanged": true }` without
@@ -235,7 +236,7 @@ Accepted formats remain JPEG/PNG/WebP, maximum 8 MiB.
 
 Existing-client compatibility: series segments are **titles by default**, even
 when beginning with `media:` or `tmdb:tv:`. Their historical aggregated view
-remains in GET and PUT under both dated/v1 bases; `?selector=title` equals
+remains in GET and PUT under the dated base; `?selector=title` equals
 omitting the parameter. A title PUT applies common metadata to the entire view
 with the same global CAS and rename-collision rejection as before. It changes
 no TMDB ID, file or season assignment. When distinct shows share a title, GET
@@ -392,7 +393,7 @@ Plans are temporary and may expire; `409 IMPORT_PLAN_STALE` requires a new previ
 
 ### Compatible additions of 16 October 2026
 
-API base remains **2026-10-14**, with **v1** retained. Additive capability
+API base remains **2026-10-14**, the sole served version since server0.7.1. Additive capability
 `multi_library_locations`: `GET /admin/library` provides
 `additional_video_roots` alongside `video_root` and `revision`.
 `PUT /admin/library` accepts this optional array: omission or `null` retains

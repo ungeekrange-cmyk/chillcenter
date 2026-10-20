@@ -3,7 +3,7 @@
   "info": {
     "title": "Chill Center LAN API",
     "version": "2026-10-14",
-    "description": "API HTTPS native sur LAN. Sans authentification ni CORS: ne pas exposer sur Internet. Les réponses sont extensibles; ignorer les champs inconnus. /api/v1 reste un alias historique."
+    "description": "API HTTPS native sur LAN. Sans authentification ni CORS: ne pas exposer sur Internet. Les réponses sont extensibles; ignorer les champs inconnus. Seule la version 2026-10-14 est servie depuis le serveur 0.7.1; les anciens préfixes retournent 404."
   },
   "servers": [
     {
@@ -51,7 +51,7 @@
         "operationId": "componentUpdates_get",
         "description": "Actual installed versions, persisted policies and bounded operation status. Reading status never checks GitHub or installs software. Unsupported on servers older than 0.7.0 (404). See docs/updates/CONTRACT.md.",
         "responses": {
-          "200": {"description": "Component status.", "content": {"application/json": {"schema": {"type": "object", "required": ["installed", "policies", "operations", "helper_available", "busy", "timezone"], "properties": {"installed": {"type": "object", "additionalProperties": true}, "policies": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/UpdatePolicy"}}, "operations": {"type": "array", "maxItems": 128, "items": {"type": "object", "additionalProperties": true}}, "helper_available": {"type": "boolean"}, "busy": {"type": "boolean"}, "timezone": {"type": "string"}}, "additionalProperties": true}}}},
+          "200": {"description": "Component status.", "content": {"application/json": {"schema": {"type": "object", "required": ["installed", "policies", "operations", "helper_available", "busy", "timezone"], "properties": {"installed": {"$ref": "#/components/schemas/InstalledComponents"}, "policies": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/UpdatePolicy"}}, "operations": {"type": "array", "maxItems": 128, "items": {"$ref": "#/components/schemas/UpdateOperation"}}, "helper_available": {"type": "boolean"}, "busy": {"type": "boolean"}, "quiescing": {"type": "boolean"}, "active_mutations": {"type": "integer", "minimum": 0}, "server_time": {"type": "integer", "format": "int64"}, "timezone": {"type": "string"}}, "additionalProperties": true}}}},
           "default": {"$ref": "#/components/responses/Error"}
         }
       },
@@ -68,7 +68,7 @@
         "tags": ["Administration"], "operationId": "componentUpdatePolicy_post",
         "description": "Compatibility alias of PUT on this same route.",
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdatePolicyRequest"}}}},
-        "responses": {"200": {"description": "Persisted policy.", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
+        "responses": {"200": {"description": "Persisted policy.", "content": {"application/json": {"schema": {"type": "object", "required": ["component", "policy"], "properties": {"component": {"$ref": "#/components/schemas/ServerUpdateComponent"}, "policy": {"$ref": "#/components/schemas/UpdatePolicy"}}, "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
       },
       "parameters": []
     },
@@ -77,7 +77,7 @@
         "tags": ["Administration"], "operationId": "componentUpdateCheck_post",
         "description": "Queue/coalesce a bounded check intent for the fixed GitHub repository. No download URL accepted. The root helper consumes the intent separately; this request does not block the catalogue.",
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateIntentRequest"}}}},
-        "responses": {"200": {"description": "Operation receipt, not installation success.", "content": {"application/json": {"schema": {"type": "object", "required": ["operation"], "properties": {"operation": {"type": "object", "additionalProperties": true}}, "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
+        "responses": {"200": {"description": "Operation receipt, not installation success.", "content": {"application/json": {"schema": {"type": "object", "required": ["operation"], "properties": {"operation": {"$ref": "#/components/schemas/UpdateOperation"}}, "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
       },
       "parameters": []
     },
@@ -86,7 +86,7 @@
         "tags": ["Administration"], "operationId": "componentUpdateInstall_post",
         "description": "Queue/coalesce installation of an independently verified compatible available component. Busy playback/jobs defer installation. Does not allow interrupt, forced restart, URL, tag, key or path. UPDATE_HELPER_NOT_INSTALLED if the separate local administrator installer has not configured the helper.",
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateIntentRequest"}}}},
-        "responses": {"200": {"description": "Operation receipt, not installation success.", "content": {"application/json": {"schema": {"type": "object", "required": ["operation"], "properties": {"operation": {"type": "object", "additionalProperties": true}}, "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
+        "responses": {"200": {"description": "Operation receipt, not installation success.", "content": {"application/json": {"schema": {"type": "object", "required": ["operation"], "properties": {"operation": {"$ref": "#/components/schemas/UpdateOperation"}}, "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
       },
       "parameters": []
     },
@@ -3931,6 +3931,9 @@
   },
   "components": {
     "schemas": {
+      "InstalledComponent": {"type": ["object", "null"], "properties": {"version": {"type": "string"}, "build": {"type": "string"}}, "additionalProperties": true},
+      "InstalledComponents": {"type": "object", "required": ["server", "web", "themes", "api"], "properties": {"server": {"$ref": "#/components/schemas/InstalledComponent"}, "web": {"$ref": "#/components/schemas/InstalledComponent"}, "themes": {"$ref": "#/components/schemas/InstalledComponent"}, "api": {"type": "string", "const": "2026-10-14"}}, "additionalProperties": true},
+      "UpdateOperation": {"type": "object", "required": ["id", "component", "kind", "status", "created_unix", "updated_unix", "attempts", "result_code", "automatic"], "properties": {"id": {"type": "string", "format": "uuid"}, "component": {"type": "string", "enum": ["mac", "server", "web", "themes"]}, "kind": {"type": "string", "enum": ["check", "install"]}, "status": {"type": "string", "enum": ["pending", "running", "succeeded", "failed", "deferred_busy"]}, "created_unix": {"type": "integer", "format": "int64"}, "updated_unix": {"type": "integer", "format": "int64"}, "attempts": {"type": "integer", "minimum": 0, "maximum": 255}, "result_code": {"type": ["string", "null"]}, "manifest_sha256": {"type": ["string", "null"]}, "automatic": {"type": "boolean"}}, "additionalProperties": true},
       "ServerUpdateComponent": {"type": "string", "enum": ["server", "web", "themes"]},
       "UpdateIntentRequest": {"type": "object", "required": ["component"], "properties": {"component": {"$ref": "#/components/schemas/ServerUpdateComponent"}}, "additionalProperties": false},
       "UpdatePolicyRequest": {
@@ -6567,15 +6570,16 @@
             "$ref": "#/components/schemas/UuidResponse"
           },
           "api_version": {
-            "type": [
-              "string",
-              "integer"
-            ]
+            "type": "string",
+            "const": "2026-10-14"
           },
           "supported_api_versions": {
             "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
             "items": {
-              "type": "string"
+              "type": "string",
+              "const": "2026-10-14"
             }
           },
           "version": {

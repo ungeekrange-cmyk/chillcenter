@@ -16,7 +16,7 @@ use std::{
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 fn catalog_path(profile: &str) -> String {
-    format!("/api/v1/profiles/{profile}/catalog")
+    format!("/api/2026-10-14/profiles/{profile}/catalog")
 }
 
 fn catalog_query() -> [(&'static str, String); 2] {
@@ -55,12 +55,12 @@ fn main() -> Result<()> {
     }
 }
 async fn prepare(t: &Transport) -> Result<()> {
-    let identity: Value = t.get_json("/api/v1/server").await?;
+    let identity: Value = t.get_json("/api/2026-10-14/server").await?;
     println!(
         "SERVER {}",
         json!({"version":identity["version"],"api":identity["api_version"]})
     );
-    let old: Value = t.get_json("/api/v1/profiles").await?;
+    let old: Value = t.get_json("/api/2026-10-14/profiles").await?;
     // First-install target only: refuse a household populated server.
     if old.as_array().is_none_or(|a| !a.is_empty()) {
         return Err("Prepare requires new empty server; existing profiles preserved".into());
@@ -71,7 +71,7 @@ async fn prepare(t: &Transport) -> Result<()> {
         let p: Value = t
             .request_json(
                 HttpMethod::POST,
-                "/api/v1/profiles",
+                "/api/2026-10-14/profiles",
                 Some(&json!({"name":format!("QA Pi {} {}",&stamp[..8],i+1)})),
             )
             .await?;
@@ -79,11 +79,11 @@ async fn prepare(t: &Transport) -> Result<()> {
     }
     println!("OWNED_TEST_PROFILES {}", json!(profiles));
     let _: Value = t
-        .request_json::<(), Value>(HttpMethod::POST, "/api/v1/admin/scan", None)
+        .request_json::<(), Value>(HttpMethod::POST, "/api/2026-10-14/admin/scan", None)
         .await?;
     let start = Instant::now();
     loop {
-        let s: Value = t.get_json("/api/v1/admin/scan").await?;
+        let s: Value = t.get_json("/api/2026-10-14/admin/scan").await?;
         if s["running"] == false {
             if !s["last_error"].is_null() {
                 return Err("NAS scan failed; previous catalogue preserved".into());
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn catalog_options_are_encoded_as_query_not_route() {
         let path = catalog_path("qa-profile");
-        assert_eq!(path, "/api/v1/profiles/qa-profile/catalog");
+        assert_eq!(path, "/api/2026-10-14/profiles/qa-profile/catalog");
         assert!(!path.contains('?'));
         assert_eq!(
             catalog_query(),
@@ -179,7 +179,7 @@ fn play(
     if !(10..=3600).contains(&seconds) {
         return Err("Test duration must be10..3600seconds".into());
     }
-    let all: Value = rt.block_on(t.get_json("/api/v1/profiles"))?;
+    let all: Value = rt.block_on(t.get_json("/api/2026-10-14/profiles"))?;
     if !all
         .as_array()
         .ok_or("Missing profiles")?

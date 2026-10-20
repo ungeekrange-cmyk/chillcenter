@@ -658,7 +658,9 @@ impl UiClient {
                 valid_tmdb_query(&query)?;
                 (
                     HttpMethod::GET,
-                    format!("/api/v1/admin/profiles/{profile}/media/{media_id}/tmdb/candidates"),
+                    format!(
+                        "/api/2026-10-14/admin/profiles/{profile}/media/{media_id}/tmdb/candidates"
+                    ),
                     None,
                     Some(query),
                     false,
@@ -680,7 +682,7 @@ impl UiClient {
                 }
                 (
                     HttpMethod::POST,
-                    format!("/api/v1/admin/profiles/{profile}/media/{media_id}/tmdb"),
+                    format!("/api/2026-10-14/admin/profiles/{profile}/media/{media_id}/tmdb"),
                     Some(
                         json!({"expected_revision":expected_revision,"tmdb_id":tmdb_id,"kind":kind,"scope":scope}),
                     ),
@@ -699,7 +701,9 @@ impl UiClient {
                 }
                 (
                     HttpMethod::POST,
-                    format!("/api/v1/admin/profiles/{profile}/media/{media_id}/tmdb/refresh"),
+                    format!(
+                        "/api/2026-10-14/admin/profiles/{profile}/media/{media_id}/tmdb/refresh"
+                    ),
                     Some(json!({"expected_revision":expected_revision,"scope":scope})),
                     None,
                     true,
@@ -1041,7 +1045,8 @@ impl UiClient {
             cache.mark_dirty();
         }
         if !mutation
-            && (path == "/api/v1/admin/scan" || path.starts_with("/api/v1/admin/tmdb/jobs/"))
+            && (path == "/api/2026-10-14/admin/scan"
+                || path.starts_with("/api/2026-10-14/admin/tmdb/jobs/"))
         {
             let terminal = result.get("running") == Some(&Value::Bool(false))
                 || result["status"]
@@ -1087,7 +1092,7 @@ impl UiClient {
                 json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation}),
             );
         }
-        let profiles = self.request(HttpMethod::GET, "/api/v1/profiles", None, &[], &[])?;
+        let profiles = self.request(HttpMethod::GET, "/api/2026-10-14/profiles", None, &[], &[])?;
         let conn = self.connected.as_mut().unwrap();
         if conn
             .active
@@ -1132,11 +1137,17 @@ impl UiClient {
                 }
             }
         }
-        let library = self.request(HttpMethod::GET, "/api/v1/admin/library", None, &[], &[])?;
+        let library = self.request(
+            HttpMethod::GET,
+            "/api/2026-10-14/admin/library",
+            None,
+            &[],
+            &[],
+        )?;
         let preferences = match &active {
             Some(profile) => self.request(
                 HttpMethod::GET,
-                &format!("/api/v1/profiles/{profile}/preferences"),
+                &format!("/api/2026-10-14/profiles/{profile}/preferences"),
                 None,
                 &[],
                 &[],
@@ -1235,8 +1246,8 @@ impl UiClient {
         // Transport lives outside block_on so its blocking runtime never drops in an async context.
         let identity: Value = self
             .runtime
-            .block_on(transport.get_json("/api/v1/server"))?;
-        if identity["api_version"] != crate::API_VERSION && identity["api_version"] != 1 {
+            .block_on(transport.get_json("/api/2026-10-14/server"))?;
+        if identity["api_version"] != crate::API_VERSION {
             return Err(invalid("Version serveur incompatible."));
         }
         let id = identity["server_id"]
@@ -1287,7 +1298,7 @@ impl UiClient {
         )?;
         let profiles: Value = self
             .runtime
-            .block_on(transport.get_json("/api/v1/profiles"))?;
+            .block_on(transport.get_json("/api/2026-10-14/profiles"))?;
         if !profiles.is_array() {
             return Err(invalid("Liste des profils invalide."));
         }
@@ -1580,9 +1591,13 @@ impl UiClient {
                 let task = self.artwork_task("playlists", &id)?;
                 self.runtime.block_on(task.fetch())
             }
-            UiCommand::TmdbStatus => {
-                self.request(HttpMethod::GET, "/api/v1/admin/tmdb", None, &[], &[])
-            }
+            UiCommand::TmdbStatus => self.request(
+                HttpMethod::GET,
+                "/api/2026-10-14/admin/tmdb",
+                None,
+                &[],
+                &[],
+            ),
             UiCommand::TmdbConfigure {
                 credential_type,
                 credential,
@@ -1600,16 +1615,20 @@ impl UiClient {
                 } else {
                     None
                 };
-                self.request(HttpMethod::PUT, "/api/v1/admin/tmdb", Some(&json!({"credential_type":credential_type,"credential":credential.0,"auto_enrich":auto_enrich,"profile_id":profile_id})), &[], &[])
+                self.request(HttpMethod::PUT, "/api/2026-10-14/admin/tmdb", Some(&json!({"credential_type":credential_type,"credential":credential.0,"auto_enrich":auto_enrich,"profile_id":profile_id})), &[], &[])
             }
-            UiCommand::TmdbClear => {
-                self.request(HttpMethod::DELETE, "/api/v1/admin/tmdb", None, &[], &[])
-            }
+            UiCommand::TmdbClear => self.request(
+                HttpMethod::DELETE,
+                "/api/2026-10-14/admin/tmdb",
+                None,
+                &[],
+                &[],
+            ),
             UiCommand::TmdbJobStart => {
                 let profile = self.profile()?;
                 self.request(
                     HttpMethod::POST,
-                    "/api/v1/admin/tmdb/jobs",
+                    "/api/2026-10-14/admin/tmdb/jobs",
                     Some(&json!({"profile_id":profile})),
                     &[],
                     &[],
@@ -1619,7 +1638,7 @@ impl UiClient {
                 valid_id(&id)?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/admin/tmdb/jobs/{id}"),
+                    &format!("/api/2026-10-14/admin/tmdb/jobs/{id}"),
                     None,
                     &[],
                     &[],
@@ -1629,7 +1648,7 @@ impl UiClient {
                 valid_id(&id)?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/admin/tmdb/jobs/{id}/cancel"),
+                    &format!("/api/2026-10-14/admin/tmdb/jobs/{id}/cancel"),
                     Some(&json!({})),
                     &[],
                     &[],
@@ -1639,7 +1658,7 @@ impl UiClient {
                 valid_id(&id)?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/admin/tmdb/jobs/{id}/retry"),
+                    &format!("/api/2026-10-14/admin/tmdb/jobs/{id}/retry"),
                     Some(&json!({})),
                     &[],
                     &[],
@@ -1652,7 +1671,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/candidates"),
+                    &format!("/api/2026-10-14/admin/profiles/{p}/media/{media_id}/tmdb/candidates"),
                     None,
                     &[("query", query)],
                     &[],
@@ -1673,7 +1692,7 @@ impl UiClient {
                     return Err(invalid("Choix TMDB invalide."));
                 }
                 let p = self.profile()?;
-                self.request(HttpMethod::POST,&format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb"),Some(&json!({"expected_revision":expected_revision,"tmdb_id":tmdb_id,"kind":kind,"scope":scope})),&[],&[])
+                self.request(HttpMethod::POST,&format!("/api/2026-10-14/admin/profiles/{p}/media/{media_id}/tmdb"),Some(&json!({"expected_revision":expected_revision,"tmdb_id":tmdb_id,"kind":kind,"scope":scope})),&[],&[])
             }
             UiCommand::TmdbRefresh {
                 media_id,
@@ -1687,7 +1706,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/refresh"),
+                    &format!("/api/2026-10-14/admin/profiles/{p}/media/{media_id}/tmdb/refresh"),
                     Some(&json!({"expected_revision":expected_revision,"scope":scope})),
                     &[],
                     &[],
@@ -1701,7 +1720,9 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/admin/profiles/{p}/media/{media_id}/tmdb/poster/restore"),
+                    &format!(
+                        "/api/2026-10-14/admin/profiles/{p}/media/{media_id}/tmdb/poster/restore"
+                    ),
                     Some(&json!({"expected_revision":expected_revision})),
                     &[],
                     &[],
@@ -1713,7 +1734,7 @@ impl UiClient {
                 }
                 self.request(
                     HttpMethod::GET,
-                    "/api/v1/admin/unavailable",
+                    "/api/2026-10-14/admin/unavailable",
                     None,
                     &[("offset", offset.to_string()), ("limit", limit.to_string())],
                     &[],
@@ -1727,7 +1748,7 @@ impl UiClient {
                 if !confirmed || media_ids.is_empty() || media_ids.len() > 48 {
                     return Err(invalid("Confirmation ou sélection indisponible invalide."));
                 }
-                self.request(HttpMethod::POST,"/api/v1/admin/unavailable",Some(&json!({"media_ids":media_ids,"expected_epoch":expected_epoch,"confirmed":true})),&[],&[])
+                self.request(HttpMethod::POST,"/api/2026-10-14/admin/unavailable",Some(&json!({"media_ids":media_ids,"expected_epoch":expected_epoch,"confirmed":true})),&[],&[])
             }
             UiCommand::ReassociationProposals { offset } => {
                 if offset > i64::MAX as usize {
@@ -1736,7 +1757,7 @@ impl UiClient {
                 self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    "/api/v1/admin/reassociations",
+                    "/api/2026-10-14/admin/reassociations",
                     None,
                     &[("offset", offset.to_string()), ("limit", "48".into())],
                     &[],
@@ -1756,14 +1777,14 @@ impl UiClient {
                     return Err(invalid("Confirmation de réassociation invalide."));
                 }
                 self.profile()?;
-                self.request(HttpMethod::POST,"/api/v1/admin/reassociations",Some(&json!({"confirmed":true,"source_id":source_id,"target_id":target_id,"expected_source_revision":expected_source_revision,"expected_target_revision":expected_target_revision,"expected_epoch":expected_epoch})),&[],&[])
+                self.request(HttpMethod::POST,"/api/2026-10-14/admin/reassociations",Some(&json!({"confirmed":true,"source_id":source_id,"target_id":target_id,"expected_source_revision":expected_source_revision,"expected_target_revision":expected_target_revision,"expected_epoch":expected_epoch})),&[],&[])
             }
             UiCommand::FingerprintStatus { media_id } => {
                 valid_id(&media_id)?;
                 self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/admin/media/{media_id}/fingerprint"),
+                    &format!("/api/2026-10-14/admin/media/{media_id}/fingerprint"),
                     None,
                     &[],
                     &[],
@@ -1780,7 +1801,7 @@ impl UiClient {
                 self.profile()?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/admin/media/{media_id}/fingerprint"),
+                    &format!("/api/2026-10-14/admin/media/{media_id}/fingerprint"),
                     Some(&json!({"complete":true})),
                     &[],
                     &[],
@@ -1794,7 +1815,7 @@ impl UiClient {
                     .as_ref()
                     .ok_or_else(|| invalid("Serveur absent."))?;
                 let data = self.runtime.block_on(c.transport.get_binary(
-                    &format!("/api/v1/profiles/{p}/media/{media_id}/artwork"),
+                    &format!("/api/2026-10-14/profiles/{p}/media/{media_id}/artwork"),
                     &[],
                     8 * 1024 * 1024,
                 ))?;
@@ -1810,7 +1831,7 @@ impl UiClient {
                     .as_ref()
                     .ok_or_else(|| invalid("Serveur absent."))?;
                 let data = self.runtime.block_on(c.transport.get_binary(
-                    &format!("/api/v1/profiles/{p}/sagas/{id}/artwork"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas/{id}/artwork"),
                     &[],
                     8 * 1024 * 1024,
                 ))?;
@@ -1828,7 +1849,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{p}/sagas/{id}/poster/member"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas/{id}/poster/member"),
                     Some(&json!({"expected_revision":expected_revision,"media_id":media_id})),
                     &[],
                     &[],
@@ -1839,7 +1860,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/profiles/{p}/sagas/{id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas/{id}"),
                     None,
                     &[],
                     &[],
@@ -1849,7 +1870,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/profiles/{p}/sagas"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas"),
                     Some(&json!({"name":name})),
                     &[],
                     &[],
@@ -1864,7 +1885,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{p}/sagas/{id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas/{id}"),
                     Some(&json!({"expected_revision":expected_revision,"name":name})),
                     &[],
                     &[],
@@ -1880,7 +1901,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/profiles/{p}/sagas/{id}/members"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas/{id}/members"),
                     Some(&json!({"expected_revision":expected_revision,"media_ids":media_ids})),
                     &[],
                     &[],
@@ -1896,7 +1917,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::DELETE,
-                    &format!("/api/v1/profiles/{p}/sagas/{id}/members"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas/{id}/members"),
                     Some(&json!({"expected_revision":expected_revision,"media_ids":[media_id]})),
                     &[],
                     &[],
@@ -1912,7 +1933,7 @@ impl UiClient {
                 validate_media_ids(&media_ids)?;
                 validate_media_ids(&expected_order)?;
                 let p = self.profile()?;
-                self.request(HttpMethod::PUT,&format!("/api/v1/profiles/{p}/sagas/{id}/order"),Some(&json!({"expected_revision":expected_revision,"expected_order":expected_order,"media_ids":media_ids})),&[],&[])
+                self.request(HttpMethod::PUT,&format!("/api/2026-10-14/profiles/{p}/sagas/{id}/order"),Some(&json!({"expected_revision":expected_revision,"expected_order":expected_order,"media_ids":media_ids})),&[],&[])
             }
             UiCommand::DeleteSaga {
                 id,
@@ -1922,7 +1943,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::DELETE,
-                    &format!("/api/v1/profiles/{p}/sagas/{id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas/{id}"),
                     Some(&json!({"expected_revision":expected_revision})),
                     &[],
                     &[],
@@ -1933,7 +1954,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/profiles/{p}/media/{media_id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/media/{media_id}"),
                     None,
                     &[],
                     &[],
@@ -1969,7 +1990,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{p}/media/{media_id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/media/{media_id}"),
                     Some(&Value::Object(object)),
                     &[],
                     &[],
@@ -1982,7 +2003,7 @@ impl UiClient {
                 let selector = series_selector_query(&name);
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/profiles/{p}/series/{segment}"),
+                    &format!("/api/2026-10-14/profiles/{p}/series/{segment}"),
                     None,
                     &selector,
                     &[],
@@ -2000,7 +2021,7 @@ impl UiClient {
                 let selector = series_selector_query(&series);
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{p}/series/{segment}"),
+                    &format!("/api/2026-10-14/profiles/{p}/series/{segment}"),
                     Some(&payload),
                     &selector,
                     &[],
@@ -2011,7 +2032,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/profiles/{p}/media/{media_id}/related"),
+                    &format!("/api/2026-10-14/profiles/{p}/media/{media_id}/related"),
                     None,
                     &[],
                     &[],
@@ -2021,7 +2042,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/profiles/{p}/sagas"),
+                    &format!("/api/2026-10-14/profiles/{p}/sagas"),
                     None,
                     &[],
                     &[],
@@ -2031,7 +2052,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/profiles/{p}/playlists"),
+                    &format!("/api/2026-10-14/profiles/{p}/playlists"),
                     None,
                     &[],
                     &[],
@@ -2042,7 +2063,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/profiles/{p}/playlists/{id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/playlists/{id}"),
                     None,
                     &[],
                     &[],
@@ -2055,7 +2076,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/profiles/{p}/playlists"),
+                    &format!("/api/2026-10-14/profiles/{p}/playlists"),
                     Some(&json!({"name":name,"media_id":media_id})),
                     &[],
                     &[],
@@ -2071,7 +2092,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::POST,
-                    &format!("/api/v1/profiles/{p}/playlists/{id}/members"),
+                    &format!("/api/2026-10-14/profiles/{p}/playlists/{id}/members"),
                     Some(&json!({"expected_revision":expected_revision,"media_ids":media_ids})),
                     &[],
                     &[],
@@ -2087,7 +2108,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::DELETE,
-                    &format!("/api/v1/profiles/{p}/playlists/{id}/members/{media_id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/playlists/{id}/members/{media_id}"),
                     Some(&json!({"expected_revision":expected_revision})),
                     &[],
                     &[],
@@ -2103,14 +2124,14 @@ impl UiClient {
                 validate_media_ids(&media_ids)?;
                 validate_media_ids(&expected_order)?;
                 let p = self.profile()?;
-                self.request(HttpMethod::PUT,&format!("/api/v1/profiles/{p}/playlists/{id}/order"),Some(&json!({"expected_revision":expected_revision,"expected_order":expected_order,"media_ids":media_ids})),&[],&[])
+                self.request(HttpMethod::PUT,&format!("/api/2026-10-14/profiles/{p}/playlists/{id}/order"),Some(&json!({"expected_revision":expected_revision,"expected_order":expected_order,"media_ids":media_ids})),&[],&[])
             }
             UiCommand::DeletePlaylist { id } => {
                 valid_id(&id)?;
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::DELETE,
-                    &format!("/api/v1/profiles/{p}/playlists/{id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/playlists/{id}"),
                     None,
                     &[],
                     &[],
@@ -2125,7 +2146,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{p}/playlists/{id}"),
+                    &format!("/api/2026-10-14/profiles/{p}/playlists/{id}"),
                     Some(&json!({"expected_revision":expected_revision,"name":name})),
                     &[],
                     &[],
@@ -2143,7 +2164,7 @@ impl UiClient {
                 let p = self.profile()?;
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{p}/media/{media_id}/rating"),
+                    &format!("/api/2026-10-14/profiles/{p}/media/{media_id}/rating"),
                     Some(&json!({"rating":rating,"scope":scope})),
                     &[],
                     &[],
@@ -2286,7 +2307,7 @@ impl UiClient {
             UiCommand::CreateProfile { name } => {
                 self.request(
                     HttpMethod::POST,
-                    "/api/v1/profiles",
+                    "/api/2026-10-14/profiles",
                     Some(&json!({"name":name,"initial_preferences":{"audio_language":"en","subtitle_language":"en","autoplay_seconds":20}})),
                     &[],
                     &[],
@@ -2301,7 +2322,7 @@ impl UiClient {
                 valid_id(&id)?;
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{id}"),
+                    &format!("/api/2026-10-14/profiles/{id}"),
                     Some(&json!({"name":name,"expected_revision":expected_revision})),
                     &[],
                     &[],
@@ -2315,7 +2336,7 @@ impl UiClient {
                 }
                 self.request(
                     HttpMethod::DELETE,
-                    &format!("/api/v1/profiles/{id}"),
+                    &format!("/api/2026-10-14/profiles/{id}"),
                     None,
                     &[],
                     &[("x-chill-confirm-delete", id.clone())],
@@ -2332,7 +2353,7 @@ impl UiClient {
                     library_update_body(video_root, additional_video_roots, expected_revision);
                 self.request(
                     HttpMethod::PUT,
-                    "/api/v1/admin/library",
+                    "/api/2026-10-14/admin/library",
                     Some(&body),
                     &[],
                     &[],
@@ -2345,7 +2366,7 @@ impl UiClient {
                 autoplay_seconds,
             } => {
                 let profile = self.profile()?;
-                self.request(HttpMethod::PUT,&format!("/api/v1/profiles/{profile}/preferences"),Some(&json!({"audio_language":audio_language,"subtitle_language":subtitle_language,"autoplay_seconds":autoplay_seconds})),&[],&[])?;
+                self.request(HttpMethod::PUT,&format!("/api/2026-10-14/profiles/{profile}/preferences"),Some(&json!({"audio_language":audio_language,"subtitle_language":subtitle_language,"autoplay_seconds":autoplay_seconds})),&[],&[])?;
                 self.view()
             }
             UiCommand::Catalog {
@@ -2365,7 +2386,7 @@ impl UiClient {
                 )?;
                 self.request(
                     HttpMethod::GET,
-                    &format!("/api/v1/profiles/{profile}/catalog"),
+                    &format!("/api/2026-10-14/profiles/{profile}/catalog"),
                     None,
                     &query,
                     &[],
@@ -2376,7 +2397,7 @@ impl UiClient {
                 let profile = self.profile()?;
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{profile}/media/{media_id}/watched"),
+                    &format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"),
                     Some(&json!({"watched":watched})),
                     &[],
                     &[],
@@ -2387,7 +2408,7 @@ impl UiClient {
                 let profile = self.profile()?;
                 self.request(
                     HttpMethod::PUT,
-                    &format!("/api/v1/profiles/{profile}/media/{media_id}/rating"),
+                    &format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/rating"),
                     Some(&json!({"rating":rating})),
                     &[],
                     &[],
@@ -2395,14 +2416,18 @@ impl UiClient {
             }
             UiCommand::StartScan => self.request(
                 HttpMethod::POST,
-                "/api/v1/admin/scan",
+                "/api/2026-10-14/admin/scan",
                 Some(&json!({})),
                 &[],
                 &[],
             ),
-            UiCommand::ScanStatus => {
-                self.request(HttpMethod::GET, "/api/v1/admin/scan", None, &[], &[])
-            }
+            UiCommand::ScanStatus => self.request(
+                HttpMethod::GET,
+                "/api/2026-10-14/admin/scan",
+                None,
+                &[],
+                &[],
+            ),
             UiCommand::Theme { theme } => {
                 if !["system", "light", "dark"].contains(&theme.as_str()) {
                     return Err(invalid("Thème invalide."));
