@@ -2,7 +2,7 @@
 
 2026-10-14 · US-027/MIG-002 · complément du contrat ARCHIVE-API.
 
-`POST /api/v1/admin/exports` répond désormais **202**, `{export_id,state:"building",bytes:0,entries:0}`. `GET /api/v1/admin/exports/{id}/status` retourne `building`, `ready`, `failed` ou `cancelled`, les tailles et un code d’erreur sûr. Le téléchargement ZIP reste `GET /api/v1/admin/exports/{id}`. `DELETE /api/v1/admin/exports/{id}/cancel` annule le travail ou retire l’export prêt, sans modifier la bibliothèque.
+`POST /api/2026-10-14/admin/exports` répond désormais **202**, `{export_id,state:"building",bytes:0,entries:0}`. `GET /api/2026-10-14/admin/exports/{id}/status` retourne `building`, `ready`, `failed` ou `cancelled`, les tailles et un code d’erreur sûr. Le téléchargement ZIP reste `GET /api/2026-10-14/admin/exports/{id}`. `DELETE /api/2026-10-14/admin/exports/{id}/cancel` annule le travail ou retire l’export prêt, sans modifier la bibliothèque.
 
 Un seul vrai worker disque par serveur, conservant son permis jusqu’à sa sortie ; six résultats maximum, expiration après quinze minutes. Les fichiers inconnus comptent dans le quota mais ne sont jamais supprimés. Snapshot SQLite par API Backup, connexion séparée en lecture seule, WAL inclus de façon cohérente ; aucune sérialisation sur l’acteur interactif. Le document parcourt les médias ligne par ligne depuis le snapshot, sans `Vec<Media>` de toute la bibliothèque. Deux passes sur les affiches immuables ne gardent qu’une image en mémoire. Données JSON 64 Mio, ZIP 1 Gio, staging 2 Gio, snapshot 256 Mio ; arrêt sur dépassement ou annulation. Publication seulement après flush/fsync ; cleanup RAII des fichiers incomplets.
 

@@ -19,7 +19,7 @@ Révision `CC-DOC-001`, `ACCEPTED` dans [G-02](../gates/G-02-CC-DOC-001.md). Sta
 
 Contraintes FK, transactions atomiques, validation des vitesses et délais ; note 1 à 5 ou absente. Supprimer un profil retire ses états et playlists, révoque son bail et laisse catalogue/sagas/vidéos intacts. Les notes série/saison gardent le comportement Cinéfolio mais seulement pour le profil et les épisodes explicitement présents ; une note commune de série n'est pas créée.
 
-## API HTTPS v1
+## API HTTPS 2026-10-14
 
 | Groupe | Opérations prévues |
 | --- | --- |

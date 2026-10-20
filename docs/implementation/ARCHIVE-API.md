@@ -2,8 +2,8 @@
 
 2026-10-14 · US-027/028 partiellement implémentées, pas de livraison complète revendiquée.
 
-- POST `/api/v1/admin/exports` : prépare l'archive et renvoie `{export_id,bytes,entries,state:"ready"}` ; GET `/exports/{id}` : téléchargement ZIP. Un export inachevé n'est jamais téléchargeable.
-- POST `/api/v1/admin/imports` : corps ZIP binaire streamé vers staging privé ; aperçu `{preview_id,export_id,counts,profiles,roots:["library"],apply_supported:true}`. Aucune donnée de destination modifiée.
+- POST `/api/2026-10-14/admin/exports` : prépare l'archive et renvoie `{export_id,bytes,entries,state:"ready"}` ; GET `/exports/{id}` : téléchargement ZIP. Un export inachevé n'est jamais téléchargeable.
+- POST `/api/2026-10-14/admin/imports` : corps ZIP binaire streamé vers staging privé ; aperçu `{preview_id,export_id,counts,profiles,roots:["library"],apply_supported:true}`. Aucune donnée de destination modifiée.
 - POST `/imports/{preview_id}/plan` : `{profile_map:{source_uuid:{kind:"existing",id:destination_uuid,expected_revision:1}|{kind:"new",name:"Nom"}},root_prefix:"",conflict_policy:"keep_destination"|"replace_conflicting"}`. Racine bibliothèque configurée obligatoire. Réponse `{plan_id,epoch,root_revision,profiles,conflicts,conflict_count,already_imported,apply_supported:true}` ; aperçu des conflits limité100 lignes, total distinct fourni. Plan complet privé, jamais accepté du client.
 - POST `/imports/{preview_id}/apply` : `{plan_id,confirmed:true}`. Retour `{already_imported,media,profiles,epoch}`. Plan périmé HTTP409 `IMPORT_PLAN_STALE` ; pas d'import partiel. Correspondance complète/injective, répétition idempotente, aucun chemin libre/vidéo/source touché.
 - DELETE `/imports/{preview_id}` : annulation204, nettoyage ZIP/plan exacts. Opération simultanée409 `IMPORT_BUSY`. Durée15min, plafond6 aperçus. Redémarrage invalide les poignées.

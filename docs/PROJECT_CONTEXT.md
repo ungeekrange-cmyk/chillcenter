@@ -1,5 +1,23 @@
 # Contexte du projet
 
+## v0.7.1 en préparation — 20 octobre 2026
+
+Demande explicite : découverte mDNS au lancement Mac, saisie manuelle masquée
+derrière un lien, API unique2026-10-14 avec suppression de l’aliasv1. Mac/serveur
+0.7.1 construits ; aucun remplacement Pi de ce lot encore exécuté à ce stade.
+Le web0.7.0 reste compatible (requêtes datées, tests182/182), donc ses octets
+n’ont pas à être remplacés. NAS, réglages et TLS restent protégés.
+Runtime figé `fdb80b5`, Linux SHA256 `8cf14421630cfd552e3af4ed340de107c0570046cc5ecb2784936ca8c552491c`.
+DMG Mac0.7.1 SHA256 `a752700170d40b137d74597beb073f29bb4f5aebcd157c6f9ee244c9ac908bfd`.
+L’opérateur de déploiement séparé poursuit ses revues ; ne pas confondre un
+build validé avec un déploiement ou une découverte LAN réellement vérifiée.
+Les rapports R1–R3 conservent leurs refus historiques et leurs périmètres exacts.
+
+Pâques/Saint-Valentin : fonds approuvés, animations proposées seulement dans
+[la maquette](design/concepts/2026-10-20/events.html), aucun pack runtime modifié.
+Pâques occidentales calculées chaque année,J−30 ; Saint-Valentin,J−14.
+Retour à la saison le lendemain de l’événement. ADR0030/0031 décrivent ce lot.
+
 ## Pi : serveur et web v0.7 installés — 20 octobre 2026
 
 Demande humaine explicite : sauvegarder puis mettre à jour les deux composants,

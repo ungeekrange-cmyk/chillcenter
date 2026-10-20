@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse, hashlib, importlib.util, json, os, pathlib, tempfile, unittest
+from contextlib import ExitStack
+from types import SimpleNamespace
 from unittest import mock
 
 SOURCE=pathlib.Path(__file__).with_name("pi-server-binary-operator.py")
@@ -14,6 +16,27 @@ class Guards(unittest.TestCase):
  def tearDown(self): self.t.cleanup()
  def receipt(self,state="prepared"):
   op.atomic_json(self.j,{"state":state,"service":"fixture","binary":str(self.bin),"old_copy":str(self.old),"new_stage":str(self.new),"old_sha":digest(b"old"),"new_sha":digest(b"new"),"maintenance_nonce":"a"*32})
+ def root_filesystem(self):
+  # Real temporary files/modes/links/fsync, simulated UID only; never /run.
+  stack=ExitStack(); real_stat,real_lstat=os.stat,os.lstat
+  def rooted(fn):
+   def inspect(*args,**kwargs):
+    s=fn(*args,**kwargs)
+    fields={k:getattr(s,k) for k in dir(s) if k.startswith("st_")}; fields["st_uid"]=0
+    return SimpleNamespace(**fields)
+   return inspect
+  stack.enter_context(mock.patch.object(op,"MAINTENANCE_PATH",self.root/"runtime"/"maintenance"))
+  stack.enter_context(mock.patch.object(op.os,"stat",side_effect=rooted(real_stat)))
+  stack.enter_context(mock.patch.object(op.os,"lstat",side_effect=rooted(real_lstat)))
+  stack.enter_context(mock.patch.object(op.os,"geteuid",return_value=0))
+  stack.enter_context(mock.patch.object(op.os,"chown"))
+  return stack
+ def deploy_arguments(self):
+  return ["operator","deploy","--base-url","https://fixture","--service","fixture",
+   "--binary",str(self.bin),"--candidate",str(self.new),"--config",str(self.old),
+   "--cert",str(self.old),"--key",str(self.old),"--data-dir",str(self.root),
+   "--web-dir",str(self.root),"--rollback-dir",str(self.rb),
+   "--old-sha",digest(b"old"),"--new-sha",digest(b"new")]
  def test_atomic_journal_roundtrip_and_private_root(self):
   self.receipt(); self.assertEqual(op.journal_load(self.j)["state"],"prepared")
  def test_journal_allows_installed_binary_outside_rollback_root(self):
@@ -71,4 +94,65 @@ class Guards(unittest.TestCase):
   with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"owned_maintenance",return_value=None), mock.patch.object(op,"active",return_value=False), mock.patch.object(op,"service"):
    with self.assertRaises(op.Refusal): op.recover(args)
   self.assertEqual(self.bin.read_bytes(),b"unknown")
+ def test_real_maintenance_helpers_survive_restrictive_umask(self):
+  with self.root_filesystem():
+   previous=os.umask(0o077)
+   try: token=op.acquire_maintenance(None,"a"*32)
+   finally: os.umask(previous)
+   self.assertEqual(op.MAINTENANCE_PATH.parent.stat().st_mode & 0o777,0o755)
+   self.assertEqual(op.MAINTENANCE_PATH.stat().st_mode & 0o777,0o600)
+   self.assertEqual(op.owned_maintenance("a"*32),token)
+   op.release_maintenance(token)
+   self.assertFalse(op.MAINTENANCE_PATH.exists())
+ def test_existing_writable_maintenance_parent_is_rejected(self):
+  with self.root_filesystem():
+   op.MAINTENANCE_PATH.parent.mkdir(); os.chmod(op.MAINTENANCE_PATH.parent,0o777)
+   with self.assertRaisesRegex(op.Refusal,"maintenance_parent_invalid"): op.acquire_maintenance(None,"a"*32)
+   self.assertFalse(op.MAINTENANCE_PATH.exists())
+ def test_foreign_nonce_is_never_removed(self):
+  with self.root_filesystem():
+   token=op.acquire_maintenance(None,"a"*32)
+   with self.assertRaises(op.Refusal): op.owned_maintenance("b"*32)
+   with self.assertRaises(op.Refusal): op.release_maintenance((*token[:2],"b"*32))
+   self.assertTrue(op.MAINTENANCE_PATH.exists()); op.release_maintenance(token)
+ def test_published_flag_is_recoverable_from_its_journal_nonce(self):
+  self.receipt("quiescing")
+  args=argparse.Namespace(binary=self.bin,config=self.old,cert=self.old,key=self.old,
+   data_dir=self.root,web_dir=self.root,rollback_dir=self.rb,service="fixture",
+   old_sha=digest(b"old"),new_sha=digest(b"new"))
+  with self.root_filesystem(),mock.patch.object(op,"old_health"),mock.patch.object(op,"service") as service:
+   op.acquire_maintenance(None,"a"*32); op.recover(args)
+   self.assertFalse(op.MAINTENANCE_PATH.exists()); service.assert_not_called()
+  self.assertEqual(op.journal_load(self.j)["state"],"rollback_complete")
+ def test_actual_quiescence_helper_requires_matching_fresh_generation(self):
+  with self.root_filesystem():
+   token=op.acquire_maintenance(None,"a"*32); proof=self.root/"updates"; proof.mkdir()
+   (proof/"quiescence.json").write_text(json.dumps({"updated_unix":int(op.time.time()),
+    "maintenance_generation_ns":str(op.MAINTENANCE_PATH.stat().st_mtime_ns),
+    "quiescing":True,"busy":False,"active_mutations":0}))
+   args=argparse.Namespace(data_dir=self.root,base_url="https://fixture",cert=self.old)
+   with mock.patch.object(op,"strict_json",return_value={"busy":False,"active_mutations":0,"quiescing":True}): op.quiescent(args,token)
+   op.release_maintenance(token)
+ def test_true_main_success_swaps_only_binary_and_releases_owned_flag(self):
+  baseline={"schema":3,"digest":"fixture","tables":[]}; calls=[]
+  with self.root_filesystem(),mock.patch.object(op.sys,"argv",self.deploy_arguments()),\
+   mock.patch.object(op,"quiet"),mock.patch.object(op,"elf_aarch64"),\
+   mock.patch.object(op,"snapshot_db",return_value=baseline),mock.patch.object(op,"invariant",return_value={"fixture":"unchanged"}),\
+   mock.patch.object(op,"quiescent"),mock.patch.object(op,"backup",return_value=(self.root/"backup",baseline)),\
+   mock.patch.object(op,"service",side_effect=lambda _s,a:calls.append(a)),\
+   mock.patch.object(op,"active",side_effect=[False,True]),mock.patch.object(op,"v071"):
+   op.main(); self.assertFalse(op.MAINTENANCE_PATH.exists())
+  self.assertEqual(calls,["stop","start"]); self.assertEqual(self.bin.read_bytes(),b"new")
+  self.assertEqual(op.journal_load(self.j)["state"],"complete")
+ def test_failed_rollback_health_keeps_maintenance_and_unresolved_receipt(self):
+  baseline={"schema":3,"digest":"fixture","tables":[]}
+  with self.root_filesystem(),mock.patch.object(op.sys,"argv",self.deploy_arguments()),\
+   mock.patch.object(op,"quiet"),mock.patch.object(op,"elf_aarch64"),\
+   mock.patch.object(op,"snapshot_db",return_value=baseline),mock.patch.object(op,"invariant",return_value={}),\
+   mock.patch.object(op,"quiescent"),mock.patch.object(op,"backup",side_effect=op.Refusal("backup_failed")),\
+   mock.patch.object(op,"service"),mock.patch.object(op,"active",return_value=False),\
+   mock.patch.object(op,"recover",side_effect=op.Refusal("rollback_health_failed")):
+   with self.assertRaisesRegex(op.Refusal,"rollback_health_failed"): op.main()
+   self.assertTrue(op.MAINTENANCE_PATH.exists())
+   self.assertEqual(op.journal_load(self.j)["state"],"stopping")
 if __name__=="__main__": unittest.main(verbosity=2)

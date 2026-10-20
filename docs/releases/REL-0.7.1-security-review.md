@@ -91,4 +91,3 @@ informatif : un acteur déjà présent sur le même segment multicast peut pertu
 ou usurper la découverte. ADR-0030 le traite comme un indice non fiable, avec
 HTTPS/SAN/SPKI/UUID obligatoires, bornes strictes et repli manuel ; ce risque ne
 constitue pas une nouvelle acceptation de confiance.
-
