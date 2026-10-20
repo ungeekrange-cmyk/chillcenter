@@ -36,12 +36,29 @@ class Guards(unittest.TestCase):
  def test_web_digest_refuses_symlink(self):
   web=self.root/"web"; web.mkdir(); (web/"bad").symlink_to("/etc/passwd")
   with self.assertRaises(op.Refusal): op.web_digest(web)
+ def test_backup_returns_receipt_path_and_validated_baseline(self):
+  args=argparse.Namespace(service_user="fixture",binary=self.bin,config=self.old,data_dir=self.root)
+  proc=mock.Mock(returncode=0); proc.communicate.return_value=("Sauvegarde terminée : /private/snapshot\n","")
+  baseline={"schema":3,"digest":"x","tables":[]}
+  with mock.patch.object(op.subprocess,"Popen",return_value=proc), mock.patch.object(op,"validate_backup",return_value=baseline):
+   receipt,got=op.backup(args)
+  self.assertEqual((receipt,got),(pathlib.Path("/private/snapshot"),baseline))
+ def test_durable_replace_fsyncs_both_parent_directories(self):
+  src=self.rb/"source"; dst=self.root/"destination"; src.write_bytes(b"x"); seen=[]
+  with mock.patch.object(op.os,"fsync",side_effect=lambda fd:seen.append(fd)):
+   op.durable_replace(src,dst)
+  self.assertEqual(dst.read_bytes(),b"x"); self.assertEqual(len(seen),2)
  def test_recover_stops_new_service_before_restoring_external_binary(self):
   self.bin.write_bytes(b"new"); self.receipt("swapped"); calls=[]
   args=argparse.Namespace(rollback_dir=self.rb,service="fixture",base_url="https://fixture",cert=self.old)
   with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"strict_json",return_value={}), mock.patch.object(op,"active",side_effect=[True,True]), mock.patch.object(op,"service",side_effect=lambda _s,a:calls.append(a)):
    op.recover(args)
   self.assertEqual(calls,["stop","start"]); self.assertEqual(self.bin.read_bytes(),b"old")
+ def test_quiescing_abort_never_stops_active_old_service(self):
+  self.receipt("quiescing"); args=argparse.Namespace(rollback_dir=self.rb,service="fixture",base_url="https://fixture",cert=self.old)
+  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"active",return_value=True), mock.patch.object(op,"service") as svc:
+   op.recover(args)
+  svc.assert_not_called()
  def test_recover_restores_missing_binary_only_from_pinned_old_copy(self):
   self.bin.unlink(); self.receipt("stopping")
   args=argparse.Namespace(rollback_dir=self.rb,service="fixture",base_url="https://fixture",cert=self.old)

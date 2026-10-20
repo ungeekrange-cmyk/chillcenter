@@ -115,6 +115,10 @@ def quiet(args):
     if args.binary.name in ss: fail("active_client_socket_refusing_stop")
 def acquire_maintenance(args):
     flag=pathlib.Path("/run/chillcenter-update/maintenance")
+    parent=flag.parent
+    if not parent.exists(): parent.mkdir(mode=0o755)
+    ps=os.stat(parent)
+    if ps.st_uid!=0 or not stat.S_ISDIR(ps.st_mode) or stat.S_ISLNK(os.lstat(parent).st_mode): fail("maintenance_parent_invalid")
     try: fd=os.open(flag,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     except FileExistsError: fail("preexisting_maintenance_refused")
     try:
@@ -158,7 +162,12 @@ def backup(args):
     if child.returncode: fail("backup_failed_or_timed_out")
     m=re.fullmatch(r"Sauvegarde terminée : (.+)",out.strip())
     if not m: fail("backup_receipt_refused")
-    root=pathlib.Path(m.group(1)); validate_backup(root,args.data_dir); return root
+    root=pathlib.Path(m.group(1)); return root,validate_backup(root,args.data_dir)
+def durable_replace(src,dst):
+    """Same-filesystem rename with both file and parent directory durability."""
+    os.replace(src,dst)
+    for p in {pathlib.Path(src).parent,pathlib.Path(dst).parent}:
+        fd=os.open(p,os.O_RDONLY); os.fsync(fd); os.close(fd)
 def validate_backup(root,data):
     s=os.lstat(root)
     if not stat.S_ISDIR(s.st_mode) or stat.S_ISLNK(s.st_mode) or stat.S_IMODE(s.st_mode)&0o077: fail("backup_not_private")
@@ -194,17 +203,17 @@ def recover(args):
     current=sha(binary) if binary.exists() else None
     if d["state"] in {"complete","rollback_complete"}:
         print("recovery=PASS"); return
-    if d["state"]=="prepared":
+    if d["state"] in {"prepared","quiescing"}:
         if current!=d["old_sha"] or not active(args.service): fail("prepared_recovery_unsafe")
     else:
         # A new process can be serving from a deleted/replaced inode: stop first.
         if active(args.service): service(args.service,"stop")
         if current==d["new_sha"]:
             if not old.exists() or sha(old)!=d["old_sha"]: fail("rollback_copy_missing")
-            os.replace(binary,args.rollback_dir/("failed-"+str(int(time.time())))); os.replace(old,binary)
+            durable_replace(binary,args.rollback_dir/("failed-"+str(int(time.time())))); durable_replace(old,binary)
         elif current is None:
             if not old.exists() or sha(old)!=d["old_sha"]: fail("rollback_copy_missing")
-            os.replace(old,binary)
+            durable_replace(old,binary)
         elif current!=d["old_sha"]: fail("unknown_binary_not_overwritten")
         if sha(binary)!=d["old_sha"]: fail("rollback_hash_failed")
         service(args.service,"start")
@@ -241,9 +250,9 @@ def main():
         token=acquire_maintenance(a); atomic_json(j,{**journal_load(j),"state":"quiescing"}); quiescent(a,token)
         atomic_json(j,{**journal_load(j),"state":"stopping"}); service(a.service,"stop")
         if active(a.service): fail("service_failed_to_stop")
-        saved=backup(a)
+        backup_path,saved=backup(a)
         if saved!=before: fail("backup_not_pre_swap_baseline")
-        os.replace(a.binary,old); os.replace(stage,a.binary); atomic_json(j,{**journal_load(j),"state":"swapped"}); service(a.service,"start")
+        durable_replace(a.binary,old); durable_replace(stage,a.binary); atomic_json(j,{**journal_load(j),"state":"swapped"}); service(a.service,"start")
         if not active(a.service): fail("service_failed_to_start")
         v071(a.base_url,a.cert)
         if snapshot_db(db)!=before or invariant([a.config,a.cert,a.key,a.data_dir/"tmdb-token",a.data_dir/"library.json"],a.service,a.web_dir)!=inv: fail("persistent_invariant_changed")
