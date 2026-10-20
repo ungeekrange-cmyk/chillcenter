@@ -229,3 +229,51 @@ The authorized deployment may proceed only with the exact reviewed commit,
 operator hash, target/path set, pinned receipt values and idle confirmation.
 This source approval does not claim that staging, mutation or independent
 post-deployment verification has already occurred.
+
+---
+
+## BUG-0118 scoped re-review — `815b523a383e3d0a61e1b116f27495e1ca2584d0`
+
+**`APPROVED`** for exact corrected source commit
+`815b523a383e3d0a61e1b116f27495e1ca2584d0`, operator SHA-256
+`4dd8451281a6a3037861fab15eccaff8623273b558ae167dadbad51e02ed6cfb`.
+This is a narrow delta approval over the previously approved
+`24f62ac2f4da95fd51bf01f81ab934b35762f888`; it supersedes that source gate
+only for the exact commit above.
+
+The first controlled deployment reached healthy new payloads but correctly
+rolled back when the persistent-state guard compared `systemctl show
+ExecStart`. That property includes runtime process metadata, so a normal
+restart changed the fingerprint although config, certificate, library and
+token bytes were unchanged. The old pair was independently reported active
+and healthy after rollback; no failed attempt is treated as delivery evidence.
+
+The scoped correction is sound:
+
+- runtime `ExecStart` metadata is removed from the persistent comparison;
+- static `User`, `Group`, and `FragmentPath` remain compared;
+- `systemctl cat "$CC_SERVICE" | sha256sum` adds a byte-level guard over the
+  effective unit and drop-in content; with `set -o pipefail`, failure to read
+  the unit fails the fingerprint rather than silently weakening it;
+- the full-flow fixture now performs a restart-generation change and still
+  reaches `deployment=PASS`, while the previously protected config, library
+  and token bytes remain identical;
+- no artifact, signature, rollback, idle, backup, recovery, account, unit,
+  helper/timer, TLS/config, mount or NAS boundary changed.
+
+Independent bounded checks against the exact commit:
+
+```text
+git diff --check 24f62ac2f4da95fd51bf01f81ab934b35762f888..HEAD
+# PASS
+bash -n scripts/pi-v07-legacy-server-web-operator.sh
+# PASS
+bash scripts/pi-v07-legacy-server-web-operator.sh --self-test
+# pi_v07_legacy_operator_self_test=PASS
+python3 scripts/test-pi-v07-legacy-operator.py
+# Ran 7 tests ... OK
+```
+
+No reviewer Pi/SSH/NAS operation was performed. A fresh backup and the same
+independent post-deployment settings/service verification remain required for
+the authorized retry.

@@ -2,6 +2,11 @@
 
 ## Lecture de l'état courant
 
+20 octobre 2026, déploiement Pi v0.7 : [BUG0118 empreinte d'unité systemd](BUG-0118-pi-unit-runtime-fingerprint.md)
+confirmé dans l'opérateur de livraison. Premier essai revenu automatiquement
+à l'ancienne paire serveur/web ; sauvegarde conservée et correction ciblée en
+cours. Ne pas confondre une tentative restaurée avec une mise à jour réussie.
+
 20 octobre 2026, clôture : [BUG0113 updater](BUG-0113-component-updater-release-gate.md)
 **FIXED / VERIFIED_LOCAL**, huit HIGH et quatre défauts fonctionnels clos,
 revues code/sécurité/tests favorables sur `3e174b9`. Dernier contrôle natif
