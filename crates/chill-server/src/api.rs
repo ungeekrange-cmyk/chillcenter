@@ -6,7 +6,7 @@ use crate::{
 use axum::{
     Json, Router,
     body::Body,
-    extract::{OriginalUri, Path, State},
+    extract::{Path, State},
     http::{HeaderMap, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -227,8 +227,7 @@ pub fn router_http(state: AppState) -> Router {
 fn build_router(state: AppState, scheme: Scheme) -> Router {
     let api = api_routes();
     Router::new()
-        .nest(crate::api_version::PREFIX, api.clone())
-        .nest("/api/v1", api)
+        .nest(crate::api_version::PREFIX, api)
         .fallback(crate::web_static::serve)
         .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), same_origin))
@@ -332,17 +331,14 @@ fn check_browser_origin_and_host(
     Ok(())
 }
 
-async fn server(
-    State(state): State<AppState>,
-    OriginalUri(uri): OriginalUri,
-) -> Result<Json<Value>, ApiError> {
+async fn server(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let certificate = state
         .certificate
         .lock()
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?
         .clone();
     Ok(Json(
-        json!({"server_id":certificate.server_id,"api_version":if uri.path().starts_with("/api/v1/"){json!(1)}else{json!(crate::api_version::VERSION)},"supported_api_versions":[crate::api_version::VERSION,"v1"],"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","multi_library_locations","catalog_pages","manual_personal_state","scan","playback_leases","media_range","progress","tmdb_configuration","tmdb_jobs","ai_filters","openapi"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
+        json!({"server_id":certificate.server_id,"api_version":crate::api_version::VERSION,"supported_api_versions":[crate::api_version::VERSION],"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","multi_library_locations","catalog_pages","manual_personal_state","scan","playback_leases","media_range","progress","tmdb_configuration","tmdb_jobs","ai_filters","openapi"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
     ))
 }
 
@@ -536,18 +532,24 @@ mod tests {
         let (_, a) = json_call(
             &app,
             "POST",
-            "/api/v1/profiles",
+            "/api/2026-10-14/profiles",
             json!({"name":"A","initial_preferences":{"autoplay_seconds":20}}),
         )
         .await;
-        let (_, b) = json_call(&app, "POST", "/api/v1/profiles", json!({"name":"B"})).await;
+        let (_, b) = json_call(
+            &app,
+            "POST",
+            "/api/2026-10-14/profiles",
+            json!({"name":"B"}),
+        )
+        .await;
         let a = a["id"].as_str().unwrap();
         let b = b["id"].as_str().unwrap();
         assert_eq!(
             json_call(
                 &app,
                 "GET",
-                &format!("/api/v1/profiles/{a}/preferences"),
+                &format!("/api/2026-10-14/profiles/{a}/preferences"),
                 Value::Null
             )
             .await
@@ -558,7 +560,7 @@ mod tests {
             json_call(
                 &app,
                 "GET",
-                &format!("/api/v1/profiles/{b}/preferences"),
+                &format!("/api/2026-10-14/profiles/{b}/preferences"),
                 Value::Null
             )
             .await
@@ -607,7 +609,7 @@ mod tests {
         let third = json_call(
             &app,
             "POST",
-            &format!("/api/v1/profiles/{b}/catalog/snapshot"),
+            &format!("/api/2026-10-14/profiles/{b}/catalog/snapshot"),
             json!({"known_revision":rev}),
         )
         .await;
@@ -632,7 +634,7 @@ mod tests {
             json_call(
                 &app,
                 "GET",
-                &format!("/api/v1/profiles/{b}/catalog/snapshot/{snapshot}?offset=100"),
+                &format!("/api/2026-10-14/profiles/{b}/catalog/snapshot/{snapshot}?offset=100"),
                 Value::Null
             )
             .await
@@ -672,7 +674,7 @@ mod tests {
                 &app,
                 "GET",
                 &format!(
-                    "/api/v1/profiles/{b}/catalog/snapshot/{snapshot}?offset={}",
+                    "/api/2026-10-14/profiles/{b}/catalog/snapshot/{snapshot}?offset={}",
                     usize::MAX
                 ),
                 Value::Null
@@ -752,7 +754,7 @@ mod tests {
                     },
                 )
                 .unwrap();
-            for version in ["2026-10-14", "v1"] {
+            for version in ["2026-10-14"] {
                 let endpoint = format!("/api/{version}/profiles/{}/series/{key}", profile.id);
                 for (suffix, tv) in [
                     ("", 2002),
@@ -832,7 +834,7 @@ mod tests {
         let before = store.catalog(&profile.id).unwrap();
         store.set_watched(&profile.id, &before[0].id, true).unwrap();
         let revision = store.common_revision().unwrap();
-        for version in ["2026-10-14", "v1"] {
+        for version in ["2026-10-14"] {
             let endpoint = format!("/api/{version}/profiles/{}/series/Doctor%20Who", profile.id);
             let (status, view) = json_call(&app, "GET", &endpoint, Value::Null).await;
             assert_eq!(status, StatusCode::OK);
@@ -880,7 +882,10 @@ mod tests {
             revision,
             "GET must not change the catalog"
         );
-        let endpoint = format!("/api/v1/profiles/{}/series/Doctor%20Who", profile.id);
+        let endpoint = format!(
+            "/api/2026-10-14/profiles/{}/series/Doctor%20Who",
+            profile.id
+        );
         let body = json!({"expected_revision":revision,"patch":{"name":"Doctor Who legacy","year":0,"genres":[],"overview":"Legacy batch description","cast":[],"directors":[]}});
         let (status, updated) = json_call(&app, "PUT", &endpoint, body.clone()).await;
         assert_eq!(status, StatusCode::OK);
@@ -942,7 +947,7 @@ mod tests {
             json_call(
                 &app,
                 "GET",
-                &format!("/api/v1/profiles/{}/catalog/revision", a.id),
+                &format!("/api/2026-10-14/profiles/{}/catalog/revision", a.id),
                 Value::Null
             )
             .await
@@ -970,8 +975,20 @@ mod tests {
     #[tokio::test]
     async fn catalog_changes_contract_paging_profile_isolation_and_real_delta() {
         let (dir, app) = setup();
-        let (_, a) = json_call(&app, "POST", "/api/v1/profiles", json!({"name":"Delta A"})).await;
-        let (_, b) = json_call(&app, "POST", "/api/v1/profiles", json!({"name":"Delta B"})).await;
+        let (_, a) = json_call(
+            &app,
+            "POST",
+            "/api/2026-10-14/profiles",
+            json!({"name":"Delta A"}),
+        )
+        .await;
+        let (_, b) = json_call(
+            &app,
+            "POST",
+            "/api/2026-10-14/profiles",
+            json!({"name":"Delta B"}),
+        )
+        .await;
         let a = a["id"].as_str().unwrap();
         let b = b["id"].as_str().unwrap();
         let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
@@ -1013,7 +1030,7 @@ mod tests {
             json_call(
                 &app,
                 "GET",
-                &format!("/api/v1/profiles/{b}/catalog/changes/{snapshot}?offset=100"),
+                &format!("/api/2026-10-14/profiles/{b}/catalog/changes/{snapshot}?offset=100"),
                 Value::Null
             )
             .await
@@ -1071,7 +1088,7 @@ mod tests {
         let d = store.create_profile("Delta D").unwrap();
         let mut active = Vec::new();
         for profile in [a, b, &c.id] {
-            let route = format!("/api/v1/profiles/{profile}/catalog/changes");
+            let route = format!("/api/2026-10-14/profiles/{profile}/catalog/changes");
             let (status, body) = json_call(&app, "POST", &route, json!({})).await;
             assert_eq!(status, StatusCode::OK);
             active.push((route, body["snapshot_id"].as_str().unwrap().to_owned()));
@@ -1079,7 +1096,7 @@ mod tests {
         let (status, _) = json_call(
             &app,
             "POST",
-            &format!("/api/v1/profiles/{}/catalog/changes", d.id),
+            &format!("/api/2026-10-14/profiles/{}/catalog/changes", d.id),
             json!({}),
         )
         .await;
@@ -1130,43 +1147,63 @@ mod tests {
             .unwrap()
     }
     #[tokio::test]
-    async fn dated_contract_and_legacy_alias_share_data_and_errors() {
+    async fn dated_contract_is_canonical_and_retired_alias_is_json_404() {
         let (_dir, app) = setup();
-        for (prefix, version) in [
-            (
-                crate::api_version::PREFIX,
-                json!(crate::api_version::VERSION),
-            ),
-            ("/api/v1", json!(1)),
-        ] {
+        let prefix = crate::api_version::PREFIX;
+        let response = app
+            .clone()
+            .oneshot(request("GET", &format!("{prefix}/server"), Value::Null))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["x-chill-api-version"],
+            crate::api_version::VERSION
+        );
+        let body: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(body["api_version"], crate::api_version::VERSION);
+        assert_eq!(
+            body["supported_api_versions"],
+            json!([crate::api_version::VERSION])
+        );
+        let spec = app
+            .clone()
+            .oneshot(request(
+                "GET",
+                &format!("{prefix}/openapi.json"),
+                Value::Null,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(spec.status(), StatusCode::OK);
+        let document: Value =
+            serde_json::from_slice(&spec.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        assert_eq!(document["info"]["version"], crate::api_version::VERSION);
+        for method in ["GET", "POST", "HEAD"] {
             let response = app
                 .clone()
-                .oneshot(request("GET", &format!("{prefix}/server"), Value::Null))
-                .await
-                .unwrap();
-            assert_eq!(response.status(), StatusCode::OK);
-            assert_eq!(
-                response.headers()["x-chill-api-version"],
-                crate::api_version::VERSION
-            );
-            let body: Value =
-                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
-                    .unwrap();
-            assert_eq!(body["api_version"], version);
-            let spec = app
-                .clone()
                 .oneshot(request(
-                    "GET",
-                    &format!("{prefix}/openapi.json"),
-                    Value::Null,
+                    method,
+                    "/api/v1/profiles",
+                    json!({"name":"retired"}),
                 ))
                 .await
                 .unwrap();
-            assert_eq!(spec.status(), StatusCode::OK);
-            let document: Value =
-                serde_json::from_slice(&spec.into_body().collect().await.unwrap().to_bytes())
-                    .unwrap();
-            assert_eq!(document["info"]["version"], crate::api_version::VERSION);
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert!(
+                response.headers()["content-type"]
+                    .as_bytes()
+                    .starts_with(b"application/json")
+            );
+            if method != "HEAD" {
+                let body: Value = serde_json::from_slice(
+                    &response.into_body().collect().await.unwrap().to_bytes(),
+                )
+                .unwrap();
+                assert_eq!(body["code"], "ROUTE_NOT_FOUND");
+            }
         }
         let created = app
             .clone()
@@ -1180,7 +1217,7 @@ mod tests {
         assert_eq!(created.status(), StatusCode::CREATED);
         let profiles = app
             .clone()
-            .oneshot(request("GET", "/api/v1/profiles", Value::Null))
+            .oneshot(request("GET", "/api/2026-10-14/profiles", Value::Null))
             .await
             .unwrap();
         let profiles: Value =
@@ -1223,7 +1260,7 @@ mod tests {
     #[tokio::test]
     async fn component_update_routes_are_additive_versioned_and_closed() {
         let (_dir, app) = setup();
-        for prefix in [crate::api_version::PREFIX, "/api/v1"] {
+        for prefix in [crate::api_version::PREFIX] {
             let response = app
                 .clone()
                 .oneshot(request(
@@ -1272,7 +1309,7 @@ mod tests {
             .unwrap();
         assert_eq!(stale.status(), StatusCode::CONFLICT);
         let status = app
-            .oneshot(request("GET", "/api/v1/admin/updates", Value::Null))
+            .oneshot(request("GET", "/api/2026-10-14/admin/updates", Value::Null))
             .await
             .unwrap();
         let status: Value =
@@ -1338,7 +1375,7 @@ mod tests {
     async fn typed_errors_distinguish_configuration_database_and_invalid_values() {
         let (_dir, app) = setup();
         let response = app
-            .oneshot(request("POST", "/api/v1/admin/scan", json!({})))
+            .oneshot(request("POST", "/api/2026-10-14/admin/scan", json!({})))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -1436,7 +1473,7 @@ mod tests {
             .clone()
             .oneshot(request(
                 "PUT",
-                "/api/v1/admin/library",
+                "/api/2026-10-14/admin/library",
                 json!({"video_root":"/mnt/custom-movies","expected_revision":0}),
             ))
             .await
@@ -1451,7 +1488,7 @@ mod tests {
         assert_eq!(
             app.oneshot(request(
                 "PUT",
-                "/api/v1/admin/library",
+                "/api/2026-10-14/admin/library",
                 json!({"video_root":"/mnt/stale","expected_revision":0})
             ))
             .await
@@ -1478,7 +1515,7 @@ mod tests {
             .clone()
             .oneshot(request(
                 "PUT",
-                "/api/v1/admin/library",
+                "/api/2026-10-14/admin/library",
                 json!({"video_root":"/mnt/films-renamed","expected_revision":1}),
             ))
             .await
@@ -1491,7 +1528,7 @@ mod tests {
             legacy_body["additional_video_roots"],
             json!(["/mnt/series"])
         );
-        for prefix in ["/api/v1", "/api/2026-10-14"] {
+        for prefix in ["/api/2026-10-14"] {
             let response = app
                 .clone()
                 .oneshot(request(
@@ -1513,14 +1550,14 @@ mod tests {
         let (_dir, app) = setup();
         let empty = app
             .clone()
-            .oneshot(request("GET", "/api/v1/profiles", Value::Null))
+            .oneshot(request("GET", "/api/2026-10-14/profiles", Value::Null))
             .await
             .unwrap();
         assert_eq!(empty.status(), StatusCode::OK);
         let first = app
             .oneshot(request(
                 "POST",
-                "/api/v1/profiles",
+                "/api/2026-10-14/profiles",
                 json!({"name":"Premier"}),
             ))
             .await
@@ -1530,7 +1567,7 @@ mod tests {
     #[tokio::test]
     async fn browser_and_dns_rebinding_requests_are_refused() {
         let (_dir, app) = setup();
-        let mut browser = request("PUT", "/api/v1/admin/library", json!({}));
+        let mut browser = request("PUT", "/api/2026-10-14/admin/library", json!({}));
         browser
             .headers_mut()
             .insert("origin", "https://other.example".parse().unwrap());
@@ -1538,7 +1575,7 @@ mod tests {
             app.clone().oneshot(browser).await.unwrap().status(),
             StatusCode::FORBIDDEN
         );
-        let mut rebound = request("GET", "/api/v1/server", Value::Null);
+        let mut rebound = request("GET", "/api/2026-10-14/server", Value::Null);
         rebound
             .headers_mut()
             .insert("host", "attacker.example:8443".parse().unwrap());
@@ -1552,7 +1589,7 @@ mod tests {
     async fn plain_http_listener_accepts_only_its_own_origin_and_ports() {
         let (_dir, app) = setup_with(true);
         let call = |host: &str, headers: &[(&str, &str)]| {
-            let mut r = request("PUT", "/api/v1/admin/library", json!({}));
+            let mut r = request("PUT", "/api/2026-10-14/admin/library", json!({}));
             r.headers_mut().insert("host", host.parse().unwrap());
             for (k, v) in headers {
                 r.headers_mut().insert(
@@ -1644,14 +1681,14 @@ mod tests {
             r
         };
         for path in [
-            "/api/v1/admin/tmdb",
-            "/api/v1/admin/tmdb/jobs",
-            "/api/v1/admin/tmdb/jobs/x/cancel",
             "/api/2026-10-14/admin/tmdb",
-            "/api/v1/admin/exports",
-            "/api/v1/admin/exports/abc",
-            "/api/v1/admin/imports",
-            "/api/v1/admin/imports/abc/apply",
+            "/api/2026-10-14/admin/tmdb/jobs",
+            "/api/2026-10-14/admin/tmdb/jobs/x/cancel",
+            "/api/2026-10-14/admin/tmdb",
+            "/api/2026-10-14/admin/exports",
+            "/api/2026-10-14/admin/exports/abc",
+            "/api/2026-10-14/admin/imports",
+            "/api/2026-10-14/admin/imports/abc/apply",
         ] {
             assert_eq!(
                 http.clone()
@@ -1675,11 +1712,11 @@ mod tests {
         }
         // Everything the web client needs stays reachable; look-alike prefixes are not caught.
         for path in [
-            "/api/v1/admin/library",
-            "/api/v1/profiles",
-            "/api/v1/admin/scan",
-            "/api/v1/admin/tmdbx",
-            "/api/v1/admin/exportsx",
+            "/api/2026-10-14/admin/library",
+            "/api/2026-10-14/profiles",
+            "/api/2026-10-14/admin/scan",
+            "/api/2026-10-14/admin/tmdbx",
+            "/api/2026-10-14/admin/exportsx",
         ] {
             assert_ne!(
                 http.clone()
@@ -1691,7 +1728,7 @@ mod tests {
                 "{path}"
             );
         }
-        assert!(super::https_only_path("/api/v1//admin/tmdb"));
+        assert!(super::https_only_path("/api/2026-10-14//admin/tmdb"));
         assert!(!super::https_only_path("/admin/tmdb"));
     }
 
@@ -1699,7 +1736,7 @@ mod tests {
     async fn https_listener_still_refuses_an_origin_without_fetch_metadata() {
         let (_dir, app) = setup();
         for origin in ["https://localhost:8443", "http://localhost:8443"] {
-            let mut r = request("PUT", "/api/v1/admin/library", json!({}));
+            let mut r = request("PUT", "/api/2026-10-14/admin/library", json!({}));
             r.headers_mut().insert("origin", origin.parse().unwrap());
             assert_eq!(
                 app.clone().oneshot(r).await.unwrap().status(),
@@ -1714,7 +1751,7 @@ mod tests {
     {
         let (_dir, app) = setup();
         let with_host = |host: &str, origin: Option<&str>| {
-            let mut r = request("GET", "/api/v1/server", Value::Null);
+            let mut r = request("GET", "/api/2026-10-14/server", Value::Null);
             r.headers_mut().insert("host", host.parse().unwrap());
             if let Some(origin) = origin {
                 r.headers_mut()
@@ -1776,26 +1813,26 @@ mod tests {
             async move { app.oneshot(r).await.unwrap().status() }
         };
         assert_eq!(
-            status(with("same-origin", None, "/api/v1/server")).await,
+            status(with("same-origin", None, "/api/2026-10-14/server")).await,
             StatusCode::OK
         );
         assert_eq!(
             status(with(
                 "same-origin",
                 Some("https://localhost:8443"),
-                "/api/v1/server"
+                "/api/2026-10-14/server"
             ))
             .await,
             StatusCode::OK
         );
         for refused in [
-            with("cross-site", None, "/api/v1/server"),
-            with("same-site", None, "/api/v1/server"),
-            with("none", None, "/api/v1/server"),
+            with("cross-site", None, "/api/2026-10-14/server"),
+            with("same-site", None, "/api/2026-10-14/server"),
+            with("none", None, "/api/2026-10-14/server"),
             with(
                 "same-origin",
                 Some("https://other.example"),
-                "/api/v1/server",
+                "/api/2026-10-14/server",
             ),
         ] {
             assert_eq!(status(refused).await, StatusCode::FORBIDDEN);
@@ -1895,7 +1932,7 @@ mod tests {
         let (_dir, app) = setup();
         let request = Request::builder()
             .version(axum::http::Version::HTTP_2)
-            .uri("https://localhost:8443/api/v1/server")
+            .uri("https://localhost:8443/api/2026-10-14/server")
             .body(Body::empty())
             .unwrap();
         assert_eq!(app.oneshot(request).await.unwrap().status(), StatusCode::OK);
@@ -1906,13 +1943,17 @@ mod tests {
         let (_dir, app) = setup();
         let response = app
             .clone()
-            .oneshot(request("POST", "/api/v1/profiles", json!({"name":"A"})))
+            .oneshot(request(
+                "POST",
+                "/api/2026-10-14/profiles",
+                json!({"name":"A"}),
+            ))
             .await
             .unwrap();
         let p: Value =
             serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
                 .unwrap();
-        let path = format!("/api/v1/profiles/{}", p["id"].as_str().unwrap());
+        let path = format!("/api/2026-10-14/profiles/{}", p["id"].as_str().unwrap());
         assert_eq!(
             app.clone()
                 .oneshot(request(
@@ -1940,7 +1981,7 @@ mod tests {
         assert_eq!(
             app.oneshot(request(
                 "GET",
-                "/api/v1/profiles/missing/preferences",
+                "/api/2026-10-14/profiles/missing/preferences",
                 Value::Null
             ))
             .await
@@ -2002,7 +2043,7 @@ mod tests {
                 .clone()
                 .oneshot(request(
                     "GET",
-                    &format!("/api/v1/profiles/{a}/catalog?{query}"),
+                    &format!("/api/2026-10-14/profiles/{a}/catalog?{query}"),
                     Value::Null,
                 ))
                 .await
@@ -2019,19 +2060,19 @@ mod tests {
         for (method, path, body, code) in [
             (
                 "PUT",
-                format!("/api/v1/profiles/{a}/media/{b}/watched"),
+                format!("/api/2026-10-14/profiles/{a}/media/{b}/watched"),
                 json!({"watched":true}),
                 "MEDIA_NOT_FOUND",
             ),
             (
                 "PUT",
-                format!("/api/v1/profiles/{a}/media/{b}/rating"),
+                format!("/api/2026-10-14/profiles/{a}/media/{b}/rating"),
                 json!({"rating":5}),
                 "MEDIA_NOT_FOUND",
             ),
             (
                 "GET",
-                format!("/api/v1/profiles/{}/catalog", uuid::Uuid::new_v4()),
+                format!("/api/2026-10-14/profiles/{}/catalog", uuid::Uuid::new_v4()),
                 Value::Null,
                 "PROFILE_NOT_FOUND",
             ),
@@ -2051,7 +2092,9 @@ mod tests {
             .clone()
             .oneshot(request(
                 "GET",
-                &format!("/api/v1/profiles/{a}/catalog?limit=50&offset=0&category=film&q=Film"),
+                &format!(
+                    "/api/2026-10-14/profiles/{a}/catalog?limit=50&offset=0&category=film&q=Film"
+                ),
                 Value::Null,
             ))
             .await
@@ -2064,15 +2107,19 @@ mod tests {
         assert!(!page["items"][0]["path"].as_str().unwrap().starts_with('/'));
         let id = page["items"][0]["id"].as_str().unwrap();
         for (method, path, body) in [
-            ("GET", format!("/api/v1/profiles/{id}/catalog"), Value::Null),
+            (
+                "GET",
+                format!("/api/2026-10-14/profiles/{id}/catalog"),
+                Value::Null,
+            ),
             (
                 "PUT",
-                format!("/api/v1/profiles/{id}/media/{id}/watched"),
+                format!("/api/2026-10-14/profiles/{id}/media/{id}/watched"),
                 json!({"watched":true}),
             ),
             (
                 "PUT",
-                format!("/api/v1/profiles/{id}/media/{id}/rating"),
+                format!("/api/2026-10-14/profiles/{id}/media/{id}/rating"),
                 json!({"rating":5}),
             ),
         ] {
@@ -2091,7 +2138,7 @@ mod tests {
             app.clone()
                 .oneshot(request(
                     "PUT",
-                    &format!("/api/v1/profiles/{a}/media/{id}/watched"),
+                    &format!("/api/2026-10-14/profiles/{a}/media/{id}/watched"),
                     json!({"watched":true})
                 ))
                 .await
@@ -2103,7 +2150,7 @@ mod tests {
             .clone()
             .oneshot(request(
                 "GET",
-                &format!("/api/v1/profiles/{b}/catalog?limit=50&offset=0"),
+                &format!("/api/2026-10-14/profiles/{b}/catalog?limit=50&offset=0"),
                 Value::Null,
             ))
             .await
@@ -2116,7 +2163,7 @@ mod tests {
             .clone()
             .oneshot(request(
                 "GET",
-                &format!("/api/v1/profiles/{b}/catalog?limit=50&offset=50&category=film"),
+                &format!("/api/2026-10-14/profiles/{b}/catalog?limit=50&offset=50&category=film"),
                 Value::Null,
             ))
             .await
@@ -2125,7 +2172,11 @@ mod tests {
             serde_json::from_slice(&last.into_body().collect().await.unwrap().to_bytes()).unwrap();
         assert_eq!(last["items"].as_array().unwrap().len(), 1);
         assert_eq!(last["has_more"], false);
-        let mut delete = request("DELETE", &format!("/api/v1/profiles/{a}"), Value::Null);
+        let mut delete = request(
+            "DELETE",
+            &format!("/api/2026-10-14/profiles/{a}"),
+            Value::Null,
+        );
         delete
             .headers_mut()
             .insert("x-chill-confirm-delete", a.parse().unwrap());
@@ -2134,20 +2185,24 @@ mod tests {
             StatusCode::OK
         );
         for (method, path, body) in [
-            ("GET", format!("/api/v1/profiles/{a}/catalog"), Value::Null),
+            (
+                "GET",
+                format!("/api/2026-10-14/profiles/{a}/catalog"),
+                Value::Null,
+            ),
             (
                 "PUT",
-                format!("/api/v1/profiles/{a}/media/{id}/watched"),
+                format!("/api/2026-10-14/profiles/{a}/media/{id}/watched"),
                 json!({"watched":true}),
             ),
             (
                 "PUT",
-                format!("/api/v1/profiles/{a}/media/{id}/rating"),
+                format!("/api/2026-10-14/profiles/{a}/media/{id}/rating"),
                 json!({"rating":5}),
             ),
             (
                 "PUT",
-                format!("/api/v1/profiles/{a}/preferences"),
+                format!("/api/2026-10-14/profiles/{a}/preferences"),
                 json!({"audio_language":"fr","subtitle_language":"fr","autoplay_seconds":10}),
             ),
         ] {
@@ -2170,7 +2225,7 @@ mod tests {
             .clone()
             .oneshot(request(
                 "PUT",
-                &format!("/api/v1/profiles/{b}/media/{id}/rating"),
+                &format!("/api/2026-10-14/profiles/{b}/media/{id}/rating"),
                 json!({"rating":5}),
             ))
             .await

@@ -163,7 +163,7 @@ mod tests {
         let app = router(state);
         let invalid = Request::builder()
             .method("POST")
-            .uri("/api/v1/admin/media/not-a-uuid/fingerprint")
+            .uri("/api/2026-10-14/admin/media/not-a-uuid/fingerprint")
             .header("host", "localhost:8443")
             .header("content-type", "application/json")
             .body(Body::from(json!({"complete":true}).to_string()))
@@ -175,7 +175,7 @@ mod tests {
 
         let request = Request::builder()
             .method("POST")
-            .uri(format!("/api/v1/admin/media/{media}/fingerprint"))
+            .uri(format!("/api/2026-10-14/admin/media/{media}/fingerprint"))
             .header("host", "localhost:8443")
             .header("content-type", "application/json")
             .body(Body::from(json!({"complete":true}).to_string()))
@@ -193,7 +193,7 @@ mod tests {
         let mut status = Value::Null;
         for _ in 0..50 {
             let request = Request::builder()
-                .uri(format!("/api/v1/admin/media/{media}/fingerprint"))
+                .uri(format!("/api/2026-10-14/admin/media/{media}/fingerprint"))
                 .header("host", "localhost:8443")
                 .body(Body::empty())
                 .unwrap();

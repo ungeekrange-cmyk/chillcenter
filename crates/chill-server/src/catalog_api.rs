@@ -381,7 +381,7 @@ async fn upload_season_poster(
     let number = season["season"].as_i64().unwrap_or_default();
     if season["poster"].is_string() {
         season["poster"] = json!(format!(
-            "/api/v1/profiles/{response_profile}/series/{tv}/seasons/{number}/artwork"
+            "/api/2026-10-14/profiles/{response_profile}/series/{tv}/seasons/{number}/artwork"
         ));
     }
     Ok(Json(json!({"season":season,"revision":expected + 1})))
@@ -538,7 +538,7 @@ async fn series(
                             .map_err(|_| "Métadonnées de saison invalides.")?;
                         if metadata["poster"].is_string() {
                             metadata["poster"] = json!(format!(
-                                "/api/v1/profiles/{profile}/series/{tv_id}/seasons/{number}/artwork"
+                                "/api/2026-10-14/profiles/{profile}/series/{tv_id}/seasons/{number}/artwork"
                             ));
                         }
                         seasons.insert(number.to_string(), metadata);

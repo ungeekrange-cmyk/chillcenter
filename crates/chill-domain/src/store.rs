@@ -1321,7 +1321,7 @@ impl Store {
                 collection.poster = collection
                     .poster
                     .as_ref()
-                    .map(|_| format!("/api/v1/sagas/{}/artwork", collection.id));
+                    .map(|_| format!("/api/2026-10-14/sagas/{}/artwork", collection.id));
             }
             collection.media_ids = collection
                 .media_ids
@@ -1371,8 +1371,8 @@ impl Store {
         .map_err(db_error)?
         .map(|row| {
             let (id, name, revision, poster) = row.map_err(db_error)?;
-            let artwork =
-                poster.map(|_| format!("/api/v1/profiles/{profile_id}/playlists/{id}/artwork"));
+            let artwork = poster
+                .map(|_| format!("/api/2026-10-14/profiles/{profile_id}/playlists/{id}/artwork"));
             Ok(PlaylistView {
                 media_ids: self.playlist_members(&id)?,
                 id,
@@ -1397,7 +1397,7 @@ impl Store {
                 let poster = c
                     .poster
                     .as_ref()
-                    .map(|_| format!("/api/v1/sagas/{}/artwork", c.id));
+                    .map(|_| format!("/api/2026-10-14/sagas/{}/artwork", c.id));
                 Ok(SagaView {
                     revision: self.catalogue.saga_revision(&c.id)?,
                     id: c.id,
@@ -1477,7 +1477,8 @@ impl Store {
             name,
             revision: revision as u64,
             media_ids: self.playlist_members(id)?,
-            poster: poster.map(|_| format!("/api/v1/profiles/{profile_id}/playlists/{id}/artwork")),
+            poster: poster
+                .map(|_| format!("/api/2026-10-14/profiles/{profile_id}/playlists/{id}/artwork")),
         })
     }
 
@@ -1608,7 +1609,7 @@ impl Store {
                 media.rating = rating;
                 if media.poster.is_some() {
                     media.poster = Some(format!(
-                        "/api/v1/profiles/{profile}/media/{}/artwork",
+                        "/api/2026-10-14/profiles/{profile}/media/{}/artwork",
                         media.id
                     ));
                 }
@@ -1680,7 +1681,7 @@ impl Store {
                 // including durable delta checkpoints, must never contain it.
                 if metadata.poster.is_some() {
                     metadata.poster = Some(format!(
-                        "/api/v1/profiles/{profile}/series/{tv_id}/seasons/{season}/artwork"
+                        "/api/2026-10-14/profiles/{profile}/series/{tv_id}/seasons/{season}/artwork"
                     ));
                 }
                 season_metadata.insert(format!("tmdb:tv:{tv_id}:season:{season}"), metadata);
@@ -2511,7 +2512,7 @@ impl Store {
         // stable opaque endpoint only; the handler resolves and validates it.
         if media.poster.is_some() {
             media.poster = Some(format!(
-                "/api/v1/profiles/{profile}/media/{}/artwork",
+                "/api/2026-10-14/profiles/{profile}/media/{}/artwork",
                 media.id
             ));
         }
@@ -2816,7 +2817,7 @@ mod tests {
             .unwrap();
         assert_eq!(season.overview, "Shared season synopsis");
         let expected = format!(
-            "/api/v1/profiles/{}/series/57243/seasons/1/artwork",
+            "/api/2026-10-14/profiles/{}/series/57243/seasons/1/artwork",
             profile.id
         );
         assert_eq!(season.poster.as_deref(), Some(expected.as_str()));

@@ -247,17 +247,20 @@ mod tests {
     use super::*;
     #[test]
     fn maintenance_allows_existing_playback_not_new_work() {
-        assert!(admitted_during_maintenance(&Method::GET, "/api/v1/server"));
+        assert!(admitted_during_maintenance(
+            &Method::GET,
+            "/api/2026-10-14/server"
+        ));
         for op in ["heartbeat", "progress", "release"] {
             assert!(admitted_during_maintenance(
                 &Method::POST,
-                &format!("/api/v1/profiles/p/playback/{op}")
+                &format!("/api/2026-10-14/profiles/p/playback/{op}")
             ));
         }
         for path in [
-            "/api/v1/profiles/p/playback/acquire",
-            "/api/v1/admin/scan",
-            "/api/v1/admin/updates/install",
+            "/api/2026-10-14/profiles/p/playback/acquire",
+            "/api/2026-10-14/admin/scan",
+            "/api/2026-10-14/admin/updates/install",
         ] {
             assert!(!admitted_during_maintenance(&Method::POST, path));
         }

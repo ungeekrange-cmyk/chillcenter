@@ -1223,7 +1223,7 @@ async fn apply(
             .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "TMDB_SCOPE_INVALID"))?;
         if season_json["poster"].is_string() {
             season_json["poster"] = json!(format!(
-                "/api/v1/profiles/{response_profile}/series/{id}/seasons/{season_number}/artwork"
+                "/api/2026-10-14/profiles/{response_profile}/series/{id}/seasons/{season_number}/artwork"
             ));
         }
         Ok(Json(

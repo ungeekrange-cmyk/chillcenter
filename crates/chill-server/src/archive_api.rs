@@ -1370,7 +1370,7 @@ mod tests {
         let export_app = app.clone();
         let req = Request::builder()
             .method("POST")
-            .uri("/api/v1/admin/imports")
+            .uri("/api/2026-10-14/admin/imports")
             .header("host", "localhost:8443")
             .body(Body::from("invalid synthetic ZIP"))
             .unwrap();
@@ -1395,7 +1395,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/v1/admin/exports")
+                    .uri("/api/2026-10-14/admin/exports")
                     .header("host", "localhost:8443")
                     .body(Body::empty())
                     .unwrap(),
@@ -1490,7 +1490,7 @@ mod tests {
         let app = router(state);
         let request = Request::builder()
             .method("POST")
-            .uri("/api/v1/admin/exports")
+            .uri("/api/2026-10-14/admin/exports")
             .header("host", "localhost:8443")
             .body(Body::empty())
             .unwrap();
@@ -1510,7 +1510,7 @@ mod tests {
                 .clone()
                 .oneshot(
                     Request::builder()
-                        .uri(format!("/api/v1/admin/exports/{export_id}/status"))
+                        .uri(format!("/api/2026-10-14/admin/exports/{export_id}/status"))
                         .header("host", "localhost:8443")
                         .body(Body::empty())
                         .unwrap(),
@@ -1529,7 +1529,7 @@ mod tests {
         assert_eq!(ready["state"], "ready");
         let id = ready["export_id"].as_str().unwrap();
         let request = Request::builder()
-            .uri(format!("/api/v1/admin/exports/{id}"))
+            .uri(format!("/api/2026-10-14/admin/exports/{id}"))
             .header("host", "localhost:8443")
             .body(Body::empty())
             .unwrap();
@@ -1594,7 +1594,7 @@ mod tests {
         let before_profiles = database_profile_count(&data.join("catalog.sqlite"));
         let request = Request::builder()
             .method("POST")
-            .uri("/api/v1/admin/imports")
+            .uri("/api/2026-10-14/admin/imports")
             .header("host", "localhost:8443")
             .body(Body::from(archive))
             .unwrap();
@@ -1618,7 +1618,7 @@ mod tests {
         let plan_body = serde_json::json!({"profile_map":{profile.clone():{"kind":"new","name":"Imported archive"}},"root_prefix":"Imported","conflict_policy":"keep_destination"});
         let request = Request::builder()
             .method("POST")
-            .uri(format!("/api/v1/admin/imports/{preview_id}/plan"))
+            .uri(format!("/api/2026-10-14/admin/imports/{preview_id}/plan"))
             .header("host", "localhost:8443")
             .header("content-type", "application/json")
             .body(Body::from(plan_body.to_string()))
@@ -1635,7 +1635,7 @@ mod tests {
             "Preparing a plan is read-only"
         );
         let plan_id = plan["plan_id"].as_str().unwrap();
-        let apply_uri = format!("/api/v1/admin/imports/{preview_id}/apply");
+        let apply_uri = format!("/api/2026-10-14/admin/imports/{preview_id}/apply");
         let apply_body = serde_json::json!({"plan_id":plan_id,"confirmed":true});
         for repeated in [false, true] {
             let request = Request::builder()
@@ -1679,7 +1679,7 @@ mod tests {
         assert!(staged_plan.is_file());
         let request = Request::builder()
             .method("DELETE")
-            .uri(format!("/api/v1/admin/imports/{preview_id}"))
+            .uri(format!("/api/2026-10-14/admin/imports/{preview_id}"))
             .header("host", "localhost:8443")
             .body(Body::empty())
             .unwrap();
@@ -1690,7 +1690,7 @@ mod tests {
         assert!(!staged.exists());
         assert!(!staged_plan.exists());
         let request = Request::builder()
-            .uri("/api/v1/admin/exports/not-a-uuid")
+            .uri("/api/2026-10-14/admin/exports/not-a-uuid")
             .header("host", "localhost:8443")
             .body(Body::empty())
             .unwrap();
@@ -1749,7 +1749,7 @@ mod tests {
             let body = writer.finish().unwrap().into_inner();
             let request = Request::builder()
                 .method("POST")
-                .uri("/api/v1/admin/imports")
+                .uri("/api/2026-10-14/admin/imports")
                 .header("host", "localhost:8443")
                 .body(Body::from(body))
                 .unwrap();
@@ -1773,7 +1773,7 @@ mod tests {
         writer.write_all(document.as_bytes()).unwrap();
         let request = Request::builder()
             .method("POST")
-            .uri("/api/v1/admin/imports")
+            .uri("/api/2026-10-14/admin/imports")
             .header("host", "localhost:8443")
             .body(Body::from(writer.finish().unwrap().into_inner()))
             .unwrap();

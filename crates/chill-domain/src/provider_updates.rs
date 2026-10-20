@@ -850,7 +850,7 @@ mod tests {
             .unwrap();
         assert_eq!(revision, 2);
         assert!(updated.poster_custom);
-        let artwork = format!("/api/v1/profiles/{profile}/media/{id}/artwork");
+        let artwork = format!("/api/2026-10-14/profiles/{profile}/media/{id}/artwork");
         assert_eq!(updated.poster.as_deref(), Some(artwork.as_str()));
 
         let snapshot = store.provider_snapshot(&profile, &id, revision).unwrap();

@@ -93,7 +93,10 @@ async fn missing_indexed_leaf_marks_only_that_media_unavailable_and_never_grants
     let (status, body) = json_reply(
         &f.app,
         "POST",
-        &format!("/api/v1/profiles/{}/playback/acquire", f.profiles[0]),
+        &format!(
+            "/api/2026-10-14/profiles/{}/playback/acquire",
+            f.profiles[0]
+        ),
         json!({"media_id":id,"device_id":uuid::Uuid::new_v4().to_string()}),
     )
     .await;
@@ -137,7 +140,10 @@ async fn release_reclaims_all_unpolled_stream_slots() {
         json_reply(
             &f.app,
             "POST",
-            &format!("/api/v1/profiles/{}/playback/release", f.profiles[0]),
+            &format!(
+                "/api/2026-10-14/profiles/{}/playback/release",
+                f.profiles[0]
+            ),
             serde_json::to_value(release).unwrap()
         )
         .await
@@ -180,7 +186,7 @@ async fn root_change_and_profile_deletion_reclaim_unpolled_streams() {
         if delete {
             let request = Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/v1/profiles/{}", f.profiles[0]))
+                .uri(format!("/api/2026-10-14/profiles/{}", f.profiles[0]))
                 .header("host", "localhost:8443")
                 .header("x-chill-confirm-delete", &f.profiles[0])
                 .body(Body::empty())
@@ -194,7 +200,7 @@ async fn root_change_and_profile_deletion_reclaim_unpolled_streams() {
                 json_reply(
                     &f.app,
                     "PUT",
-                    "/api/v1/admin/library",
+                    "/api/2026-10-14/admin/library",
                     json!({"video_root":null,"expected_revision":0})
                 )
                 .await
@@ -231,7 +237,10 @@ async fn idle_streams_reclaim_capacity_even_if_the_lease_stays_active() {
     })
     .await
     .expect("independent five-second idle deadline");
-    let path = format!("/api/v1/profiles/{}/playback/heartbeat", f.profiles[0]);
+    let path = format!(
+        "/api/2026-10-14/profiles/{}/playback/heartbeat",
+        f.profiles[0]
+    );
     assert_eq!(
         json_reply(
             &f.app,
@@ -287,7 +296,10 @@ async fn grant(f: &Fixture, p: usize, m: usize) -> PlaybackGrant {
     let (s, v) = json_reply(
         &f.app,
         "POST",
-        &format!("/api/v1/profiles/{}/playback/acquire", f.profiles[p]),
+        &format!(
+            "/api/2026-10-14/profiles/{}/playback/acquire",
+            f.profiles[p]
+        ),
         serde_json::to_value(body).unwrap(),
     )
     .await;
@@ -340,7 +352,10 @@ async fn five_real_seconds_at_double_speed_accumulate_across_two_leases() {
     for session in 0..2 {
         let g = grant(&f, 0, 0).await;
         assert_eq!(g.personal.final_watched_ms, session * 5_000);
-        let path = format!("/api/v1/profiles/{}/playback/progress", f.profiles[0]);
+        let path = format!(
+            "/api/2026-10-14/profiles/{}/playback/progress",
+            f.profiles[0]
+        );
         let mut e = event(&g, 1, 90_000);
         e.playing = true;
         e.seek = false;
@@ -368,7 +383,10 @@ async fn five_real_seconds_at_double_speed_accumulate_across_two_leases() {
             json_reply(
                 &f.app,
                 "POST",
-                &format!("/api/v1/profiles/{}/playback/release", f.profiles[0]),
+                &format!(
+                    "/api/2026-10-14/profiles/{}/playback/release",
+                    f.profiles[0]
+                ),
                 serde_json::to_value(release).unwrap()
             )
             .await
@@ -380,7 +398,7 @@ async fn five_real_seconds_at_double_speed_accumulate_across_two_leases() {
         &f.app,
         "GET",
         &format!(
-            "/api/v1/profiles/{}/media/{}/state",
+            "/api/2026-10-14/profiles/{}/media/{}/state",
             f.profiles[1], f.media[0]
         ),
         Value::Null,
@@ -392,7 +410,7 @@ async fn five_real_seconds_at_double_speed_accumulate_across_two_leases() {
 
 #[tokio::test]
 async fn short_video_eof_works_with_unchanged_native_and_web_payloads_on_both_api_bases() {
-    for (base, via_release) in [("/api/v1", false), ("/api/2026-10-14", true)] {
+    for (base, via_release) in [("/api/2026-10-14", false), ("/api/2026-10-14", true)] {
         let f = fixture().await;
         let g = grant(&f, 0, 0).await;
         let path = format!("{base}/profiles/{}/playback/progress", f.profiles[0]);
@@ -483,7 +501,7 @@ fn event(g: &PlaybackGrant, seq: u64, pos: u64) -> Progress {
 }
 fn stream_request(g: &PlaybackGrant, range: &str) -> Request<Body> {
     Request::builder()
-        .uri(format!("/api/v1/media/{}/stream", g.lease.media_id))
+        .uri(format!("/api/2026-10-14/media/{}/stream", g.lease.media_id))
         .header("host", "localhost:8443")
         .header("x-chill-session", &g.lease.session_id)
         .header("x-chill-generation", g.lease.generation)
@@ -501,7 +519,10 @@ async fn two_profiles_range_and_active_conflict() {
     let (s, v) = json_reply(
         &f.app,
         "POST",
-        &format!("/api/v1/profiles/{}/playback/acquire", f.profiles[0]),
+        &format!(
+            "/api/2026-10-14/profiles/{}/playback/acquire",
+            f.profiles[0]
+        ),
         json!({"media_id":f.media[0],"device_id":uuid::Uuid::new_v4().to_string()}),
     )
     .await;
@@ -522,7 +543,7 @@ async fn two_profiles_range_and_active_conflict() {
         &f.bytes[11..212]
     );
     let mut bad = stream_request(&a, "bytes=0-3");
-    *bad.uri_mut() = format!("/api/v1/media/{}/stream", f.media[1])
+    *bad.uri_mut() = format!("/api/2026-10-14/media/{}/stream", f.media[1])
         .parse()
         .unwrap();
     assert_eq!(
@@ -550,7 +571,10 @@ async fn two_profiles_range_and_active_conflict() {
 async fn transfer_endpoints_require_confirmation_then_ack_once() {
     let f = fixture().await;
     let old = grant(&f, 0, 0).await;
-    let base = format!("/api/v1/profiles/{}/playback/transfer", f.profiles[0]);
+    let base = format!(
+        "/api/2026-10-14/profiles/{}/playback/transfer",
+        f.profiles[0]
+    );
     let proposal = TransferProposal {
         target: AcquirePlayback {
             media_id: f.media[1].clone(),
@@ -571,7 +595,10 @@ async fn transfer_endpoints_require_confirmation_then_ack_once() {
         json_reply(
             &f.app,
             "POST",
-            &format!("/api/v1/profiles/{}/playback/heartbeat", f.profiles[0]),
+            &format!(
+                "/api/2026-10-14/profiles/{}/playback/heartbeat",
+                f.profiles[0]
+            ),
             serde_json::to_value(ctrl(&old)).unwrap(),
         )
         .await
@@ -584,7 +611,7 @@ async fn transfer_endpoints_require_confirmation_then_ack_once() {
             &f.app,
             "POST",
             &format!(
-                "/api/v1/profiles/{}/playback/transfer/confirm",
+                "/api/2026-10-14/profiles/{}/playback/transfer/confirm",
                 f.profiles[1]
             ),
             serde_json::to_value(TransferConfirmation {
@@ -614,7 +641,10 @@ async fn transfer_endpoints_require_confirmation_then_ack_once() {
         json_reply(
             &f.app,
             "POST",
-            &format!("/api/v1/profiles/{}/playback/heartbeat", f.profiles[0]),
+            &format!(
+                "/api/2026-10-14/profiles/{}/playback/heartbeat",
+                f.profiles[0]
+            ),
             serde_json::to_value(ctrl(&old)).unwrap(),
         )
         .await
@@ -625,7 +655,7 @@ async fn transfer_endpoints_require_confirmation_then_ack_once() {
     // having observed the original broadcast.
     let sse = Request::builder()
         .uri(format!(
-            "/api/v1/profiles/{}/playback/events?session={}&generation={}",
+            "/api/2026-10-14/profiles/{}/playback/events?session={}&generation={}",
             f.profiles[0], old.lease.session_id, old.lease.generation
         ))
         .header("host", "localhost:8443")
@@ -679,7 +709,7 @@ async fn ordered_resume_release_rewind_and_late_device() {
     let f = fixture().await;
     let a = grant(&f, 0, 0).await;
     let p = &f.profiles[0];
-    let path = format!("/api/v1/profiles/{p}/playback/progress");
+    let path = format!("/api/2026-10-14/profiles/{p}/playback/progress");
     let (s, v) = json_reply(
         &f.app,
         "POST",
@@ -701,7 +731,10 @@ async fn ordered_resume_release_rewind_and_late_device() {
     let (s, _) = json_reply(
         &f.app,
         "POST",
-        &format!("/api/v1/profiles/{}/playback/progress", f.profiles[1]),
+        &format!(
+            "/api/2026-10-14/profiles/{}/playback/progress",
+            f.profiles[1]
+        ),
         serde_json::to_value(event(&a, 2, 20_000)).unwrap(),
     )
     .await;
@@ -709,7 +742,7 @@ async fn ordered_resume_release_rewind_and_late_device() {
     let (s, _) = json_reply(
         &f.app,
         "POST",
-        &format!("/api/v1/profiles/{p}/playback/release"),
+        &format!("/api/2026-10-14/profiles/{p}/playback/release"),
         serde_json::to_value(ReleasePlayback {
             lease: ctrl(&a),
             progress: None,
@@ -735,7 +768,7 @@ async fn ordered_resume_release_rewind_and_late_device() {
     let (s, _) = json_reply(
         &f.app,
         "POST",
-        &format!("/api/v1/profiles/{p}/playback/release"),
+        &format!("/api/2026-10-14/profiles/{p}/playback/release"),
         serde_json::to_value(ReleasePlayback {
             lease: ctrl(&b),
             progress: Some(event(&b, 1, 0)),
@@ -749,7 +782,7 @@ async fn ordered_resume_release_rewind_and_late_device() {
         &f.app,
         "GET",
         &format!(
-            "/api/v1/profiles/{}/media/{}/state",
+            "/api/2026-10-14/profiles/{}/media/{}/state",
             f.profiles[1], f.media[0]
         ),
         Value::Null,
@@ -774,7 +807,10 @@ async fn release_revokes_remaining_body_and_root_change_revokes_all() {
     let (s, _) = json_reply(
         &f.app,
         "POST",
-        &format!("/api/v1/profiles/{}/playback/release", f.profiles[0]),
+        &format!(
+            "/api/2026-10-14/profiles/{}/playback/release",
+            f.profiles[0]
+        ),
         serde_json::to_value(ReleasePlayback {
             lease: ctrl(&a),
             progress: None,
@@ -788,7 +824,7 @@ async fn release_revokes_remaining_body_and_root_change_revokes_all() {
     let (s, _) = json_reply(
         &f.app,
         "PUT",
-        "/api/v1/admin/library",
+        "/api/2026-10-14/admin/library",
         json!({"video_root":f.root,"expected_revision":0}),
     )
     .await;
@@ -820,7 +856,10 @@ async fn changed_file_fails_closed_and_profile_deletion_revokes() {
         json_reply(
             &f.app,
             "POST",
-            &format!("/api/v1/profiles/{}/playback/heartbeat", f.profiles[0]),
+            &format!(
+                "/api/2026-10-14/profiles/{}/playback/heartbeat",
+                f.profiles[0]
+            ),
             serde_json::to_value(ctrl(&a)).unwrap()
         )
         .await
@@ -830,7 +869,7 @@ async fn changed_file_fails_closed_and_profile_deletion_revokes() {
     let b = grant(&f, 0, 0).await;
     let mut req = request(
         "DELETE",
-        &format!("/api/v1/profiles/{}", f.profiles[0]),
+        &format!("/api/2026-10-14/profiles/{}", f.profiles[0]),
         Value::Null,
     );
     req.headers_mut()

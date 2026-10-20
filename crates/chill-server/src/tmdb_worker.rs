@@ -1010,7 +1010,7 @@ mod tests {
         };
         let response = app
             .clone()
-            .oneshot(request("POST", "/api/v1/admin/exports"))
+            .oneshot(request("POST", "/api/2026-10-14/admin/exports"))
             .await
             .unwrap();
         assert_eq!(response.status(), axum::http::StatusCode::ACCEPTED);
@@ -1024,7 +1024,7 @@ mod tests {
                     .clone()
                     .oneshot(request(
                         "GET",
-                        &format!("/api/v1/admin/exports/{id}/status"),
+                        &format!("/api/2026-10-14/admin/exports/{id}/status"),
                     ))
                     .await
                     .unwrap();
@@ -1041,7 +1041,10 @@ mod tests {
         .unwrap();
         assert_eq!(ready["state"], "ready");
         let response = app
-            .oneshot(request("GET", &format!("/api/v1/admin/exports/{id}")))
+            .oneshot(request(
+                "GET",
+                &format!("/api/2026-10-14/admin/exports/{id}"),
+            ))
             .await
             .unwrap();
         assert_eq!(response.status(), axum::http::StatusCode::OK);
