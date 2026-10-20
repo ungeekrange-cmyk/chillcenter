@@ -9,9 +9,10 @@
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleLocalizations</key><array><string>en</string><string>fr</string></array>
   <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundleShortVersionString</key><string>0.7.0</string>
-  <key>CFBundleVersion</key><string>9</string>
+  <key>CFBundleShortVersionString</key><string>0.7.1</string>
+  <key>CFBundleVersion</key><string>10</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSLocalNetworkUsageDescription</key><string>Chill Center se connecte au serveur vidéo que vous choisissez sur le réseau du foyer.</string>
+  <key>NSBonjourServices</key><array><string>_chillcenter._tcp</string></array>
 </dict></plist>

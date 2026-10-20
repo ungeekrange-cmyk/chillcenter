@@ -1,6 +1,6 @@
 [package]
 name = "chillcenter-desktop"
-version = "0.7.0"
+version = "0.7.1"
 edition.workspace = true
 license.workspace = true
 build = "build.rs"
@@ -8,6 +8,7 @@ build = "build.rs"
 [dependencies]
 chill-catalog.workspace = true
 chill-client.workspace = true
+chill-discovery.workspace = true
 chill-domain.workspace = true
 chill-player.workspace = true
 libc = "0.2.190"

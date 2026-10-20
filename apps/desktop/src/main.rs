@@ -6,6 +6,7 @@ use tauri_plugin_dialog::DialogExt;
 mod admin_bridge;
 mod ai_bridge;
 mod artwork_bridge;
+mod discovery_bridge;
 mod native_player;
 mod player_bridge;
 mod theme_bridge;
@@ -150,12 +151,23 @@ async fn update_command(
 struct Bridge {
     client: Arc<Mutex<UiClient>>,
     slot: Arc<tokio::sync::Semaphore>,
+    discovery_slot: Arc<tokio::sync::Semaphore>,
     context_epoch: Arc<std::sync::atomic::AtomicU64>,
     player: Arc<tokio::sync::Mutex<PlayerHost>>,
     closing: Arc<std::sync::atomic::AtomicBool>,
     rendering: Arc<std::sync::atomic::AtomicBool>,
     administration: Arc<admin_bridge::AdminHost>,
     assistant: Arc<ai_bridge::AiHost>,
+}
+#[tauri::command]
+async fn discovery_command(
+    state: tauri::State<'_, Bridge>,
+    command: discovery_bridge::DiscoveryCommand,
+) -> Result<Value, UiError> {
+    let discovery_bridge::DiscoveryCommand::Browse = command;
+    // This path neither acquires `slot` nor reads UiClient: browsing cannot
+    // delay controls, player activity, or a manual profile/server transition.
+    discovery_bridge::browse(state.discovery_slot.clone()).await
 }
 #[tauri::command]
 async fn ui_command(
@@ -762,6 +774,7 @@ fn main() {
         app.manage(Bridge {
             client: Arc::new(Mutex::new(client)),
             slot: Arc::new(tokio::sync::Semaphore::new(1)),
+            discovery_slot: Arc::new(tokio::sync::Semaphore::new(1)),
             context_epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             player: Arc::new(tokio::sync::Mutex::new(player)),
             closing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -771,6 +784,7 @@ fn main() {
         });
         app.handle().plugin(tauri_plugin_dialog::init())?;
         let window = tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+            .initialization_script(include_str!("native_discovery.js"))
             .on_navigation(|url| {
                 (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                     || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost"))
@@ -859,6 +873,7 @@ fn main() {
     let builder = builder
         .invoke_handler(tauri::generate_handler![
             ui_command,
+            discovery_command,
             player_command,
             artwork_command,
             admin_command,
@@ -923,6 +938,7 @@ fn main() {
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         ui_command,
+        discovery_command,
         player_command,
         artwork_command,
         admin_command,
