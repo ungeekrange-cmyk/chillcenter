@@ -14,7 +14,7 @@ fi
 if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
   echo "This development bundle targets Apple Silicon macOS." >&2; exit 1
 fi
-for tool in cargo /usr/bin/codesign /usr/bin/install_name_tool /usr/bin/lipo /usr/bin/otool /usr/bin/plutil /usr/bin/python3 /usr/bin/sips; do
+for tool in cargo /usr/bin/codesign /usr/bin/install_name_tool /usr/bin/lipo /usr/bin/otool /usr/bin/plutil /usr/bin/python3 /usr/bin/sips /usr/bin/vtool; do
   command -v "$tool" >/dev/null || { echo "Required tool missing: $tool" >&2; exit 1; }
 done
 brew_bin="${CHILLCENTER_BREW:-/opt/homebrew/bin/brew}"
@@ -57,6 +57,9 @@ icon_source="$project_dir/icons/branding/vector/default.png"
   --licenses "$stage/Contents/Resources/licenses" \
   --brew "$brew_bin"
 
+# Homebrew's media libraries can require a newer OS than the Rust executable.
+# Derive the distributable's real minimum instead of advertising a false floor.
+/usr/bin/python3 "$project_dir/scripts/helpers/macos_minimum_version.py" "$stage"
 /usr/bin/plutil -lint "$stage/Contents/Info.plist"
 for dylib in "$stage"/Contents/Frameworks/*.dylib; do
   /usr/bin/codesign --force --sign - --timestamp=none "$dylib"
