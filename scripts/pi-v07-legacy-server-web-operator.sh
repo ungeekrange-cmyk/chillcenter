@@ -11,13 +11,15 @@ regular(){ [[ -f "$1" && ! -L "$1" ]] || die regular_file_required 2; }
 directory(){ [[ -d "$1" && ! -L "$1" ]] || die directory_required 2; }
 tls(){ curl -q -sS --noproxy '*' --max-time 10 --cacert "$CC_CERT" "$@" </dev/null; }
 build(){ python3 -I -c 'import json,sys; v=json.load(sys.stdin)["build"]; assert isinstance(v,str) and len(v)==12 and all(x in "0123456789abcdef" for x in v); print(v)'; }
+web_build_dir(){ build <"$1/build.json"; }
 safe_zip(){ python3 -I - "$1" <<'PY'
 import stat,sys,zipfile
 with zipfile.ZipFile(sys.argv[1]) as z:
  assert z.infolist()
  for x in z.infolist():
   assert x.filename and not x.filename.startswith('/') and '..' not in x.filename.split('/')
-  assert not stat.S_ISLNK(x.external_attr >> 16)
+  mode=x.external_attr >> 16
+  assert not mode or stat.S_ISREG(mode) or stat.S_ISDIR(mode)
 PY
 }
 backup_ok(){ python3 -I - "$1" "$CC_DATA_DIR" <<'PY'
@@ -34,17 +36,75 @@ assert a==set(d)|{'manifest.json'} and not (root/'catalog.sqlite-wal').exists() 
 for n,x in d.items(): p=root/n; assert p.stat().st_size==x['size'] and hashlib.sha256(p.read_bytes()).hexdigest()==x['sha256']
 PY
 }
-self_test(){ [[ "$(printf '{"build":"a1c12ba4a582"}'|build)" == a1c12ba4a582 ]]; ! printf '{"build":"x"}'|build >/dev/null 2>&1; printf 'pi_v07_legacy_operator_self_test=PASS
-'; }
+self_test(){ [[ "$(printf '{"build":"a1c12ba4a582"}'|build)" == a1c12ba4a582 ]]; ! printf '{"build":"x"}'|build >/dev/null 2>&1; printf 'pi_v07_legacy_operator_self_test=PASS\n'; }
 mode="${1:-}"; [[ $# -eq 1 ]] || die usage 2
 [[ "$mode" == --self-test ]] && { self_test; exit 0; }
 [[ "$mode" == --preflight || "$mode" == --deploy || "$mode" == --recover ]] || die usage 2
-: "$CC_SERVICE" "$CC_SERVICE_USER" "$CC_BINARY" "$CC_WEB_DIR" "$CC_CONFIG" "$CC_DATA_DIR" "$CC_ROLLBACK_DIR" "$CC_CERT" "$CC_BASE_URL" "$CC_SERVER_FILE" "$CC_WEB_ZIP" "$CC_SERVER_MANIFEST" "$CC_SERVER_MANIFEST_SIG" "$CC_WEB_MANIFEST" "$CC_WEB_MANIFEST_SIG" "$CC_RELEASE_PUB" "$CC_EXPECTED_RELEASE_PUB_SHA256" "$CC_EXPECTED_SERVER_MANIFEST_SHA256" "$CC_EXPECTED_SERVER_MANIFEST_SIG_SHA256" "$CC_EXPECTED_WEB_MANIFEST_SHA256" "$CC_EXPECTED_WEB_MANIFEST_SIG_SHA256" "$CC_EXPECTED_KEY_ID" "$CC_EXPECTED_OLD_BINARY_SHA256" "$CC_EXPECTED_NEW_BINARY_SHA256" "$CC_EXPECTED_WEB_SHA256" "$CC_EXPECTED_VERSION" "$CC_EXPECTED_WEB_BUILD"
+: "${CC_SERVICE:?}" "${CC_BINARY:?}" "${CC_WEB_DIR:?}" "${CC_ROLLBACK_DIR:?}" "${CC_CERT:?}" "${CC_BASE_URL:?}" "${CC_EXPECTED_OLD_BINARY_SHA256:?}"
 [[ "$(id -u)" == 0 && "$CC_BASE_URL" =~ ^https://[^/]+$ ]] || die root_or_https_required 2
-for t in curl mktemp mv python3 runuser sha256sum ss stat systemctl unzip zipinfo timeout setsid; do command -v "$t" >/dev/null || die missing_tool 2; done
-for p in "$CC_BINARY" "$CC_CONFIG" "$CC_CERT" "$CC_SERVER_FILE" "$CC_WEB_ZIP" "$CC_SERVER_MANIFEST" "$CC_SERVER_MANIFEST_SIG" "$CC_WEB_MANIFEST" "$CC_WEB_MANIFEST_SIG" "$CC_RELEASE_PUB"; do [[ "$p" == /* ]] || die absolute_path_required 2; regular "$p"; done
-for p in "$CC_WEB_DIR" "$CC_DATA_DIR" "$CC_ROLLBACK_DIR"; do [[ "$p" == /* ]] || die absolute_path_required 2; directory "$p"; done
-[[ "$(stat -c '%a:%u:%g' "$CC_ROLLBACK_DIR")" == 700:0:0 && "$(hash "$CC_RELEASE_PUB")" == "$CC_EXPECTED_RELEASE_PUB_SHA256" ]] || die private_rollback_or_key_mismatch 2
+for t in curl mktemp mv python3 runuser sha256sum ss stat systemctl unzip timeout setsid install find chown cmp; do command -v "$t" >/dev/null || die missing_tool 2; done
+for p in "$CC_BINARY" "$CC_WEB_DIR" "$CC_ROLLBACK_DIR"; do [[ "$p" == /* ]] || die absolute_path_required 2; done
+journal="$CC_ROLLBACK_DIR/v07-transition.json"
+
+# Recovery is deliberately based on the durable receipt and the filesystem, never
+# on shell flags.  It is safe to run repeatedly after TERM, SIGKILL, or power loss.
+recover_transition(){
+ python3 -I - "$journal" "$CC_BINARY" "$CC_WEB_DIR" <<'PY'
+import hashlib,json,pathlib,sys
+j,b,w=map(pathlib.Path,sys.argv[1:]); d=json.loads(j.read_bytes())
+required={'old_binary','new_binary','old_web','new_web','old_hash','new_hash','old_web_build','new_web_build','state'}
+assert required <= set(d) and d['state'] in {'prepared','swapping','started','rollback_complete'}
+for k in ('old_binary','new_binary','old_web','new_web'):
+ p=pathlib.Path(d[k]); assert p.is_absolute() and str(p).startswith(str(j.parent)+'/')
+assert pathlib.Path(d['old_binary']).parent==j.parent and pathlib.Path(d['old_web']).parent==j.parent
+assert len(d['old_hash'])==len(d['new_hash'])==64
+PY
+ local old_bin old_web new_bin new_web old_hash old_build new_hash new_build current
+ { IFS= read -r old_bin; IFS= read -r old_web; IFS= read -r new_bin; IFS= read -r new_web; IFS= read -r old_hash; IFS= read -r old_build; IFS= read -r new_hash; IFS= read -r new_build; } < <(python3 -I - "$journal" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1])); print(*[d[x] for x in ('old_binary','old_web','new_binary','new_web','old_hash','old_web_build','new_hash','new_web_build')],sep='\n')
+PY
+ )
+ systemctl stop "$CC_SERVICE" || die recovery_stop_failed 1
+ # Restore the web tree only from an observed, unambiguous state.
+ if [[ -d "$old_web" ]]; then
+   if [[ -e "$CC_WEB_DIR" ]]; then
+     current="$(web_build_dir "$CC_WEB_DIR")" || die recovery_web_state_unreadable 1
+     [[ "$current" == "$new_build" ]] || die recovery_web_state_ambiguous 1
+     mv -T "$CC_WEB_DIR" "$CC_ROLLBACK_DIR/web-failed-$(date -u +%Y%m%dT%H%M%SZ)" || die recovery_web_quarantine_failed 1
+   fi
+   mv -T "$old_web" "$CC_WEB_DIR" || die recovery_web_restore_failed 1
+ elif [[ -d "$CC_WEB_DIR" && "$(web_build_dir "$CC_WEB_DIR")" == "$old_build" ]]; then :; else die recovery_web_old_copy_missing 1; fi
+ # The same logic applies to the binary: never overwrite an unknown executable.
+ if [[ -f "$old_bin" ]]; then
+   if [[ -e "$CC_BINARY" ]]; then
+     [[ "$(hash "$CC_BINARY")" == "$new_hash" ]] || die recovery_binary_state_ambiguous 1
+     mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-failed-$(date -u +%Y%m%dT%H%M%SZ)" || die recovery_binary_quarantine_failed 1
+   fi
+   mv -T "$old_bin" "$CC_BINARY" || die recovery_binary_restore_failed 1
+ elif [[ -f "$CC_BINARY" && "$(hash "$CC_BINARY")" == "$old_hash" ]]; then :; else die recovery_binary_old_copy_missing 1; fi
+ [[ "$(hash "$CC_BINARY")" == "$old_hash" && "$(web_build_dir "$CC_WEB_DIR")" == "$old_build" ]] || die recovery_verification_failed 1
+ systemctl start "$CC_SERVICE" || die recovery_start_failed 1
+ [[ "$(systemctl is-active "$CC_SERVICE" || true)" == active ]] || die recovery_service_inactive 1
+ tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server" | grep -qx 200 || die recovery_tls_health_failed 1
+ python3 -I - "$journal" <<'PY'
+import json,os,sys
+p=sys.argv[1]; d=json.load(open(p)); d['state']='rollback_complete'; f=open(p+'.new','w'); json.dump(d,f,sort_keys=True); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.new',p); fd=os.open(os.path.dirname(p),os.O_RDONLY); os.fsync(fd); os.close(fd)
+PY
+ printf 'recovery=PASS\n'
+}
+if [[ "$mode" == --recover ]]; then
+ [[ -d "$CC_ROLLBACK_DIR" && ! -L "$CC_ROLLBACK_DIR" && -f "$journal" && ! -L "$journal" ]] || die recovery_journal_required 2
+ recover_transition; exit 0
+fi
+for p in "$CC_BINARY" "$CC_CERT"; do regular "$p"; done
+directory "$CC_WEB_DIR"; directory "$CC_ROLLBACK_DIR"
+[[ "$(stat -c '%a:%u:%g' "$CC_ROLLBACK_DIR")" == 700:0:0 ]] || die private_rollback_required 2
+[[ "$(stat -c '%d' "$CC_ROLLBACK_DIR")" == "$(stat -c '%d' "$CC_BINARY")" && "$(stat -c '%d' "$CC_ROLLBACK_DIR")" == "$(stat -c '%d' "$CC_WEB_DIR")" ]] || die rollback_must_share_target_filesystem 2
+: "${CC_SERVICE_USER:?}" "${CC_CONFIG:?}" "${CC_DATA_DIR:?}" "${CC_SERVER_FILE:?}" "${CC_WEB_ZIP:?}" "${CC_SERVER_MANIFEST:?}" "${CC_SERVER_MANIFEST_SIG:?}" "${CC_WEB_MANIFEST:?}" "${CC_WEB_MANIFEST_SIG:?}" "${CC_RELEASE_PUB:?}" "${CC_EXPECTED_RELEASE_PUB_SHA256:?}" "${CC_EXPECTED_SERVER_MANIFEST_SHA256:?}" "${CC_EXPECTED_SERVER_MANIFEST_SIG_SHA256:?}" "${CC_EXPECTED_WEB_MANIFEST_SHA256:?}" "${CC_EXPECTED_WEB_MANIFEST_SIG_SHA256:?}" "${CC_EXPECTED_KEY_ID:?}" "${CC_EXPECTED_NEW_BINARY_SHA256:?}" "${CC_EXPECTED_WEB_SHA256:?}" "${CC_EXPECTED_VERSION:?}" "${CC_EXPECTED_WEB_BUILD:?}"
+for p in "$CC_CONFIG" "$CC_SERVER_FILE" "$CC_WEB_ZIP" "$CC_SERVER_MANIFEST" "$CC_SERVER_MANIFEST_SIG" "$CC_WEB_MANIFEST" "$CC_WEB_MANIFEST_SIG" "$CC_RELEASE_PUB"; do [[ "$p" == /* ]] || die absolute_path_required 2; regular "$p"; done
+directory "$CC_DATA_DIR"
+[[ "$(hash "$CC_RELEASE_PUB")" == "$CC_EXPECTED_RELEASE_PUB_SHA256" ]] || die locally_verified_receipt_mismatch 2
 [[ "$(hash "$CC_SERVER_MANIFEST")" == "$CC_EXPECTED_SERVER_MANIFEST_SHA256" && "$(hash "$CC_SERVER_MANIFEST_SIG")" == "$CC_EXPECTED_SERVER_MANIFEST_SIG_SHA256" && "$(hash "$CC_WEB_MANIFEST")" == "$CC_EXPECTED_WEB_MANIFEST_SHA256" && "$(hash "$CC_WEB_MANIFEST_SIG")" == "$CC_EXPECTED_WEB_MANIFEST_SIG_SHA256" ]] || die locally_verified_receipt_mismatch 2
 python3 -I - "$CC_SERVER_MANIFEST" "$CC_WEB_MANIFEST" "$CC_EXPECTED_VERSION" "$CC_EXPECTED_NEW_BINARY_SHA256" "$CC_EXPECTED_WEB_SHA256" "$CC_EXPECTED_KEY_ID" <<'PY'
 import json,pathlib,sys
@@ -77,16 +137,23 @@ c=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro&immutable=1',uri=True)
 assert c.execute('pragma user_version').fetchone()[0]==3 and c.execute('pragma quick_check').fetchone()[0]=='ok'
 PY
 pre="$(mktemp -d "$CC_ROLLBACK_DIR/pre-v07.XXXXXX")"; chmod 0700 "$pre"
-{ for p in "$CC_BINARY" "$CC_CONFIG" "$CC_CERT" "$CC_WEB_DIR/build.json"; do stat -c '%n|%a|%u|%g|%s|%Y' "$p"; hash "$p"; done; if [ -e "$CC_DATA_DIR/library.json" ]; then stat -c '%n|%a|%u|%g|%s|%Y' "$CC_DATA_DIR/library.json"; hash "$CC_DATA_DIR/library.json"; else printf 'library_json=absent\n'; fi; systemctl show "$CC_SERVICE" -p User -p Group -p ExecStart -p FragmentPath; } >"$pre/before.fingerprint"
+fingerprint(){ { for p in "$CC_BINARY" "$CC_CONFIG" "$CC_CERT" "$CC_WEB_DIR/build.json"; do stat -c '%n|%a|%u|%g|%s' "$p"; hash "$p"; done; if [ -e "$CC_DATA_DIR/library.json" ]; then stat -c '%n|%a|%u|%g|%s' "$CC_DATA_DIR/library.json"; hash "$CC_DATA_DIR/library.json"; else printf 'library_json=absent\n'; fi; systemctl show "$CC_SERVICE" -p User -p Group -p ExecStart -p FragmentPath; }; }
+fingerprint >"$pre/before.fingerprint"
 [[ "$mode" != --preflight ]] || { printf 'preflight=PASS
 fingerprint=%s
 ' "$pre/before.fingerprint"; exit 0; }
 new_bin="$(mktemp "$CC_ROLLBACK_DIR/.new-server.XXXXXX")"; install -o root -g root -m 0755 "$CC_SERVER_FILE" "$new_bin"
 new_web="$(mktemp -d "$CC_ROLLBACK_DIR/.new-web.XXXXXX")"; unzip -qq "$CC_WEB_ZIP" -d "$new_web"; [[ "$(build <"$new_web/build.json")" == "$CC_EXPECTED_WEB_BUILD" ]] || die web_build_mismatch 2
 find "$new_web" -type d -exec chmod 0755 {} +; find "$new_web" -type f -exec chmod 0644 {} +; chown -R root:root "$new_web"
-old_bin="$CC_ROLLBACK_DIR/chill-server-$(date -u +%Y%m%dT%H%M%SZ)"; old_web="$CC_ROLLBACK_DIR/web-$(date -u +%Y%m%dT%H%M%SZ)"; journal="$CC_ROLLBACK_DIR/v07-transition.json"; state=running; bin_swapped=0; web_swapped=0
-recover(){ rc=$?; set +e; trap '' HUP INT TERM; trap - EXIT; [[ "$state" == complete ]] || { systemctl stop "$CC_SERVICE"||true; ((web_swapped))&&mv -T "$CC_WEB_DIR" "$CC_ROLLBACK_DIR/web-failed-$(date -u +%Y%m%dT%H%M%SZ)"||true; [[ -d "$old_web" ]]&&mv -T "$old_web" "$CC_WEB_DIR"||true; ((bin_swapped))&&install -o root -g root -m 0755 "$old_bin" "$CC_BINARY"||true; systemctl start "$CC_SERVICE"||true; printf 'recovery_attempted=1
-' >&2; }; exit "$rc"; }
+old_bin="$CC_ROLLBACK_DIR/chill-server-$(date -u +%Y%m%dT%H%M%SZ)"; old_web="$CC_ROLLBACK_DIR/web-$(date -u +%Y%m%dT%H%M%SZ)"
+[[ ! -e "$journal" ]] || die unfinished_transition_requires_recover 1
+old_web_build="$(web_build_dir "$CC_WEB_DIR")" || die old_web_build_unreadable 1
+python3 -I - "$journal" "$old_bin" "$old_web" "$new_bin" "$new_web" "$CC_EXPECTED_OLD_BINARY_SHA256" "$CC_EXPECTED_NEW_BINARY_SHA256" "$old_web_build" "$CC_EXPECTED_WEB_BUILD" <<'PY'
+import json,os,sys
+p=sys.argv[1]; f=open(p+'.new','x'); json.dump(dict(state='prepared',old_binary=sys.argv[2],old_web=sys.argv[3],new_binary=sys.argv[4],new_web=sys.argv[5],old_hash=sys.argv[6],new_hash=sys.argv[7],old_web_build=sys.argv[8],new_web_build=sys.argv[9]),f,sort_keys=True); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.new',p); d=os.open(os.path.dirname(p),os.O_RDONLY); os.fsync(d); os.close(d)
+PY
+state=running
+recover(){ rc=$?; set +e; trap '' HUP INT TERM; trap - EXIT; if [[ "$state" != complete && -f "$journal" ]]; then recover_transition || { printf 'recovery=FAILED journal=%s\n' "$journal" >&2; exit 1; }; fi; exit "$rc"; }
 trap recover EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -94,19 +161,17 @@ trap 'exit 143' TERM
 tls "$CC_BASE_URL/api/2026-10-14/admin/scan"|python3 -I -c 'import json,sys; assert json.load(sys.stdin).get("running") is False' || die scan_active_or_unknown 42
 [[ -z "$(grep -F "$(basename "$CC_BINARY")" <<<"$(ss -Htnp state established 2>/dev/null)" || true)" ]] || die active_client_socket_refusing_stop 42
 systemctl stop "$CC_SERVICE"; state=stopped; ! systemctl is-active --quiet "$CC_SERVICE" || die service_failed_to_stop 1
-out="$(timeout --signal=TERM --kill-after=15s 600s runuser -u "$CC_SERVICE_USER" -- /bin/bash -c 'cd "$1"&&exec "$2" --backup --config "$3"' -- /usr/lib/chillcenter "$CC_BINARY" "$CC_CONFIG" </dev/null)"
+out="$(timeout --signal=TERM --kill-after=15s 600s setsid /bin/bash -c 'set -e; child=; cleanup(){ [ -z "$child" ] || kill -TERM -- -"$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }; trap "cleanup; exit 124" TERM INT HUP; cd "$1"; runuser -u "$2" -- "$3" --backup --config "$4" </dev/null & child=$!; wait "$child"' -- /usr/lib/chillcenter "$CC_SERVICE_USER" "$CC_BINARY" "$CC_CONFIG")" || die backup_failed_or_timed_out 1
 backup="${out#Sauvegarde terminée : }"; [[ "$out" != "$backup" && "$backup" == "$CC_DATA_DIR/backups/"* ]] || die backup_receipt_refused 1; backup_ok "$backup"
 install -o root -g root -m 0755 "$CC_BINARY" "$old_bin"; [[ "$(hash "$old_bin")" == "$CC_EXPECTED_OLD_BINARY_SHA256" ]] || die old_binary_backup_mismatch 1
-python3 -I - "$journal" "$old_bin" "$old_web" "$CC_EXPECTED_OLD_BINARY_SHA256" "$CC_EXPECTED_WEB_BUILD" <<'PY'
-import json,os,sys
-p=sys.argv[1]; f=open(p+'.new','w'); json.dump(dict(state='prepared',old_binary=sys.argv[2],old_web=sys.argv[3],old_hash=sys.argv[4],old_web_build=sys.argv[5]),f); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.new',p); d=os.open(os.path.dirname(p),os.O_RDONLY); os.fsync(d); os.close(d)
-PY
-web_swapped=1; mv -T "$CC_WEB_DIR" "$old_web"; mv -T "$new_web" "$CC_WEB_DIR"; bin_swapped=1; mv -T "$new_bin" "$CC_BINARY"
+mv -T "$CC_WEB_DIR" "$old_web"; mv -T "$new_web" "$CC_WEB_DIR"; mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-replaced-$(date -u +%Y%m%dT%H%M%SZ)"; mv -T "$new_bin" "$CC_BINARY"
 systemctl start "$CC_SERVICE"; state=started
-for n in $(seq 1 30); do tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server" 2>/dev/null|grep -qx 200&&break; sleep 1; done
+deadline=$((SECONDS + 60)); while (( SECONDS < deadline )); do tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server" 2>/dev/null|grep -qx 200&&break; sleep 1; done
 tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server"|grep -qx 200 || die new_server_not_ready 1
 [[ "$(tls "$CC_BASE_URL/build.json"|build)" == "$CC_EXPECTED_WEB_BUILD" ]] || die new_web_not_served 1
+fingerprint >"$pre/after.fingerprint"; cmp -s "$pre/before.fingerprint" "$pre/after.fingerprint" || die persistent_state_changed 1
 state=complete; trap - EXIT HUP INT TERM
+rm -f -- "$journal"
 printf 'deployment=PASS
 backup=%s
 old_binary=%s

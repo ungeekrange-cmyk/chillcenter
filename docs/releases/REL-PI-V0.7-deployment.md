@@ -25,6 +25,13 @@ stricte TLS, schéma SQLite différent de 3, scan ou job actif, socket client
 fait répondre `UPDATE_HELPER_NOT_INSTALLED`: c’est une limite attendue, pas un
 échec à contourner.
 
+Son interface est fermée: exactement `--self-test`, `--preflight`, `--deploy`
+ou `--recover`, sans argument supplémentaire. `--recover` est l’unique reprise
+explicite après une coupure non interceptable: il lit le journal durable sous la
+racine rollback, réconcilie les chemins réellement présents, restaure le couple
+ancien, vérifie ses hash/build, TLS et le service, puis marque le rollback
+terminé. Il ne télécharge ni n’installe de nouvel artefact.
+
 Après les gates, il fait une sauvegarde hors ligne sous l’identité du service.
 La sauvegarde du binaire existant utilise son snapshot SQLite cohérent (dont le
 contrat applicatif réalise `quick_check`); l’opérateur valide directement le
@@ -32,7 +39,9 @@ manifest, les empreintes, l’ensemble exact, les secrets TLS inclus et l’abse
 de WAL/SHM non déclarés. Il
 conserve sous une racine root `0700` l’ancien binaire, le web précédent et les
 empreintes metadata/octet de config, library, certificat, build web et unité.
-Une erreur ou un signal tente de remettre **binaire et web** avant redémarrage;
+Le journal est fsync avant l’arrêt; une erreur interceptable remet **binaire et
+web** avant redémarrage, tandis qu’un SIGKILL/power-loss exige le rerun explicite
+`--recover`;
 la base, la configuration et le NAS ne sont jamais restaurés automatiquement.
 
 Avant toute mutation il faut: (1) revue indépendante du SHA exact de
