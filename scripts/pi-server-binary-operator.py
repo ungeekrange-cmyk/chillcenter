@@ -6,6 +6,7 @@ network discovery.  An administrator supplies reviewed local bytes and pins.
 """
 import argparse, hashlib, json, os, pathlib, re, shutil, signal, sqlite3
 import stat, subprocess, sys, time, urllib.parse, urllib.request, uuid
+MAINTENANCE_PATH=pathlib.Path("/run/chillcenter-update/maintenance")
 
 class Refusal(RuntimeError): pass
 def fail(s): raise Refusal(s)
@@ -115,11 +116,12 @@ def quiet(args):
     ss=run("ss","-Htnp",timeout=20).stdout
     if args.binary.name in ss: fail("active_client_socket_refusing_stop")
 def acquire_maintenance(args, nonce):
-    flag=pathlib.Path("/run/chillcenter-update/maintenance")
+    flag=MAINTENANCE_PATH
     parent=flag.parent
-    if not parent.exists(): parent.mkdir(mode=0o755)
+    created=not parent.exists()
+    if created: parent.mkdir(mode=0o755); os.chmod(parent,0o755)
     ps=os.stat(parent)
-    if ps.st_uid!=0 or not stat.S_ISDIR(ps.st_mode) or stat.S_ISLNK(os.lstat(parent).st_mode): fail("maintenance_parent_invalid")
+    if ps.st_uid!=0 or stat.S_IMODE(ps.st_mode)!=0o755 or not stat.S_ISDIR(ps.st_mode) or stat.S_ISLNK(os.lstat(parent).st_mode): fail("maintenance_parent_invalid")
     tmp=parent/(".manual-maintenance-"+nonce)
     fd=os.open(tmp,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     try:
@@ -132,7 +134,7 @@ def acquire_maintenance(args, nonce):
     if s.st_uid!=0 or stat.S_IMODE(s.st_mode)!=0o600: fail("maintenance_ownership_invalid")
     return (s.st_dev,s.st_ino,nonce)
 def release_maintenance(token, strict=True):
-    flag=pathlib.Path("/run/chillcenter-update/maintenance")
+    flag=MAINTENANCE_PATH
     try: s=os.lstat(flag)
     except FileNotFoundError: return
     if (s.st_dev,s.st_ino)!=token[:2] or not stat.S_ISREG(s.st_mode) or s.st_uid!=0 or stat.S_IMODE(s.st_mode)!=0o600 or flag.read_bytes()!= (token[2]+"\n").encode():
@@ -142,7 +144,7 @@ def release_maintenance(token, strict=True):
     return True
 def quiescent(args, token):
     """Admission is closed; require the server's fresh generation-bound pulse."""
-    generation=str(os.stat("/run/chillcenter-update/maintenance").st_mtime_ns)
+    generation=str(os.stat(MAINTENANCE_PATH).st_mtime_ns)
     deadline=time.monotonic()+12
     proof=args.data_dir/"updates/quiescence.json"
     while time.monotonic()<deadline:
@@ -205,14 +207,20 @@ def validate_recovery(args):
     elif d["state"] not in {"stopping","swapped"}: fail("missing_binary_recovery_refused")
     return d
 def owned_maintenance(nonce):
-    flag=pathlib.Path("/run/chillcenter-update/maintenance")
+    flag=MAINTENANCE_PATH
     try: s=os.lstat(flag)
     except FileNotFoundError: return None
     token=(s.st_dev,s.st_ino,nonce)
     if not stat.S_ISREG(s.st_mode) or s.st_uid!=0 or stat.S_IMODE(s.st_mode)!=0o600 or flag.read_bytes()!=(nonce+"\n").encode(): fail("maintenance_ownership_unproven")
     return token
 def old_health(args, expected):
-    if sha(args.binary)!=expected or not active(args.service) or not isinstance(strict_json(args.base_url,args.cert,"/api/2026-10-14/server"),dict): fail("rollback_health_failed")
+    deadline=time.monotonic()+60
+    while time.monotonic()<deadline:
+        try:
+            if sha(args.binary)==expected and active(args.service) and isinstance(strict_json(args.base_url,args.cert,"/api/2026-10-14/server"),dict): return
+        except Refusal: pass
+        time.sleep(1)
+    fail("rollback_health_failed")
 def recover(args):
     j=args.rollback_dir/"binary-transition.json"; d=validate_recovery(args)
     binary=pathlib.Path(d["binary"]); old=pathlib.Path(d["old_copy"]); stage=pathlib.Path(d["new_stage"])
@@ -262,10 +270,11 @@ def main():
     if stage.exists() or old.exists(): fail("rollback_name_already_exists")
     nonce=uuid.uuid4().hex
     atomic_json(j,{"state":"prepared","service":a.service,"binary":str(a.binary),"old_copy":str(old),"new_stage":str(stage),"old_sha":a.old_sha,"new_sha":a.new_sha,"maintenance_nonce":nonce})
-    shutil.copyfile(a.candidate,stage); fd=os.open(stage,os.O_RDONLY); os.fsync(fd); os.close(fd); os.chown(stage,0,0); os.chmod(stage,0o755)
+    shutil.copyfile(a.candidate,stage); os.chown(stage,0,0); os.chmod(stage,0o755); fd=os.open(stage,os.O_RDONLY); os.fsync(fd); os.close(fd); fd=os.open(a.rollback_dir,os.O_RDONLY); os.fsync(fd); os.close(fd)
     if sha(stage)!=a.new_sha: fail("stage_hash_mismatch")
     # Final gate is deliberately after staging/journalling but before service stop.
     token=None
+    succeeded=False
     try:
         quiet(a)
         if sha(a.binary)!=a.old_sha or sha(stage)!=a.new_sha or invariant([a.config,a.cert,a.key,a.data_dir/"tmdb-token",a.data_dir/"library.json"],a.service,a.web_dir)!=inv: fail("final_pre_stop_invariant_changed")
@@ -279,10 +288,12 @@ def main():
         v071(a.base_url,a.cert)
         if snapshot_db(db)!=before or invariant([a.config,a.cert,a.key,a.data_dir/"tmdb-token",a.data_dir/"library.json"],a.service,a.web_dir)!=inv: fail("persistent_invariant_changed")
     except Exception:
-        recover(a); raise
+        recover(a); token=None; raise
     finally:
-        if token is not None: release_maintenance(token)
-    atomic_json(j,{**journal_load(j),"state":"complete"}); print("deployment=PASS")
+        if succeeded and token is not None: release_maintenance(token)
+    atomic_json(j,{**journal_load(j),"state":"complete"}); succeeded=True
+    if token is not None: release_maintenance(token)
+    print("deployment=PASS")
 if __name__=="__main__":
     try: main()
     except (Refusal, subprocess.TimeoutExpired, OSError, sqlite3.Error) as e: print("REFUSED:"+str(e),file=sys.stderr); sys.exit(2)
