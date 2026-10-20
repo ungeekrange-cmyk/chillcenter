@@ -23,7 +23,7 @@ Contraintes FK, transactions atomiques, validation des vitesses et délais ; not
 
 | Groupe | Opérations prévues |
 | --- | --- |
-| Santé et identité | `GET /api/v1/server`, santé de service et disponibilité séparées ; aucun secret. |
+| Santé et identité | `GET /api/2026-10-14/server`, santé de service et disponibilité séparées ; aucun secret. |
 | Profils | Lister, créer, modifier, supprimer ; suppression confirmée dans le client. |
 | Catalogue | Pagination, recherche, filtres, fiches, séries, sagas ; métadonnées modifiables avec révision attendue. |
 | Personnel | `/profiles/{profile_id}/...` : états, préférences, notes, playlists ; profil explicite à chaque opération. |

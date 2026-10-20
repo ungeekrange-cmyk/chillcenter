@@ -16,7 +16,8 @@ disponibles ; voir les [preuves et limites](../releases/REL-V0.7.md).
 | Client web/PWA | `versions.json.web` | `web-vX.Y.Z` | Fichiers statiques sur le serveur, sans remplacer son binaire |
 | Ambiances | `versions.json.themes` | `themes-vX.Y.Z` | Pack de données et images, sans reconstruire l’application |
 
-L’API reste `/api/2026-10-14` et conserve `/api/v1`. Les versions produit ne sont
+L’API unique reste `/api/2026-10-14` ; `/api/v1` est supprimé depuis le serveur0.7.1.
+Les versions produit ne sont
 pas des versions d’API. Le pack comporte aussi ses versions de format et de
 renderer. Voir [le calendrier des thèmes](../../themes/README.md).
 

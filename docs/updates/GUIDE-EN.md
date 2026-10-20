@@ -16,7 +16,8 @@ install them on an existing server. Earlier releases remain available; see the
 | Web/PWA client | `versions.json.web` | `web-vX.Y.Z` | Static server files, without replacing its binary |
 | Themes | `versions.json.themes` | `themes-vX.Y.Z` | Data/image pack, without rebuilding the application |
 
-The API remains `/api/2026-10-14`, with `/api/v1` retained. Product versions are
+The sole API remains `/api/2026-10-14`; `/api/v1` is retired since server0.7.1.
+Product versions are
 not API versions. Packs also declare format and renderer versions. See the
 [theme calendar](../../themes/README.en.md).
 

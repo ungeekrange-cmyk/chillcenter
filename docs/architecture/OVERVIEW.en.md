@@ -62,9 +62,9 @@ Renewal retains the approved key; the accepted exception after expiry of the
 previous certificate carries a LAN impersonation risk described in ADR0005.
 TLS is never globally disabled.
 
-The `/api/2026-10-14` base and `/api/v1` alias are retained. Compatible additions
-stay in this version; a breaking change requires a new version while retaining
-the old one. Read the [API guide](../api/INTEGRATION-EN.md) and OpenAPI before
+Since server0.7.1 only `/api/2026-10-14` is served; the old `/api/v1` alias is
+retired at the user's explicit request (ADR0031). Compatible additions stay
+in this version; no second parallel API is served. Read the [API guide](../api/INTEGRATION-EN.md) and OpenAPI before
 integration. Real keys and addresses stay outside Git; exports exclude secrets.
 
 ## Documentation and delivery

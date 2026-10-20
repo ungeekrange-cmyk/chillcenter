@@ -14,7 +14,8 @@ it is not evidence of completed functionality.
   Test keys must be explicitly synthetic, never accepted in production.
 - Component IDs: `mac`, `server`, `web`, `themes`; tag `<component>-v<semver>`.
   Never use GitHub global latest release; skip drafts/prereleases, no downgrade.
-- Additive server endpoints below existing dated API and v1 alias:
+- Additive server endpoints below the sole dated API `/api/2026-10-14`;
+  the old v1 alias is retired since server0.7.1 (ADR0031):
   `GET /admin/updates` (versions/policies/status),
   `PUT /admin/updates/policy` (component,mode,hour,minute,expected_revision),
   `POST /admin/updates/check` and `/install` (component only).

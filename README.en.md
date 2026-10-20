@@ -98,9 +98,9 @@ Chromium tests. No native iOS/Android app or Face ID authentication is included.
 
 ## API and documentation
 
-The HTTPS API is versioned: `/api/2026-10-14`. Compatible additions stay within
-that version; a breaking change requires a new version and continued support
-for the version used by existing clients.
+The sole HTTPS API is `/api/2026-10-14`. Compatible additions stay within that
+version; since server0.7.1, the old `/api/v1` alias is retired (404).
+Third-party clients must use the dated base.
 
 - [OpenAPI contract](docs/api/openapi-2026-10-14.json)
 - [Bilingual documentation](docs/README.en.md) and [API integration guide](docs/api/INTEGRATION-EN.md)

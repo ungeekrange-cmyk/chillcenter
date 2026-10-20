@@ -87,7 +87,7 @@ iOS/Android ni authentification Face ID n’est incluse.
 
 ## API et documentation
 
-L’API HTTPS est versionnée : `/api/2026-10-14`. Les ajouts compatibles restent dans cette version ; une rupture nécessite une nouvelle version et le maintien de celle utilisée par les clients existants.
+L’unique API HTTPS est `/api/2026-10-14`. Les ajouts compatibles restent dans cette version ; depuis le serveur0.7.1, l’ancien alias `/api/v1` est supprimé (404). Les clients tiers doivent utiliser la base datée.
 
 - [Contrat OpenAPI](docs/api/openapi-2026-10-14.json)
 - [Documentation bilingue](docs/README.md) et [guide d'intégration API](docs/api/INTEGRATION-FR.md)

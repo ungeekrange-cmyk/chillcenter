@@ -31,6 +31,10 @@ right, warm evening. The original generated files are preserved outside the repo
 Calendar proof: `node --test docs/design/concepts/2026-10-20/calendar.test.cjs`.
 UTC civil-date arithmetic avoids DST shifts. This is a design-preview calculator,
 not an accepted runtime theme implementation.
+Primary reference: [US Naval Observatory — Gregorian Easter rules](https://aa.usno.navy.mil/faq/easter)
+and [2027 calendar, Easter March28](https://aa.usno.navy.mil/calculated/observances/christian?year=2027),
+checked2026-10-20. The preview therefore starts February26 in2027, not a fixed
+March/April date reused for later years.
 
 ## Sidebar animations / Animations du panneau gauche
 

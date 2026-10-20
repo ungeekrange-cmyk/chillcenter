@@ -12,7 +12,8 @@ review or missing system-level evidence.
 
 ## Implemented on the branch, not delivered
 
-- Source version 0.7.0 for Mac/server/web/themes; dated API and v1 alias retained.
+- Initial source version0.7.0 for Mac/server/web/themes. Since the0.7.1 delivery,
+  only the dated2026-10-14 API is served; the old alias is retired (ADR0031).
 - Declarative packs in `themes/default`, FR/EN dates/priorities, validated
   resources and embedded fallback. No JS/CSS/HTML in themes.
 - Settings card independent of the catalogue lock, actual installed versions,

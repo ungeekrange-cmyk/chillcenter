@@ -12,7 +12,8 @@ peuvent pas remplacer la revue de sécurité ni les essais système manquants.
 
 ## Implémenté sur la branche, pas livré
 
-- Version source 0.7.0 pour Mac, serveur, web, thèmes ; API datée et alias v1 conservés.
+- Version source initiale0.7.0 pour Mac, serveur, web, thèmes. Depuis le lot0.7.1,
+  seule l’API datée2026-10-14 est servie ; l’ancien alias est supprimé (ADR0031).
 - Packs déclaratifs dans `themes/default`, dates/priorités documentées en FR/EN,
   ressources vérifiées et repli embarqué. Aucun JS/CSS/HTML dans les thèmes.
 - Carte Configuration indépendante du verrou du catalogue, versions réellement

@@ -64,8 +64,9 @@ restent nécessaires. Le renouvellement garde la clé approuvée ; l'exception
 acceptée après expiration de l'ancien certificat comporte un risque d'usurpation
 LAN, décrit dans ADR0005. Aucune désactivation globale de TLS.
 
-La base `/api/2026-10-14` et l'alias `/api/v1` sont conservés. Ajouts compatibles
-dans cette version ; rupture = nouvelle version avec maintien de l'ancienne.
+Seule la base `/api/2026-10-14` est servie depuis le serveur0.7.1 ; l’ancien
+alias `/api/v1` est supprimé à la demande explicite de l’utilisateur (ADR0031).
+Les ajouts compatibles restent dans cette version ; aucune seconde API parallèle.
 Lire le [guide API](../api/INTEGRATION-FR.md) et l'OpenAPI avant une intégration.
 Les clés et adresses réelles restent hors Git ; les exports excluent les secrets.
 
