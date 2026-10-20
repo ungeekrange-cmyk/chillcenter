@@ -13,7 +13,7 @@ class Guards(unittest.TestCase):
   self.j=self.rb/"binary-transition.json"
  def tearDown(self): self.t.cleanup()
  def receipt(self,state="prepared"):
-  op.atomic_json(self.j,{"state":state,"service":"fixture","binary":str(self.bin),"old_copy":str(self.old),"new_stage":str(self.new),"old_sha":digest(b"old"),"new_sha":digest(b"new")})
+  op.atomic_json(self.j,{"state":state,"service":"fixture","binary":str(self.bin),"old_copy":str(self.old),"new_stage":str(self.new),"old_sha":digest(b"old"),"new_sha":digest(b"new"),"maintenance_nonce":"a"*32})
  def test_atomic_journal_roundtrip_and_private_root(self):
   self.receipt(); self.assertEqual(op.journal_load(self.j)["state"],"prepared")
  def test_journal_allows_installed_binary_outside_rollback_root(self):
@@ -51,24 +51,24 @@ class Guards(unittest.TestCase):
  def test_recover_stops_new_service_before_restoring_external_binary(self):
   self.bin.write_bytes(b"new"); self.receipt("swapped"); calls=[]
   args=argparse.Namespace(rollback_dir=self.rb,service="fixture",base_url="https://fixture",cert=self.old)
-  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"strict_json",return_value={}), mock.patch.object(op,"active",side_effect=[True,True]), mock.patch.object(op,"service",side_effect=lambda _s,a:calls.append(a)):
+  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"owned_maintenance",return_value=None), mock.patch.object(op,"old_health"), mock.patch.object(op,"active",side_effect=[True]), mock.patch.object(op,"service",side_effect=lambda _s,a:calls.append(a)):
    op.recover(args)
   self.assertEqual(calls,["stop","start"]); self.assertEqual(self.bin.read_bytes(),b"old")
  def test_quiescing_abort_never_stops_active_old_service(self):
   self.receipt("quiescing"); args=argparse.Namespace(rollback_dir=self.rb,service="fixture",base_url="https://fixture",cert=self.old)
-  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"active",return_value=True), mock.patch.object(op,"service") as svc:
+  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"owned_maintenance",return_value=None), mock.patch.object(op,"old_health"), mock.patch.object(op,"active",return_value=True), mock.patch.object(op,"service") as svc:
    op.recover(args)
   svc.assert_not_called()
  def test_recover_restores_missing_binary_only_from_pinned_old_copy(self):
   self.bin.unlink(); self.receipt("stopping")
   args=argparse.Namespace(rollback_dir=self.rb,service="fixture",base_url="https://fixture",cert=self.old)
-  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"strict_json",return_value={}), mock.patch.object(op,"active",side_effect=[False,True]), mock.patch.object(op,"service"):
+  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"owned_maintenance",return_value=None), mock.patch.object(op,"old_health"), mock.patch.object(op,"active",side_effect=[False]), mock.patch.object(op,"service"):
    op.recover(args)
   self.assertEqual(self.bin.read_bytes(),b"old")
  def test_recover_does_not_overwrite_unknown_binary(self):
   self.bin.write_bytes(b"unknown"); self.receipt("swapped")
   args=argparse.Namespace(rollback_dir=self.rb,service="fixture",base_url="https://fixture",cert=self.old)
-  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"active",return_value=False), mock.patch.object(op,"service"):
+  with mock.patch.object(op,"validate_recovery",return_value=op.journal_load(self.j)), mock.patch.object(op,"owned_maintenance",return_value=None), mock.patch.object(op,"active",return_value=False), mock.patch.object(op,"service"):
    with self.assertRaises(op.Refusal): op.recover(args)
   self.assertEqual(self.bin.read_bytes(),b"unknown")
 if __name__=="__main__": unittest.main(verbosity=2)
