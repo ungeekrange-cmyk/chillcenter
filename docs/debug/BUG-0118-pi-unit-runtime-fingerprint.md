@@ -1,8 +1,9 @@
 # BUG0118 — Pi deployment compares runtime state as configuration
 
 - Priority: P1, deployment operator; not a defect in the published v0.7 packages.
-- Status: CONFIRMED / FIX_IN_PROGRESS, 20 October 2026.
+- Status: FIXED / VERIFIED_PI_GUARD, 20 October 2026.
 - Affected operator: `24f62ac2f4da95fd51bf01f81ab934b35762f888`.
+- Fix: `815b523a383e3d0a61e1b116f27495e1ca2584d0`, independent scoped approval.
 
 ## Français
 
@@ -22,6 +23,14 @@ contenu effectif de l'unité et ses propriétés statiques, sans ignorer une
 modification réelle de l'unité. Le test doit faire varier PID/heure après
 redémarrage tout en conservant la configuration. Une nouvelle revue et une
 nouvelle tentative sont nécessaires avant de conclure à un déploiement réussi.
+
+Résultat : la comparaison conserve User/Group/FragmentPath statiques et
+l'empreinte du contenu effectif `systemctl cat`. Le test complet fait varier
+PID et heure au redémarrage ; les sept tests ciblés passent. La seconde tentative
+a répondu `deployment=PASS`. Le vérificateur indépendant a confirmé les
+empreintes statiques identiques, le serveur v0.7 actif et les données inchangées.
+Le gate global reste distinct dans le rapport de vérification ; cette clôture
+concerne le garde fautif.
 
 Preuves privées : démarrage de la tentative à `2026-10-20T20:18:45Z`, comparaison
 dans `pre-v07.s70gre`, ancien SHA-256 rétabli
@@ -44,3 +53,10 @@ keeping configuration fixed. A new independent review and successful deployment
 verification are required; the failed attempt must not be relabelled successful.
 Private backups and previous versions are retained. NAS, existing settings and
 the Mac application are outside this correction's mutation scope.
+
+Verified correction: static identity and the effective unit-content hash replace
+the runtime structure. Seven focused tests pass, including a full restart with
+changing process metadata. The second real deployment returned `deployment=PASS`;
+the independent verifier confirmed equal static fingerprints, the active v0.7
+server and unchanged data. Overall release verification is a separate gate; the
+first failed attempt remains retained above.

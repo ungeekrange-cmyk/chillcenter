@@ -1,5 +1,44 @@
 # Contexte du projet
 
+## Pi : serveur et web v0.7 installés — 20 octobre 2026
+
+Demande humaine explicite : sauvegarder puis mettre à jour les deux composants,
+sans NAS ni réglages existants. Paquets publiés inchangés, source `3a043334` :
+serveur `0.7.0` SHA256 `68d526cd3f3af7cee9b07b06c62f46260656dda7cccc4c12994dee85431771e5`,
+web `0.7.0` build `a1c12ba4a582`. Seconde tentative `deployment=PASS`, commencée
+à `2026-10-20T20:26:34Z`. Sauvegarde privée cohérente
+`4cb8e869-7990-4e35-8311-b2ded8d4bd74`, anciennes versions conservées. Revue
+indépendante de l'opérateur corrigé `815b523` APPROVED, sept tests ciblés et
+preuve réelle Linux de nettoyage des processus PASS.
+
+Le premier essai a été restauré automatiquement : [BUG0118](debug/BUG-0118-pi-unit-runtime-fingerprint.md),
+PID/heure systemd comparés à tort comme configuration. La restauration a été
+vérifiée indépendamment ; ne pas qualifier cet essai de succès. Référence
+logique correcte : 2 496 vidéos avec WAL, et non 2 497 issues du premier relevé
+sans WAL. Contrôle indépendant final **APPROVED_SCOPED**, gate **VERIFIED** au
+dernier relevé `2026-10-20T20:37:32Z` : binaire actif exact, 99 fichiers installés,
+97 fichiers servis et deux notices MIME-deny attendues, HTTPS strict 443/8443,
+API datée/v1, OpenAPI, catalogue/filtres et 29 empreintes sémantiques inchangées.
+PID stable, zéro redémarrage inattendu et zéro avertissement/erreur. Le GET de
+versions autorisé a seulement initialisé un verrou vide privé de mise à jour ;
+aucune politique existante ni préférence modifiée.
+[Dossier FR/EN](releases/REL-PI-V0.7-deployment.md),
+[vérification indépendante](releases/REL-PI-V0.7-verification.md).
+
+Aucun Mac, paquet/tag GitHub, unité, compte/groupe, réglage, TLS ou NAS modifié.
+L'installateur initial n'a pas été utilisé. Le helper privilégié et le timer de
+mise à jour ne sont pas installés/activés sur cette installation legacy ; ne pas
+les ajouter sans un lot distinct. Les secrets de sauvegarde restent sur le Pi.
+
+English: the unchanged published server/web 0.7.0 payloads are installed after a
+fresh private backup. Automatic rollback of the first false-positive attempt was
+independently verified; that failure remains recorded. Existing data/settings,
+NAS, Mac and GitHub releases are preserved. Independent post-deployment
+verification is `APPROVED_SCOPED`, gate `VERIFIED`; API, strict TLS, exact web
+assets, data/settings, backup and stability passed. Physical Safari/PWA install
+and playback were not retested. The root updater/timer is deliberately not
+activated.
+
 ## v0.7 publiée et vérifiée sur GitHub — 20 octobre 2026
 
 Publication effective, pas un déploiement Pi. Source immuable des cinq tags et

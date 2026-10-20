@@ -3,9 +3,11 @@
 ## Lecture de l'état courant
 
 20 octobre 2026, déploiement Pi v0.7 : [BUG0118 empreinte d'unité systemd](BUG-0118-pi-unit-runtime-fingerprint.md)
-confirmé dans l'opérateur de livraison. Premier essai revenu automatiquement
-à l'ancienne paire serveur/web ; sauvegarde conservée et correction ciblée en
-cours. Ne pas confondre une tentative restaurée avec une mise à jour réussie.
+**FIXED / VERIFIED_PI_GUARD** dans `815b523`. Premier essai revenu automatiquement
+à l'ancienne paire serveur/web ; sauvegarde conservée. Seconde tentative PASS,
+empreintes statiques et données confirmées par un vérificateur indépendant.
+Le [gate final](../releases/REL-PI-V0.7-verification.md) est VERIFIED dans le
+périmètre contrôlé ; ne pas requalifier le premier essai.
 
 20 octobre 2026, clôture : [BUG0113 updater](BUG-0113-component-updater-release-gate.md)
 **FIXED / VERIFIED_LOCAL**, huit HIGH et quatre défauts fonctionnels clos,
