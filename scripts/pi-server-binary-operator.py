@@ -4,10 +4,8 @@
 It intentionally has no downloader, manifest reader, configuration writer, or
 network discovery.  An administrator supplies reviewed local bytes and pins.
 """
-import argparse, hashlib, json, os, pathlib, re, shutil, signal, socket, sqlite3
-import stat, subprocess, sys, tempfile, time, urllib.request
-
-OLD_DEFAULT = "68d526cd3f3af7cee9b07b06c62f46260656dda7cccc4c12994dee85431771e5"
+import argparse, hashlib, json, os, pathlib, re, shutil, signal, sqlite3
+import stat, subprocess, sys, time, urllib.parse, urllib.request
 
 class Refusal(RuntimeError): pass
 def fail(s): raise Refusal(s)
@@ -29,8 +27,9 @@ def atomic_json(path, obj):
     os.replace(tmp,path); d=os.open(path.parent,os.O_RDONLY); os.fsync(d); os.close(d)
 def journal_load(p):
     regular(p); d=json.loads(p.read_bytes())
-    if set(d)!={"state","binary","old_copy","new_stage","old_sha","new_sha"} or d["state"] not in {"prepared","stopped","swapped"}: fail("invalid_journal")
-    for k in ("binary","old_copy","new_stage"):
+    if set(d)!={"state","binary","old_copy","new_stage","old_sha","new_sha"} or d["state"] not in {"prepared","stopping","swapped","complete","rollback_complete"}: fail("invalid_journal")
+    if not pathlib.Path(d["binary"]).is_absolute(): fail("journal_binary_path_refused")
+    for k in ("old_copy","new_stage"):
         if not pathlib.Path(d[k]).is_absolute() or pathlib.Path(d[k]).parent != p.parent: fail("journal_path_refused")
     if not all(re.fullmatch(r"[0-9a-f]{64}",d[k]) for k in ("old_sha","new_sha")): fail("journal_hash_refused")
     return d
@@ -49,9 +48,10 @@ def elf_aarch64(p):
 def strict_json(url, cert, path):
     ctx=__import__("ssl").create_default_context(cafile=str(cert))
     try:
-        with urllib.request.urlopen(urllib.request.Request(url+path),context=ctx,timeout=10) as r:
+        req=urllib.request.Request(url+path,headers={"Connection":"close"})
+        with urllib.request.urlopen(req,context=ctx,timeout=10) as r:
             if r.status!=200: fail("strict_tls_http_failed")
-            return json.loads(r.read())
+            return json.loads(r.read(1024*1024+1).decode()) if r.length is None or r.length<=1024*1024 else fail("response_too_large")
     except Refusal: raise
     except Exception as e: fail("strict_tls_failed")
 def v071(url,cert):
@@ -71,13 +71,26 @@ def snapshot_db(db):
     h=hashlib.sha256(); tables=[]
     for name,sql in mem.execute("select name,sql from sqlite_master where type='table' order by name"):
         tables.append((name,mem.execute('select count(*) from "'+name.replace('"','""')+'"').fetchone()[0])); h.update((name+"\0"+(sql or "")+"\n").encode())
-        for row in mem.execute("select * from "+'"'+name.replace('"','""')+'"'):
+        cols=[x[1] for x in mem.execute('pragma table_info("'+name.replace('"','""')+'")')]
+        order=",".join('"'+x.replace('"','""')+'"' for x in cols)
+        for row in mem.execute("select * from "+'"'+name.replace('"','""')+'"'+(" order by "+order if order else "")):
             h.update(repr(row).encode()+b"\n")
     src.close(); mem.close(); return {"schema":version,"tables":tables,"digest":h.hexdigest()}
-def invariant(paths, service):
+def file_invariant(p):
+    if not p.exists(): return "absent"
+    regular(p); s=os.stat(p); return (sha(p),stat.S_IMODE(s.st_mode),s.st_uid,s.st_gid,s.st_size)
+def web_digest(root):
+    regular_entries=[]
+    for p in sorted(root.rglob("*"),key=lambda x:str(x.relative_to(root))):
+        s=os.lstat(p); rel=str(p.relative_to(root))
+        if stat.S_ISLNK(s.st_mode) or not (stat.S_ISREG(s.st_mode) or stat.S_ISDIR(s.st_mode)): fail("web_tree_unsafe")
+        regular_entries.append((rel,stat.S_IFMT(s.st_mode),stat.S_IMODE(s.st_mode),s.st_uid,s.st_gid,sha(p) if p.is_file() else ""))
+    return hashlib.sha256(repr(regular_entries).encode()).hexdigest()
+def invariant(paths, service, web):
     # Hashes are compared in-process and never printed; systemctl cat excludes runtime PID fields.
-    a={str(p):sha(p) for p in paths if p.exists()}
+    a={str(p):file_invariant(p) for p in paths}
     a["unit"]=hashlib.sha256(run("systemctl","cat",service).stdout.encode()).hexdigest()
+    a["web"]=web_digest(web)
     return a
 def quiet(args):
     if not active(args.service): fail("service_not_active")
@@ -114,38 +127,53 @@ def validate_backup(root,data):
     entries=d.get("entries");
     if not isinstance(entries,list) or not entries: fail("backup_entries_invalid")
     wanted={x.get("path"):x for x in entries if isinstance(x,dict)}
+    required={"catalog.sqlite","server-config.json","secrets/tls/certificate.pem","secrets/tls/service-key.pem"}
+    if not required <= set(wanted): fail("backup_required_entries_missing")
     actual=set()
     for p in root.rglob("*"):
-        if p.is_dir(): continue
+        ls=os.lstat(p)
+        if stat.S_ISLNK(ls.st_mode): fail("backup_symlink_refused")
+        if stat.S_ISDIR(ls.st_mode): continue
         regular(p); rel=str(p.relative_to(root)); actual.add(rel); x=wanted.get(rel)
         if rel=="manifest.json": continue
         if not x or x.get("size")!=p.stat().st_size or x.get("sha256")!=sha(p): fail("backup_hash_invalid")
     if actual != set(wanted)|{"manifest.json"}: fail("backup_tree_invalid")
+    snap=snapshot_db(root/"catalog.sqlite")
 def recover(args):
     j=args.rollback_dir/"binary-transition.json"; d=journal_load(j)
     binary=pathlib.Path(d["binary"]); old=pathlib.Path(d["old_copy"]); stage=pathlib.Path(d["new_stage"])
     current=sha(binary) if binary.exists() else None
+    if d["state"] in {"complete","rollback_complete"}:
+        print("recovery=PASS"); return
     if d["state"]=="prepared":
         if current!=d["old_sha"] or not active(args.service): fail("prepared_recovery_unsafe")
     else:
+        # A new process can be serving from a deleted/replaced inode: stop first.
+        if active(args.service): service(args.service,"stop")
         if current==d["new_sha"]:
             if not old.exists() or sha(old)!=d["old_sha"]: fail("rollback_copy_missing")
             os.replace(binary,args.rollback_dir/("failed-"+str(int(time.time())))); os.replace(old,binary)
+        elif current is None:
+            if not old.exists() or sha(old)!=d["old_sha"]: fail("rollback_copy_missing")
+            os.replace(old,binary)
         elif current!=d["old_sha"]: fail("unknown_binary_not_overwritten")
-        if not active(args.service): service(args.service,"start")
-    j.unlink(); print("recovery=PASS")
+        if sha(binary)!=d["old_sha"]: fail("rollback_hash_failed")
+        service(args.service,"start")
+    atomic_json(j,{**d,"state":"rollback_complete"}); print("recovery=PASS")
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("mode",choices=("preflight","deploy","recover")); p.add_argument("--base-url",required=True); p.add_argument("--service",required=True); p.add_argument("--service-user",default="chillcenter"); p.add_argument("--binary",type=pathlib.Path,required=True); p.add_argument("--candidate",type=pathlib.Path); p.add_argument("--config",type=pathlib.Path,required=True); p.add_argument("--cert",type=pathlib.Path,required=True); p.add_argument("--data-dir",type=pathlib.Path,required=True); p.add_argument("--rollback-dir",type=pathlib.Path,required=True); p.add_argument("--old-sha",default=OLD_DEFAULT); p.add_argument("--new-sha")
+    p=argparse.ArgumentParser(); p.add_argument("mode",choices=("preflight","deploy","recover")); p.add_argument("--base-url",required=True); p.add_argument("--service",required=True); p.add_argument("--service-user",default="chillcenter"); p.add_argument("--binary",type=pathlib.Path,required=True); p.add_argument("--candidate",type=pathlib.Path); p.add_argument("--config",type=pathlib.Path,required=True); p.add_argument("--cert",type=pathlib.Path,required=True); p.add_argument("--key",type=pathlib.Path,required=True); p.add_argument("--data-dir",type=pathlib.Path,required=True); p.add_argument("--web-dir",type=pathlib.Path,required=True); p.add_argument("--rollback-dir",type=pathlib.Path,required=True); p.add_argument("--old-sha",required=True); p.add_argument("--new-sha")
     a=p.parse_args()
-    if os.geteuid()!=0 or not re.fullmatch(r"https://[^/]+",a.base_url): fail("root_or_https_base_required")
+    u=urllib.parse.urlsplit(a.base_url)
+    if os.geteuid()!=0 or u.scheme!="https" or not u.hostname or u.username or u.password or u.path or u.query or u.fragment: fail("root_or_https_base_required")
+    urllib.request.install_opener(urllib.request.build_opener(urllib.request.ProxyHandler({})))
     if a.mode=="recover": recover(a); return
     if not a.candidate or not a.new_sha: fail("candidate_and_new_sha_required")
     if not all(re.fullmatch(r"[0-9a-f]{64}",x or "") for x in (a.old_sha,a.new_sha)): fail("sha_pin_required")
-    for x in (a.binary,a.candidate,a.config,a.cert,a.data_dir,a.rollback_dir):
+    for x in (a.binary,a.candidate,a.config,a.cert,a.key,a.data_dir,a.web_dir,a.rollback_dir):
         if not x.is_absolute(): fail("absolute_paths_required")
-    private_dir(a.rollback_dir); regular(a.binary); regular(a.candidate); regular(a.config); regular(a.cert); elf_aarch64(a.candidate)
+    private_dir(a.rollback_dir); regular(a.binary); regular(a.candidate); regular(a.config); regular(a.cert); regular(a.key); elf_aarch64(a.candidate)
     if sha(a.binary)!=a.old_sha or sha(a.candidate)!=a.new_sha: fail("exact_hash_pin_mismatch")
-    quiet(a); db=a.data_dir/"catalog.sqlite"; before=snapshot_db(db); inv=invariant([a.config,a.cert,a.data_dir/"tmdb-token"],a.service)
+    quiet(a); db=a.data_dir/"catalog.sqlite"; before=snapshot_db(db); inv=invariant([a.config,a.cert,a.key,a.data_dir/"tmdb-token",a.data_dir/"library.json"],a.service,a.web_dir)
     if a.mode=="preflight": print("preflight=PASS"); return
     j=a.rollback_dir/"binary-transition.json"
     if j.exists(): fail("unfinished_transition_requires_recover")
@@ -155,16 +183,18 @@ def main():
     if sha(stage)!=a.new_sha: fail("stage_hash_mismatch")
     atomic_json(j,{"state":"prepared","binary":str(a.binary),"old_copy":str(old),"new_stage":str(stage),"old_sha":a.old_sha,"new_sha":a.new_sha})
     # Final gate is deliberately after staging/journalling but before service stop.
-    quiet(a); atomic_json(j,{**journal_load(j),"state":"stopped"}); service(a.service,"stop")
     try:
+        quiet(a)
+        if sha(a.binary)!=a.old_sha or sha(stage)!=a.new_sha or invariant([a.config,a.cert,a.key,a.data_dir/"tmdb-token",a.data_dir/"library.json"],a.service,a.web_dir)!=inv: fail("final_pre_stop_invariant_changed")
+        atomic_json(j,{**journal_load(j),"state":"stopping"}); service(a.service,"stop")
         if active(a.service): fail("service_failed_to_stop")
         backup(a); os.replace(a.binary,old); os.replace(stage,a.binary); atomic_json(j,{**journal_load(j),"state":"swapped"}); service(a.service,"start")
         if not active(a.service): fail("service_failed_to_start")
         v071(a.base_url,a.cert)
-        if snapshot_db(db)!=before or invariant([a.config,a.cert,a.data_dir/"tmdb-token"],a.service)!=inv: fail("persistent_invariant_changed")
+        if snapshot_db(db)!=before or invariant([a.config,a.cert,a.key,a.data_dir/"tmdb-token",a.data_dir/"library.json"],a.service,a.web_dir)!=inv: fail("persistent_invariant_changed")
     except Exception:
         recover(a); raise
-    j.unlink(); print("deployment=PASS")
+    atomic_json(j,{**journal_load(j),"state":"complete"}); print("deployment=PASS")
 if __name__=="__main__":
     try: main()
     except (Refusal, subprocess.TimeoutExpired, OSError, sqlite3.Error) as e: print("REFUSED:"+str(e),file=sys.stderr); sys.exit(2)

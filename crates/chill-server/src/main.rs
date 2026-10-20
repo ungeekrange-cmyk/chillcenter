@@ -108,6 +108,20 @@ async fn run() -> Result<(), String> {
         certificate: Arc::new(Mutex::new(certificates.schedule)),
         config: Arc::new(config),
     };
+    // Bind before publishing a LAN hint. `axum_server::bind` defers this until
+    // polling `serve`, so it cannot establish that an advertised endpoint is up.
+    let https_listener =
+        std::net::TcpListener::bind(state.config.listen).map_err(|_| "Écoute HTTPS impossible.")?;
+    https_listener
+        .set_nonblocking(true)
+        .map_err(|_| "Écoute HTTPS impossible.")?;
+    let acceptor = axum_server::tls_rustls::RustlsAcceptor::new(rustls.clone())
+        .handshake_timeout(std::time::Duration::from_secs(5))
+        .acceptor(LimitedAcceptor::new(16));
+    let mut server = axum_server::from_tcp(https_listener)
+        .map_err(|_| "Écoute HTTPS impossible.")?
+        .acceptor(acceptor);
+    tune(server.http_builder());
     // A best-effort LAN hint only: the client still validates the configured
     // HTTPS SAN and its pinned certificate before it can connect.
     let discovery_server_id = state
@@ -160,11 +174,6 @@ async fn run() -> Result<(), String> {
             }
         }
     });
-    let acceptor = axum_server::tls_rustls::RustlsAcceptor::new(rustls)
-        .handshake_timeout(std::time::Duration::from_secs(5))
-        .acceptor(LimitedAcceptor::new(16));
-    let mut server = axum_server::bind(state.config.listen).acceptor(acceptor);
-    tune(server.http_builder());
     // Optional plain-HTTP listener for the bundled web client (ADR-0018); same limits, same router, other scheme.
     let http_server = state.config.http_listen.map(|address| {
         let mut http = axum_server::bind(address).acceptor(FirstByteAcceptor::new(
