@@ -7,6 +7,21 @@ les installations existantes : **aucun Pi, NAS ou client web déployé n'est
 modifié**. Les tags, manifestes signés et `PROVENANCE.json` des paquets fixent
 la source exacte de la livraison. La v0.6 et ses paquets restent conservés.
 
+Publication : **20 octobre 2026**, [v0.7](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7),
+source `3a043334c5c3c676251ab34bf8bab2e4bfb8df4f` (porteur documentaire de la
+source runtime revue). Flux indépendants :
+[Mac](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/mac-v0.7.0),
+[serveur](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/server-v0.7.0),
+[web](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/web-v0.7.0),
+[thèmes](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/themes-v0.7.0).
+Le DMG, la provenance et les sommes SHA256 ont aussi leurs signatures Minisign.
+
+Vérification indépendante après publication : **APPROVED / VERIFIED**, avec
+nouveaux téléchargements publics, signatures, empreintes, arborescences et DMG
+réel monté en lecture seule. [Rapport FR/EN](REL-V0.7-verification.md).
+Le rapport est ajouté sur main après le tag immuable, sans reconstruire ou
+remplacer les paquets publiés.
+
 ## Composants 0.7.0
 
 - Mac Apple Silicon, serveur Linux ARM64, client web responsive/PWA et thèmes

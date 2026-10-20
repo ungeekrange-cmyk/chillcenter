@@ -15,6 +15,7 @@ does not imply a new bundle or deployment.
 | Third-party API integration | [Guide API](api/INTEGRATION-FR.md) | [API guide](api/INTEGRATION-EN.md) |
 | Independent versions and updates | [Guide](updates/GUIDE-FR.md) | [Guide](updates/GUIDE-EN.md) |
 | v0.7: release notes and limits | [Release](releases/REL-V0.7.md) | [Release](releases/REL-V0.7.en.md) |
+| v0.7: independent public package verification | [Rapport FR/EN](releases/REL-V0.7-verification.md) | [FR/EN report](releases/REL-V0.7-verification.md) |
 | v0.7: corrections and final evidence | [Rapport](implementation/COMPONENT-UPDATES-FIXES-20261019.md) | [Report](implementation/COMPONENT-UPDATES-FIXES-20261019.en.md) |
 | Components 0.7: evidence and publication block | [Rapport](implementation/COMPONENT-UPDATES-20261019.md) | [Report](implementation/COMPONENT-UPDATES-20261019.en.md) |
 | Theme packs and calendar | [Thèmes](../themes/README.md) | [Themes](../themes/README.en.md) |

@@ -15,6 +15,7 @@ langue. Un changement documentaire n'implique ni nouveau bundle ni déploiement.
 | Intégration API tierce | [Guide API](api/INTEGRATION-FR.md) | [API guide](api/INTEGRATION-EN.md) |
 | Versions et mises à jour indépendantes | [Guide](updates/GUIDE-FR.md) | [Guide](updates/GUIDE-EN.md) |
 | v0.7 : notes de version et limites | [Release](releases/REL-V0.7.md) | [Release](releases/REL-V0.7.en.md) |
+| v0.7 : vérification indépendante des paquets publics | [Rapport FR/EN](releases/REL-V0.7-verification.md) | [FR/EN report](releases/REL-V0.7-verification.md) |
 | v0.7 : corrections et preuves finales | [Rapport](implementation/COMPONENT-UPDATES-FIXES-20261019.md) | [Report](implementation/COMPONENT-UPDATES-FIXES-20261019.en.md) |
 | Composants 0.7 : preuves et blocage de publication | [Rapport](implementation/COMPONENT-UPDATES-20261019.md) | [Report](implementation/COMPONENT-UPDATES-20261019.en.md) |
 | Packs de thèmes et calendrier | [Thèmes](../themes/README.md) | [Themes](../themes/README.en.md) |

@@ -1,5 +1,44 @@
 # Contexte du projet
 
+## v0.7 publiée et vérifiée sur GitHub — 20 octobre 2026
+
+Publication effective, pas un déploiement Pi. Source immuable des cinq tags et
+manifestes : `3a043334c5c3c676251ab34bf8bab2e4bfb8df4f`. Le delta depuis la source
+revue `3e174b9` ne contient que README/docs/rapports/preuves ; Mac reconstruit
+pour embarquer le SHA réel du porteur. main a été avancée sans reset/force.
+Visibilité PUBLIC et branche par défaut main conservées, v0.6 intacte.
+
+Releases stables : `mac-v0.7.0`, `server-v0.7.0`, `web-v0.7.0`, `themes-v0.7.0`
+et **v0.7 Latest**. IDs : 418723980/418724262/418724452/418724554/418725680.
+Pièces jointes : 5/14/4/4/22 ; tailles, états uploaded et SHA256 calculés par
+GitHub tous comparés aux fichiers locaux avant publication. Une interruption
+réseau avant création du brouillon récapitulatif a été vérifiée puis reprise
+sans remplacer les quatre brouillons complets. Notes FR/EN et DMG en évidence.
+
+Quatre archives de distribution, manifestes des composants, provenance et
+SHA256SUMS signés avec la clé18FD790B48C202F8 hors Git. Aucun secret/certificat
+privé/IP du foyer ajouté. Paquets définitifs dans
+`/private/tmp/chillcenter-v07-final.E670In/delivery`, Mac DMG SHA256
+`7efd143d832b4882c1fb97d79fd9b234e04c863440151c0dabbc4ab22a2ded75`.
+Serveur ARM64 glibc2.31+, web builda1c12ba4a582, thèmes0.7.0, Mac0.7.0/build9
+macOS27+. Signatures ad hoc/Minisign, pas de notarisation Apple.
+
+Les vérifications locales finales sont PASS : DMG réel monté en lecture seule,
+app exacte/signée, TAR Mac sans AppleDouble, ZIP données et archives complètes
+serveur/web/thèmes, tous manifestes et octets signés. Vérification indépendante
+des téléchargements publics **APPROVED**, gate de release **VERIFIED**, par
+`/root/v07_publication_verifier` à18:32:23UTC :
+[rapport indépendant FR/EN](releases/REL-V0.7-verification.md). Les cinq releases,
+signatures, octets publics et DMG réel sont conformes ; le téléchargement
+partiel initial a été rejeté puis refait dans un nouveau dossier complet.
+Le rapport constate main à3a043334 à cette heure ; le porteur documentaire
+suivant ajoute seulement ce compte rendu, sans changer tags/paquets/runtime.
+Ne pas relancer le lecteur ni réécrire les assets stables : une correction
+ultérieure exige une nouvelle version/séquence signée.
+Serveur HTTP loopback QA arrêté après identification ; anciens fichiers et
+montage DMG utilisateur conservés. **Aucun Pi, SSH, NAS ou web déployé contacté.**
+Les checkpoints « non publié » ci-dessous sont historiques.
+
 ## v0.7 prête à publier — 20 octobre 2026
 
 Les derniers gates sont clos sur `3e174b9e6ed89e08f67e763c3b30028c15767080` :
