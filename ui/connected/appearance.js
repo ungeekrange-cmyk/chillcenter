@@ -41,7 +41,7 @@ window.refreshAppearance=async()=>{
   document.documentElement.dataset.tone=tone;
   const resolution=pack&&window.ChillThemePack.resolve(pack.manifest,{date,mode:r.appearance.mode,manual:r.appearance.manual},tone);
   if(pack)window.ChillThemePack.apply(resolution,{baseUrl:pack.baseUrl,assetUrls:pack.assetUrls,defaultLogo:pack.manifest.default_logo});
-  else {document.documentElement.dataset.ambiance=r.ambiance||"off";$("brand-logo").src=r.ambiance?"branding/"+r.ambiance+"-"+tone+".svg":"branding/default.svg";}
+  else {window.ChillThemePack.apply(null);const fallback=["spring","summer","autumn","winter","christmas","halloween"].includes(r.ambiance)?r.ambiance:null;document.documentElement.dataset.ambiance=fallback||"off";$("brand-logo").src=fallback?"branding/"+fallback+"-"+tone+".svg":"branding/default.svg";}
   // The native bridge owns device-local preferences; no browser storage is introduced here.
   $("ambiance-mode").value=r.appearance.mode;
   $("ambiance-choice").value=r.appearance.manual;

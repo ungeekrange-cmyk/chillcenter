@@ -18,3 +18,7 @@ receipt for four events/two tones and removes all backdrop pixels during player
 cutout. Screenshots actually inspected, rabbit anatomy/64×51.2 scale preserved.
 Les premiers échecs restent des échecs ; preuve finale sur le vrai chemin
 load/apply de l'interface, pas uniquement sur une fonction isolée.
+
+Final review LOW closed: total native+HTTP fallback failure now revokes the
+previous live Blob set and clears event CSS before legacy/default fallback.
+Success→complete-failure regression proves no stale backdrop or retained URL.

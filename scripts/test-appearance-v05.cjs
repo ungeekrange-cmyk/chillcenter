@@ -47,5 +47,8 @@ function contrast(a,b){const x=luminance(a),y=luminance(b);return (Math.max(x,y)
  await page.evaluate(async()=>{window.fixtureAmbiance=null;await refreshAppearance()});assert.equal(await page.locator('.workspace').evaluate(el=>getComputedStyle(el,'::before').content),'none');assert.equal(await page.locator('.ambiance-weather').isVisible(),false);
  assert.notEqual(await page.locator('.app-topbar').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)','Non-event header keeps its original solid background');
  for(const width of [760,1000,1440]){await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+ await page.evaluate(async()=>{window.fixtureAmbiance='easter';await refreshAppearance();const old=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=(name,args)=>name==='theme_command'?Promise.reject(Error('fixture unavailable')):old(name,args);await reloadThemePack();});
+ assert.equal(await page.locator('.workspace').evaluate(el=>getComputedStyle(el,'::before').content),'none','Total pack failure must clear the previous backdrop');
+ assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--event-rabbit')),'');
  assert.deepEqual(errors,[]);console.log('PASS connected appearance: four palettes, packaged right-anchored backgrounds, bounded snow/bats, reduced-motion/hidden/player pause, off, native min-width layout; no server or video touched.');
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
