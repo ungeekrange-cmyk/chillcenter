@@ -1,6 +1,6 @@
 # BUG0127 — Component checks incorrectly require the installer
 
-Date: 2026-10-21. Status: FIXED / verification in progress. Branch:
+Date: 2026-10-21. Status: FIXED / VERIFIED_LOCAL. Branch:
 `codex/update-check-controls`, base `6ba3970`. User reports web 0.7.0 and Mac
 0.7.1 can only check the native Mac release. Related: ADR0029, component update
 contract, sole API `2026-10-14`.
@@ -42,15 +42,44 @@ failed recheck, native consent and use of the catalogue during a held request.
 
 ## Verification and limitations
 
-Unit and actual browser DOM checks pass in the working candidate; exact final
-commands/results and source SHA will be recorded after the full targeted gate.
+Exact source `a38d4b16616ebd6735fa4aab0b518e28d767079e`: server library
+147 PASS / 1 historical RSS NFR ignored; Clippy all-targets PASS; Node web/update/
+release/security 198 PASS; bilingual docs 23 PASS; actual shared Mac/web DOM PASS.
+Independent security review **APPROVED**, no open delta findings:
+[report](../reviews/BUG-0127-security.md). Signature/transport/state primitives
+were additionally rechecked by that distinct reviewer.
+
+Real HTTPS on an isolated loopback server with empty private data, fixture web
+0.7.0 and renderer 1: GitHub's signed web 0.7.1 detected (`AVAILABLE`, exact source
+and sequence 2); themes report `CHECK_INCOMPATIBLE`; server reports `NO_UPDATE`;
+repeated web request returns the same cached receipt; installation stays 503
+`UPDATE_HELPER_NOT_INSTALLED`. API identity/status remain responsive while checks
+run. No payload/archive download was invoked. The owned QA server was stopped.
+
+Mac 0.7.2/build 11 bundled from exact source, 48 arm64 libraries, strict ad-hoc
+signature and libmpv load PASS, actual minimum macOS 27.0. DMG generated and
+`hdiutil verify` PASS; SHA256
+`1d80517bdf1f5e4e079c14bc7ad6398b83de6347fc582fccf204140416b364f5`.
+Local candidate: `artifacts/macos/v0.7.2-a38d4b1/Chill-Center-0.7.2-macos-arm64.dmg`.
+Web candidate built as 0.7.2/build `ad12a307191b`, 101 files. Native GUI actions,
+Pi ARM binary packaging and publication are not inferred from these checks.
+
 The first default-sandbox Chrome invocation failed before page load (SIGABRT /
 EPERM); the isolated escalated browser run succeeds. A first web fixture reused
 the old document through hash-only navigation; fresh-document navigation fixed
-the oracle, not application code. No native player test is needed here.
+the oracle, not application code. Full Rust default-sandbox run hit one known
+socket EPERM; escalated loopback-only rerun passes. The initial QA launch from its
+data ancestor was refused by the workspace/data separation guard; relaunch from
+the actual source checkout passes, without weakening that guard. No native
+player test is needed here.
 
 No Pi deployment or GitHub publication is part of this correction so far.
 The installed web 0.7.0/Mac 0.7.1 require their corrected builds and the new
 server capability to exercise this path. Rollback: restore previous client/web
 and server binaries; optional check metadata is ignored by older versions.
 NAS, settings, TLS identity and privileged updater configuration are untouched.
+
+FR : correctif local vérifié et revu, pas encore déployé ni publié. Recherche
+manuelle séparée de l'installation ; boutons d'installation masqués sans nouvelle
+version détectée. Pour corriger le foyer, mettre à jour les deux clients et le
+serveur avec la capacité additive, après accord distinct de déploiement.

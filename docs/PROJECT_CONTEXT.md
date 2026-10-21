@@ -1,5 +1,23 @@
 # Contexte du projet
 
+## Correctif 0.7.2 local — 21 octobre 2026
+
+[BUG0127](debug/BUG-0127-component-check-helper-coupling.md), source exacte
+`a38d4b1`, branche `codex/update-check-controls`. Recherche Mac/web des composants
+serveur/web/thèmes découplée du helper root ; nouveau worker non privilégié pour
+les installations legacy, métadonnées/signatures seulement, aucune installation
+ou archive téléchargée. API datée inchangée, capacité additive `check_available`.
+Bouton Installer masqué sans version stable strictement plus récente détectée.
+Mac/serveur/web candidats0.7.2/séquence3 ; thèmes conservés0.7.1/séquence2.
+
+147 tests serveur PASS/1NFR ignoré,198Node PASS,23docs PASS, Clippy et DOM partagé
+Mac/web PASS ; vraie QA HTTPS locale avec GitHub public concluant, serveur QA
+arrêté. Revue sécurité indépendante a38d4b1 APPROVED. Bundle/DMG Mac0.7.2 build11
+construits/vérifiés, macOS27+ ; les empreintes et limites figurent dans le BUG.
+**Aucun push/main merge, release0.7.2, déploiement Pi/web, NAS ou réglage existant
+modifié.** Pi reste serveur0.7.1 + web0.7.0, GitHub Latestv0.7.1. La correction
+du foyer nécessite aussi le nouveau serveur, pas uniquement le DMG Mac.
+
 ## v0.7.1 — contrôles finaux/publication,21octobre2026
 
 **Checkpoint actualisé :** source des paquets `c603f29`, revues indépendantes

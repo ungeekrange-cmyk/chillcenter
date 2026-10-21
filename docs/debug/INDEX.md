@@ -3,7 +3,8 @@
 [BUG0127](BUG-0127-component-check-helper-coupling.md) : recherche des mises à
 jour couplée à tort au helper d'installation ; capacités séparées, recherche
 manuelle non privilégiée et bouton d'installation conditionné à une version
-plus récente. Correctif 0.7.2 local en vérification, aucun déploiement effectué.
+plus récente. Correctif 0.7.2 VERIFIED_LOCAL, revue sécurité APPROVED ; aucun
+déploiement ou publication effectué.
 
 [BUG0123](BUG-0123-native-theme-css-data-limit.md) : grands fonds natifs dépassant
 la limite CSS ; Blob borné/URLs émises validées, preuve navigateur intégré.
