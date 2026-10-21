@@ -15,6 +15,8 @@ does not imply a new bundle or deployment.
 | Third-party API integration | [Guide API](api/INTEGRATION-FR.md) | [API guide](api/INTEGRATION-EN.md) |
 | Independent versions and updates | [Guide](updates/GUIDE-FR.md) | [Guide](updates/GUIDE-EN.md) |
 | Weekly Linux package maintenance (separate from Chill Center) | [Procédure FR/EN](operations/OS-PACKAGE-MAINTENANCE.md) | [FR/EN procedure](operations/OS-PACKAGE-MAINTENANCE.md) |
+| Enable server/web automatic updates on an existing installation | [Procédure FR/EN](operations/ENABLE-LEGACY-AUTO-UPDATES.md) | [FR/EN procedure](operations/ENABLE-LEGACY-AUTO-UPDATES.md) |
+| Pi: server/web updates at02:00, evidence from21October2026 | [Livraison FR/EN](releases/REL-PI-AUTO-UPDATES-20261021.md) | [FR/EN delivery](releases/REL-PI-AUTO-UPDATES-20261021.md) |
 | v0.7: release notes and limits | [Release](releases/REL-V0.7.md) | [Release](releases/REL-V0.7.en.md) |
 | v0.7: independent public package verification | [Rapport FR/EN](releases/REL-V0.7-verification.md) | [FR/EN report](releases/REL-V0.7-verification.md) |
 | v0.7: corrections and final evidence | [Rapport](implementation/COMPONENT-UPDATES-FIXES-20261019.md) | [Report](implementation/COMPONENT-UPDATES-FIXES-20261019.en.md) |

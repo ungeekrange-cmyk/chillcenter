@@ -1,5 +1,29 @@
 # Contexte du projet
 
+## 21 octobre 2026 — mises à jour Chill Center automatiques activées
+
+État courant, remplaçant les mentions historiques « helper non activé » :
+serveur et web **0.7.2**, mises à jour automatiques à **02:00 Europe/Dublin**.
+Prochain passage quotidien : **22 octobre 2026 à02:00 locale**. Le timer
+persistant réveille le moteur chaque minute, mais les recherches GitHub suivent
+la politique quotidienne; premier passage réel `no_update`, aucune réinstallation.
+Thèmes0.7.1 conservés, politique thèmes manuelle pour cette activation limitée.
+
+Sauvegarde privée hors ligne achevée et vérifiée (1924 fichiers,29 tables),
+puis adoption des mêmes octets signés0.7.2 en slots. Configuration originale,
+NAS, TLS, comptes/groupes, sandbox et cron OS dimanche03:00 préservés.
+Plan/drop-in `50368f0`, sécurité indépendante APPROVED; contrôle distant
+indépendant **APPROVED_SCOPED**. Deux incidents opérateurs refusés avant activation
+sont conservés : [BUG0129](debug/BUG-0129-oneshot-backup-launch-wait.md) et
+[BUG0130](debug/BUG-0130-adoption-trust-schema.md).
+Voir [le dossier FR/EN](releases/REL-PI-AUTO-UPDATES-20261021.md),
+[la vérification](releases/REL-PI-AUTO-UPDATES-20261021-verification.md) et
+[la procédure](operations/ENABLE-LEGACY-AUTO-UPDATES.md).
+README FR/EN corrigés et publiés sur main dans`7644d1d` : liens Mac/serveur/web
+0.7.2, thèmes0.7.1; aucune nouvelle release ni réécriture de tag/paquet.
+Installation d'une future version supérieure et panne pendant installation
+NOT_RUN; les contrôles `no_update` ne prouvent pas ces scénarios.
+
 ## 21 octobre 2026 — intégration main et maintenance OS hebdomadaire
 
 Demande humaine distincte : commit/fusion main et cron de mise à jour des

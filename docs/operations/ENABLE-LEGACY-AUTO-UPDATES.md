@@ -41,7 +41,11 @@ space. This operation does not install a newer component.
 3. Require idle API state; never interrupt active work. Stop only Chill Center.
    Run its existing binary's `--backup --config` as its non-root service user in
    a uniquely named systemd oneshot. The job and private transcript survive SSH
-   loss. Wait for the same job's terminal exit0; verify the UUID receipt,
+   loss. Launch with `systemd-run --no-block` and `RemainAfterExit=yes`;
+   otherwise a oneshot startup wait can retain the launcher lock needed by its
+   child. Do not treat `Result=success`/exit0 during `activating/start` as a
+   terminal result: require `active/exited`, PID0 and `ExecMainCode=1`/status0.
+   Wait for the same job's terminal exit0; verify the UUID receipt,
    manifest/files/hashes. Never restart/recover over a live backup job.
 
 ## Adoption / Activation
@@ -54,7 +58,8 @@ space. This operation does not install a newer component.
   existing public certificate, never a private key. Keep `server.json`, library
   locations, account/group membership, network, TLS identity and existing
   systemd hardening/drop-ins byte-identical.
-- Initialize the new root-only anti-rollback ledger for the verified server/web
+- Initialize the new root-only anti-rollback ledger (**schema2**, unlike root
+  config/policy state schema1) for the verified server/web
   baseline at sequence3 with no pending transaction. Do not overwrite a prior
   trust ledger. Preserve existing policy/operation state; if no prior persisted
   state exists, initialize it: server/web automatic02:00, Mac defaults retained,
@@ -70,6 +75,10 @@ space. This operation does not install a newer component.
   directory. It changes only executable selection and adds the published
   pre-start recovery commands; it must not replace the base unit, NAS read-only
   paths, mount dependencies, working directory or Bonjour exception.
+- Before publishing the adoption drop-in, run the signed helper's `inspect`
+  against the prepared config/state/trust roots. A malformed bootstrap ledger
+  must be refused before a reboot could select that drop-in. Do not weaken the
+  helper's schema checks; correct only the new input, keeping its sequence floor.
 - Validate real systemd syntax, reload, start the same verified server payload,
   and verify strict TLS, API/version, web bytes and preserved data/settings.
   Run helper `inspect`, explicit server/web checks and a bounded initial tick:

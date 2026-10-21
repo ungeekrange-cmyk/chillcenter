@@ -1,5 +1,14 @@
 # Journal des bugs, observations et risques
 
+[BUG0130](BUG-0130-adoption-trust-schema.md) : schéma du nouveau registre
+d'adoption erroné1 au lieu de2; refus correct du helper avant activation,
+correction atomique du seul tag, séquences3 inchangées. VERIFIED_OPERATIONAL.
+
+[BUG0129](BUG-0129-oneshot-backup-launch-wait.md) : commande opérateur d'adoption,
+attente du démarrage oneshot retenant le verrou de sa sauvegarde; premier essai
+refusé avant copie, relance corrigée par `systemd-run --no-block`. Ne jamais
+assimiler un statut intermédiaire `activating` à un succès terminal.
+
 [BUG0128](BUG-0128-operator-transport-and-recovery-overlap.md) : **FIXED / VERIFIED_ISOLATED**,
 trois revues indépendantes APPROVED sur`a6f0fc0`. Verrou hérité/sauvegarde,
 UUID et reçus durables après coupure SSH,
