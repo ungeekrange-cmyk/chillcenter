@@ -288,14 +288,18 @@ fn read_directory(root: &Path) -> Option<Value> {
         for entry in std::fs::read_dir(directory).ok()? {
             let entry = entry.ok()?;
             entries += 1;
-            if entries > 132 {
+            // 128 declared PNGs, manifest, assets/ and its three subdirectories.
+            if entries > 133 {
                 return None;
             }
             let path = entry.path();
             let relative = path.strip_prefix(root).ok()?.to_str()?;
             let kind = entry.file_type().ok()?;
             if kind.is_dir() {
-                if !matches!(relative, "assets" | "assets/logos" | "assets/backgrounds") {
+                if !matches!(
+                    relative,
+                    "assets" | "assets/logos" | "assets/backgrounds" | "assets/decorations"
+                ) {
                     return None;
                 }
                 directories.push(path);
@@ -370,6 +374,37 @@ pub fn load(directory: &Path) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn external_renderer_two_pack_passes_health_and_loads_without_fallback() {
+        let temp = tempfile::tempdir().unwrap();
+        let slot = temp.path().join("updates/themes/releases/fixture");
+        for (name, bytes) in ASSETS {
+            let file = slot.join(name);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, bytes).unwrap();
+        }
+        let mut manifest: Value = serde_json::from_str(EMBEDDED).unwrap();
+        manifest["version"] = json!("9.9.9");
+        std::fs::write(
+            slot.join("manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(chill_updates::validate_theme_package(&slot).is_ok());
+        assert!(validate_directory(&slot));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(
+                "releases/fixture",
+                temp.path().join("updates/themes/current"),
+            )
+            .unwrap();
+            assert_eq!(load(temp.path())["manifest"]["version"], "9.9.9");
+        }
+        std::fs::create_dir(slot.join("assets/active-content")).unwrap();
+        assert!(!validate_directory(&slot));
+        assert!(chill_updates::validate_theme_package(&slot).is_err());
+    }
     #[test]
     fn bundled_theme_hashes_and_fallback_are_valid() {
         let value = load(Path::new("/nonexistent/chillcenter-theme-test"));

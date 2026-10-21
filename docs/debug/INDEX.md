@@ -4,6 +4,8 @@
 la limite CSS ; Blob borné/URLs émises validées, preuve navigateur intégré.
 [BUG0124](BUG-0124-native-update-test-fixed-version.md) : fixture de signature
 figée à la version installée ; candidat suivant calculé, garde production intacte.
+[BUG0125](BUG-0125-renderer-two-external-directory.md) : dossier de décoration
+externe refusé ; whitelist/cap corrigés, vrai chargement depuis slot vérifié.
 
 ## Lecture de l'état courant
 

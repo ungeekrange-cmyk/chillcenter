@@ -411,7 +411,7 @@ fn actual_files(root: &Path) -> Result<BTreeSet<String>> {
         for entry in fs::read_dir(directory)? {
             let entry = entry?;
             entries += 1;
-            if entries > MAX_ASSETS + 4 {
+            if entries > MAX_ASSETS + 5 {
                 return Err(UpdateError::Security(
                     "theme tree entry bound exceeded".into(),
                 ));
@@ -421,6 +421,18 @@ fn actual_files(root: &Path) -> Result<BTreeSet<String>> {
                 return Err(UpdateError::Security("theme symlink refused".into()));
             }
             if kind.is_dir() {
+                let relative = entry
+                    .path()
+                    .strip_prefix(root)
+                    .map_err(|_| UpdateError::Security("theme directory escaped".into()))?
+                    .to_string_lossy()
+                    .into_owned();
+                if !matches!(
+                    relative.as_str(),
+                    "assets" | "assets/logos" | "assets/backgrounds" | "assets/decorations"
+                ) {
+                    return Err(UpdateError::Security("unexpected theme directory".into()));
+                }
                 stack.push(entry.path());
             } else if kind.is_file() {
                 files.insert(
