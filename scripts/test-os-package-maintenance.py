@@ -40,6 +40,7 @@ class MaintenanceTest(unittest.TestCase):
             printf '%s|%s|%s\n' "$DEBIAN_FRONTEND" "$LC_ALL" "$(umask)" >> "$CC_ENV_LOG"
             echo "dpkg $*" >> "$CC_LOG"
             s=$(cat "$CC_SCENARIO"); n=$(grep -c '^dpkg ' "$CC_LOG")
+            [ "$s" = readiness_stall ] && sleep 10
             [ "$s" = dpkg_fail ] && exit 9
             [ "$s" = dpkg_after_fail ] && [ "$n" -eq 2 ] && exit 9
             [ "$s" = audit_before ] && [ "$n" -eq 1 ] && { echo broken; exit 0; }
@@ -108,19 +109,53 @@ class MaintenanceTest(unittest.TestCase):
                 self.assertIn(diagnostics[scenario], r.stderr)
                 self.assertEqual(self.call_lines(), self.expected_prefix(count))
                 self.assert_environment_boundary(count)
-    def test_term_suppresses_reboot(self):
-        self.scenario.write_text("term")
+    def _term_fixture(self, scenario="term", readiness_seconds=10):
+        self.scenario.write_text(scenario)
         env = os.environ | {"CC_LOG": str(self.log), "CC_ENV_LOG": str(self.envlog), "CC_SCENARIO": str(self.scenario), "CC_TEST_ROOT": "0"}
-        p = subprocess.Popen([str(self.job)], env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
-        for _ in range(50):
-            if "upgrade" in self.calls(): break
-            time.sleep(.02)
-        self.assertIn("upgrade", self.calls(), "TERM fixture did not reach upgrade")
-        os.killpg(p.pid, signal.SIGTERM); _, stderr = p.communicate(timeout=3)
-        self.assertEqual(p.returncode, 143)
+        p = subprocess.Popen([str(self.job)], env=env, text=True, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, start_new_session=True)
+        self.term_process = p
+        stderr = ""
+        try:
+            deadline = time.monotonic() + readiness_seconds
+            ready = False
+            while time.monotonic() < deadline:
+                if "upgrade" in self.calls():
+                    ready = True
+                    break
+                if p.poll() is not None:
+                    break
+                time.sleep(.02)
+            self.assertTrue(ready, "TERM fixture did not reach upgrade before readiness deadline")
+            os.killpg(p.pid, signal.SIGTERM)
+            _, stderr = p.communicate(timeout=3)
+            return p.returncode, stderr
+        finally:
+            if p.poll() is None:
+                try:
+                    os.killpg(p.pid, signal.SIGTERM)
+                    p.communicate(timeout=3)
+                except subprocess.TimeoutExpired:
+                    os.killpg(p.pid, signal.SIGKILL)
+                    p.communicate(timeout=3)
+            else:
+                p.communicate()
+            if p.stdout is not None:
+                p.stdout.close()
+            if p.stderr is not None:
+                p.stderr.close()
+    def test_term_suppresses_reboot(self):
+        returncode, stderr = self._term_fixture()
+        self.assertEqual(returncode, 143)
         self.assertIn("interrupted; reboot suppressed", stderr)
         self.assertEqual(self.call_lines(), self.expected_prefix(3))
         self.assert_environment_boundary(3)
+    def test_stalled_term_readiness_is_reaped(self):
+        with self.assertRaisesRegex(AssertionError, "readiness deadline"):
+            self._term_fixture("readiness_stall", .1)
+        self.assertIsNotNone(self.term_process.poll())
+        self.assertTrue(self.term_process.stdout.closed)
+        self.assertTrue(self.term_process.stderr.closed)
     def test_no_unsafe_apt_flags(self):
         source = SOURCE.read_text()
         for forbidden in ("autoremove", "dist-upgrade", "--allow-unauthenticated", "--allow-downgrades", "--allow-remove-essential", "--force-yes"):

@@ -14,6 +14,7 @@ does not imply a new bundle or deployment.
 | Current architecture summary | [Architecture](architecture/OVERVIEW.md) | [Architecture](architecture/OVERVIEW.en.md) |
 | Third-party API integration | [Guide API](api/INTEGRATION-FR.md) | [API guide](api/INTEGRATION-EN.md) |
 | Independent versions and updates | [Guide](updates/GUIDE-FR.md) | [Guide](updates/GUIDE-EN.md) |
+| Weekly Linux package maintenance (separate from Chill Center) | [Procédure FR/EN](operations/OS-PACKAGE-MAINTENANCE.md) | [FR/EN procedure](operations/OS-PACKAGE-MAINTENANCE.md) |
 | v0.7: release notes and limits | [Release](releases/REL-V0.7.md) | [Release](releases/REL-V0.7.en.md) |
 | v0.7: independent public package verification | [Rapport FR/EN](releases/REL-V0.7-verification.md) | [FR/EN report](releases/REL-V0.7-verification.md) |
 | v0.7: corrections and final evidence | [Rapport](implementation/COMPONENT-UPDATES-FIXES-20261019.md) | [Report](implementation/COMPONENT-UPDATES-FIXES-20261019.en.md) |

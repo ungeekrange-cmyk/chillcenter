@@ -1,0 +1,71 @@
+# Household OS maintenance / Maintenance OS du foyer — 2026-10-21
+
+## Authority and scope / Autorisation et périmètre
+
+Explicit user request: commit and merge the reviewed work into main; on the Pi,
+add automatic OS package updates Sunday around 03:00, followed by reboot.
+Coordinator/deployer: `/root`; maintenance author: `/root/pi_os_maintenance`.
+This is **not** a Chill Center component update or a release publication.
+
+Preflight target: Debian 13.7 ARM64, APT 3.0.3, cron active, NTP synchronized,
+`Europe/Dublin`. No held packages or insecure-repository override observed.
+Existing daily security updates, automatic-reboot=false policy and APT timers
+remain unchanged. Chill Center application updater/helper remains unconfigured
+on the legacy installation; merging main alone does not activate it or publish
+a newer signed package. Existing server/web 0.7.2 packages remain unchanged.
+
+## Frozen inputs / Entrées figées
+
+Runtime files were introduced at `6abfc719bff2e8eadd4658d34fb6925a4762df4d`;
+subsequent test-harness changes do not change these bytes:
+
+| Source | SHA-256 |
+| --- | --- |
+| `deploy/linux/maintenance/chillcenter-os-package-maintenance.sh` | `84397c9fcf5139242c226cd40781a3b678c124b0b9c87d37a15afba55cdd3d9a` |
+| `deploy/linux/maintenance/chillcenter-os-package-maintenance.service` | `5513a7515e96a0a72aecbf93991a564b6c15732913d1eccf54350b75ea7c733f` |
+| `deploy/linux/maintenance/chillcenter-os-package-maintenance.cron` | `5ff35905d4e0f3521ac1589489039bfc738160ae8c174664552c7ea5865e38bc` |
+
+## Installation plan / Plan d'installation
+
+1. Require the exact source code/test/security approvals, no unexpected
+   pre-existing destination or symlink, and root-owned non-writable parents.
+2. Retain a root-private backup of existing cron/APT configuration and the
+   pre-install service/package fingerprints. Copy the new files to a private
+   root-owned snapshot and verify all three pinned hashes there.
+3. Install only the root-owned script (0750) and unit (0644). Run Bash syntax
+   and real `systemd-analyze verify` checks without executing the script.
+4. Reload systemd; install the root-owned cron (0644) atomically **last**, as
+   `/etc/cron.d/chillcenter-os-package-maintenance` (no extension).
+5. Independently verify installed hashes, permissions, inactive maintenance
+   unit, live cron, unchanged Chill Center binary/config/web and running PID.
+
+No package-manager execution, service start, immediate reboot, NAS access,
+application configuration edit or application binary replacement is authorized
+as part of the installation. Scheduled execution later may restart services as
+packages are upgraded and will reboot the host after complete success.
+
+Expected schedule: `0 3 * * 0`, Sunday 03:00 Pi local time. First expected run
+after this installation: **2026-10-25 03:00 Europe/Dublin (GMT)**. No missed-run
+catch-up at boot is added. APT/dpkg failure or nonempty audit suppresses reboot;
+logs remain in `journalctl -u chillcenter-os-package-maintenance.service`.
+
+## Rollback and limits / Retour arrière et limites
+
+Disable future runs by removing only the installed cron. Do not abort a running
+APT transaction merely to disable scheduling. Once inactive, remove only the
+new unit/script and reload systemd; keep the private backup/receipt. Existing
+root crontab, daily security updates and Chill Center units are not replaced.
+OS package rollback is not guaranteed: a full system backup/snapshot is needed
+for that separate recovery. No automatic package upgrade/reboot is claimed as
+tested before the first scheduled run.
+
+FR : périmètre limité aux trois nouveaux fichiers de maintenance OS, avec
+sauvegarde privée et contrôle indépendant. Le serveur/client web, le NAS et
+les réglages Chill Center ne sont pas modifiés; aucune mise à jour ni aucun
+redémarrage immédiat n'est effectué. La mise à jour automatique des composants
+Chill Center est un mécanisme distinct, non activé par cette opération.
+
+## Execution status / État d'exécution
+
+`PREPARED`: read-only preflight and private staging completed; installation and
+independent verification still pending. No successful scheduled run is claimed.
