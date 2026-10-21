@@ -143,10 +143,10 @@ class OperatorRecoveryTests(unittest.TestCase):
         with zipfile.ZipFile(web_zip, "w") as z: z.writestr("build.json", json.dumps({"build": NEW_BUILD}))
         server_manifest = self.tmp / "server.json"; web_manifest = self.tmp / "web.json"; sig1 = self.tmp / "server.sig"; sig2 = self.tmp / "web.sig"; pub = self.tmp / "pub"
         sig1.write_text("sig1"); sig2.write_text("sig2"); pub.write_text("pub")
-        server_manifest.write_text(json.dumps({"schema_version":1,"component":"server","version":"0.7.0","key_id":"key","compatibility":{"api":{"min":"2026.10.14","max":"2026.10.14"},"database":{k:3 for k in ("current_schema","target_schema","read_min","read_max","write_min","write_max","rollback_min","rollback_max")}},"assets":[{"target":"linux-aarch64","sha256":digest(new_server)}]}))
-        web_manifest.write_text(json.dumps({"schema_version":1,"component":"web","version":"0.7.0","key_id":"key","compatibility":{"api":{"min":"2026.10.14","max":"2026.10.14"},"required_server":{"min":"0.7.0"}},"assets":[{"target":"web","sha256":digest(web_zip)}]}))
+        server_manifest.write_text(json.dumps({"schema_version":1,"component":"server","version":"0.7.2","key_id":"key","compatibility":{"api":{"min":"2026.10.14","max":"2026.10.14"},"database":{k:3 for k in ("current_schema","target_schema","read_min","read_max","write_min","write_max","rollback_min","rollback_max")}},"assets":[{"target":"linux-aarch64","sha256":digest(new_server)}]}))
+        web_manifest.write_text(json.dumps({"schema_version":1,"component":"web","version":"0.7.2","key_id":"key","compatibility":{"api":{"min":"2026.10.14","max":"2026.10.14"},"required_server":{"min":"0.7.0","max":"0.999.999"}},"assets":[{"target":"web","sha256":digest(web_zip)}]}))
         log = self.tmp / "deploy.log"
-        env = os.environ | {"CC_FIXTURE_BIN":str(self.bin), "CC_FIXTURE_ROOT":"yes", "CC_FIXTURE_STATE":str(self.state), "CC_FIXTURE_GENERATION":str(self.generation), "CC_FIXTURE_LOG":str(log), "CC_FIXTURE_WEB":str(self.web), "CC_SERVICE":"fixture", "CC_SERVICE_USER":"fixture", "CC_BINARY":str(self.binary), "CC_WEB_DIR":str(self.web), "CC_CONFIG":str(config), "CC_DATA_DIR":str(data), "CC_ROLLBACK_DIR":str(self.rollback), "CC_CERT":str(self.cert), "CC_BASE_URL":"https://fixture", "CC_SERVER_FILE":str(new_server), "CC_WEB_ZIP":str(web_zip), "CC_SERVER_MANIFEST":str(server_manifest), "CC_SERVER_MANIFEST_SIG":str(sig1), "CC_WEB_MANIFEST":str(web_manifest), "CC_WEB_MANIFEST_SIG":str(sig2), "CC_RELEASE_PUB":str(pub), "CC_EXPECTED_RELEASE_PUB_SHA256":digest(pub), "CC_EXPECTED_SERVER_MANIFEST_SHA256":digest(server_manifest), "CC_EXPECTED_SERVER_MANIFEST_SIG_SHA256":digest(sig1), "CC_EXPECTED_WEB_MANIFEST_SHA256":digest(web_manifest), "CC_EXPECTED_WEB_MANIFEST_SIG_SHA256":digest(sig2), "CC_EXPECTED_KEY_ID":"key", "CC_EXPECTED_OLD_BINARY_SHA256":hashlib.sha256(b"old-server").hexdigest(), "CC_EXPECTED_NEW_BINARY_SHA256":digest(new_server), "CC_EXPECTED_WEB_SHA256":digest(web_zip), "CC_EXPECTED_VERSION":"0.7.0", "CC_EXPECTED_WEB_BUILD":NEW_BUILD}
+        env = os.environ | {"CC_FIXTURE_BIN":str(self.bin), "CC_FIXTURE_ROOT":"yes", "CC_FIXTURE_STATE":str(self.state), "CC_FIXTURE_GENERATION":str(self.generation), "CC_FIXTURE_LOG":str(log), "CC_FIXTURE_WEB":str(self.web), "CC_SERVICE":"fixture", "CC_SERVICE_USER":"fixture", "CC_BINARY":str(self.binary), "CC_WEB_DIR":str(self.web), "CC_CONFIG":str(config), "CC_DATA_DIR":str(data), "CC_ROLLBACK_DIR":str(self.rollback), "CC_CERT":str(self.cert), "CC_BASE_URL":"https://fixture", "CC_SERVER_FILE":str(new_server), "CC_WEB_ZIP":str(web_zip), "CC_SERVER_MANIFEST":str(server_manifest), "CC_SERVER_MANIFEST_SIG":str(sig1), "CC_WEB_MANIFEST":str(web_manifest), "CC_WEB_MANIFEST_SIG":str(sig2), "CC_RELEASE_PUB":str(pub), "CC_EXPECTED_RELEASE_PUB_SHA256":digest(pub), "CC_EXPECTED_SERVER_MANIFEST_SHA256":digest(server_manifest), "CC_EXPECTED_SERVER_MANIFEST_SIG_SHA256":digest(sig1), "CC_EXPECTED_WEB_MANIFEST_SHA256":digest(web_manifest), "CC_EXPECTED_WEB_MANIFEST_SIG_SHA256":digest(sig2), "CC_EXPECTED_KEY_ID":"key", "CC_EXPECTED_OLD_BINARY_SHA256":hashlib.sha256(b"old-server").hexdigest(), "CC_EXPECTED_NEW_BINARY_SHA256":digest(new_server), "CC_EXPECTED_WEB_SHA256":digest(web_zip), "CC_EXPECTED_VERSION":"0.7.2", "CC_EXPECTED_WEB_BUILD":NEW_BUILD}
         result = subprocess.run(["bash", str(self.script), "--deploy"], env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("deployment=PASS", result.stdout)
@@ -185,6 +185,20 @@ class OperatorRecoveryTests(unittest.TestCase):
                     z.writestr("safe-last", "x")  # regression: unsafe member is not last
                 result = subprocess.run(["python3", "-I", "-", f.name], input=check, text=True, capture_output=True)
                 self.assertNotEqual(result.returncode, 0, member)
+
+    def test_web_required_server_semver_range_is_closed_and_bounded(self):
+        source = SOURCE.read_text()
+        check = re.search(r'python3 -I - "\$CC_SERVER_MANIFEST".*? <<\'PY\'\n(.*?)\nPY', source, re.S).group(1)
+        base = {"schema_version":1, "component":"server", "version":"0.7.2", "key_id":"key", "compatibility":{"api":{"min":"2026.10.14","max":"2026.10.14"}, "database":{k:3 for k in ("current_schema","target_schema","read_min","read_max","write_min","write_max","rollback_min","rollback_max")}}, "assets":[{"target":"linux-aarch64","sha256":"a" * 64}]}
+        web = {"schema_version":1, "component":"web", "version":"0.7.2", "key_id":"key", "compatibility":{"api":{"min":"2026.10.14","max":"2026.10.14"}, "required_server":{"min":"0.7.0", "max":"0.999.999"}}, "assets":[{"target":"web","sha256":"b" * 64}]}
+        with tempfile.TemporaryDirectory() as d:
+            server = pathlib.Path(d) / "server.json"; client = pathlib.Path(d) / "web.json"
+            def run(required_server):
+                server.write_text(json.dumps(base)); candidate = json.loads(json.dumps(web)); candidate["compatibility"]["required_server"] = required_server; client.write_text(json.dumps(candidate))
+                return subprocess.run(["python3", "-I", "-", str(server), str(client), "0.7.2", "a" * 64, "b" * 64, "key"], input=check, text=True, capture_output=True)
+            self.assertEqual(run({"min":"0.7.0", "max":"0.999.999"}).returncode, 0)
+            for bounds in ({"min":"0.7.0"}, {"max":"0.999.999"}, {"min":"0.7", "max":"0.999.999"}, {"min":"0.999.999", "max":"0.7.0"}, {"min":"0.7.3", "max":"0.999.999"}):
+                self.assertNotEqual(run(bounds).returncode, 0, bounds)
 
 
 if __name__ == "__main__":

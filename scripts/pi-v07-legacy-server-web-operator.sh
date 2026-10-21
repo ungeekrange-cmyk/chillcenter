@@ -124,13 +124,19 @@ directory "$CC_DATA_DIR"
 [[ "$(hash "$CC_RELEASE_PUB")" == "$CC_EXPECTED_RELEASE_PUB_SHA256" ]] || die locally_verified_receipt_mismatch 2
 [[ "$(hash "$CC_SERVER_MANIFEST")" == "$CC_EXPECTED_SERVER_MANIFEST_SHA256" && "$(hash "$CC_SERVER_MANIFEST_SIG")" == "$CC_EXPECTED_SERVER_MANIFEST_SIG_SHA256" && "$(hash "$CC_WEB_MANIFEST")" == "$CC_EXPECTED_WEB_MANIFEST_SHA256" && "$(hash "$CC_WEB_MANIFEST_SIG")" == "$CC_EXPECTED_WEB_MANIFEST_SIG_SHA256" ]] || die locally_verified_receipt_mismatch 2
 python3 -I - "$CC_SERVER_MANIFEST" "$CC_WEB_MANIFEST" "$CC_EXPECTED_VERSION" "$CC_EXPECTED_NEW_BINARY_SHA256" "$CC_EXPECTED_WEB_SHA256" "$CC_EXPECTED_KEY_ID" <<'PY'
-import json,pathlib,sys
+import json,pathlib,re,sys
 s,w=[json.loads(pathlib.Path(x).read_bytes()) for x in sys.argv[1:3]]; v,b,z,k=sys.argv[3:]
+def stable_semver(value):
+ assert isinstance(value,str)
+ match=re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)',value)
+ assert match is not None
+ return tuple(int(part) for part in match.groups())
 assert s['schema_version']==w['schema_version']==1 and s['component']=='server' and w['component']=='web'
 assert s['version']==w['version']==v and s['key_id']==w['key_id']==k
 assert s['compatibility']['api']==w['compatibility']['api']=={'min':'2026.10.14','max':'2026.10.14'}
 assert all(s['compatibility']['database'][x]==3 for x in ('current_schema','target_schema','read_min','read_max','write_min','write_max','rollback_min','rollback_max'))
-assert w['compatibility']['required_server']['min']==v
+required=w['compatibility']['required_server']; lower=stable_semver(required['min']); upper=stable_semver(required['max']); target=stable_semver(v)
+assert lower<=upper and lower<=target<=upper
 assert any(x['target']=='linux-aarch64' and x['sha256']==b for x in s['assets'])
 assert any(x['target']=='web' and x['sha256']==z for x in w['assets'])
 PY
