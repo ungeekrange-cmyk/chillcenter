@@ -58,6 +58,9 @@ The original incident and unobserved transport exit above remain historical.
   tree; separate backup lease prevents its own EXIT recovery over an orphan.
 - Root-private detached UUID job, code snapshots, transcript and atomic fsynced
   terminal receipt; metadata status does not infer success after observer loss.
+- Retained/quarantined payloads use a transaction UUID, not a one-second
+  timestamp. A frozen-clock regression exposed collision with a previous
+  rollback tree; RED `recovery_verification_failed`, GREEN exact prior pair.
 - Same root authority, explicit pins, backup, TLS/invariant guards; no installer,
   automatic cleanup, process-kill API, configuration change or new dependency.
 - RED: old recovery returned0 while another owner held the operation lock.
@@ -67,6 +70,10 @@ The original incident and unobserved transport exit above remain historical.
   escaping difference, corrected in the isolated fixture without weakening
   production checks. A closed-IO orphan fixture explicitly exercises the backup
   lease instead of merely waiting for inherited stdout EOF.
+
+Final local matrix:20 Linux tests PASS (10 legacy/regression,10 real process/
+resilience), real loopback SSH disconnect/reattach PASS. Bash/Python syntax PASS.
+Tests use disposable local fixtures, not the Pi, NAS or full real-systemd stack.
 
 FR : correctif local seulement, aucune connexion Pi, aucun NAS, tag, release ou
 paquet publié modifié. [ADR0033](../architecture/decisions/ADR-0033-durable-manual-operator.md)

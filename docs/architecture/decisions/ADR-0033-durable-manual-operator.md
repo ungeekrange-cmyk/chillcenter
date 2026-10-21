@@ -16,6 +16,8 @@ health and invariant guards. Add a stable private kernel lock inherited by all
 descendants. A separate backup lease also protects the operator's own EXIT
 recovery trap. Never unlink these inodes. Concurrent modes refuse before any
 service action.
+Retained/quarantined payload names use a transaction UUID instead of wall-clock
+seconds, avoiding aliasing of rapid retries and preserving prior rollback pairs.
 
 A Python3 standard-library launcher reserves that same open-file-description
 lock before acknowledging a UUID chosen before SSH. It snapshots reviewed code,

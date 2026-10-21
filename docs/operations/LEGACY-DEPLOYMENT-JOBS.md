@@ -36,6 +36,8 @@ python3 -I /root/chillcenter-operator/pi-operator-job.py start \
 sans écrasement : en cas de doute, consulter ce même travail au lieu de relancer.
 Le lanceur réserve le verrou avant l'acquittement, puis détache session et flux
 SSH. Superviseur, opérateur et sauvegardes héritent du même verrou noyau.
+Les anciennes paires et quarantaines ont un identifiant de transaction unique,
+pas un horodatage à la seconde : des tentatives rapprochées ne se chevauchent pas.
 
 ### Reconnexion et résultat
 

@@ -199,9 +199,15 @@ class OperatorRecoveryTests(unittest.TestCase):
         env |= {"CC_FIXTURE_BUSY_SECOND":"", "CC_FIXTURE_SCAN_COUNT":str(self.tmp / "failure-scan-count"), "CC_FIXTURE_BACKUP_FAIL":"yes"}
         failed_backup = subprocess.run(["bash", str(self.script), "--deploy"], env=env, text=True, capture_output=True)
         self.assertNotEqual(failed_backup.returncode, 0)
-        self.assertEqual(self.state.read_text().strip(), "active")
+        self.assertEqual(self.state.read_text().strip(), "active", failed_backup.stderr)
         self.assertFalse((self.rollback / "v07-transition.json").exists())
         self.assertIn("stop fixture", log.read_text())
+
+    def test_retained_paths_do_not_collide_in_one_clock_tick(self):
+        clock = self.bin / "date"
+        clock.write_text("#!/bin/sh\nprintf '20000101T000000Z\\n'\n")
+        clock.chmod(0o755)
+        self.test_full_deploy_preserves_persistent_state_while_replacing_payload_pair()
 
     def test_closed_modes_and_unsafe_zip_regressions(self):
         self.assertNotEqual(subprocess.run(["bash", str(SOURCE)], text=True, capture_output=True).returncode, 0)

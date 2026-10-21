@@ -63,6 +63,9 @@ done
 if [[ -e /dev/fd/9 && "$(stat -Lc '%d:%i' /dev/fd/9)" == "$(stat -c '%d:%i' "$CC_ROLLBACK_DIR/operator.lock")" ]]; then :
 else exec 9<>"$CC_ROLLBACK_DIR/operator.lock"; fi
 flock -n 9 || die operation_busy_poll_existing_job 42
+# A one-second timestamp is not unique across retries. Retained old/failed
+# payloads must never alias a previous transaction, even with a frozen clock.
+transaction_id="$(python3 -I -c 'import uuid; print(uuid.uuid4().hex)')"
 
 # Recovery is deliberately based on the durable receipt and the filesystem, never
 # on shell flags.  It is safe to run repeatedly after TERM, SIGKILL, or power loss.
@@ -101,7 +104,7 @@ PY
    if [[ -e "$CC_WEB_DIR" ]]; then
      current="$(web_build_dir "$CC_WEB_DIR")" || die recovery_web_state_unreadable 1
      [[ "$current" == "$new_build" ]] || die recovery_web_state_ambiguous 1
-     mv -T "$CC_WEB_DIR" "$CC_ROLLBACK_DIR/web-failed-$(date -u +%Y%m%dT%H%M%SZ)" || die recovery_web_quarantine_failed 1
+     mv -T "$CC_WEB_DIR" "$CC_ROLLBACK_DIR/web-failed-$transaction_id" || die recovery_web_quarantine_failed 1
    fi
    mv -T "$old_web" "$CC_WEB_DIR" || die recovery_web_restore_failed 1
  elif [[ -d "$CC_WEB_DIR" && "$(web_build_dir "$CC_WEB_DIR")" == "$old_build" ]]; then :; else die recovery_web_old_copy_missing 1; fi
@@ -110,7 +113,7 @@ PY
    if [[ -e "$CC_BINARY" ]]; then
      current="$(hash "$CC_BINARY")"
      if [[ "$current" == "$new_hash" ]]; then
-       mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-failed-$(date -u +%Y%m%dT%H%M%SZ)" || die recovery_binary_quarantine_failed 1
+       mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-failed-$transaction_id" || die recovery_binary_quarantine_failed 1
      elif [[ "$current" == "$old_hash" ]]; then
        [[ "$(hash "$old_bin")" == "$old_hash" ]] || die recovery_binary_copy_invalid 1
        old_bin=""
@@ -189,7 +192,7 @@ fingerprint=%s
 new_bin="$(mktemp "$CC_ROLLBACK_DIR/.new-server.XXXXXX")"; install -o root -g root -m 0755 "$CC_SERVER_FILE" "$new_bin"
 new_web="$(mktemp -d "$CC_ROLLBACK_DIR/.new-web.XXXXXX")"; unzip -qq "$CC_WEB_ZIP" -d "$new_web"; [[ "$(build <"$new_web/build.json")" == "$CC_EXPECTED_WEB_BUILD" ]] || die web_build_mismatch 2
 find "$new_web" -type d -exec chmod 0755 {} +; find "$new_web" -type f -exec chmod 0644 {} +; chown -R root:root "$new_web"
-old_bin="$CC_ROLLBACK_DIR/chill-server-$(date -u +%Y%m%dT%H%M%SZ)"; old_web="$CC_ROLLBACK_DIR/web-$(date -u +%Y%m%dT%H%M%SZ)"
+old_bin="$CC_ROLLBACK_DIR/chill-server-$transaction_id"; old_web="$CC_ROLLBACK_DIR/web-$transaction_id"
 [[ ! -e "$journal" ]] || die unfinished_transition_requires_recover 1
 old_web_build="$(web_build_dir "$CC_WEB_DIR")" || die old_web_build_unreadable 1
 python3 -I - "$journal" "$old_bin" "$old_web" "$new_bin" "$new_web" "$CC_EXPECTED_OLD_BINARY_SHA256" "$CC_EXPECTED_NEW_BINARY_SHA256" "$old_web_build" "$CC_EXPECTED_WEB_BUILD" <<'PY'
@@ -220,7 +223,7 @@ systemctl stop "$CC_SERVICE"; state=stopped; ! systemctl is-active --quiet "$CC_
 out="$(flock -n "$CC_ROLLBACK_DIR/backup.lock" timeout --signal=TERM --kill-after=20s 600s /bin/bash -c 'set -e; child=; cleanup(){ [ -z "$child" ] || { kill -TERM -- -"$child" 2>/dev/null || true; sleep 2; kill -KILL -- -"$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }; }; trap "cleanup; exit 124" TERM INT HUP; cd "$1"; setsid runuser -u "$2" -- "$3" --backup --config "$4" </dev/null & child=$!; wait "$child"' -- /usr/lib/chillcenter "$CC_SERVICE_USER" "$CC_BINARY" "$CC_CONFIG")" || die backup_failed_or_timed_out 1
 backup="${out#Sauvegarde terminée : }"; [[ "$out" != "$backup" && "$backup" == "$CC_DATA_DIR/backups/"* ]] || die backup_receipt_refused 1; backup_ok "$backup"
 install -o root -g root -m 0755 "$CC_BINARY" "$old_bin"; [[ "$(hash "$old_bin")" == "$CC_EXPECTED_OLD_BINARY_SHA256" ]] || die old_binary_backup_mismatch 1
-mv -T "$CC_WEB_DIR" "$old_web"; mv -T "$new_web" "$CC_WEB_DIR"; mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-replaced-$(date -u +%Y%m%dT%H%M%SZ)"; mv -T "$new_bin" "$CC_BINARY"
+mv -T "$CC_WEB_DIR" "$old_web"; mv -T "$new_web" "$CC_WEB_DIR"; mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-replaced-$transaction_id"; mv -T "$new_bin" "$CC_BINARY"
 systemctl start "$CC_SERVICE"; state=started
 deadline=$((SECONDS + 60)); while (( SECONDS < deadline )); do tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server" 2>/dev/null|grep -qx 200&&break; sleep 1; done
 tls -o /dev/null -w '%{http_code}' "$CC_BASE_URL/api/2026-10-14/server"|grep -qx 200 || die new_server_not_ready 1
