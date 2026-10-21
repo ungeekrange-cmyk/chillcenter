@@ -1,5 +1,39 @@
 # Contexte du projet
 
+## 21 octobre 2026 — intégration main et maintenance OS hebdomadaire
+
+Demande humaine distincte : commit/fusion main et cron de mise à jour des
+paquets Linux suivi d'un redémarrage, dimanche 03:00 heure locale du Pi.
+Source de maintenance `6abfc71`, tests finaux `1811c93`, trois revues R3
+indépendantes APPROVED. Les refus R1/R2 restent conservés : assertions renforcées,
+puis attente/cleanup de processus du test TERM corrigés; 9/9 tests finaux PASS.
+BUG0128 conserve ses revues exactes sur `a6f0fc0` et ses preuves VM historiques.
+
+Installation des seuls trois fichiers de maintenance OS effectuée le
+21 octobre vers15:26UTC, après sauvegarde privée cron/APT et empreintes.
+Syntaxe cron et systemd réels PASS, service de maintenance inactif/jamais lancé,
+cron actif; premier passage prévu dimanche25octobre03:00Europe/Dublin(GMT).
+Binaire/configuration/build web, PID du serveur et inventaire des paquets
+inchangés. Aucune mise à jour de paquet, aucun redémarrage immédiat ni accès NAS.
+Les mises à jour de sécurité quotidiennes existantes sont conservées.
+Voir [le dossier FR/EN](releases/REL-OS-PACKAGES-20261021.md) et la
+[vérification indépendante APPROVED_SCOPED](releases/REL-OS-PACKAGES-20261021-verification.md).
+Première exécution APT réelle, redémarrage et contrôle après boot NOT_RUN.
+Fusion main fast-forward0122c22→c1104eb publiée et relue sur GitHub;
+porteur documentaire suivant sans changement des octets source approuvés.
+
+**Ne pas confondre maintenance Linux et mises à jour Chill Center :**
+serveur/web restent0.7.2, aucune nouvelle release ni paquet signé publié.
+Le helper/planificateur applicatif de l'installation legacy reste non activé;
+la fusion main seule ne l'installe pas. BUG0128 corrige les outils opérateurs
+du dépôt, qui ne sont pas déployés implicitement par cette maintenance OS.
+
+Nettoyage local supplémentaire demandé : huit caches Cargo externes et debug
+courant supprimés, **40,96Go libres supplémentaires observés immédiatement**;
+worktree38,25→4,60Go, sources/Git/worktrees/release/artifacts conservés.
+[Mesures et limites](storage/STORAGE-CLEANUP-2026-10-21-02.md). Les checkpoints
+suivants sont historiques et conservent leur périmètre d'autorisation initial.
+
 ## BUG0128 — correctif local,21octobre2026
 
 Branche `codex/bug0128-durable-operator`, base `0122c22`. Verrou noyau hérité

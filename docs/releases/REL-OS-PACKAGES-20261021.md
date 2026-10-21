@@ -67,5 +67,43 @@ Chill Center est un mécanisme distinct, non activé par cette opération.
 
 ## Execution status / État d'exécution
 
-`PREPARED`: read-only preflight and private staging completed; installation and
-independent verification still pending. No successful scheduled run is claimed.
+`INSTALLED`, 2026-10-21 around 15:26 UTC. Source `1811c93` approved by distinct
+[code](../reviews/OS-PACKAGES-code-r3.md),
+[test](../reviews/OS-PACKAGES-tests-r3.md) and
+[security](../reviews/OS-PACKAGES-security-r3.md) reviewers. The integrated
+documentation carrier `c1104eb` does not change any reviewed source bytes.
+Earlier R1/R2 findings are retained in their original reports, not erased.
+
+The root-private backup includes previous cron/APT configuration, source
+snapshots, package inventory, running-service state and protected application
+hashes. Backup archive listing and all three pinned snapshots passed. The
+installed script is root:root 0750; unit and extensionless cron are root:root
+0644. Real `crontab -n` syntax validation and `systemd-analyze verify` passed.
+Cron was installed atomically last, after `daemon-reload`, without starting the
+maintenance unit.
+
+Installation receipt `INSTALLATION=PASS`: application binary, config and web
+build hashes match baseline; current application service state matches exactly
+(same PID and restart count); before/after package inventories match. Maintenance
+unit: inactive/dead, `ExecMainPID=0`, empty start timestamp. Cron is active.
+No package update or reboot was requested during deployment.
+
+Independent post-install verification is **APPROVED_SCOPED** by the distinct
+instance `/root/os_maintenance_live_verify`:
+[FR/EN evidence](REL-OS-PACKAGES-20261021-verification.md). Installed hashes,
+permissions, real syntax checks, local schedule, no premature invocation,
+existing cron/APT jobs, package inventory and Chill Center state passed. The
+actual first scheduled APT transaction, resulting reboot and post-boot health
+remain **NOT_RUN**.
+
+Main integration: fast-forward from `0122c22` to `c1104eb`, pushed to GitHub and
+read back at that exact hash. The subsequent documentation-only carrier records
+this installation/verification without changing the reviewed source, public
+release tags, signed packages, application versions or repository visibility.
+The pre-existing moderate non-shipping Linux dependency alert reported by
+GitHub remains open; this change modifies no dependency graph.
+
+FR : installation seule réussie après sauvegarde privée, aucun paquet ni
+service applicatif remplacé ou redémarré; première exécution automatique et
+redémarrage dominical restent à observer. La vérification indépendante est
+favorable dans ce seul périmètre et distincte du reçu émis par le déployeur.
