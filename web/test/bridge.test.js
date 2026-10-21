@@ -48,7 +48,12 @@ test("boot connects same-origin, restores nothing without a saved profile", asyn
 });
 
 test("component updates use dated same-origin closed intent bodies only",async()=>{
- const {b,calls}=make({"POST /admin/updates/install":ok({operation:{status:"pending"}}),"PUT /admin/updates/policy":ok({policy:{revision:2}})});
+ const {b,calls}=make({"POST /admin/updates/check":ok({operation:{status:"pending"}}),"POST /admin/updates/install":ok({operation:{status:"pending"}}),"PUT /admin/updates/policy":ok({policy:{revision:2}})});
+ for(const component of ['server','web','themes']){
+  await b.invoke('update_command',{command:{action:'server_check',component,url:'https://untrusted.invalid/'}});
+  assert.equal(calls.at(-1).url,BASE+'/admin/updates/check');
+  assert.deepEqual(JSON.parse(calls.at(-1).body),{component});
+ }
  await b.invoke("update_command",{command:{action:"server_install",component:"web",force:true,url:"https://untrusted.invalid/",confirmed:true}});
  assert.equal(calls.at(-1).url,BASE+"/admin/updates/install");
  assert.deepEqual(JSON.parse(calls.at(-1).body),{component:"web"});

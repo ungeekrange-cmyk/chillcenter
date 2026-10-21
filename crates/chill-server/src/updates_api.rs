@@ -13,6 +13,8 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
 };
+#[path = "update_checks.rs"]
+mod checks;
 const MAINTENANCE: &str = "/run/chillcenter-update/maintenance";
 static MUTATIONS: AtomicUsize = AtomicUsize::new(0);
 pub struct MutationGuard;
@@ -130,6 +132,15 @@ async fn check(
     State(state): State<AppState>,
     Json(request): Json<Request>,
 ) -> Result<Json<Value>, ApiError> {
+    let component = server_component(request.component)?;
+    if !Path::new("/etc/chillcenter/updates.json").is_file() {
+        let path = root(&state).join("checks");
+        return tokio::task::spawn_blocking(move || checks::admit(path, component))
+            .await
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "UPDATE_STATE_UNAVAILABLE"))?
+            .map(Json)
+            .map_err(error);
+    }
     intent(state, request.component, IntentKind::Check).await
 }
 async fn install(
@@ -161,6 +172,7 @@ async fn intent(
 }
 pub fn busy(state: &AppState) -> bool {
     MUTATIONS.load(Ordering::Acquire) != 0
+        || checks::busy()
         || state.playback.fingerprint_should_pause()
         || state.scan.lock().map_or(true, |scan| scan.running)
         || state.tmdb_jobs.update_busy()
@@ -204,8 +216,14 @@ async fn status(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
     let value = tokio::task::spawn_blocking(move || {
         let state = StateStore::open(&path)?.read()?;
         let offset = local_offset();
-        Ok::<_, UpdateError>(json!({"installed":installed_versions(),"policies":state.policies,"operations":state.operations,"components":state.components,
-            "available":bounded_json(&path.join("available.json")),"helper_available":Path::new("/etc/chillcenter/updates.json").is_file(),
+        let helper_available = Path::new("/etc/chillcenter/updates.json").is_file();
+        let (operations, available) = if helper_available {
+            (state.operations, bounded_json(&path.join("available.json")))
+        } else {
+            checks::snapshot(&path.join("checks"))?
+        };
+        Ok::<_, UpdateError>(json!({"installed":installed_versions(),"policies":state.policies,"operations":operations,"components":state.components,
+            "available":available,"helper_available":helper_available,"check_available":true,
             "busy":work_busy,"quiescing":generation.is_some(),"active_mutations":MUTATIONS.load(Ordering::Acquire),"timezone":offset.to_string(),"server_time":time::OffsetDateTime::now_utc().unix_timestamp()}))
     }).await.map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "UPDATE_STATE_UNAVAILABLE"))?.map_err(error)?;
     Ok(Json(value))

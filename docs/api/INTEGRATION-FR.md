@@ -30,8 +30,18 @@ installation automatique à 02:00 locale du serveur. Lire la révision d’abord
 `POST /admin/updates/check` et `POST /admin/updates/install` acceptent uniquement
 `{"component":"server"}` (ou `web`/`themes`). Une réponse 200 est un reçu de
 mise en file/coalescence, **pas** un succès d’installation : consulter l’état.
-`UPDATE_HELPER_NOT_INSTALLED` signifie qu’un administrateur local doit installer
-le helper signé distinct. Les lectures et travaux diffèrent l’installation.
+Depuis le serveur 0.7.2, `check_available: true` est indépendant de
+`helper_available`. Sans helper, la recherche manuelle utilise un worker non
+privilégié : dépôt fixe, métadonnées/signatures seulement, aucune archive
+téléchargée ni installation. Trois workers au maximum (un par composant),
+coalescence et cache de cinq minutes ; `cached: true` signale un reçu réutilisé.
+Les erreurs de signature/réseau et les incompatibilités restent des résultats
+explicites, jamais un faux « à jour ». Le statut et le catalogue ne sont pas
+bloqués par cette recherche. L’état de découverte reste séparé des reçus
+d’installation et du registre anti-retour arrière du helper.
+`UPDATE_HELPER_NOT_INSTALLED` concerne l’installation : un administrateur local
+doit installer le helper signé distinct. Les lectures et travaux diffèrent
+l’installation. Sans helper, la planification n’est pas active.
 Aucune route n’accepte d’URL, chemin, clé, tag, commande shell ou interruption
 forcée. La vérification Mac et son installation explicitement confirmée restent
 locales à l’appareil, et non des opérations de l’API serveur. Voir le

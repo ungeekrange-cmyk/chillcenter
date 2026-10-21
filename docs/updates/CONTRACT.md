@@ -21,6 +21,15 @@ it is not evidence of completed functionality.
   `POST /admin/updates/check` and `/install` (component only).
   Endpoints accept no URL/path/key/command/tag/force and coalesce bounded intents.
   Unsupported older server controls are disabled, not fatal to connection.
+- Since server 0.7.2, `check_available` and `helper_available` are separate.
+  Manual discovery without a helper is non-root, metadata/signatures only,
+  fixed-repository, three workers maximum, with the existing five-minute
+  coalescing limit. It writes only bounded UI status in a separate service-owned
+  `updates/checks` store; it never downloads executable/archive payloads or
+  authorizes installation. Helper cache/trust and installation guards remain
+  authoritative and unchanged. Scheduling still requires the helper.
+  Both clients show install only after detecting a strictly newer stable version;
+  failed/pending checks cannot expose stale install controls.
 - Policy modes `manual`, `check`, `automatic`. Server/web/themes default automatic
   at 02:00 server local time; Mac defaults check-only with mandatory explicit
   install confirmation regardless of settings. Default time is shown with zone.

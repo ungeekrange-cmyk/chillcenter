@@ -1,5 +1,10 @@
 # Journal des bugs, observations et risques
 
+[BUG0127](BUG-0127-component-check-helper-coupling.md) : recherche des mises à
+jour couplée à tort au helper d'installation ; capacités séparées, recherche
+manuelle non privilégiée et bouton d'installation conditionné à une version
+plus récente. Correctif 0.7.2 local en vérification, aucun déploiement effectué.
+
 [BUG0123](BUG-0123-native-theme-css-data-limit.md) : grands fonds natifs dépassant
 la limite CSS ; Blob borné/URLs émises validées, preuve navigateur intégré.
 [BUG0124](BUG-0124-native-update-test-fixed-version.md) : fixture de signature

@@ -1280,6 +1280,7 @@ mod tests {
             );
             assert_eq!(status["policies"]["server"]["hour"], 2);
             assert_eq!(status["policies"]["server"]["mode"], "automatic");
+            assert_eq!(status["check_available"], true);
             for suffix in ["check", "install"] {
                 let invalid = app
                     .clone()
@@ -1317,6 +1318,76 @@ mod tests {
                 .unwrap();
         assert_eq!(status["policies"]["web"]["revision"], 2);
         assert_eq!(status["policies"]["web"]["hour"], 3);
+    }
+
+    #[tokio::test]
+    async fn component_checks_use_cached_receipts_without_install_helper() {
+        if std::path::Path::new("/etc/chillcenter/updates.json").is_file() {
+            return; // Only the legacy/no-helper deployment is exercised here.
+        }
+        let (dir, app) = setup();
+        let store = chill_updates::StateStore::open(dir.path().join("updates/checks")).unwrap();
+        for component in [
+            chill_updates::Component::Server,
+            chill_updates::Component::Web,
+            chill_updates::Component::Themes,
+        ] {
+            let now = time::OffsetDateTime::now_utc();
+            let op = store
+                .admit_intent(component, chill_updates::IntentKind::Check, now)
+                .unwrap();
+            store
+                .transition(
+                    op.id,
+                    chill_updates::OperationStatus::Pending,
+                    chill_updates::OperationStatus::Running,
+                    None,
+                    now,
+                )
+                .unwrap();
+            store
+                .transition(
+                    op.id,
+                    chill_updates::OperationStatus::Running,
+                    chill_updates::OperationStatus::Succeeded,
+                    Some("NO_UPDATE"),
+                    now,
+                )
+                .unwrap();
+            let response = app
+                .clone()
+                .oneshot(request(
+                    "POST",
+                    &format!("{}/admin/updates/check", crate::api_version::PREFIX),
+                    json!({"component":component}),
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            assert_eq!(body["cached"], true);
+            assert_eq!(body["operation"]["result_code"], "NO_UPDATE");
+            let response = app
+                .clone()
+                .oneshot(request(
+                    "POST",
+                    &format!("{}/admin/updates/install", crate::api_version::PREFIX),
+                    json!({"component":component}),
+                ))
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Checking cannot grant installation rights"
+            );
+        }
+        assert!(
+            !dir.path().join("updates/available.json").exists(),
+            "Passive discovery never writes privileged-helper hints"
+        );
     }
     #[tokio::test]
     async fn cancelled_queued_and_started_mutations_never_commit_late() {

@@ -3,20 +3,26 @@
 (() => {
  const WEB_VERSION="__WEB_VERSION__";
  const visibleVersion=value=>typeof value?.version==="string"?value.version:null;
+ // Display only: the signed installer remains the authority for eligibility.
+ function hasNewerVersion(installed,available){
+  const parse=value=>{const version=visibleVersion(value);if(!version||version.length>128)return null;const match=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z.-]+)?$/.exec(version);return match?match.slice(1,4).map(BigInt):null;};
+  const current=parse(installed),next=parse(available);if(!current||!next)return false;
+  for(let index=0;index<3;index++){if(next[index]!==current[index])return next[index]>current[index];}return false;
+ }
  const isUnsupportedServerError=error=>error?.code==="UPDATE_SERVER_UNSUPPORTED"||error?.code==="ROUTE_NOT_FOUND"||error?.status===404;
  function commandForPolicy(component,policy,hour,minute,mode){
   if(!["mac","server","web","themes"].includes(component)||!["manual","check","automatic"].includes(mode)||!Number.isInteger(hour)||hour<0||hour>23||!Number.isInteger(minute)||minute<0||minute>59)throw Error("Invalid update policy");
   if(component==="mac"&&mode==="automatic")throw Error("Mac installation requires confirmation");
   return {component,mode,hour,minute,expected_revision:policy.revision};
  }
- if(typeof module!=="undefined")module.exports={visibleVersion,commandForPolicy,isUnsupportedServerError};
+ if(typeof module!=="undefined")module.exports={visibleVersion,hasNewerVersion,commandForPolicy,isUnsupportedServerError};
  if(typeof document==="undefined")return;
  const t=text=>globalThis.chillI18n?.t(text)||text,section=node("section"),summary=node("div"),rows=node("div"),note=node("p",undefined,"muted");
  section.id="update-settings";section.dataset.settingsCategory="general";section.append(node("h2",t("Versions et mises à jour")),summary,rows,note);$("admin-panel").querySelector(".admin-grid").append(section);
  const native=!window.ChillBridge;let refreshing=false,local=null,server=null,lastRefresh=0;
  const call=command=>window.__TAURI__.core.invoke("update_command",{command});
  const names={mac:"Client Mac",server:"Serveur",web:"Client web",themes:"Ambiances"};
- const resultLabels={AVAILABLE:"Mise à jour disponible",NO_UPDATE:"Vous utilisez la dernière version",CHECK_FAILED:"Vérification impossible. Réessayez plus tard.",DEFERRED_BUSY:"Installation différée pendant l’utilisation",INSTALLED:"Mise à jour installée",pending:"En attente",running:"En cours",succeeded:"Terminé",failed:"Échec",deferred_busy:"Installation différée pendant l’utilisation"};
+ const resultLabels={AVAILABLE:"Mise à jour disponible",NO_UPDATE:"Vous utilisez la dernière version",CHECK_FAILED:"Vérification impossible. Réessayez plus tard.",CHECK_INCOMPATIBLE:"Cette mise à jour nécessite une version compatible des autres composants.",CHECK_INTERRUPTED:"Vérification interrompue. Réessayez dans quelques minutes.",DEFERRED_BUSY:"Installation différée pendant l’utilisation",INSTALLED:"Mise à jour installée",PENDING:"En attente",RUNNING:"En cours",SUCCEEDED:"Terminé",FAILED:"Échec"};
  function render(force=false){
   // Polling must never destroy an unsaved settings edit or steal focus.
   if(!force&&rows.contains(document.activeElement))return;
@@ -30,15 +36,19 @@
    for(const component of components){
     const policy=view.policies?.[component];if(!policy)continue;
     const card=node("div"),form=node("form",undefined,"inline"),select=node("select"),time=node("input"),save=node("button",t("Enregistrer")),check=node("button",t("Vérifier maintenant"),"secondary"),install=node("button",t("Installer maintenant")),status=node("p",undefined,"muted");
+    card.dataset.updateScope=scope;card.dataset.updateComponent=component;
     card.append(node("h3",t(names[component])+` · ${t(scope==="local"?"Cet appareil":"Serveur")} · ${visibleVersion(view.installed?.[component])||t("Indisponible")}`));
     for(const [value,label]of [["manual","Manuel"],["check","Vérification automatique"],...(component==="mac"?[]:[["automatic","Installation automatique"]])]){const option=node("option",t(label));option.value=value;select.append(option);}
     select.value=policy.mode;select.setAttribute("aria-label",t("Mode de mise à jour"));time.type="time";time.value=String(policy.hour).padStart(2,"0")+":"+String(policy.minute).padStart(2,"0");time.setAttribute("aria-label",t("Heure locale de vérification"));
     form.append(select,time,save);check.type=install.type="button";
-    const supported=scope==="local"||view.helper_available;for(const button of [save,check,install])button.disabled=!supported;
+    const supported=scope==="local"||view.helper_available,canCheck=supported||view.check_available===true;
     const available=view.available?.[component],op=(view.operations||[]).filter(op=>op.component===component).at(-1);
-    const result=op?.result_code||op?.status||"";
-    status.textContent=!supported?t("Installez le service de mise à jour sur le serveur pour activer cette commande."):available?.version?`${t("Version disponible")} : ${available.version}`:t(resultLabels[result]||result);
-    async function action(action,extra={}){check.disabled=install.disabled=true;status.textContent=t("Vérification en arrière-plan…");try{await call({action:(scope==="server"?"server_":"")+action,component,...extra});await refresh(true);}catch(error){note.textContent=error.message||String(error);if(error.code?.includes("CHANGED"))await refresh(true);}finally{if(card.isConnected)check.disabled=install.disabled=!supported;}}
+    const result=(op?.result_code||op?.status||"").toUpperCase(),busy=["pending","running","deferred_busy"].includes(op?.status);
+    const detected=hasNewerVersion(view.installed?.[component],available)&&!busy&&!(op?.kind==="check"&&op.status==="failed");
+    save.disabled=!supported;check.disabled=!canCheck||busy;install.hidden=!detected;install.disabled=!supported||busy;
+    status.textContent=busy?t("Vérification en arrière-plan…"):detected?`${t("Version disponible")} : ${available.version}`:t(resultLabels[result]||result);
+    if(!supported)card.append(node("p",t(canCheck?"La recherche est disponible sans service d’installation. Installez ce service sur le serveur pour autoriser les installations et leur planification.":"Mettez à jour le serveur pour rechercher les versions sans service d’installation."),"muted"));
+    async function action(action,extra={}){check.disabled=install.disabled=true;status.textContent=t("Vérification en arrière-plan…");try{note.textContent="";await call({action:(scope==="server"?"server_":"")+action,component,...extra});await refresh(true);}catch(error){note.textContent=error.message||String(error);if(error.code?.includes("CHANGED"))await refresh(true);}finally{if(card.isConnected){check.disabled=!canCheck||busy;install.disabled=!supported||busy;}}}
     check.onclick=()=>action("check");install.onclick=()=>{void action("install",scope==="server"?{confirmed:true}:{});};
     form.onsubmit=event=>{event.preventDefault();try{const [hour,minute]=time.value.split(":").map(Number);void action("policy",commandForPolicy(component,policy,hour,minute,select.value));}catch(error){note.textContent=error.message;}};
     card.append(form,node("p",`${t("Prochain contrôle à")} ${time.value} · ${view.timezone||t("Heure locale")}`,"muted"),check,install,status);rows.append(card);

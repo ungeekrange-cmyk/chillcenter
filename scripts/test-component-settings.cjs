@@ -9,13 +9,15 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
   page.setDefaultTimeout(8000);page.on("pageerror",e=>errors.push(e.message));await page.route(/^https?:/,r=>r.abort());
   await page.addInitScript(()=>{
    localStorage.setItem("chillcenter-interface-language","fr");
+   if(location.hash==="#web")window.ChillBridge={};
    const media={id:"fixture-film",title:"Test movie",path:"fixture.mp4",category:"film",year:2026,genres:[],directors:[],cast:[],available:true,watched:false,rating:null,poster:null,series:null,season:null,episode:null};
    const policy={revision:1,mode:"automatic",hour:2,minute:0};
    window.fixtureUpdates={calls:[],legacy:false,transient:false,local:{installed:{mac:{version:"0.7.0"},themes:{version:"0.7.0"},api:"2026-10-14"},policies:{mac:{...policy,mode:"check"},themes:{...policy}},operations:[],available:{mac:{version:"0.7.1"}},timezone:"+01:00"},server:{installed:{server:{version:"0.7.0"},web:{version:"0.6.9"},themes:{version:"0.7.0"},api:"2026-10-14"},policies:{server:{...policy},web:{...policy},themes:{...policy}},operations:[],helper_available:true,timezone:"+01:00"}};
+   fixtureUpdates.server.helper_available=false;fixtureUpdates.server.check_available=true;
    window.__TAURI__={core:{invoke:async(name,{command:c})=>{
     const f=fixtureUpdates;f.calls.push({name,...c});
     if(name==="update_command"){
-     if(c.action==="status")return f.local;
+     if(c.action==="status")return window.ChillBridge?f.server:f.local;
      if(c.action==="server_status"){if(f.transient)throw {code:"UPDATE_SERVER_UNAVAILABLE",status:503,message:"Serveur temporairement indisponible."};return f.legacy?{unsupported:true,installed:{server:{version:"0.6.0"}}}:f.server;}
      if(c.action==="check")return new Promise(resolve=>{f.finishCheck=()=>resolve({operation:{status:"pending"}});});
      if(c.action==="policy"){Object.assign(f.local.policies[c.component],{mode:c.mode,hour:c.hour,minute:c.minute,revision:2});return {};}
@@ -38,6 +40,13 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
   const settings=page.locator("#update-settings");await settings.getByText("Client Mac : 0.7.0",{exact:true}).waitFor();
   assert.match(await settings.textContent(),/Client web · Serveur · 0.6.9/);
   assert.match(await settings.textContent(),/API : 2026-10-14/);
+  assert.equal(await settings.getByRole('button',{name:'Installer maintenant',exact:true}).count(),1,"Only the detected newer Mac release has an install control");
+  for(const component of ['server','web','themes']){
+   const card=settings.locator(`[data-update-scope="server"][data-update-component="${component}"]`);
+   assert.equal(await card.getByRole('button',{name:'Vérifier maintenant',exact:true}).isEnabled(),true,"Read-only checks do not require a root helper");
+   await card.getByRole('button',{name:'Vérifier maintenant',exact:true}).click();
+   await page.waitForFunction(component=>fixtureUpdates.calls.some(c=>c.action==='server_check'&&c.component===component),component);
+  }
   const forms=settings.locator("form");assert.equal(await forms.count(),5);
   assert.equal(await forms.first().locator('option[value="automatic"]').count(),0,"Mac cannot silently install");
   const time=forms.first().locator('input[type="time"]');await time.fill("03:15");await time.focus();
@@ -62,7 +71,25 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
   assert.match(await settings.textContent(),/Ce serveur ne gère pas encore/);
   assert.match(await settings.textContent(),/Serveur : 0.6.0/);
   assert.equal(await settings.locator("form").count(),2,"Only unsupported server controls disappear");
+  await page.goto("file://"+path.resolve(__dirname,"../ui/connected/index.html")+'?component-test=web#web');await page.evaluate(()=>window.chillReady);
+  await page.locator('#admin-toggle').click();await page.locator('#configuration-categories button[data-category="general"]').click();
+  await settings.locator('form').first().waitFor();
+  assert.equal(await settings.locator('form').count(),3,'The web client exposes server, web and theme checks');
+  assert.equal(await settings.getByRole('button',{name:'Installer maintenant',exact:true}).count(),0,'No unchecked release gets an install control in web mode');
+  for(const component of ['server','web','themes']){
+   const card=settings.locator(`[data-update-component="${component}"]`);
+   await card.getByRole('button',{name:'Vérifier maintenant',exact:true}).click();
+   await page.waitForFunction(component=>fixtureUpdates.calls.some(c=>c.action==='server_check'&&c.component===component),component);
+  }
+  await page.evaluate(async()=>{
+   fixtureUpdates.server.available={server:{version:'0.7.0'},themes:{version:'0.6.0'},web:{version:'0.7.1'}};
+   await chillUpdates.refresh(true);
+  });
+  assert.equal(await settings.getByRole('button',{name:'Installer maintenant',exact:true}).count(),1,'Equal or older versions cannot be installed');
+  assert.equal(await settings.getByRole('button',{name:'Installer maintenant',exact:true}).isDisabled(),true,'Discovery does not grant installation authority');
+  await page.evaluate(async()=>{fixtureUpdates.server.operations=[{component:'web',kind:'check',status:'failed',result_code:'CHECK_FAILED'}];await chillUpdates.refresh(true);});
+  assert.equal(await settings.getByRole('button',{name:'Installer maintenant',exact:true}).count(),0,'Failed recheck cannot expose a stale install hint');
   assert.deepEqual(errors,[]);
-  console.log("PASS component settings: actual versions, native consent boundary, independent slow IPC/catalogue use, CAS policy, draft preservation and old-server fallback. Synthetic bridge only.");
+  console.log("PASS component settings: Mac/web component checks without root helper, install only for newer detected versions, native consent, nonblocking requests, CAS, draft preservation and old-server fallback. Synthetic bridge only.");
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

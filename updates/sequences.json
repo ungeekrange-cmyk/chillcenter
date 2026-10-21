@@ -1,6 +1,6 @@
 {
-  "mac": {"version": "0.7.1", "sequence": 2},
-  "server": {"version": "0.7.1", "sequence": 2},
-  "web": {"version": "0.7.1", "sequence": 2},
+  "mac": {"version": "0.7.2", "sequence": 3},
+  "server": {"version": "0.7.2", "sequence": 3},
+  "web": {"version": "0.7.2", "sequence": 3},
   "themes": {"version": "0.7.1", "sequence": 2}
 }

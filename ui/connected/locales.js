@@ -43,6 +43,12 @@ Object.assign(chillEnglish,{
  "Versions et mises à jour":"Versions and updates","Client Mac":"Mac client","Client web":"Web client","Ambiances":"Themes","Cet appareil":"This device","Manuel":"Manual","Vérification automatique":"Automatic checks","Installation automatique":"Automatic installation","Mode de mise à jour":"Update mode","Heure locale de vérification":"Local check time","Vérifier maintenant":"Check now","Installer maintenant":"Install now","Version disponible":"Available version","Vérification en arrière-plan…":"Checking in the background…","Prochain contrôle à":"Next check at","Heure locale":"Local time",
  "Ce serveur ne gère pas encore les mises à jour. Le reste de l’application reste disponible.":"This server does not support updates yet. The rest of the application remains available.",
  "Installez le service de mise à jour sur le serveur pour activer cette commande.":"Install the server update helper to enable this action.",
+ "La recherche est disponible sans service d’installation. Installez ce service sur le serveur pour autoriser les installations et leur planification.":"Checking is available without the installation service. Install that service on the server to enable installation and scheduling.",
+ "Mettez à jour le serveur pour rechercher les versions sans service d’installation.":"Update the server to check versions without an installation service.",
+ "Mise à jour disponible":"Update available","Vous utilisez la dernière version":"You are using the latest version","Vérification impossible. Réessayez plus tard.":"Unable to check. Try again later.",
+ "Cette mise à jour nécessite une version compatible des autres composants.":"This update requires compatible versions of the other components.",
+ "Vérification interrompue. Réessayez dans quelques minutes.":"Check interrupted. Try again in a few minutes.",
+ "Installation différée pendant l’utilisation":"Installation deferred while in use","Mise à jour installée":"Update installed","En attente":"Pending","En cours":"In progress","Terminé":"Completed","Échec":"Failed",
  "Installer la mise à jour et redémarrer Chill Center maintenant ?":"Install the update and restart Chill Center now?",
  "Sur Mac, l’installation demande toujours votre validation. La vérification automatique fonctionne lorsque l’application est ouverte.":"Mac installation always requires your approval. Automatic checks run while the application is open."
 });

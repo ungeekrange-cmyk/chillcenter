@@ -38,8 +38,17 @@ concurrent change returns `UPDATE_STATE_CHANGED` and requires a fresh read.
 `POST /admin/updates/check` and `POST /admin/updates/install` accept only
 `{"component":"server"}` (or `web`/`themes`). A 200 is a queued/coalesced
 operation receipt, **not** installation success: poll status for the outcome.
-`UPDATE_HELPER_NOT_INSTALLED` means a local administrator must install the
-separate signed update helper. Playback and jobs defer installation.
+Since server 0.7.2, `check_available: true` is independent of `helper_available`.
+Without a helper, manual discovery uses an unprivileged worker: fixed repository,
+metadata/signatures only, no payload archive download or installation. At most
+three workers (one per component), coalescing and a five-minute cache;
+`cached: true` identifies a reused receipt. Signature/network errors and
+incompatibility remain explicit results, never a false “up to date”. Status and
+catalogue remain usable during checks. Discovery state is separate from install
+receipts and the helper's anti-rollback ledger.
+`UPDATE_HELPER_NOT_INSTALLED` concerns installation: a local administrator must
+install the separate signed helper. Playback and jobs defer installation.
+Scheduling is not active without that helper.
 No route accepts an arbitrary URL, path, key, tag, shell command or forced
 interruption. Mac checks and explicitly confirmed installation are device-local,
 not server API operations. See the [integration contract](../updates/CONTRACT.md)

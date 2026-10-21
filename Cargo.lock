@@ -587,7 +587,7 @@ dependencies = [
 
 [[package]]
 name = "chill-server"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "axum",
  "axum-server",
@@ -602,6 +602,7 @@ dependencies = [
  "rcgen",
  "rusqlite",
  "rustls",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -637,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "chillcenter-desktop"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "base64 0.22.1",
  "chill-catalog",

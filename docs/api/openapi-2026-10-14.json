@@ -51,7 +51,7 @@
         "operationId": "componentUpdates_get",
         "description": "Actual installed versions, persisted policies and bounded operation status. Reading status never checks GitHub or installs software. Unsupported on servers older than 0.7.0 (404). See docs/updates/CONTRACT.md.",
         "responses": {
-          "200": {"description": "Component status.", "content": {"application/json": {"schema": {"type": "object", "required": ["installed", "policies", "operations", "helper_available", "busy", "timezone"], "properties": {"installed": {"$ref": "#/components/schemas/InstalledComponents"}, "policies": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/UpdatePolicy"}}, "operations": {"type": "array", "maxItems": 128, "items": {"$ref": "#/components/schemas/UpdateOperation"}}, "helper_available": {"type": "boolean"}, "busy": {"type": "boolean"}, "quiescing": {"type": "boolean"}, "active_mutations": {"type": "integer", "minimum": 0}, "server_time": {"type": "integer", "format": "int64"}, "timezone": {"type": "string"}}, "additionalProperties": true}}}},
+          "200": {"description": "Component status.", "content": {"application/json": {"schema": {"type": "object", "required": ["installed", "policies", "operations", "helper_available", "busy", "timezone"], "properties": {"installed": {"$ref": "#/components/schemas/InstalledComponents"}, "policies": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/UpdatePolicy"}}, "operations": {"type": "array", "maxItems": 128, "items": {"$ref": "#/components/schemas/UpdateOperation"}}, "helper_available": {"type": "boolean"}, "check_available": {"type": "boolean", "description": "Since 0.7.2: manual release checks available independently of the privileged installer."}, "busy": {"type": "boolean"}, "quiescing": {"type": "boolean"}, "active_mutations": {"type": "integer", "minimum": 0}, "server_time": {"type": "integer", "format": "int64"}, "timezone": {"type": "string"}}, "additionalProperties": true}}}},
           "default": {"$ref": "#/components/responses/Error"}
         }
       },
@@ -75,7 +75,7 @@
     "/admin/updates/check": {
       "post": {
         "tags": ["Administration"], "operationId": "componentUpdateCheck_post",
-        "description": "Queue/coalesce a bounded check intent for the fixed GitHub repository. No download URL accepted. The root helper consumes the intent separately; this request does not block the catalogue.",
+        "description": "Queue/coalesce a bounded check for the fixed GitHub repository. Since 0.7.2 this also works without the privileged installer: a non-root worker verifies metadata/signatures only, with separate UI state, no payload archive download or install authority. At most one worker per component and a five-minute cached/coalesced result. With a configured helper the existing intent consumer is retained. No URL accepted; catalogue remains usable.",
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateIntentRequest"}}}},
         "responses": {"200": {"description": "Operation receipt, not installation success.", "content": {"application/json": {"schema": {"type": "object", "required": ["operation"], "properties": {"operation": {"$ref": "#/components/schemas/UpdateOperation"}}, "additionalProperties": true}}}}, "default": {"$ref": "#/components/responses/Error"}}
       },
