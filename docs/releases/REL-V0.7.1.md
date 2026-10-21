@@ -2,8 +2,12 @@
 
 **Français** | [English](REL-V0.7.1.en.md)
 
-Statut : candidat en vérification, pas encore publié. Les manifestes signés et
-la provenance de la release fixeront la source exacte et les empreintes.
+Publiée le 21 octobre 2026 : [release v0.7.1](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.1).
+Source immuable des paquets et des cinq tags :
+`c603f29db2936ee40f7bf66484187b4e237d9bfd`. Manifestes, provenance et
+SHA256SUMS signés ; les contrôles GitHub ultérieurs ne modifient pas ces octets.
+
+[Télécharger le DMG Mac](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-0.7.1-macos-arm64.dmg).
 
 - Mac : découverte Bonjour/mDNS du serveur au lancement, recherche bornée à
   quatre secondes. Un serveur enregistré fonctionnel conserve la priorité.
@@ -20,6 +24,11 @@ la provenance de la release fixeront la source exacte et les empreintes.
   anciens packs de rendu 1 conservés ; aucune exécution de code depuis un pack.
 - Durcissement du lecteur de releases (identifiants fixes, pas de regex issue
   d'un argument) et minimum TLS explicite dans le banc d'essai Linux.
+- Suivi des dépendances : propositions Dependabot hebdomadaires, CI en lecture
+  seule et contrôle des graphes Mac/serveur réellement livrés. L'avis moyen
+  `GHSA-wrw7-89jp-8q8g` reste ouvert pour glib/GTK du client lourd Linux non
+  distribué ; absent des deux graphes livrés, aucun correctif amont revendiqué.
+  [Analyse et suivi](../security/DEPENDENCIES.md).
 
 Les quatre composants sont versionnés 0.7.1 pour la distribution. Le paquet web
 intègre les ambiances, mais **le web actuellement installé au foyer n'est pas
@@ -32,7 +41,8 @@ serveur ; usage réservé au réseau local de confiance, sans authentification.
 L'installation et le consentement Réseau local macOS restent des actions humaines.
 
 Contrôles détaillés : [livraison](REL-0.7.1-delivery.md),
-[ressources](REL-0.7.1-resource-final.md), [sécurité](REL-0.7.1-security-final.md).
+[ressources](REL-0.7.1-resource-final.md), [sécurité exacte](REL-0.7.1-security-candidate.md),
+[vérification indépendante](REL-0.7.1-verification.md).
 La publication GitHub et l'installation Pi sont deux opérations distinctes ;
 leurs résultats effectifs sont consignés séparément, sans déduire un succès
 d'un simple build ou test simulé.

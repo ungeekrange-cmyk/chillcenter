@@ -1,13 +1,52 @@
 # Chill Center0.7.1 — delivery status / état de livraison
 
-**Status2026-10-21: FINAL_CANDIDATE_UNDER_REVIEW; NOT_YET_PUBLISHED_OR_DEPLOYED.**
-User approved the sole AF_NETLINK exception and backup/server upgrade. Fresh
-read-only Pi preflight passed; original service PID/binary/settings/web remain
-unchanged. Approved Easter/Valentine themes are now integrated (renderer2),
-so the earlier fdb80b5 binaries/DMG below are superseded candidates, not the
-artifacts to publish or deploy. The new source and rebuilt hashes will be
-recorded after final independent reviews. Distribution components0.7.1;
-deployed web0.7.0 remains compatible and must not be replaced in this operation.
+**Status 2026-10-21: published v0.7.1; Pi server and public downloads independently verified.**
+
+Immutable package source: `c603f29db2936ee40f7bf66484187b4e237d9bfd`.
+Code/security/test reviews independently approve this exact source. Mac, server,
+web and themes distribution versions are 0.7.1; renderer 2 includes the approved
+Easter/Valentine ambiences. The earlier fdb80b5 Mac DMG below is superseded.
+Independent [artifact and Pi verification](REL-0.7.1-verification.md) passed.
+
+- Final DMG SHA256:
+  `5b281dd9c4847c2eac5f9505da64b5e538e06305a76f2d5230cfd265aee83a14`.
+  Apple Silicon, macOS 27+, ad-hoc signed, not Apple-notarized. Real read-only
+  mount, exact app tree and strict signature checked.
+- Server SHA256:
+  `8cf14421630cfd552e3af4ed340de107c0570046cc5ecb2784936ca8c552491c`.
+  ARM64, glibc 2.28+. Installed on the Pi after a fresh private backup and the
+  explicitly approved single AF_NETLINK exception. Strict TLS, dated API,
+  data/settings invariants, unchanged web and actual headless mDNS passed.
+  [Execution evidence and rollback](REL-0.7.1-pi-execution.md).
+- Downloadable web build `e496ef4b7ca6` is 0.7.1, but household deployed web
+  remains **0.7.0**, compatible and preserved. No NAS/config/TLS change; legacy
+  root updater/timer was not activated. GUI Mac/Local Network consent NOT_RUN.
+- Manifests and sequence 2 assets are signed by existing key
+  `18FD790B48C202F8`; provenance/SHA256SUMS and all manual wrappers verified.
+  Public download gate **APPROVED**: all 22 umbrella assets downloaded into a
+  fresh directory, byte-identical to signed local references; signatures,
+  SHA256SUMS, provenance, exact tags and component inventories verified.
+
+Five releases are now stable and public, with umbrella **v0.7.1 Latest**,
+published at `2026-10-21T10:45:54Z`. Component inventories are Mac 7, server 14,
+web 4, themes 4; umbrella 22 assets. Before publication, every remote asset
+state/size/SHA256 matched signed local bytes. All annotated tags peel to the
+immutable package source above. Existing 0.7/0.6 releases were preserved;
+repository visibility PUBLIC and default branch main are unchanged.
+
+Security process follow-up `61da27f` changes only CI/tooling/docs, not shipping
+inputs or Cargo.lock. Independent review approved it; hosted dependency run
+39586395359 passed. The real medium glib advisory remains open, absent from
+the actual Mac/server graphs. Five later CodeQL alerts remain open by explicit
+user choice. CodeQL follow-up39586394861 also completed successfully in all five
+languages; no additional open alert was observed. See
+[GitHub controls](../security/GITHUB-SECURITY.md).
+
+## Historical 21 October preparation checkpoint
+
+Before final source freeze and controlled deployment, the candidate was still
+under review and the original server remained untouched. The later evidence
+above supersedes that preparation state, not the immutable historical hashes.
 
 ## Historical build snapshot —20October / Historique du20octobre
 

@@ -2,6 +2,26 @@
 
 ## v0.7.1 — contrôles finaux/publication,21octobre2026
 
+**Checkpoint actualisé :** source des paquets `c603f29`, revues indépendantes
+favorables, artefacts signés vérifiés. Serveur Pi 0.7.1 installé après sauvegarde
+privée et exception AF_NETLINK approuvée ; vérification indépendante
+`APPROVED_SCOPED` (TLS/API, données/réglages, web inchangé, mDNS CLI réel).
+Client web au foyer préservé en 0.7.0 ; aucun NAS, réglage applicatif ou TLS modifié.
+Mac GUI/consentement réseau local non retesté. Les cinq releases GitHub sont
+publiées ; v0.7.1 Latest à10:45:54UTC, 22 pièces jointes récapitulatives.
+Téléchargements publics vérifiés indépendamment : 22 fichiers identiques à la
+livraison signée, tags exacts, sommes/signatures/provenance PASS, gate APPROVED.
+
+Amélioration sécurité demandée : commit `61da27f`, CI/outillage/docs seulement,
+sans delta runtime/lockfile. Dependabot Cargo/Actions hebdomadaire, garde ciblé
+des deux graphes livrés, actions épinglées, lecture seule ; revue indépendante,
+27 tests locaux et run GitHub39586395359 PASS. Avis glib moyen réel laissé ouvert,
+absent Mac/serveur ; client lourd Linux non distribué bloqué avant correctif.
+CodeQL39586394861 PASS dans les cinq langages, dont Rust ; cinq alertes de
+permissions conservées ouvertes selon choix humain, aucun nouveau constat ouvert.
+Voir le [dossier courant](releases/REL-0.7.1-delivery.md). La préparation décrite
+ci-dessous est historique, pas l'état effectif actuel.
+
 Autorisation humaine reçue pour la seule exception AF_NETLINK, sauvegarde privée
 et mise à jour serveur. SSH renouvelé ; précontrôle Pi en lecture seule PASS,
 aucune interruption ou modification réelle encore effectuée. Web installé0.7.0

@@ -40,8 +40,19 @@ series. It is absent from both shipped Rust target graphs. See
 [English assessment](DEPENDENCIES.en.md) for scope, owner and reassessment.
 Weekly Cargo/Actions update proposals and a read-only target-scoped CI guard
 are added; no auto-merge, broad advisory ignore list or deployment permission.
-The local guard and its negative tests pass; the first hosted run must still
-be observed before claiming GitHub execution succeeded.
+The local guard and its negative tests pass. The first hosted run
+[39586395359](https://github.com/ungeekrange-cmyk/chillcenter/actions/runs/39586395359)
+on exact security commit `61da27f8cd1cbadbfdfbe8b3f7540cf6fae9ccbc`
+completed successfully: pinned actions, Rust toolchain, four guard tests and
+both actual shipping dependency graphs. This later evidence does not change
+the signed runtime/package source `c603f29`.
+
+CodeQL follow-up
+[39586394861](https://github.com/ungeekrange-cmyk/chillcenter/actions/runs/39586394861)
+on `61da27f` completed **successfully in all five languages**, including Rust,
+at the final coordinator check. The earlier in-progress checkpoints remain
+historical. Open alert inventory remains17–21 and the separate real Dependabot
+glib advisory; neither was dismissed here.
 
 FR : les cinq alertes de permissions restent ouvertes selon le choix humain.
 L'avis glib reste réel et suivi ; les paquets Mac/serveur n'embarquent pas cette

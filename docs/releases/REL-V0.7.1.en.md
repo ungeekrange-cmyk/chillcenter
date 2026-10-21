@@ -2,8 +2,12 @@
 
 [Français](REL-V0.7.1.md) | **English**
 
-Status: candidate under verification, not yet published. Signed manifests and
-release provenance will pin exact source and artifact hashes.
+Published on 21 October 2026: [v0.7.1 release](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.1).
+Immutable package source and target of all five tags:
+`c603f29db2936ee40f7bf66484187b4e237d9bfd`. Manifests, provenance and
+SHA256SUMS are signed; subsequent GitHub controls do not change these bytes.
+
+[Download the Mac DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-0.7.1-macos-arm64.dmg).
 
 - Mac: bounded four-second Bonjour/mDNS server discovery at launch. A healthy
   saved server keeps priority. Manual entry is behind “Can't find your server?”.
@@ -19,6 +23,11 @@ release provenance will pin exact source and artifact hashes.
   declarative; renderer1 packs still load. Packs cannot execute code.
 - Release-ledger hardening uses fixed component identifiers rather than a
   command-line-supplied regex. Linux test fixtures explicitly require TLS1.2+.
+- Dependency maintenance: weekly Dependabot proposals, read-only CI and guards
+  on actual shipping Mac/server dependency graphs. The medium
+  `GHSA-wrw7-89jp-8q8g` advisory stays open for the unsupported native Linux
+  desktop GTK chain; absent from both shipped graphs, no upstream fix claimed.
+  [Assessment and follow-up](../security/DEPENDENCIES.en.md).
 
 All four distribution components are version0.7.1. The new downloadable web
 package includes the ambiences, but **the household's deployed web files are
@@ -31,6 +40,7 @@ authentication or server transcoding. Installation and macOS Local Network
 consent remain human actions.
 
 Detailed evidence: [delivery](REL-0.7.1-delivery.md),
-[resources](REL-0.7.1-resource-final.md), [security](REL-0.7.1-security-final.md).
+[resources](REL-0.7.1-resource-final.md), [exact security review](REL-0.7.1-security-candidate.md),
+[independent verification](REL-0.7.1-verification.md).
 GitHub publication and Pi installation are separate operations; their actual
 results are recorded separately, never inferred from a build or mocked test.
