@@ -1,6 +1,7 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path");
 const pack=require("./theme-pack.js"),manifest=JSON.parse(fs.readFileSync(path.join(__dirname,"../../themes/default/manifest.json"),"utf8"));
+const eventsCss=fs.readFileSync(path.join(__dirname,"events.css"),"utf8");assert.match(eventsCss,/\.ambiance-rabbit\{[^}]*width:64px;height:51\.2px/);assert.match(eventsCss,/\.ambiance-rabbit:last-child\{/);
 const at=(month,day,year=2026)=>new Date(year,month-1,day,12);
 const automatic=(month,day,year=2026)=>pack.resolve(manifest,{date:at(month,day,year),mode:"auto"},"light")?.id;
 assert.equal(automatic(3,1),"spring");assert.equal(automatic(5,31),"spring");assert.equal(automatic(6,1),"summer");assert.equal(automatic(8,31),"summer");assert.equal(automatic(9,1),"autumn");assert.equal(automatic(9,30),"autumn");assert.equal(automatic(10,1),"halloween");assert.equal(automatic(10,31),"halloween");assert.equal(automatic(11,1),"autumn");assert.equal(automatic(11,25),"christmas");assert.equal(automatic(12,25),"christmas");assert.equal(automatic(12,26),"winter");assert.equal(automatic(2,29,2024),"winter");assert.equal(pack.resolve(manifest,{date:at(10,5),mode:"manual",manual:"summer"},"dark").id,"summer");assert.equal(pack.resolve(manifest,{date:at(10,5),mode:"off"},"dark"),null);
