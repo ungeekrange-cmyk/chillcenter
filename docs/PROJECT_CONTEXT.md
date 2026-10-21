@@ -7,9 +7,16 @@ par l'opérateur et ses sauvegardes, garde de récupération interne, lancement
 détaché avec UUID, journal privé et reçu atomique durable. PID/boot/démarrage et
 incertitude après perte du superviseur explicités. Voir [BUG0128](debug/BUG-0128-operator-transport-and-recovery-overlap.md)
 et [le guide FR/EN](operations/LEGACY-DEPLOYMENT-JOBS.md). Tests d'interruption
-Linux et vraie coupure SSH uniquement en VM locale isolée ; revues en cours.
+Linux et vraie coupure SSH uniquement en VM locale isolée :20 tests Linux PASS,
+preuve SSH réelle PASS,23 tests docs PASS. Source`a6f0fc0`, revues indépendantes
+code/tests/sécurité APPROVED. Correctif VERIFIED_ISOLATED, pas déployé.
 Aucune connexion Pi/NAS, aucune version publiée, tag, main ou configuration réelle
 modifiée. Le checkpoint publié ci-dessous reste historique et effectif au foyer.
+
+Nettoyage distinct explicitement confirmé : quatre caches Cargo externes
+supprimés après revalidation, **15,47Go d'espace libre supplémentaire mesuré**.
+Worktree courant/cache, sources/branches/historique, autres worktrees, versions
+livrées et sauvegardes conservés ; [audit et reçu](storage/STORAGE-AUDIT-2026-10-21.md).
 
 ## v0.7.2 publiée — 21 octobre 2026
 

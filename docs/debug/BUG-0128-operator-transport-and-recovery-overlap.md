@@ -1,7 +1,7 @@
 # BUG0128 — Long-running operator receipt and recovery overlap
 
 Date: 2026-10-21. Priority: P1 before reusing the legacy deployment operator.
-Status: FIXED_LOCAL / REVIEW_PENDING (operational orchestration; released application code unaffected).
+Status: FIXED / VERIFIED_ISOLATED (operational orchestration; released application code unaffected).
 
 ## Observation / Observation
 
@@ -74,6 +74,12 @@ The original incident and unobserved transport exit above remain historical.
 Final local matrix:20 Linux tests PASS (10 legacy/regression,10 real process/
 resilience), real loopback SSH disconnect/reattach PASS. Bash/Python syntax PASS.
 Tests use disposable local fixtures, not the Pi, NAS or full real-systemd stack.
+
+Exact source `a6f0fc0c0c98ee1d4a4ecfb2236177fa157a2415`: independent
+[code](../reviews/BUG-0128-code.md), [tests](../reviews/BUG-0128-tests.md) and
+[security](../reviews/BUG-0128-security.md) reviews **APPROVED**, no open findings.
+The follow-up carrier changes documentation only. This closes the isolated
+correction, not a deployment or physical power-loss validation.
 
 FR : correctif local seulement, aucune connexion Pi, aucun NAS, tag, release ou
 paquet publié modifié. [ADR0033](../architecture/decisions/ADR-0033-durable-manual-operator.md)

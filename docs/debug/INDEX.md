@@ -1,7 +1,8 @@
 # Journal des bugs, observations et risques
 
-[BUG0128](BUG-0128-operator-transport-and-recovery-overlap.md) : correctif local
-en revue, verrou hérité/sauvegarde, UUID et reçus durables après coupure SSH,
+[BUG0128](BUG-0128-operator-transport-and-recovery-overlap.md) : **FIXED / VERIFIED_ISOLATED**,
+trois revues indépendantes APPROVED sur`a6f0fc0`. Verrou hérité/sauvegarde,
+UUID et reçus durables après coupure SSH,
 récupération sérialisée. Tests uniquement en VM locale, aucun Pi/tag/paquet publié
 modifié. La version0.7.2 déjà installée au foyer reste inchangée.
 
