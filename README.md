@@ -4,7 +4,7 @@
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
-**[Télécharger l’application Mac Apple Silicon v0.7.1 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-0.7.1-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.1)
+**[Télécharger l’application Mac Apple Silicon v0.7.2 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-0.7.2-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.2)
 
 Mac, serveur, web et thèmes sont versionnés séparément dans
 [versions.json](versions.json). Les versions installées et les réglages de mise
@@ -13,15 +13,15 @@ Mac, serveur, web et thèmes sont versionnés séparément dans
 locale, hors lecture et travaux actifs. Les [packs de thèmes](themes/README.md)
 décrivent leur calendrier et priorité.
 
-| Composant 0.7.1 | Paquet et instructions |
+| Composant et version | Paquet et instructions |
 | --- | --- |
-| Mac Apple Silicon, build 10 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-0.7.1-macos-arm64.dmg), macOS 27+ pour ce bundle |
-| Serveur Linux ARM64 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-server-0.7.1-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
-| Client web/PWA | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-web-0.7.1-install.zip), serveur 0.7 requis |
-| Thèmes indépendants | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
+| Mac Apple Silicon 0.7.2, build 11 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-0.7.2-macos-arm64.dmg), macOS 27+ pour ce bundle |
+| Serveur Linux ARM64 0.7.2 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-server-0.7.2-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
+| Client web/PWA 0.7.2 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-web-0.7.2-install.zip), serveur 0.7 requis |
+| Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
-et les [notes de version et limites](docs/releases/REL-V0.7.1.md). Les manifestes
+et les [notes de version et limites](docs/releases/REL-0.7.2.md). Les manifestes
 signés sont dans les releases propres à chaque composant. Le serveur existant
 n’est pas mis à jour par cette publication ; la v0.6 et les anciens paquets
 restent disponibles. Ne pas lancer l’installateur initial sur une installation

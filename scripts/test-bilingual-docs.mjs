@@ -30,6 +30,21 @@ const pairs = [
 const read = file => readFile(path.join(root, file), 'utf8');
 const unique = values => [...new Set(values)].sort();
 
+test('README download packages follow independently versioned components', async () => {
+  const versions = JSON.parse(await read('versions.json'));
+  const packages = [
+    `Chill-Center-${versions.mac}-macos-arm64.dmg`,
+    `Chill-Center-server-${versions.server}-linux-aarch64.tar.gz`,
+    `Chill-Center-web-${versions.web}-install.zip`,
+    `Chill-Center-themes-${versions.themes}-install.zip`,
+  ];
+  for (const file of ['README.md', 'README.en.md']) {
+    const text = await read(file);
+    for (const name of packages) assert.ok(text.includes(`/${name})`), `${file}: stale package ${name}`);
+    assert.ok(text.includes(`/releases/tag/v${versions.mac})`), `${file}: stale release link`);
+  }
+});
+
 // These checks guard navigation and machine-readable values, not prose accuracy.
 // Human review still owns equivalent meaning, safety caveats and historical scope.
 for (const [fr, en] of pairs) {
