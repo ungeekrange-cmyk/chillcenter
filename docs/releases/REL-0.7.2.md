@@ -34,3 +34,24 @@ La sauvegarde privée et l’ancienne paire serveur/web sont conservées. Un éc
 ## Limitations / Limites
 
 Mac: Apple Silicon, macOS 27+, ad-hoc signed, not Apple-notarized. Legacy Pi: manual update discovery works without the privileged helper, but automatic installation/scheduling remains unavailable until separately configured. Existing low/medium non-shipping dependency findings and the five GitHub permission alerts the user requested to retain stay open; no dismissal is implied.
+
+## Observed final gate / Contrôle final constaté
+
+**VERIFIED, independent post-deployment verdict APPROVED.** Four public releases
+published, umbrella Latest at 2026-10-21T12:38:03Z; all 22 downloaded assets match
+the signed inputs. CodeQL five-language run `39599937897` and shipping dependency
+run `39599938107` passed on carrier `531bbb7` (no later runtime change).
+
+Pi server/web 0.7.2 are active at the exact declared hashes/build. Fresh private
+backup validates 1,924 manifest entries; consistent current/backup SQLite
+comparison confirms all 29 application tables unchanged. Previous server/web
+rollback pair is retained. Real strict-TLS server/web/themes checks return
+`NO_UPDATE`, repeated check is cached, and install without the helper is refused.
+See the [independent report](REL-0.7.2-verification.md).
+
+FR : publication et installation réelles vérifiées ; NAS, réglages et TLS
+conservés. L'incident de suivi SSH/récupération pendant la sauvegarde est
+documenté, sans inventer de code de sortie terminal. Le service est sain et
+stable ; [BUG0128](../debug/BUG-0128-operator-transport-and-recovery-overlap.md)
+reste ouvert pour sécuriser la prochaine orchestration, pas pour modifier la
+version applicative livrée. Aucun nouveau test du lecteur ou GUI Mac revendiqué.

@@ -1,6 +1,6 @@
 # BUG0127 — Component checks incorrectly require the installer
 
-Date: 2026-10-21. Status: FIXED / VERIFIED_LOCAL. Branch:
+Date: 2026-10-21. Status: FIXED / VERIFIED (headless deployed scope). Branch:
 `codex/update-check-controls`, base `6ba3970`. User reports web 0.7.0 and Mac
 0.7.1 can only check the native Mac release. Related: ADR0029, component update
 contract, sole API `2026-10-14`.
@@ -73,13 +73,21 @@ data ancestor was refused by the workspace/data separation guard; relaunch from
 the actual source checkout passes, without weakening that guard. No native
 player test is needed here.
 
-No Pi deployment or GitHub publication is part of this correction so far.
-The installed web 0.7.0/Mac 0.7.1 require their corrected builds and the new
-server capability to exercise this path. Rollback: restore previous client/web
-and server binaries; optional check metadata is ignored by older versions.
-NAS, settings, TLS identity and privileged updater configuration are untouched.
+## Publication and deployed verification / Publication et vérification réelle
 
-FR : correctif local vérifié et revu, pas encore déployé ni publié. Recherche
-manuelle séparée de l'installation ; boutons d'installation masqués sans nouvelle
-version détectée. Pour corriger le foyer, mettre à jour les deux clients et le
-serveur avec la capacité additive, après accord distinct de déploiement.
+The user subsequently authorized publication and Pi server/web deployment.
+v0.7.2 is public with the signed Mac DMG; exact server/web 0.7.2 artifacts are
+installed after a fresh private backup. The distinct
+[release verifier](../releases/REL-0.7.2-verification.md) approved strict-TLS
+identity/catalogue, protected settings/data, backup and rollback readiness.
+Real server/web/themes checks all reached `NO_UPDATE`, a repeated check was
+cached, and installation without the helper remains explicitly refused (503).
+No payload is downloaded by the metadata worker. Native Mac GUI is NOT_RUN;
+install the released 0.7.2 DMG to obtain its shared-UI correction.
+
+FR : publié et vérifié sur le Pi, avec sauvegarde et ancienne paire conservées.
+Recherches réelles des trois composants fonctionnelles, installation toujours
+séparée des droits de recherche. NAS, réglages, TLS et configuration de l'updater
+inchangés. L'incident de supervision pendant la sauvegarde est distinct et reste
+tracé en [BUG0128](BUG-0128-operator-transport-and-recovery-overlap.md), sans être
+requalifié en succès de transport SSH. Aucun test du lecteur n'a été relancé.

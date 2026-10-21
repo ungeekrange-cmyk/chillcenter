@@ -1,10 +1,17 @@
 # Journal des bugs, observations et risques
 
+[BUG0128](BUG-0128-operator-transport-and-recovery-overlap.md) : incident
+d'orchestration SSH/récupération concurrente pendant la sauvegarde ; suivi
+distant durable et sérialisation requis avant réutilisation de l'opérateur.
+La paire applicative0.7.2 est installée et vérifiée indépendamment ; le défaut
+d'orchestration reste ouvert avant une nouvelle utilisation de cet opérateur.
+
 [BUG0127](BUG-0127-component-check-helper-coupling.md) : recherche des mises à
 jour couplée à tort au helper d'installation ; capacités séparées, recherche
 manuelle non privilégiée et bouton d'installation conditionné à une version
-plus récente. Correctif 0.7.2 VERIFIED_LOCAL, revue sécurité APPROVED ; aucun
-déploiement ou publication effectué.
+plus récente. Correctif0.7.2 publié et VERIFIED dans le périmètre vérifié,
+revues indépendantes APPROVED ; serveur/web installés après sauvegarde et trois
+recherches réelles concluantes. Pas de nouveau parcours GUI natif.
 
 [BUG0123](BUG-0123-native-theme-css-data-limit.md) : grands fonds natifs dépassant
 la limite CSS ; Blob borné/URLs émises validées, preuve navigateur intégré.
