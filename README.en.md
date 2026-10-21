@@ -6,6 +6,15 @@ Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).
 
+**Sources on `main`: Mac 0.7.3 · server 0.7.3 · web 0.7.3 · themes 0.7.1.**
+[0.7.3 changes, FR/EN](docs/releases/REL-0.7.3.md): macOS 15+ Mac target,
+**In progress** from 5%, poster bars and detail percentages, using only exact
+duration measured on first playback. This source version has no published
+packages yet and does not update the Pi. The earlier local test DMG is a
+0.7.2/build12 candidate, not a 0.7.3 DMG.
+
+### Currently published packages
+
 **[Download the Apple Silicon Mac app v0.7.2 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-0.7.2-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.2)
 
 Mac, server, web and themes are independently versioned in
@@ -14,7 +23,7 @@ under **Settings → General**. Mac always requires “Install now”; server/we
 can update at 02:00 local time, outside playback and active jobs.
 [Theme packs](themes/README.en.md) document their calendar and precedence.
 
-| Component and version | Package and instructions |
+| Component and published version | Package and instructions |
 | --- | --- |
 | Apple Silicon Mac 0.7.2, build 11 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-0.7.2-macos-arm64.dmg), macOS 27+ for this bundle |
 | ARM64 Linux server 0.7.2 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-server-0.7.2-linux-aarch64.tar.gz), 64-bit systemd host |
@@ -32,6 +41,8 @@ installer on an existing installation: it deliberately refuses to overwrite it.
 - Films, series, seasons, sagas and playlists.
 - Mac server discovery with Bonjour, with manual entry as a fallback.
 - Profiles with synchronized resume positions, history, watched status and personal ratings.
+- Since source version 0.7.3: In progress, poster bars and detail percentages
+  with exact measured duration; this feature requires server 0.7.3.
 - Native libmpv/FFmpeg player: audio, subtitles, playback speed and next episode.
 - TMDB metadata using your own key, manual corrections and artwork imports.
 - Genre and year filters, light/dark themes and seasonal ambiences.
@@ -50,9 +61,10 @@ users are a goal, not a throughput guarantee for every bitrate.
 - **Apple Silicon (ARM64)** Mac; no Intel package is published.
 - The **0.7.2 DMG requires macOS 27.0 or newer**: bundled player dependencies
   impose this minimum even though the Rust executable targets macOS 13.0.
-- **Approved target, not shipped: macOS 15 Sequoia or newer**, covering macOS
-  15, 26 and 27. This requires a new bundle and compatible dependencies;
-  physical-device compatibility with the older versions is not yet validated.
+- **Source version 0.7.3 targets macOS 15 Sequoia or newer**, covering macOS
+  15, 26 and 27, with pinned Sequoia dependencies checked before signing.
+  The local candidate was built and verified; the public 0.7.3 package is
+  not shipped. Physical macOS 15/26 execution has not yet been tested.
 - Network access to the Chill Center server; no NAS mount, Homebrew, Rust,
   libmpv or FFmpeg installation is needed to use the DMG. Ad hoc signature,
   without Apple notarization: read the installation guide's limitations.

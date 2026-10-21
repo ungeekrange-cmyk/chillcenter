@@ -1,5 +1,15 @@
 # Contexte du projet
 
+## 21 octobre 2026 — intégration main des sources0.7.3
+
+Demande explicite : fusion/push main et README actualisés. Mac/serveur/web
+numérotés0.7.3, Mac build13, réservations de séquence4 ; thèmes0.7.1/séquence2,
+API2026-10-14 et schéma3 inchangés. Les liens de téléchargement restent ceux
+des paquets réellement publiés0.7.2. README FR/EN distinguent sources courantes,
+candidat local0.7.2/build12 et paquets publics. Voir [notes0.7.3](releases/REL-0.7.3.md).
+Aucune publication de paquet/release/tag, modification du Pi/NAS ou des réglages.
+Les nouvelles fonctions synchronisées nécessiteront une livraison serveur.
+
 ## 21 octobre 2026 — candidat macOS15 et reprises mesurées
 
 Branche `codex/macos15-build`, base `e8d6f53`. Autorisation explicite de cible

@@ -30,18 +30,42 @@ const pairs = [
 const read = file => readFile(path.join(root, file), 'utf8');
 const unique = values => [...new Set(values)].sort();
 
-test('README download packages follow independently versioned components', async () => {
+test('README distinguishes source versions from immutable published download packages', async () => {
   const versions = JSON.parse(await read('versions.json'));
+  // The newest source is not a release. These receipts remain v0.7.2 until a
+  // distinct publication is authorized; never invent download links on a bump.
+  const published = {mac:'0.7.2',server:'0.7.2',web:'0.7.2',themes:'0.7.1'};
   const packages = [
-    `Chill-Center-${versions.mac}-macos-arm64.dmg`,
-    `Chill-Center-server-${versions.server}-linux-aarch64.tar.gz`,
-    `Chill-Center-web-${versions.web}-install.zip`,
-    `Chill-Center-themes-${versions.themes}-install.zip`,
+    `Chill-Center-${published.mac}-macos-arm64.dmg`,
+    `Chill-Center-server-${published.server}-linux-aarch64.tar.gz`,
+    `Chill-Center-web-${published.web}-install.zip`,
+    `Chill-Center-themes-${published.themes}-install.zip`,
   ];
   for (const file of ['README.md', 'README.en.md']) {
     const text = await read(file);
     for (const name of packages) assert.ok(text.includes(`/${name})`), `${file}: stale package ${name}`);
-    assert.ok(text.includes(`/releases/tag/v${versions.mac})`), `${file}: stale release link`);
+    assert.ok(text.includes(`/releases/tag/v${published.mac})`), `${file}: stale release link`);
+    for (const component of ['mac','server','web','themes']) {
+      const label = {mac:'Mac',server:file==='README.md'?'serveur':'server',web:'web',themes:file==='README.md'?'thèmes':'themes'}[component];
+      assert.ok(text.includes(`${label} ${versions[component]}`), `${file}: stale ${component} source version`);
+      if (versions[component]!==published[component]) assert.ok(!text.includes(`/releases/download/v${versions[component]}/`),`${file}: unpublished download link`);
+    }
+  }
+});
+
+test('source component versions agree with crates, lockfile, Tauri, plist and release reservations', async () => {
+  const versions=JSON.parse(await read('versions.json')), reservations=JSON.parse(await read('updates/sequences.json'));
+  const tauri=JSON.parse(await read('apps/desktop/tauri.conf.json')),plist=await read('apps/desktop/Info.plist'),lock=await read('Cargo.lock');
+  assert.equal(tauri.version,versions.mac);
+  assert.equal(/<key>CFBundleShortVersionString<\/key><string>([^<]+)<\/string>/.exec(plist)?.[1],versions.mac);
+  assert.equal(tauri.bundle.macOS.minimumSystemVersion,'15.0');
+  for (const [component,manifest,name] of [['mac','apps/desktop/Cargo.toml','chillcenter-desktop'],['server','crates/chill-server/Cargo.toml','chill-server']]) {
+    assert.equal(/^version = "([^"]+)"$/m.exec(await read(manifest))?.[1],versions[component]);
+    assert.ok(lock.includes(`name = "${name}"\nversion = "${versions[component]}"`));
+  }
+  for (const component of ['mac','server','web','themes']) {
+    assert.equal(reservations[component].version,versions[component]);
+    assert.equal(reservations[component].sequence,component==='themes'?2:4);
   }
 });
 

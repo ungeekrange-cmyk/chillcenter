@@ -587,7 +587,7 @@ dependencies = [
 
 [[package]]
 name = "chill-server"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "axum",
  "axum-server",
@@ -638,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "chillcenter-desktop"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "base64 0.22.1",
  "chill-catalog",
