@@ -7,6 +7,10 @@ import {fileURLToPath} from "node:url";
 import {createHash} from "node:crypto";
 import {execFileSync} from "node:child_process";
 const project=resolve(dirname(fileURLToPath(import.meta.url)),"..");
+// Treat CLI component names as identifiers, never as regular-expression input.
+export function isComponentReleaseTag(component,tag){
+ return ["mac","server","web","themes"].includes(component)&&typeof tag==="string"&&tag.startsWith(component+"-v")&&/^\d+\.\d+\.\d+$/.test(tag.slice(component.length+2));
+}
 export function validateAssetInput(component,target,bytes){
  if(!bytes.length||bytes.length>256*1024*1024)throw Error("Release asset size is outside bounds");
  if(component==="mac"){
@@ -22,11 +26,12 @@ export function validateAssetInput(component,target,bytes){
  // Never sign an accidentally selected private key or credential text file.
  if(bytes.length<=65536&&/-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----|untrusted comment: minisign encrypted secret key/i.test(bytes.toString("utf8")))throw Error("Private key material is not a release asset");
 }
-export function manifestFor({component,version,source,assets,keyId,sequence,previousSequence=0,now=new Date()}){
+export function manifestFor({component,version,source,assets,keyId,sequence,previousSequence=0,themeRenderer=1,now=new Date()}){
  if(!["mac","server","web","themes"].includes(component)||!/^\d+\.\d+\.\d+$/.test(version)||!/^[a-f0-9]{40}$/.test(source)||!assets.length||assets.length>32)throw Error("Invalid release identity");
  if(!Number.isSafeInteger(sequence)||sequence<=previousSequence||sequence<1||!Number.isSafeInteger(previousSequence)||previousSequence<0)throw Error("Release sequence must strictly increase");
+ if(![1,2].includes(themeRenderer))throw Error("Invalid theme renderer compatibility");
  const api={min:"2026.10.14",max:"2026.10.14"};
- return {schema_version:1,component,version,release_sequence:sequence,release_tag:`${component}-v${version}`,source_commit:source,issued_at:now.toISOString(),expires_at:new Date(now.getTime()+365*86400000).toISOString(),key_id:keyId,compatibility:{os_arch:assets.map(a=>a.target),api,...(component==="web"?{required_server:{min:"0.7.0",max:"0.999.999"}}:{}),...(component==="server"?{database:{current_schema:3,target_schema:3,read_min:3,read_max:3,write_min:3,write_max:3,rollback_min:3,rollback_max:3}}:{}),...(component==="themes"?{renderer:{theme_format:1,renderer_min:1,renderer_max:1}}:{})},assets};
+ return {schema_version:1,component,version,release_sequence:sequence,release_tag:`${component}-v${version}`,source_commit:source,issued_at:now.toISOString(),expires_at:new Date(now.getTime()+365*86400000).toISOString(),key_id:keyId,compatibility:{os_arch:assets.map(a=>a.target),api,...(component==="web"?{required_server:{min:"0.7.0",max:"0.999.999"}}:{}),...(component==="server"?{database:{current_schema:3,target_schema:3,read_min:3,read_max:3,write_min:3,write_max:3,rollback_min:3,rollback_max:3}}:{}),...(component==="themes"?{renderer:{theme_format:1,renderer_min:themeRenderer,renderer_max:themeRenderer}}:{})},assets};
 }
 // Explicit source-controlled reservations, not wall clocks. Check every stable
 // published signed receipt. Network errors never imply "first release".
@@ -39,7 +44,7 @@ function previousPublishedSequence(component,version,publicKey){
    if(!Array.isArray(rows))throw Error("Invalid release listing");
    for(const release of rows){
     if(release.tag_name===`${component}-v${version}`)throw Error("Immutable component release already exists");
-    if(release.draft||release.prerelease||!new RegExp(`^${component}-v\\d+\\.\\d+\\.\\d+$`).test(release.tag_name))continue;
+    if(release.draft||release.prerelease||!isComponentReleaseTag(component,release.tag_name))continue;
     if(++count>100)throw Error("Component history exceeds bounded release audit");
     const name=`${component}-manifest.json`,assets=release.assets||[];
     for(const [file,cap]of [[name,65536],[name+".minisig",16384]]){const item=assets.find(a=>a.name===file);if(!item||!Number.isSafeInteger(item.size)||item.size<1||item.size>cap)throw Error("Published component receipt is missing or oversized");}
@@ -61,6 +66,7 @@ function main(){
  const args=process.argv.slice(2);if(args.includes("--help")){console.log("Usage: component-release.mjs --component mac|server|web|themes --input /archive --target <triple|any> --output /new-directory --sign-key /private/release.key [--extra target=/file ...]");return;}
  const options={},extra=[];for(let i=0;i<args.length;i+=2){if(args[i]==="--extra")extra.push(args[i+1]);else if(["--component","--input","--target","--output","--sign-key"].includes(args[i]))options[args[i].slice(2)]=args[i+1];else throw Error("Unknown option");}
  const {component,input,target,output}=options,key=options["sign-key"];
+ if(!["mac","server","web","themes"].includes(component))throw Error("Invalid component identifier");
  if(!input||!output||!key||![input,output,key].every(p=>resolve(p)===p)||existsSync(output))throw Error("Use absolute input/key and a new output directory");
  if(resolve(key).startsWith(project+"/"))throw Error("The private signing key must stay outside Git");
  const keyMeta=lstatSync(key);if(!keyMeta.isFile()||keyMeta.isSymbolicLink()||(keyMeta.mode&0o077)!==0)throw Error("Signing key must be a private regular file (0600)");
@@ -76,7 +82,7 @@ function main(){
  mkdirSync(output,{mode:0o700});
  const assets=inputs.map(([t,path])=>{const file=basename(path),destination=join(output,file);if(statSync(path).size>256*1024*1024)throw Error("Asset is too large");copyFileSync(path,destination,1);validateAssetInput(component,t,readFileSync(destination));const asset={target:t,url:`https://github.com/ungeekrange-cmyk/chillcenter/releases/download/${component}-v${version}/${file}`,byte_length:statSync(destination).size,sha256:sha(destination),format:component==="mac"?"tar":component==="server"?"raw":"zip"};
   if(component==="mac"||t.startsWith("installer-")){const signature=destination+".minisig";execFileSync("minisign",["-S","-s",key,"-m",destination,"-x",signature,"-t",`timestamp:${Math.floor(Date.now()/1000)}\tfile:${file}\tversion:${version}`],{stdio:["ignore","pipe","pipe"]});if(component==="mac")asset.tauri_signature=readFileSync(signature).toString("base64");}return asset;});
- const manifest=manifestFor({component,version,source,assets,keyId,sequence:reservation.sequence,previousSequence}),path=join(output,`${component}-manifest.json`);
+ const manifest=manifestFor({component,version,source,assets,keyId,sequence:reservation.sequence,previousSequence,themeRenderer:versions.theme_renderer}),path=join(output,`${component}-manifest.json`);
  writeFileSync(path,JSON.stringify(manifest,null,2)+"\n",{flag:"wx"});
  execFileSync("minisign",["-S","-s",key,"-m",path,"-x",path+".minisig","-t",`component:${component}\tversion:${version}\tsource:${source}`],{stdio:["ignore","pipe","pipe"]});
  execFileSync("minisign",["-V","-p",join(project,"updates/release.pub"),"-m",path,"-x",path+".minisig"],{stdio:["ignore","pipe","pipe"]});

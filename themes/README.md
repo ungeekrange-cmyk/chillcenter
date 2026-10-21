@@ -2,15 +2,15 @@
 
 **Français** | [English](README.en.md)
 
-Statut : pack embarqué déclaratif `themes/default` (format/rendu 1, version
-0.7.0). Le chargeur valide ce manifeste avant toute application et replie vers
+Statut : pack embarqué déclaratif `themes/default` (format 1, rendu 2, version
+0.7.1). Le chargeur valide ce manifeste avant toute application et replie vers
 la copie embarquée si le pack externe est indisponible ou invalide.
 Le contrat de livraison indépendante est décrit dans
 [ADR-0029](../docs/architecture/decisions/ADR-0029-component-releases-updates.md).
-Les ressources existantes restent en place tant que leur migration et ses tests
-ne sont pas implémentés ; ce dossier ne prétend pas les remplacer actuellement.
+Le moteur 2 accepte toujours les anciens packs de rendu 1. Les nouveaux packs
+de rendu 2 sont refusés par un ancien client, avant installation.
 
-## Calendrier et priorité proposés
+## Calendrier et priorité
 
 Dates inclusives, réévaluées à minuit selon le fuseau de l'appareil client,
 hémisphère Nord. Le fuseau du calendrier visuel est distinct de celui du timer
@@ -24,6 +24,13 @@ de mise à jour du serveur.
 | Hiver | 1 décembre | Dernier jour de février | Saison |
 | Halloween | 1 octobre | 31 octobre | Événement, remplace la saison |
 | Noël | 25 novembre | 25 décembre | Événement, remplace la saison |
+| Saint-Valentin | 31 janvier (J−14) | 14 février | Événement, priorité 200 |
+| Pâques occidentales | J−30, recalculé chaque année | Dimanche de Pâques | Événement, priorité 200 |
+
+Pâques est calculé selon le calendrier grégorien, pas fixé à une date du mois.
+Exemple 2027 : du 26 février au 28 mars inclus, retour au printemps le 29 mars.
+Les saisons ont la priorité 0 ; Noël/Halloween la priorité 100. Une sélection
+manuelle ou les ambiances désactivées restent prioritaires sur ces règles.
 
 Ces fenêtres conservent le calendrier déjà approuvé dans F-21. Le lendemain de
 l'événement, retour à la saison correspondante. « Désactivée » retire les
@@ -44,7 +51,12 @@ ressources et leurs SHA-256), images et logos. Aucun JavaScript, HTML, chemin
 absolu, URL distante, CSS libre ou script d'installation dans le pack.
 Les SVG historiques restent dans `ui/connected/branding`; le pack ne contient
 que leurs exports PNG approuvés, contrôlés par taille et SHA-256.
-Les animations et le moteur de rendu resteront dans l'application.
+Les animations et le moteur de rendu restent dans l'application : dix pétales
+CSS et deux silhouettes de lapins au maximum, sans boucle JavaScript par image.
+Le déplacement est rigide ; les proportions du lapin approuvé sont conservées.
+Le logo de printemps est réutilisé pour Pâques, celui par défaut pour Saint-Valentin.
+Les effets s'arrêtent en arrière-plan, pendant une lecture et en mouvement réduit.
+Le décor disparaît du panneau vidéo ; aucun transcodage ou effet côté serveur.
 
 La release GitHub `themes-v<version>` livrera le pack signé indépendamment des
 binaires. Après vérification, installation dans un nouveau dossier puis bascule

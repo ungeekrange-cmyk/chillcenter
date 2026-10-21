@@ -332,7 +332,7 @@ cat > /etc/chillcenter/updates.json <<EOF
   "bootstrap_versions": {"server":"$version","web":"0.0.0","themes":"0.0.0"},
   "api_version": "2026.10.14",
   "database_schema": 3,
-  "renderer_version": 1,
+  "renderer_version": 2,
   "theme_format": 1
 }
 EOF

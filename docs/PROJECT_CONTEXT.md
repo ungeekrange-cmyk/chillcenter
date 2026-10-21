@@ -1,5 +1,23 @@
 # Contexte du projet
 
+## v0.7.1 — contrôles finaux/publication,21octobre2026
+
+Autorisation humaine reçue pour la seule exception AF_NETLINK, sauvegarde privée
+et mise à jour serveur. SSH renouvelé ; précontrôle Pi en lecture seule PASS,
+aucune interruption ou modification réelle encore effectuée. Web installé0.7.0
+compatible, ses fichiers sont exclus de l'opération ; nouveaux paquets0.7.1
+Mac/serveur/web/thèmes préparés pour GitHub, sans remplacement du web au foyer.
+Ambiances Pâques/Saint-Valentin et silhouettes unies approuvées puis intégrées.
+Rendu2 accepte les anciens packs1 ; nouveau pack signé exige rendu2.
+BUG0123/0124 corrigés ; contrôle visuel intégré PASS,337Node PASS, suite Rust
+complète PASS après correction fixture, deux NFR historiques ignorés.
+GitHub public : secrets/push protection/Dependabot activés, CodeQL étendu cinq
+langages dont Rust, premier scan terminé. Alertes qualifiées dans le rapport
+sécurité ; clôtures et nouveau scan source restent à vérifier. Pas de visibilité
+ou branche par défaut changée, ni clé privée ajoutée au Git.
+Les états du20octobre ci-dessous sont historiques. Le dossier de livraison
+consignera séparément publication, installation et vérification réelles.
+
 ## v0.7.1 en préparation — 20 octobre 2026
 
 **Point d’arrêt actuel : autorisation attendue pour ADR0032 / BUG0119.**

@@ -346,6 +346,7 @@ def busy_idle_web_boundary(state_path):
     if not (root/'current').exists(): (root/'current').symlink_to('releases/0.6.0-1')
     now=datetime.datetime.now(datetime.timezone.utc)
     context=ssl.create_default_context(cafile='/etc/chillcenter/health-ca.pem')
+    context.minimum_version=ssl.TLSVersion.TLSv1_2
     def status():
         with urllib.request.urlopen('https://localhost:18443/api/2026-10-14/admin/updates',context=context,timeout=3) as response:
             return json.load(response)

@@ -1,6 +1,6 @@
 # ADR-0032 — Discovery interface access / Accès aux interfaces pour la découverte
 
-- Status: **PROPOSED — USER APPROVAL REQUIRED**,2026-10-20.
+- Status: **ACCEPTED_BY_USER**,2026-10-21; originally proposed2026-10-20.
 - Owner:/root. Extends ADR0030; does not authorize deployment or unit changes.
 
 ## Evidence / Preuves
@@ -28,9 +28,9 @@ all filesystem protection, ports, TLS material, application configuration and we
 files. AF_NETLINK permits interface queries; it does not grant CAP_NET_ADMIN.
 No new privileged helper, timer, Avahi configuration or persistent service.
 
-L’utilisateur a demandé de préserver les réglages existants : cette exception au
-cloisonnement du service doit être autorisée explicitement avant toute écriture
-de l’unité. Aucun changement n’a encore été appliqué.
+Autorisation explicite du21octobre2026 : « Oui, ajouter AF_NETLINK puis mettre
+à jour après sauvegarde ». Cette validation n'est pas une preuve d'exécution.
+Le NAS, les réglages applicatifs et les fichiers web déployés restent exclus.
 
 ## Alternatives and rollback / Alternatives et retour arrière
 

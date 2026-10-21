@@ -6,7 +6,7 @@ Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).
 
-**[Download the Apple Silicon Mac app v0.7 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-0.7.0-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7)
+**[Download the Apple Silicon Mac app v0.7.1 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-0.7.1-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.1)
 
 Mac, server, web and themes are independently versioned in
 [versions.json](versions.json). Installed versions and update policies appear
@@ -14,15 +14,15 @@ under **Settings → General**. Mac always requires “Install now”; server/we
 can update at 02:00 local time, outside playback and active jobs.
 [Theme packs](themes/README.en.md) document their calendar and precedence.
 
-| Component 0.7.0 | Package and instructions |
+| Component 0.7.1 | Package and instructions |
 | --- | --- |
-| Apple Silicon Mac, build 9 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-0.7.0-macos-arm64.dmg), macOS 27+ for this bundle |
-| ARM64 Linux server | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-server-0.7.0-linux-aarch64.tar.gz), 64-bit systemd host |
-| Web/PWA client | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-web-0.7.0-install.zip), requires server 0.7 |
-| Independent themes | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7/Chill-Center-themes-0.7.0-install.zip) |
+| Apple Silicon Mac, build 10 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-0.7.1-macos-arm64.dmg), macOS 27+ for this bundle |
+| ARM64 Linux server | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-server-0.7.1-linux-aarch64.tar.gz), 64-bit systemd host |
+| Web/PWA client | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-web-0.7.1-install.zip), requires server 0.7 |
+| Independent themes | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.1/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
 
 Read the [verification/installation guide](docs/updates/GUIDE-EN.md) and
-[release notes and limits](docs/releases/REL-V0.7.en.md). Signed manifests are
+[release notes and limits](docs/releases/REL-V0.7.1.en.md). Signed manifests are
 published in each component's release. Publication does not update an existing
 server; v0.6 and previous packages remain available. Do not run the initial
 installer on an existing installation: it deliberately refuses to overwrite it.
@@ -30,6 +30,7 @@ installer on an existing installation: it deliberately refuses to overwrite it.
 ## Features
 
 - Films, series, seasons, sagas and playlists.
+- Mac server discovery with Bonjour, with manual entry as a fallback.
 - Profiles with synchronized resume positions, history, watched status and personal ratings.
 - Native libmpv/FFmpeg player: audio, subtitles, playback speed and next episode.
 - TMDB metadata using your own key, manual corrections and artwork imports.

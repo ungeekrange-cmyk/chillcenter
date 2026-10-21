@@ -1,7 +1,18 @@
 # Chill Center0.7.1 — delivery status / état de livraison
 
-**Status: MAC_DMG_BUILT; PI_DEPLOYMENT_PAUSED_PENDING_PERMISSION.**
-2026-10-20. Nothing has been published/tagged on GitHub in this task.
+**Status2026-10-21: FINAL_CANDIDATE_UNDER_REVIEW; NOT_YET_PUBLISHED_OR_DEPLOYED.**
+User approved the sole AF_NETLINK exception and backup/server upgrade. Fresh
+read-only Pi preflight passed; original service PID/binary/settings/web remain
+unchanged. Approved Easter/Valentine themes are now integrated (renderer2),
+so the earlier fdb80b5 binaries/DMG below are superseded candidates, not the
+artifacts to publish or deploy. The new source and rebuilt hashes will be
+recorded after final independent reviews. Distribution components0.7.1;
+deployed web0.7.0 remains compatible and must not be replaced in this operation.
+
+## Historical build snapshot —20October / Historique du20octobre
+
+The remainder records the prior gate and immutable artifacts; it is retained,
+not silently requalified as the final theme-integrated source.
 
 ## Ready / Prêt
 

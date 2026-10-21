@@ -1,5 +1,10 @@
 # Journal des bugs, observations et risques
 
+[BUG0123](BUG-0123-native-theme-css-data-limit.md) : grands fonds natifs dépassant
+la limite CSS ; Blob borné/URLs émises validées, preuve navigateur intégré.
+[BUG0124](BUG-0124-native-update-test-fixed-version.md) : fixture de signature
+figée à la version installée ; candidat suivant calculé, garde production intacte.
+
 ## Lecture de l'état courant
 
 20octobre2026, lot0.7.1 non déployé : [BUG0119](BUG-0119-mdns-systemd-interface-family.md)

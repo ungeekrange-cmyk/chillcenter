@@ -2,12 +2,15 @@
 
 [Français](README.md) | **English**
 
-Status: declarative embedded pack `themes/default` (format/renderer 1, version
-0.7.0). The loader validates the manifest before use and falls back to the
+Status: declarative embedded pack `themes/default` (format 1, renderer 2, version
+0.7.1). The loader validates the manifest before use and falls back to the
 embedded copy when an external pack is missing or invalid. Independent delivery
 is specified in [ADR-0029](../docs/architecture/decisions/ADR-0029-component-releases-updates.md).
 
-## Proposed calendar and precedence
+Renderer 2 still accepts existing renderer-1 packs. New renderer-2 packs are
+rejected before installation by an older client.
+
+## Calendar and precedence
 
 Inclusive dates, evaluated at local client midnight in the Northern Hemisphere.
 The visual calendar's timezone is separate from the server update timer's zone.
@@ -20,6 +23,12 @@ The visual calendar's timezone is separate from the server update timer's zone.
 | Winter | December 1 | Last day of February | Season |
 | Halloween | October 1 | October 31 | Event overrides season |
 | Christmas | November 25 | December 25 | Event overrides season |
+| Valentine | January 31 (D−14) | February 14 | Event, priority 200 |
+| Western Easter | Annually computed D−30 | Easter Sunday | Event, priority 200 |
+
+Easter follows the Gregorian calendar, not a fixed day of the month. Example:
+February 26–March 28 inclusive in 2027; spring resumes March 29. Seasons have
+priority 0, Christmas/Halloween 100. Manual selection or disabled ambience wins.
 
 These preserve the approved F-21 calendar. The season resumes the day after an
 event ends. Disabled ambience preserves light/dark mode; a persistent manual
@@ -39,7 +48,11 @@ palettes, resources and SHA-256 hashes), images and logos. No JavaScript, HTML,
 absolute paths, remote URLs, arbitrary CSS or installation scripts are allowed.
 Historical SVGs remain in `ui/connected/branding`; the pack contains only their
 approved PNG exports, checked with a size and SHA-256. Rendering and animation
-code remain in the application.
+code remain in the application: at most ten CSS petals and two rigid rabbit
+silhouettes, with no per-frame JavaScript loop. The approved rabbit proportions
+are preserved. Easter reuses spring logos; Valentine reuses the default logo.
+Effects stop when hidden, playing media or using reduced motion. Backgrounds
+never cover the video. No server-side animation or transcoding occurs.
 
 The GitHub `themes-v<version>` release will distribute a signed pack independently
 of binaries. Verify, stage in a new directory, then switch atomically; retain the
