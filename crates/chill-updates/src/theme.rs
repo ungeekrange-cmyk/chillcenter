@@ -159,14 +159,23 @@ pub fn validate_theme_metadata(value: &serde_json::Value) -> Result<()> {
             })
         };
         let themes = value["themes"].as_array()?;
-        if themes.len() != if renderer == 1 { 6 } else { 8 } { return None; }
+        if themes.len() != if renderer == 1 { 6 } else { 8 } {
+            return None;
+        }
         let mut ids = BTreeSet::new();
         let mut ranges = Vec::new();
         for theme in themes {
             let id = theme["id"].as_str()?;
             if !matches!(
                 id,
-                "spring" | "summer" | "autumn" | "winter" | "christmas" | "halloween" | "easter" | "valentine"
+                "spring"
+                    | "summer"
+                    | "autumn"
+                    | "winter"
+                    | "christmas"
+                    | "halloween"
+                    | "easter"
+                    | "valentine"
             ) || !ids.insert(id)
             {
                 return None;
@@ -175,12 +184,25 @@ pub fn validate_theme_metadata(value: &serde_json::Value) -> Result<()> {
                 .as_i64()
                 .filter(|p| (-1000..=1000).contains(p))?;
             if matches!(id, "easter" | "valentine") {
-                if renderer != 2 || theme.get("start").is_some() || theme.get("end").is_some()
-                    || !matches!((id, theme["calendar"].as_str()?), ("easter", "western_easter") | ("valentine", "valentine"))
-                    || (id == "easter") != theme.get("decoration").is_some() { return None; }
+                if renderer != 2
+                    || theme.get("start").is_some()
+                    || theme.get("end").is_some()
+                    || !matches!(
+                        (id, theme["calendar"].as_str()?),
+                        ("easter", "western_easter") | ("valentine", "valentine")
+                    )
+                    || (id == "easter") != theme.get("decoration").is_some()
+                {
+                    return None;
+                }
                 if let Some(decoration) = theme.get("decoration") {
                     let path = decoration.as_str()?;
-                    if !path.starts_with("assets/decorations/") || validate_asset_path(path).is_err() || !assets.contains_key(path) { return None; }
+                    if !path.starts_with("assets/decorations/")
+                        || validate_asset_path(path).is_err()
+                        || !assets.contains_key(path)
+                    {
+                        return None;
+                    }
                 }
             } else {
                 ranges.push((date(&theme["start"])?, date(&theme["end"])?, priority));
@@ -202,25 +224,48 @@ pub fn validate_theme_metadata(value: &serde_json::Value) -> Result<()> {
                 }
             }
         }
-        for year in 2026..=2038 { for (month, days) in [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31].into_iter().enumerate() { for day in 1..=days {
-                if month == 1 && day == 29 && !(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) { continue; }
-                let point = ((month + 1) * 32 + day) as u16;
-                let mut priorities = BTreeSet::new();
-                for &(start, end, priority) in &ranges {
-                    if ((start <= end && point >= start && point <= end)
-                        || (start > end && (point >= start || point <= end)))
-                        && !priorities.insert(priority)
+        for year in 2026..=2038 {
+            for (month, days) in [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+                .into_iter()
+                .enumerate()
+            {
+                for day in 1..=days {
+                    if month == 1
+                        && day == 29
+                        && !(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))
                     {
+                        continue;
+                    }
+                    let point = ((month + 1) * 32 + day) as u16;
+                    let mut priorities = BTreeSet::new();
+                    for &(start, end, priority) in &ranges {
+                        if ((start <= end && point >= start && point <= end)
+                            || (start > end && (point >= start || point <= end)))
+                            && !priorities.insert(priority)
+                        {
+                            return None;
+                        }
+                    }
+                    for theme in themes
+                        .iter()
+                        .filter(|theme| theme.get("calendar").is_some())
+                    {
+                        if event_active(
+                            year,
+                            (month + 1) as u8,
+                            day as u8,
+                            theme["calendar"].as_str()?,
+                        ) && !priorities.insert(theme["priority"].as_i64()?)
+                        {
+                            return None;
+                        }
+                    }
+                    if priorities.is_empty() {
                         return None;
                     }
                 }
-                for theme in themes.iter().filter(|theme| theme.get("calendar").is_some()) {
-                    if event_active(year, (month + 1) as u8, day as u8, theme["calendar"].as_str()?) && !priorities.insert(theme["priority"].as_i64()?) { return None; }
-                }
-                if priorities.is_empty() {
-                    return None;
-                }
-            } } }
+            }
+        }
         Some(())
     })();
     valid.ok_or_else(|| UpdateError::Security("invalid theme calendar, variants or tokens".into()))
@@ -230,16 +275,42 @@ fn event_active(year: i32, month: u8, day: u8, calendar: &str) -> bool {
     let (end_month, end_day, span) = match calendar {
         "valentine" => (2, 14, 14),
         "western_easter" => {
-            let a = year % 19; let b = year / 100; let c = year % 100; let d = b / 4; let e = b % 4;
-            let f = (b + 8) / 25; let g = (b - f + 1) / 3; let h = (19 * a + b - d - g + 15) % 30;
-            let i = c / 4; let k = c % 4; let l = (32 + 2 * e + 2 * i - h - k) % 7; let m = (a + 11 * h + 22 * l) / 451;
-            ((h + l - 7 * m + 114) / 31, (h + l - 7 * m + 114) % 31 + 1, 30)
+            let a = year % 19;
+            let b = year / 100;
+            let c = year % 100;
+            let d = b / 4;
+            let e = b % 4;
+            let f = (b + 8) / 25;
+            let g = (b - f + 1) / 3;
+            let h = (19 * a + b - d - g + 15) % 30;
+            let i = c / 4;
+            let k = c % 4;
+            let l = (32 + 2 * e + 2 * i - h - k) % 7;
+            let m = (a + 11 * h + 22 * l) / 451;
+            (
+                (h + l - 7 * m + 114) / 31,
+                (h + l - 7 * m + 114) % 31 + 1,
+                30,
+            )
         }
         _ => return false,
     };
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
     let ordinal = |month: i32, day: i32| {
-        let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let month_days = [
+            31,
+            if leap { 29 } else { 28 },
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31,
+        ];
         month_days[..(month - 1) as usize].iter().sum::<i32>() + day
     };
     let point = ordinal(i32::from(month), i32::from(day));
@@ -426,9 +497,10 @@ mod tests {
                 theme[tone].as_object_mut().unwrap().remove("background");
             }
         }
-        manifest["themes"].as_array_mut().unwrap().retain(|theme| {
-            !matches!(theme["id"].as_str(), Some("easter") | Some("valentine"))
-        });
+        manifest["themes"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|theme| !matches!(theme["id"].as_str(), Some("easter") | Some("valentine")));
         File::create(temp.path().join("manifest.json"))
             .unwrap()
             .write_all(&serde_json::to_vec(&manifest).unwrap())

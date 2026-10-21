@@ -52,14 +52,16 @@ impl Appearance {
                 Ambiance::Easter
             } else if matches!((month, day), (1, 31) | (2, 1..=14)) {
                 Ambiance::Valentine
-            } else { match (month, day) {
-                (10, _) => Ambiance::Halloween,
-                (11, 25..=30) | (12, 1..=25) => Ambiance::Christmas,
-                (3..=5, _) => Ambiance::Spring,
-                (6..=8, _) => Ambiance::Summer,
-                (9..=11, _) => Ambiance::Autumn,
-                _ => Ambiance::Winter,
-            }})),
+            } else {
+                match (month, day) {
+                    (10, _) => Ambiance::Halloween,
+                    (11, 25..=30) | (12, 1..=25) => Ambiance::Christmas,
+                    (3..=5, _) => Ambiance::Spring,
+                    (6..=8, _) => Ambiance::Summer,
+                    (9..=11, _) => Ambiance::Autumn,
+                    _ => Ambiance::Winter,
+                }
+            })),
         }
     }
 }
@@ -83,7 +85,20 @@ fn in_easter_window(year: i32, month: u8, day: u8) -> bool {
     let easter_day = (h + l - 7 * m + 114) % 31 + 1;
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
     let ordinal = |month: i32, day: i32| {
-        let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let month_days = [
+            31,
+            if leap { 29 } else { 28 },
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31,
+        ];
         month_days[..(month - 1) as usize].iter().sum::<i32>() + day
     };
     let point = ordinal(i32::from(month), i32::from(day));
@@ -135,9 +150,18 @@ mod tests {
             (2038, (3, 26), (4, 25), (4, 26)),
         ] {
             let appearance = Appearance::default();
-            assert_eq!(appearance.resolve(year, start.0, start.1).unwrap(), Some(Ambiance::Easter));
-            assert_eq!(appearance.resolve(year, end.0, end.1).unwrap(), Some(Ambiance::Easter));
-            assert_eq!(appearance.resolve(year, next.0, next.1).unwrap(), Some(Ambiance::Spring));
+            assert_eq!(
+                appearance.resolve(year, start.0, start.1).unwrap(),
+                Some(Ambiance::Easter)
+            );
+            assert_eq!(
+                appearance.resolve(year, end.0, end.1).unwrap(),
+                Some(Ambiance::Easter)
+            );
+            assert_eq!(
+                appearance.resolve(year, next.0, next.1).unwrap(),
+                Some(Ambiance::Spring)
+            );
         }
     }
 }
