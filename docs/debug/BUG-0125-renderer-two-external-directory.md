@@ -15,5 +15,10 @@ version, checks both validator and native health, loads the installed release
 symlink and proves it did not fall back. An undeclared directory remains refused.
 Four native theme tests PASS. No signature/path/PNG decoding control relaxed.
 
+The code reviewer additionally found a cross-validator grammar difference:
+Rust accepted event-only `calendar`/`decoration` fields on static themes while
+JavaScript rejected them. Both validators now refuse these mixed entries;
+paired negative tests preserve a consistent install/render decision.
+
 FR : défaut découvert avant publication ; premier candidat non livré. Test sur
 le vrai dossier installé et son lien de release, pas sur le seul pack embarqué.

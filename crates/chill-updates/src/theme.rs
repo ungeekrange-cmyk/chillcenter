@@ -205,6 +205,11 @@ pub fn validate_theme_metadata(value: &serde_json::Value) -> Result<()> {
                     }
                 }
             } else {
+                // Match the web renderer's grammar: static entries cannot
+                // masquerade as annual events or carry event-only resources.
+                if theme.get("calendar").is_some() || theme.get("decoration").is_some() {
+                    return None;
+                }
                 ranges.push((date(&theme["start"])?, date(&theme["end"])?, priority));
             }
             for tone in ["light", "dark"] {
@@ -564,5 +569,19 @@ mod tests {
             .find(|theme| theme["id"] == "easter")
             .unwrap()["calendar"] = serde_json::json!("fixed");
         assert!(validate_theme_metadata(&malformed_event).is_err());
+        for (field, value) in [
+            ("calendar", serde_json::json!("western_easter")),
+            (
+                "decoration",
+                serde_json::json!("assets/decorations/rabbit-silhouette.png"),
+            ),
+        ] {
+            let mut invalid = valid.clone();
+            invalid["themes"][0][field] = value;
+            assert!(
+                validate_theme_metadata(&invalid).is_err(),
+                "static + {field}"
+            );
+        }
     }
 }

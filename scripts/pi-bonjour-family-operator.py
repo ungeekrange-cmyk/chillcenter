@@ -180,7 +180,8 @@ def apply(rollback_dir, dropin):
     except FileExistsError:
         pass
     parent = os.lstat(dropin.parent)
-    if not stat.S_ISDIR(parent.st_mode) or stat.S_ISLNK(parent.st_mode) or parent.st_uid != 0:
+    if (not stat.S_ISDIR(parent.st_mode) or stat.S_ISLNK(parent.st_mode)
+            or parent.st_uid != 0 or stat.S_IMODE(parent.st_mode) & 0o022):
         fail("dropin_directory_invalid")
     exclusive_file(dropin, DROPIN_BYTES, 0o644)
     regular_root_0644(dropin)

@@ -67,6 +67,20 @@ class BonjourFamilyOperatorTests(unittest.TestCase):
             op.apply(self.rollback, self.dropin)
         self.assertEqual(self.dropin.read_text(), "foreign")
 
+    def test_apply_refuses_group_or_other_writable_parent(self):
+        self.dropin.parent.mkdir(parents=True)
+        for permissions in (0o775, 0o777):
+            with self.subTest(permissions=oct(permissions)):
+                os.chmod(self.dropin.parent, permissions)
+                rollback = self.root / ("rollback-" + str(permissions))
+                rollback.mkdir(mode=0o700); os.chmod(rollback, 0o700)
+                patches = self.root_stat()
+                with patches[0], patches[1], mock.patch.object(op, "command", side_effect=self.fake_command):
+                    with self.assertRaisesRegex(op.Refusal, "dropin_directory_invalid"):
+                        op.apply(rollback, self.dropin)
+                self.assertFalse(self.dropin.exists())
+                self.assertEqual(self.families, set(op.BASE_FAMILIES))
+
     def test_apply_never_clobbers_an_existing_transition_journal(self):
         journal = self.rollback / op.JOURNAL
         journal.write_text("existing-evidence")

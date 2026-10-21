@@ -6,6 +6,8 @@ la limite CSS ; Blob borné/URLs émises validées, preuve navigateur intégré.
 figée à la version installée ; candidat suivant calculé, garde production intacte.
 [BUG0125](BUG-0125-renderer-two-external-directory.md) : dossier de décoration
 externe refusé ; whitelist/cap corrigés, vrai chargement depuis slot vérifié.
+[BUG0126](BUG-0126-bonjour-dropin-writable-parent.md) : opérateur Bonjour refusant
+un parent de drop-ins accessible en écriture à un autre utilisateur/groupe.
 
 ## Lecture de l'état courant
 
