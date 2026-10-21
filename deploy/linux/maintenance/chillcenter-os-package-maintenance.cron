@@ -1,0 +1,2 @@
+# Optional host OS maintenance.  cron uses the Pi's configured local time.
+0 3 * * 0 root /usr/bin/systemctl --no-block start chillcenter-os-package-maintenance.service

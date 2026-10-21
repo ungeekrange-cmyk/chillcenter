@@ -66,4 +66,3 @@ Panne électrique, corruption/disk-full, stack systemd réelle, cible foyer et
 vérification post-déploiement restent `NOT_RUN`. La conservation sans purge des
 reçus est intentionnelle et doit rester surveillée opérationnellement. Toute
 modification source rend ce verdict et les deux revues parallèles caducs.
-

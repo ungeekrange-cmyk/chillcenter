@@ -1,0 +1,16 @@
+[Unit]
+Description=Optional Chill Center host OS package maintenance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/sbin/chillcenter-os-package-maintenance
+KillMode=control-group
+TimeoutStartSec=infinity
+UMask=0077
+StandardInput=null
+
+# A service unit has one active invocation; concurrent cron starts coalesce.
