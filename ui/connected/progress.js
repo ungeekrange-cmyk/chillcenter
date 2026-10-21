@@ -67,7 +67,13 @@
     const payload=await invoke({action:"playback_progress",known_revision:revision});
     if(context()!==key||pending!==task||payload?.discarded)return;
     const updated=parse(payload);unsupported=false;if(updated){entries=updated;revision=payload.revision;try{localStorage.setItem(cacheKey(key),JSON.stringify(payload));}catch{}redraw();}
-   }catch(error){if(context()===key&&pending===task&&(error?.status===404||error?.status===405)){unsupported=true;if(only)message(uiText("La progression mesurée nécessite une mise à jour du serveur."));}}
+   }catch(error){if(context()===key&&pending===task&&(error?.status===404||error?.status===405)){
+    // A server rollback is not an offline failure: cached observations no longer
+    // have a compatible source. Do not keep showing stale progress indefinitely.
+    unsupported=true;entries=new Map();revision=null;
+    try{localStorage.removeItem(cacheKey(key));}catch{}
+    redraw();if(only)message(uiText("La progression mesurée nécessite une mise à jour du serveur."));
+   }}
    finally{if(pending===task)pending=null;}
   })();
   return task.promise;

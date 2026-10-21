@@ -57,6 +57,26 @@ test("In progress navigation keeps search text and can return to ordinary catego
  f.sandbox.leaveProgressView();assert.equal(f.sandbox.isProgressView(),false);
 });
 
+test("server rollback clears scoped progress but transient offline errors preserve it",async()=>{
+ for(const status of [404,405,503]){
+  let fail=false,redraws=0;
+  const f=fixture(async()=>{if(fail)throw {status};return {revision:"measured",items:[row(42000)]};});
+  f.sandbox.loadPage=async()=>{redraws++;};f.sandbox.shellSection="catalog";
+  await f.sandbox.refreshProgress();assert.equal(f.storage.size,1);
+  f.sandbox.renderDetailProgress({id,watched:false});assert.equal(f.get("detail-progress").hidden,false);
+  fail=true;await f.sandbox.refreshProgress(true);
+  const poster=f.element();f.sandbox.renderMediaProgress(poster,{id,watched:false});
+  const unsupported=status!==503;
+  assert.equal(f.storage.size,unsupported?0:1);
+  assert.equal(poster.children.length,unsupported?0:1);
+  assert.equal(f.get("detail-progress").hidden,unsupported);
+  assert.equal(redraws,unsupported?2:1,"rollback redraws the active catalogue, offline errors do not");
+  fail=false;await f.sandbox.refreshProgress(true);
+  assert.equal(f.calls.at(-1).known_revision,unsupported?null:"measured");
+  assert.equal(f.storage.size,1,"upgraded/reconnected server repopulates measured data");
+ }
+});
+
 test("a post-playback refresh waits for an older read then obtains one fresh observation",async()=>{
  const pending=[];const f=fixture(()=>new Promise(resolve=>pending.push(resolve)));
  const first=f.sandbox.refreshProgress(),after=f.sandbox.refreshProgress(true),coalesced=f.sandbox.refreshProgress(true);

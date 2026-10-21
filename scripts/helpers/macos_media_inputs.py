@@ -112,7 +112,8 @@ def extract_selected(archive, root, row):
             target.symlink_to(link)
         for target, _ in links:
             resolved = target.resolve(strict=True)
-            if base.resolve() not in resolved.parents or not resolved.is_file():
+            if (resolved.parent != (base / "lib").resolve()
+                    or not resolved.name.endswith(".dylib") or not resolved.is_file()):
                 raise ValueError("Dangling/escaping bottle library link")
     if not list((base / "lib").glob("*.dylib")):
         raise ValueError(f"No dynamic libraries extracted for {row['name']}")

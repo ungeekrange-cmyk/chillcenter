@@ -81,6 +81,13 @@ class MediaInputTests(unittest.TestCase):
             extract_selected(self.archive([(name, b"first", "file"), (name, b"second", "file")]), self.root, self.row)
         self.assertEqual((self.root / "Cellar" / name).read_bytes(), b"first")
 
+    def test_library_alias_cannot_resolve_to_a_notice_inside_the_formula(self):
+        prefix = "mpv/0.41.0_11/"
+        archive = self.archive([(prefix + "LICENSE.GPL", b"not a library", "file"),
+                                (prefix + "lib/libmpv.dylib", "../LICENSE.GPL", "link")])
+        with self.assertRaises(ValueError):
+            extract_selected(archive, self.root, self.row)
+
     def test_dependency_resolution_never_falls_back_to_installed_homebrew(self):
         lib = self.root / "Cellar/mpv/0.41.0_11/lib/libmpv.dylib"
         lib.parent.mkdir(parents=True)
