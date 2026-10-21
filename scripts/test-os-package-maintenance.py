@@ -24,10 +24,12 @@ class MaintenanceTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="cc-os-maintenance-"))
         self.log = self.tmp / "calls"
+        self.envlog = self.tmp / "environment"
         self.scenario = self.tmp / "scenario"
         self.scenario.write_text("success")
         self.bin = self.tmp / "bin"; self.bin.mkdir()
         self._fake("apt-get", '''
+            printf '%s|%s|%s\n' "$DEBIAN_FRONTEND" "$LC_ALL" "$(umask)" >> "$CC_ENV_LOG"
             echo "apt-get $*" >> "$CC_LOG"
             s=$(cat "$CC_SCENARIO")
             case "$*" in *update*) [ "$s" = update_fail ] && exit 9;; *upgrade*)
@@ -35,14 +37,16 @@ class MaintenanceTest(unittest.TestCase):
             exit 0
         ''')
         self._fake("dpkg", '''
+            printf '%s|%s|%s\n' "$DEBIAN_FRONTEND" "$LC_ALL" "$(umask)" >> "$CC_ENV_LOG"
             echo "dpkg $*" >> "$CC_LOG"
             s=$(cat "$CC_SCENARIO"); n=$(grep -c '^dpkg ' "$CC_LOG")
             [ "$s" = dpkg_fail ] && exit 9
+            [ "$s" = dpkg_after_fail ] && [ "$n" -eq 2 ] && exit 9
             [ "$s" = audit_before ] && [ "$n" -eq 1 ] && { echo broken; exit 0; }
             [ "$s" = audit_after ] && [ "$n" -eq 2 ] && { echo broken; exit 0; }
             exit 0
         ''')
-        self._fake("reboot", 'echo reboot >> "$CC_LOG"')
+        self._fake("reboot", 'printf \'%s|%s|%s\\n\' "$DEBIAN_FRONTEND" "$LC_ALL" "$(umask)" >> "$CC_ENV_LOG"\necho reboot >> "$CC_LOG"')
         target = self.tmp / "job"
         body = SOURCE.read_text()
         body = body.replace("[[ ${EUID} -eq 0 ]]", "[[ ${CC_TEST_ROOT:-1} -eq 0 ]]")
@@ -61,36 +65,62 @@ class MaintenanceTest(unittest.TestCase):
 
     def execute(self, scenario="success", root=True):
         self.scenario.write_text(scenario)
-        env = os.environ | {"CC_LOG": str(self.log), "CC_SCENARIO": str(self.scenario), "CC_TEST_ROOT": "0" if root else "1"}
+        env = os.environ | {"CC_LOG": str(self.log), "CC_ENV_LOG": str(self.envlog), "CC_SCENARIO": str(self.scenario), "CC_TEST_ROOT": "0" if root else "1"}
         return subprocess.run([str(self.job)], env=env, text=True, capture_output=True)
 
     def calls(self): return self.log.read_text() if self.log.exists() else ""
+    def call_lines(self): return self.calls().splitlines()
+    def expected_prefix(self, stage):
+        calls = [
+            "dpkg --audit",
+            "apt-get -o APT::Update::Error-Mode=any update",
+            "apt-get -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confold --with-new-pkgs --no-remove -y upgrade",
+            "apt-get check",
+            "dpkg --audit",
+        ]
+        return calls[:stage]
+    def assert_environment_boundary(self, count):
+        self.assertEqual(self.envlog.read_text().splitlines(), ["noninteractive|C|0077"] * count)
     def test_success_runs_exact_safe_commands_then_reboots(self):
         r = self.execute(); self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("DEBIAN_FRONTEND=noninteractive", SOURCE.read_text())
-        self.assertIn("LC_ALL=C", SOURCE.read_text())
-        self.assertIn("umask 077", SOURCE.read_text())
-        self.assertIn("APT::Update::Error-Mode=any update", self.calls())
-        self.assertIn("DPkg::Lock::Timeout=300", self.calls())
-        self.assertIn("--force-confold --with-new-pkgs --no-remove -y upgrade", self.calls())
-        self.assertEqual(self.calls().splitlines()[-1], "reboot")
+        self.assertEqual(self.call_lines(), self.expected_prefix(5) + ["reboot"])
+        self.assert_environment_boundary(6)
     def test_root_guard_stops_before_commands(self):
         self.assertNotEqual(self.execute(root=False).returncode, 0); self.assertEqual(self.calls(), "")
-    def test_failures_never_reboot(self):
-        for scenario in ("dpkg_fail", "audit_before", "update_fail", "upgrade_fail", "check_fail", "audit_after"):
+    def test_executable_guard_stops_before_commands(self):
+        (self.bin / "apt-get").chmod(0o600)
+        result = self.execute()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("required fixed-path command missing", result.stderr)
+        self.assertEqual(self.calls(), "")
+    def test_failures_stop_at_faulting_stage(self):
+        expected = {"dpkg_fail": 1, "audit_before": 1, "update_fail": 2,
+                    "upgrade_fail": 3, "check_fail": 4, "audit_after": 5,
+                    "dpkg_after_fail": 5}
+        diagnostics = {"dpkg_fail": "dpkg --audit failed (before)", "audit_before": "dpkg audit is non-empty (before)",
+                       "update_fail": "apt-get update failed", "upgrade_fail": "apt-get upgrade failed",
+                       "check_fail": "apt-get check failed", "audit_after": "dpkg audit is non-empty (after)",
+                       "dpkg_after_fail": "dpkg --audit failed (after)"}
+        for scenario, count in expected.items():
             with self.subTest(scenario=scenario):
-                self.log.unlink(missing_ok=True); r = self.execute(scenario)
-                self.assertNotEqual(r.returncode, 0); self.assertNotIn("reboot", self.calls())
+                self.log.unlink(missing_ok=True); self.envlog.unlink(missing_ok=True); r = self.execute(scenario)
+                self.assertEqual(r.returncode, 1)
+                self.assertIn(diagnostics[scenario], r.stderr)
+                self.assertEqual(self.call_lines(), self.expected_prefix(count))
+                self.assert_environment_boundary(count)
     def test_term_suppresses_reboot(self):
         self.scenario.write_text("term")
-        env = os.environ | {"CC_LOG": str(self.log), "CC_SCENARIO": str(self.scenario), "CC_TEST_ROOT": "0"}
+        env = os.environ | {"CC_LOG": str(self.log), "CC_ENV_LOG": str(self.envlog), "CC_SCENARIO": str(self.scenario), "CC_TEST_ROOT": "0"}
         p = subprocess.Popen([str(self.job)], env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         for _ in range(50):
             if "upgrade" in self.calls(): break
             time.sleep(.02)
-        os.killpg(p.pid, signal.SIGTERM); p.communicate(timeout=3)
-        self.assertNotEqual(p.returncode, 0)
-        self.assertNotIn("reboot", self.calls())
+        self.assertIn("upgrade", self.calls(), "TERM fixture did not reach upgrade")
+        os.killpg(p.pid, signal.SIGTERM); _, stderr = p.communicate(timeout=3)
+        self.assertEqual(p.returncode, 143)
+        self.assertIn("interrupted; reboot suppressed", stderr)
+        self.assertEqual(self.call_lines(), self.expected_prefix(3))
+        self.assert_environment_boundary(3)
     def test_no_unsafe_apt_flags(self):
         source = SOURCE.read_text()
         for forbidden in ("autoremove", "dist-upgrade", "--allow-unauthenticated", "--allow-downgrades", "--allow-remove-essential", "--force-yes"):
