@@ -1,5 +1,11 @@
 #!/bin/bash
 # Standalone Apple Silicon development bundle. No notarization or paid signing.
+# Runtime: published v0.7.2 requires macOS 27.0 (bundled media libraries),
+# not merely the Rust executable's 13.0 floor. Future macOS 15/26/27 support
+# needs compatible libraries plus a verified rebuild; never forge Mach-O minima.
+# Build inputs: Apple Silicon macOS, pinned Rust, Xcode command-line tools,
+# Python 3 and Homebrew libmpv/dependencies. End users need none of those tools.
+# See README.en.md#installation-prerequisites for Mac and Linux server hosts.
 set -euo pipefail
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 bundle_dir="${1:-$project_dir/artifacts/macos/Chill Center.app}"

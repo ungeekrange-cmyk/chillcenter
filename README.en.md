@@ -43,6 +43,46 @@ transcoding**: the client decodes video without mounting the NAS. Raspberry Pi 3
 is a target; smooth playback depends on the network and files. Two or three
 users are a goal, not a throughput guarantee for every bitrate.
 
+## Installation prerequisites
+
+### Mac client
+
+- **Apple Silicon (ARM64)** Mac; no Intel package is published.
+- The **0.7.2 DMG requires macOS 27.0 or newer**: bundled player dependencies
+  impose this minimum even though the Rust executable targets macOS 13.0.
+- **Future target, not shipped: macOS 15 Sequoia or newer**, covering macOS
+  15, 26 and 27. This requires a new bundle and compatible dependencies;
+  compatibility with the older versions is not yet validated.
+- Network access to the Chill Center server; no NAS mount, Homebrew, Rust,
+  libmpv or FFmpeg installation is needed to use the DMG. Ad hoc signature,
+  without Apple notarization: read the installation guide's limitations.
+
+### Linux server
+
+- Published package **0.7.2 targets Linux ARM64/AArch64, a 64-bit system with
+  glibc 2.28 or newer for the binaries**. Raspberry Pi 3 B/B+ running 64-bit Linux
+  is the target; a 32-bit ARM OS or Alpine/musl cannot use this package.
+  The verified real configuration is Debian 13; another compatible distribution
+  needs validation, not just the minimum glibc version.
+- **systemd**, administrator rights for installation, **Python 3.10+**,
+  **Minisign**, **curl**, Bash, tar and standard Linux tools (including `useradd`,
+  `sha256sum` and `systemd-analyze`). The server then runs unprivileged.
+- Local library or NAS **already mounted and readable** by the service account.
+  Linux handles mounting and its credentials, not Chill Center.
+- Writable local storage for the SQLite database, artwork, certificates,
+  backups and update/rollback slots. Allow the old version, new version and
+  backup to coexist; requirements depend on the catalogue, so no universal
+  minimum disk capacity is guaranteed.
+- Synchronized clock, LAN access and access to the configured port (**8443/TCP**
+  by default). Bonjour uses **5353/UDP multicast**; GitHub and TMDB require
+  outbound HTTPS for their respective features. Do not open an inbound Internet
+  port. Neither FFmpeg/libmpv nor a separate SQLite server is required.
+
+Two or three concurrent 1080p streams are a target, not a guarantee: NAS/Wi-Fi
+throughput and video bitrate remain decisive.
+See the [installation guide](docs/updates/GUIDE-EN.md): never use the initial
+installer to overwrite an existing installation.
+
 ## Security and privacy
 
 Intended for a **trusted home LAN**. Profiles are not authenticated accounts.

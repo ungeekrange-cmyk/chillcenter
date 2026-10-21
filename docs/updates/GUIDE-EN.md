@@ -78,7 +78,12 @@ tar -xzf Chill-Center-server-0.7.0-linux-aarch64.tar.gz
 
 The same verification applies to the Mac DMG, web install ZIP and themes install
 ZIP using their respective filenames. The Mac distribution is Apple Silicon
-only and **requires macOS 27+**, due to its bundled media libraries. Open the DMG,
+only and **requires macOS 27+** for the 0.7.2 DMG, due to its bundled media libraries.
+The Rust 13.0 minimum is not the complete bundle's minimum. The macOS 15 Sequoia / 26 / 27
+target remains **not shipped/not validated**: do not merely lower Info.plist;
+rebuild the dependencies and verify the new bundle.
+The [full prerequisites](../../README.en.md#installation-prerequisites) distinguish
+using the package from building it; Homebrew is not needed at runtime. Open the DMG,
 quit the old app, then drag **Chill Center** onto the **Applications** shortcut.
 Eject the disk and open the app from Applications. Keep the previous bundle for
 local rollback. This first install is manual, not an update from v0.6. The signed
@@ -87,8 +92,14 @@ keys, consent or update protocols.
 
 The server archive contains both ARM64 binaries, signed manifest/public key,
 `scripts/` and `deploy/updates/`. Keep that layout. A fresh Linux installation
-requires systemd, glibc 2.31+, Python 3.10+, Minisign, curl and a configured
-readable library; the helper does not mount storage. Inspect the script, then
+requires a 64-bit ARM64 OS using glibc, systemd, Python 3.10+, Minisign, curl,
+Bash, tar and standard Linux tools. The 0.7.2 binaries have a glibc 2.28 minimum
+according to their provenance; this alone does not guarantee OS/systemd-unit
+compatibility. Debian 13 is the verified real configuration; ARM32 OSes and musl
+are not covered by this package. Allow administrator rights, a synchronized
+clock, local storage for data/backups/slots and an already-mounted readable
+library; the helper does not mount storage. Neither FFmpeg/libmpv nor a separate
+SQLite server is required. Inspect the script, then
 run it from the extracted root with your own absolute paths and LAN settings:
 
 ```sh

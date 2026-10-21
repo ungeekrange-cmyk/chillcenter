@@ -83,7 +83,12 @@ tar -xzf Chill-Center-server-0.7.0-linux-aarch64.tar.gz
 
 Même vérification pour le DMG Mac, le ZIP d'installation web et celui des thèmes
 en adaptant le nom. La distribution Mac est réservée à Apple Silicon et
-**nécessite macOS 27+**, à cause des bibliothèques multimédias embarquées.
+**nécessite macOS 27+** pour le DMG 0.7.2, à cause des bibliothèques multimédias
+embarquées. Le minimum Rust 13.0 n’est pas celui du bundle complet. L’objectif
+macOS 15 Sequoia / 26 / 27 reste **non livré/non validé** : ne pas abaisser seulement
+Info.plist, il faut reconstruire les dépendances et vérifier le nouveau bundle.
+Les [prérequis complets](../../README.md#prérequis-dinstallation) distinguent
+utilisation du paquet et compilation ; aucun Homebrew n’est requis à l’exécution.
 Ouvrir le DMG, quitter l'ancienne application, puis glisser **Chill Center** sur
 le raccourci **Applications**. Éjecter le disque et ouvrir l'app depuis Applications.
 Garder l'ancien bundle pour un retour arrière local. Cette première installation
@@ -93,9 +98,16 @@ ni consentement, ni protocole de mise à jour.
 
 L'archive serveur contient les deux binaires ARM64, le manifeste signé/la clé
 publique, `scripts/` et `deploy/updates/`. Conserver cette arborescence. Une
-installation Linux neuve requiert systemd, glibc 2.31+, Python 3.10+, Minisign,
-curl et une bibliothèque lisible déjà configurée ; le helper ne monte aucun
-stockage. Examiner le script, puis le lancer depuis la racine extraite avec
+installation Linux neuve requiert un OS ARM64 64 bits utilisant glibc, systemd,
+Python 3.10+, Minisign, curl, Bash, tar et les outils Linux standards.
+Les binaires 0.7.2 ont un minimum glibc 2.28 selon leur provenance ; ce seul
+minimum ne garantit pas la compatibilité de l’OS et de ses unités systemd.
+Debian 13 est la configuration réelle vérifiée ; OS ARM32 et musl ne sont pas
+couverts par ce paquet. Prévoir les droits administrateur, une horloge synchronisée,
+du stockage local pour données/sauvegardes/slots et une bibliothèque lisible
+déjà montée ; le helper ne monte aucun stockage. Le serveur ne requiert ni
+FFmpeg/libmpv ni serveur SQLite séparé. Examiner le script, puis le lancer
+depuis la racine extraite avec
 ses propres chemins absolus et réglages LAN :
 
 ```sh

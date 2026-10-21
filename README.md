@@ -40,6 +40,46 @@ existante : il refuse volontairement de l’écraser.
 
 Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun transcodage serveur** : le client décode les vidéos sans monter le NAS. La cible inclut le Raspberry Pi 3 ; la fluidité dépend du réseau et des fichiers. Deux ou trois utilisateurs constituent un objectif, pas une garantie à tout débit.
 
+## Prérequis d’installation
+
+### Client Mac
+
+- Mac **Apple Silicon (ARM64)** ; aucun paquet Intel n’est publié.
+- Le DMG **0.7.2 nécessite macOS 27.0 minimum** : les dépendances embarquées
+  du lecteur imposent ce minimum, même si l’exécutable Rust cible macOS 13.0.
+- **Objectif futur, non livré : macOS 15 Sequoia minimum**, pour couvrir macOS
+  15, 26 et 27. Cela nécessite un nouveau bundle et des dépendances compatibles ;
+  la compatibilité des anciennes versions n’est pas encore validée.
+- Accès réseau au serveur Chill Center ; aucun montage NAS, Homebrew, Rust,
+  libmpv ou FFmpeg à installer pour utiliser le DMG. Signature ad hoc,
+  sans notarisation Apple : consulter les limites du guide d’installation.
+
+### Serveur Linux
+
+- Le paquet publié **0.7.2 cible Linux ARM64/AArch64, système 64 bits avec
+  glibc 2.28 minimum pour les binaires**. Raspberry Pi 3 B/B+ avec Linux 64 bits
+  est la cible ; un OS ARM 32 bits ou Alpine/musl ne convient pas à ce paquet.
+  La configuration réelle vérifiée est Debian 13 ; une autre distribution
+  compatible doit être validée, pas seulement satisfaire le minimum glibc.
+- **systemd**, droits administrateur pour l’installation, **Python 3.10+**,
+  **Minisign**, **curl**, Bash, tar et outils Linux standards (dont `useradd`,
+  `sha256sum` et `systemd-analyze`). Le serveur s’exécute ensuite sans privilèges.
+- Bibliothèque locale ou NAS **déjà montée et lisible** par le compte du service.
+  Le montage et ses identifiants sont gérés par Linux, pas par Chill Center.
+- Stockage local inscriptible pour la base SQLite, les images, les certificats,
+  les sauvegardes et les slots de mise à jour/retour arrière. Prévoir l’espace
+  de coexistence de l’ancienne version, de la nouvelle et de la sauvegarde ;
+  le besoin dépend du catalogue, aucun minimum disque universel n’est garanti.
+- Horloge synchronisée, réseau local et accès au port configuré (**8443/TCP**
+  par défaut). Bonjour utilise **5353/UDP multicast** ; GitHub et TMDB nécessitent
+  un accès HTTPS sortant pour leurs fonctions respectives. Ne pas ouvrir de port
+  Internet entrant. Ni FFmpeg/libmpv ni serveur SQLite séparé ne sont nécessaires.
+
+Deux ou trois lectures simultanées en 1080p constituent une cible, pas une
+garantie : débit NAS/Wi-Fi et débit des vidéos restent déterminants.
+Voir le [guide d’installation](docs/updates/GUIDE-FR.md) : l’installateur initial
+ne doit jamais être utilisé pour écraser une installation existante.
+
 ## Sécurité et confidentialité
 
 Usage prévu : **réseau local de confiance du foyer**. Les profils ne sont pas des comptes authentifiés. Ne pas exposer le serveur sur Internet. Le client Mac demande d’accepter le certificat auto-généré lors de la première connexion.

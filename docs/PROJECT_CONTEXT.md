@@ -1,5 +1,21 @@
 # Contexte du projet
 
+## 21 octobre 2026 — prérequis Mac et serveur explicités
+
+Documentation/commentaires uniquement, branche `codex/platform-prerequisites`.
+README et guides d’installation FR/EN : DMG 0.7.2 Apple Silicon/macOS 27+
+distinct du minimum de l’exécutable Rust 13.0 ; cible future macOS 15 Sequoia,
+26 et 27 **non livrée/non validée**. Commentaires de packaging : ne jamais
+abaisser artificiellement les minima Mach-O des bibliothèques.
+Serveur publié ARM64/Linux 64 bits, glibc 2.28 selon la provenance signée 0.7.2
+(corrige l’ancien texte 2.31), hôte Debian 13 vérifié ; systemd, Python 3.10+,
+Minisign/curl/outils Linux, montage préparé, stockage local et réseau explicités.
+Pas de nouvelle promesse ARM32/musl, ni garantie de capacité/disque universelle.
+Aucun changement exécutable des scripts, de version, d’API, de bundle,
+de publication, de Pi, de NAS ou de configuration.
+Preuves : 25 tests documentaires Node PASS, 7 tests Python de minimum macOS
+PASS, syntaxe Bash des trois scripts PASS et `git diff --check` PASS.
+
 ## 21 octobre 2026 — mises à jour Chill Center automatiques activées
 
 État courant, remplaçant les mentions historiques « helper non activé » :

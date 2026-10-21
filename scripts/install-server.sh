@@ -2,6 +2,12 @@
 # Generic first-install-only Linux installer. It consumes already downloaded,
 # inspectable local files; it never downloads or executes a remote script and
 # never mounts, remounts, writes, chowns, or probes the configured library.
+# Published v0.7.2: Linux ARM64/AArch64, 64-bit glibc binaries (floor 2.28),
+# systemd; Debian 13 is the verified host, not proof for every glibc-based OS.
+# Bootstrap needs root, Python 3.10+, Minisign, curl, Bash and standard Linux tools.
+# Library mounts/permissions and local data/backup/update space must be prepared.
+# No FFmpeg/libmpv or separate SQLite server is required; no server transcoding.
+# See README.en.md#installation-prerequisites; ARM32/musl packages are not shipped.
 set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE PYTHONINSPECT PYTHONWARNINGS

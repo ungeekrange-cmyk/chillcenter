@@ -1,5 +1,9 @@
 #!/bin/bash
 # Build a local, non-installing Linux server archive. It never deploys or starts services.
+# The public v0.7.2 package is ARM64/glibc (binary floor 2.28), verified on Debian 13.
+# Other build targets below are not a claim of published/tested ARM32/x86_64 packages.
+# Build inputs: pinned Rust/target/linker, populated Cargo cache, Python 3, Git, tar.
+# Installed host/tools/storage requirements: README.en.md#installation-prerequisites.
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"

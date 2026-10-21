@@ -45,6 +45,31 @@ test('README download packages follow independently versioned components', async
   }
 });
 
+test('platform prerequisites distinguish published bundles, future targets and server hosts', async () => {
+  for (const [file, pending] of [
+    ['README.md', 'non livré'], ['README.en.md', 'not shipped'],
+    ['docs/updates/GUIDE-FR.md', 'non livré/non validé'],
+    ['docs/updates/GUIDE-EN.md', 'not shipped/not validated'],
+  ]) {
+    const text = await read(file);
+    for (const literal of ['macOS 27', 'macOS 15 Sequoia', '13.0', 'ARM64',
+      'glibc 2.28', 'Debian 13', 'systemd', 'Python 3.10+', 'Minisign', 'curl', pending]) {
+      assert.ok(text.includes(literal), `${file}: missing prerequisite or scope ${literal}`);
+    }
+    assert.doesNotMatch(text, /glibc 2\.31/, `${file}: stale binary floor`);
+  }
+  for (const file of ['scripts/install-server.sh', 'scripts/package-linux.sh']) {
+    const comments = (await read(file)).split('\n').filter(line => line.startsWith('#')).join('\n');
+    for (const literal of ['ARM64', '2.28', 'Debian 13', 'README.en.md#installation-prerequisites']) {
+      assert.ok(comments.includes(literal), `${file}: missing prerequisite comment ${literal}`);
+    }
+  }
+  const comments = (await read('scripts/package-macos.sh')).split('\n').filter(line => line.startsWith('#')).join('\n');
+  for (const literal of ['macOS 27.0', '15/26/27', '13.0', 'never forge Mach-O minima']) {
+    assert.ok(comments.includes(literal), `Mac packaging: missing scope ${literal}`);
+  }
+});
+
 // These checks guard navigation and machine-readable values, not prose accuracy.
 // Human review still owns equivalent meaning, safety caveats and historical scope.
 for (const [fr, en] of pairs) {
