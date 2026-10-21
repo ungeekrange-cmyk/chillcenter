@@ -23,6 +23,10 @@ synthetic test values; do not hide them behind a blanket detection exclusion.
 
 ## Reporting a vulnerability
 
+[Dependency controls and tracked advisories](docs/security/DEPENDENCIES.en.md)
+distinguish the global lockfile from actual shipping components. Real alerts
+remain visible; updates are never automatically merged.
+
 If GitHub offers “Report a vulnerability” for this repository, use that private
 channel. Otherwise, ask the maintainer for a private channel without publicly
 posting exploitation instructions or attaching secrets. No long-term security

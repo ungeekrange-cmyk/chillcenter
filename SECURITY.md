@@ -12,6 +12,10 @@ Avant publication, scanner l’historique et les objets Git, pas seulement le r�
 
 ## Signaler une vulnérabilité
 
+Les [contrôles de dépendances et avis suivis](docs/security/DEPENDENCIES.md)
+distinguent le lockfile global des composants réellement livrés. Les alertes
+réelles restent visibles ; les mises à jour ne sont jamais fusionnées automatiquement.
+
 Si GitHub propose « Report a vulnerability » pour ce dépôt, utiliser ce canal privé. Sinon, demander un canal privé au mainteneur, sans publier de méthode d’exploitation ni joindre de secret. Aucune assistance de sécurité à long terme ni délai de correction n’est promis à ce stade.
 
 Indiquer la version, les préconditions, l’impact et une reproduction anonymisée. Les dépendances du lecteur et leurs licences restent distinctes du code Chill Center.

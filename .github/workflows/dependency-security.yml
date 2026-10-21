@@ -1,0 +1,42 @@
+name: Shipping dependency security
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/Cargo.toml'
+      - Cargo.lock
+      - scripts/security-shipping-dependencies*
+      - .github/workflows/dependency-security.yml
+      - .github/dependabot.yml
+  pull_request:
+    paths:
+      - '**/Cargo.toml'
+      - Cargo.lock
+      - scripts/security-shipping-dependencies*
+      - .github/workflows/dependency-security.yml
+      - .github/dependabot.yml
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dependency-security-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  shipping-graphs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install the reviewed stable Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --no-self-update && rustup default 1.99.1
+      - name: Test the dependency guard
+        run: node --test scripts/security-shipping-dependencies.test.mjs
+      - name: Verify actual Mac and server dependency graphs
+        run: node scripts/security-shipping-dependencies.mjs
