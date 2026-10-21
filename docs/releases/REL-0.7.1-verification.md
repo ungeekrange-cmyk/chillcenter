@@ -1,8 +1,11 @@
 # REL-0.7.1 — vérification indépendante de release
 
-**Statut : APPROVED_SCOPED (artefacts publics et Pi contrôlés)**  
-**Vérificateur : instance indépendante, distincte des auteurs, réviseurs et opérateur**  
-**Moment : 2026-10-21**  
+**Statut : APPROVED_SCOPED (artefacts publics et Pi contrôlés)**
+
+**Vérificateur : instance indépendante, distincte des auteurs, réviseurs et opérateur**
+
+**Moment : 2026-10-21**
+
 **Périmètre courant :** artefacts publics, intégrité/signatures, et déploiement Pi déjà réalisé. Les checkpoints prépublication ci-dessous sont historiques. Aucune modification distante ou locale de runtime n'a été faite par ce vérificateur.
 
 ## Référence vérifiée
