@@ -33,13 +33,22 @@
 .ambiance-weather>span{display:none;position:absolute;left:var(--particle-x);opacity:0}
 :root[data-ambiance=christmas] .ambiance-snow{display:block;top:-9px;width:var(--particle-size);height:var(--particle-size);border-radius:50%;background:#fff9e9;animation:chill-snow var(--particle-duration) linear var(--particle-delay) infinite}
 :root[data-ambiance=halloween] .ambiance-bat{display:block;bottom:-20px;width:28px;height:17px;animation:chill-bat-flight var(--particle-duration) linear var(--particle-delay) infinite}
+:root[data-ambiance=valentine] .ambiance-petal{display:block;top:-25px;width:11px;height:16px;border-radius:85% 5% 80% 25%;background:#ad243d;animation:chill-petal var(--particle-duration) linear var(--particle-delay) infinite}
+:root[data-tone=dark][data-ambiance=valentine] .ambiance-petal{background:#d58186}
+:root[data-ambiance=easter] .ambiance-rabbit{display:block;bottom:15px;left:-75px;width:64px;height:51px;background:var(--event-rabbit) center/contain no-repeat;filter:invert(36%) sepia(13%) saturate(1252%) hue-rotate(52deg);animation:chill-rabbit-roam var(--particle-duration) linear var(--particle-delay) infinite,chill-rabbit-hop 1.4s ease-in-out var(--particle-delay) infinite}
+:root[data-ambiance=easter] .ambiance-rabbit:nth-last-child(2){bottom:75px;opacity:.58;animation-direction:reverse,normal;transform:scaleX(-1)}
+:root[data-tone=dark][data-ambiance=easter] .ambiance-rabbit{filter:brightness(0) invert(1)}
 .ambiance-bat i{display:block;width:100%;height:100%;background:#c0adbd;clip-path:polygon(0 0,25% 20%,35% 48%,43% 16%,50% 30%,58% 16%,65% 48%,75% 20%,100% 0,90% 55%,75% 48%,64% 83%,50% 100%,36% 83%,25% 48%,10% 55%);animation:chill-bat-flap .65s ease-in-out infinite alternate}
 :root[data-tone=light] .ambiance-bat i{background:#765265}
 /* Pausing decorations for hidden/player states never changes media playback. */
 :root[data-ambiance-paused=true] .ambiance-weather *,:root .player-open .ambiance-weather *{animation-play-state:paused}
-:root:not(:is([data-ambiance=christmas],[data-ambiance=halloween])) .ambiance-weather{display:none}
+:root:not(:is([data-ambiance=christmas],[data-ambiance=halloween],[data-ambiance=easter],[data-ambiance=valentine])) .ambiance-weather{display:none}
 @keyframes chill-snow{0%{transform:translate(0,-10px);opacity:0}7%{opacity:.6}90%{opacity:.55}100%{transform:translate(26px,calc(100vh + 20px));opacity:0}}
 @keyframes chill-bat-flight{0%{transform:translate(-8px,0) rotate(-8deg) scale(.75);opacity:0}8%{opacity:.45}40%{transform:translate(18px,-40vh) rotate(9deg) scale(.85)}70%{transform:translate(-12px,-70vh) rotate(-9deg) scale(.65);opacity:.4}100%{transform:translate(14px,calc(-100vh - 30px)) rotate(5deg) scale(.5);opacity:0}}
 @keyframes chill-bat-flap{from{transform:scaleY(.55)}to{transform:scaleY(1)}}
+@keyframes chill-petal{0%{transform:translate(0,-15px) rotate(0);opacity:0}8%,90%{opacity:.45}50%{transform:translate(22px,42vh) rotate(160deg)}100%{transform:translate(-8px,84vh) rotate(340deg);opacity:0}}
+@keyframes chill-rabbit-roam{0%{left:calc(100% + 8px);opacity:0}8%{opacity:.72}100%{left:-75px;opacity:.5}}
+@keyframes chill-rabbit-hop{0%,100%{margin-bottom:0}50%{margin-bottom:3px}}
 @media(max-width:1000px){.app-shell{--event-sidebar-width:205px}}
+@media(max-width:700px){.ambiance-rabbit,.ambiance-petal{display:none!important}}
 @media(prefers-reduced-motion:reduce){.ambiance-weather{display:none!important}.ambiance-weather *{animation:none!important}}

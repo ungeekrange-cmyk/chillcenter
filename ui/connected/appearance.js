@@ -1,7 +1,7 @@
 "use strict";
 var uiText=globalThis.chillI18n?.t||((text)=>text);
 
-const appearanceLabels={spring:uiText("Printemps"),summer:uiText("Été"),autumn:uiText("Automne"),winter:uiText("Hiver"),christmas:uiText("Noël"),halloween:uiText("Halloween")};
+const appearanceLabels={spring:uiText("Printemps"),summer:uiText("Été"),autumn:uiText("Automne"),winter:uiText("Hiver"),christmas:uiText("Noël"),halloween:uiText("Halloween"),easter:uiText("Pâques"),valentine:uiText("Saint-Valentin")};
 const systemTone=window.matchMedia("(prefers-color-scheme: dark)");
 let appearanceTimer=null,appearanceRetry=null;
 let themePackPromise=null;
@@ -14,12 +14,12 @@ window.reloadThemePack=async()=>{themePackPromise=null;await refreshAppearance()
  if(!sidebar)return;
  const weather=node("div",undefined,"ambiance-weather");
  weather.setAttribute("aria-hidden","true");
- for(const [kind,count]of [["snow",14],["bat",5]]){
+ for(const [kind,count]of [["snow",14],["bat",5],["petal",10],["rabbit",2]]){
   for(let i=0;i<count;i++){
    const particle=node("span",undefined,"ambiance-"+kind);
    particle.style.setProperty("--particle-x",((i*37+8)%90)+"%");
    particle.style.setProperty("--particle-size",(2+i%3)+"px");
-   particle.style.setProperty("--particle-duration",(kind==="snow"?14+i%7:17+i*2)+"s");
+   particle.style.setProperty("--particle-duration",(kind==="snow"?14+i%7:kind==="petal"?16+i%3:kind==="rabbit"?32+i*11:17+i*2)+"s");
    particle.style.setProperty("--particle-delay",(-i*3.7-2)+"s");
    if(kind==="bat")particle.append(node("i"));
    weather.append(particle);

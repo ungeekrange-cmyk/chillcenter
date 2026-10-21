@@ -782,7 +782,7 @@ impl UpdateHost {
                 api_version: Some(Version::new(2026, 10, 14)),
                 server_version: None,
                 database_schema: Some(3),
-                renderer_version: Some(1),
+                renderer_version: Some(2),
                 theme_format: Some(1),
             },
         };

@@ -9,6 +9,18 @@ const MAX_TOTAL: usize = 16 * 1024 * 1024;
 const EMBEDDED: &str = include_str!("../../../themes/default/manifest.json");
 const ASSETS: &[(&str, &[u8])] = &[
     (
+        "assets/backgrounds/easter.png",
+        include_bytes!("../../../themes/default/assets/backgrounds/easter.png"),
+    ),
+    (
+        "assets/backgrounds/valentine.png",
+        include_bytes!("../../../themes/default/assets/backgrounds/valentine.png"),
+    ),
+    (
+        "assets/decorations/rabbit-silhouette.png",
+        include_bytes!("../../../themes/default/assets/decorations/rabbit-silhouette.png"),
+    ),
+    (
         "assets/backgrounds/christmas.png",
         include_bytes!("../../../themes/default/assets/backgrounds/christmas.png"),
     ),
@@ -74,6 +86,7 @@ fn safe_asset(path: &str) -> bool {
     let Some(name) = path
         .strip_prefix("assets/logos/")
         .or_else(|| path.strip_prefix("assets/backgrounds/"))
+        .or_else(|| path.strip_prefix("assets/decorations/"))
     else {
         return false;
     };
@@ -89,7 +102,7 @@ fn safe_asset(path: &str) -> bool {
 
 fn materialize(manifest: Value, read: impl Fn(&str) -> Option<Vec<u8>>) -> Option<Value> {
     if manifest["format_version"] != 1
-        || manifest["renderer_version"] != 1
+        || !matches!(manifest["renderer_version"].as_u64(), Some(1 | 2))
         || !manifest["version"].is_string()
     {
         return None;
@@ -130,6 +143,11 @@ fn materialize(manifest: Value, read: impl Fn(&str) -> Option<Vec<u8>>) -> Optio
 }
 
 fn valid_metadata(manifest: &Value) -> bool {
+    // Renderer 2 delegates the expanded annual-event grammar to the shared
+    // installer validator; v1 remains below as the bundled compatibility path.
+    if manifest["renderer_version"] == 2 {
+        return chill_updates::validate_theme_metadata(manifest).is_ok();
+    }
     let Some(version) = manifest["version"].as_str() else {
         return false;
     };
@@ -355,8 +373,8 @@ mod tests {
     #[test]
     fn bundled_theme_hashes_and_fallback_are_valid() {
         let value = load(Path::new("/nonexistent/chillcenter-theme-test"));
-        assert_eq!(value["manifest"]["version"], "0.7.0");
-        assert_eq!(value["assets"].as_object().unwrap().len(), 15);
+        assert_eq!(value["manifest"]["version"], "0.7.1");
+        assert_eq!(value["assets"].as_object().unwrap().len(), 18);
     }
     #[test]
     fn only_known_png_names_are_read() {

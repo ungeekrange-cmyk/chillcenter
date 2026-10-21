@@ -21,6 +21,12 @@ function contrast(a,b){const x=luminance(a),y=luminance(b);return (Math.max(x,y)
   await page.screenshot({path:path.join(out,event+'-'+tone+'.png'),fullPage:true});
  }
  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.ambiance-weather').isVisible(),false);await page.emulateMedia({reducedMotion:'no-preference'});
+ for(const event of ['easter','valentine'])for(const tone of ['dark','light']){
+  await page.evaluate(async([event,tone])=>{window.fixtureAmbiance=event;state.theme=tone;document.documentElement.dataset.theme=tone;await refreshAppearance()},[event,tone]);
+  const scene=await page.locator('.workspace').evaluate(el=>({image:getComputedStyle(el,'::before').backgroundImage,content:getComputedStyle(el,'::before').content}));assert(scene.image.includes(event+'.png'));assert.equal(scene.content,'""');
+  assert.equal(await page.locator('.ambiance-'+(event==='easter'?'rabbit':'petal')).count(),event==='easter'?2:10);
+  await page.evaluate(()=>document.body.classList.add('player-open'));assert.equal(await page.locator('.workspace').evaluate(el=>getComputedStyle(el,'::before').content),'none','Player cutout must never retain event art');await page.evaluate(()=>document.body.classList.remove('player-open'));
+ }
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'))});assert.equal(await page.locator('.ambiance-bat').first().evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'));document.body.classList.add('player-open')});assert.equal(await page.locator('.ambiance-bat').first().evaluate(el=>getComputedStyle(el).animationPlayState),'paused');await page.evaluate(()=>document.body.classList.remove('player-open'));
  await page.evaluate(async()=>{window.fixtureAmbiance=null;await refreshAppearance()});assert.equal(await page.locator('.workspace').evaluate(el=>getComputedStyle(el,'::before').content),'none');assert.equal(await page.locator('.ambiance-weather').isVisible(),false);
