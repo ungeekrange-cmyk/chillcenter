@@ -6,6 +6,7 @@ only that one line so mocked system commands are isolated in a temporary directo
 the shipped operator has no test-mode switch or environment bypass.
 """
 import hashlib
+import fcntl
 import json
 import os
 import pathlib
@@ -42,15 +43,27 @@ class OperatorRecoveryTests(unittest.TestCase):
         self.binary.write_text("old-server")
         for name, body in {
             "systemctl": "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$CC_FIXTURE_LOG\"\ncase \"$1\" in is-active) [ \"$(cat \"$CC_FIXTURE_STATE\")\" = active ] && { echo active; exit 0; } || exit 3;; stop) echo stopped >\"$CC_FIXTURE_STATE\";; start) echo active >\"$CC_FIXTURE_STATE\"; n=$(cat \"$CC_FIXTURE_GENERATION\" 2>/dev/null || echo 0); echo $((n+1)) >\"$CC_FIXTURE_GENERATION\";; show) printf 'User=fixture\\nGroup=fixture\\nFragmentPath=/fixture.service\\n';; cat) printf '[Service]\\nExecStart=/fixture/chill-server\\nUser=fixture\\n';; esac\n",
-            "curl": "#!/bin/sh\nurl=; for x in \"$@\"; do url=$x; done; case \"$url\" in */admin/scan) n=0; [ -z \"$CC_FIXTURE_SCAN_COUNT\" ] || { n=$(cat \"$CC_FIXTURE_SCAN_COUNT\" 2>/dev/null || echo 0); n=$((n+1)); echo $n >\"$CC_FIXTURE_SCAN_COUNT\"; }; [ \"$CC_FIXTURE_BUSY_SECOND\" = yes ] && [ \"$n\" -ge 2 ] && printf '{\\\"running\\\":true}\\n' || printf '{\\\"running\\\":false}\\n';; */build.json) cat \"$CC_FIXTURE_WEB/build.json\";; *) printf '200\\n';; esac\n",
+            "curl": "#!/usr/bin/env python3\nimport json,os,pathlib,sys\nurl=sys.argv[-1]\n"
+                    "if url.endswith('/admin/scan'):\n"
+                    " n=0; counter=os.environ.get('CC_FIXTURE_SCAN_COUNT')\n"
+                    " if counter:\n"
+                    "  p=pathlib.Path(counter); n=int(p.read_text())+1 if p.exists() else 1; p.write_text(str(n))\n"
+                    " print(json.dumps({'running':os.environ.get('CC_FIXTURE_BUSY_SECOND')=='yes' and n>=2}))\n"
+                    "elif url.endswith('/build.json'): print((pathlib.Path(os.environ['CC_FIXTURE_WEB'])/'build.json').read_text())\n"
+                    "else: print('200')\n",
             "runuser": "#!/bin/sh\nexit 0\n", "ss": "#!/bin/sh\nexit 0\n",
             "timeout": "#!/bin/sh\nwhile [ $# -gt 0 ]; do case \"$1\" in --*) shift;; *s) shift;; *) break;; esac; done; exec \"$@\"\n", "setsid": "#!/bin/sh\nexec \"$@\"\n",
             "mv": "#!/bin/sh\n[ \"$1\" = -T ] && shift\nexec /bin/mv \"$@\"\n",
             "runuser": "#!/bin/sh\n[ \"$CC_FIXTURE_BACKUP_FAIL\" = yes ] && exit 70\nprintf 'Sauvegarde terminée : %s/backups/snapshot\\n' \"$CC_DATA_DIR\"\n",
             "chown": "#!/bin/sh\nexit 0\n", "install": "#!/bin/sh\nprev=; for x; do src=$prev; dst=$x; prev=$x; done; cp \"$src\" \"$dst\"; chmod 755 \"$dst\"\n",
-            "stat": "#!/bin/sh\ncase \"$2\" in '%a:%u:%g') echo 700:0:0;; '%d') echo 1;; *) echo fixture-stat;; esac\n",
+            "stat": "#!/bin/sh\ncase \"$2\" in '%a:%u:%g') echo 700:0:0;; '%h:%a:%u:%g') echo 1:600:0:0;; '%d') echo 1;; *) echo fixture-stat;; esac\n",
         }.items():
             p = self.bin / name; p.write_text(body); p.chmod(0o755)
+        if not shutil.which("flock"):
+            # macOS compatibility shim uses real kernel locks, not a mock.
+            shim = self.bin / "flock"
+            shim.write_text("#!/usr/bin/env python3\nimport fcntl,os,sys\na=sys.argv[1:]; assert a.pop(0)=='-n'\np=a.pop(0); f=None\nif p.isdigit(): fd=int(p)\nelse: f=open(p,'a+'); fd=f.fileno()\ntry: fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError: sys.exit(1)\nif a:\n os.set_inheritable(fd,True); os.execvp(a[0],a)\n")
+            shim.chmod(0o755)
         self.script = self.tmp / "operator.sh"
         text = SOURCE.read_text().replace(
             "export PATH=/usr/sbin:/usr/bin:/sbin:/bin",
@@ -123,8 +136,19 @@ class OperatorRecoveryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("stop fixture", self.log.read_text())
 
-    def test_full_deploy_preserves_persistent_state_while_replacing_payload_pair(self):
-        """A normal deployment reaches PASS: payloads change, settings do not."""
+    def test_live_owner_blocks_recovery_before_any_service_action(self):
+        self._journal(state="stopping")
+        lock = self.rollback / "operator.lock"
+        with lock.open("w") as owner:
+            lock.chmod(0o600)
+            fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = self._recover()
+            self.assertEqual(result.returncode, 42, result.stderr)
+            self.assertIn("operation_busy", result.stderr)
+            self.assertFalse(self.log.exists(), "recovery must not call systemctl")
+            self.assertTrue((self.rollback / "v07-transition.json").exists())
+
+    def _deployment_env(self):
         data = self.tmp / "data"; data.mkdir()
         config = self.tmp / "server-config.json"; config.write_text("config")
         library = data / "library.json"; library.write_text("library")
@@ -147,6 +171,14 @@ class OperatorRecoveryTests(unittest.TestCase):
         web_manifest.write_text(json.dumps({"schema_version":1,"component":"web","version":"0.7.2","key_id":"key","compatibility":{"api":{"min":"2026.10.14","max":"2026.10.14"},"required_server":{"min":"0.7.0","max":"0.999.999"}},"assets":[{"target":"web","sha256":digest(web_zip)}]}))
         log = self.tmp / "deploy.log"
         env = os.environ | {"CC_FIXTURE_BIN":str(self.bin), "CC_FIXTURE_ROOT":"yes", "CC_FIXTURE_STATE":str(self.state), "CC_FIXTURE_GENERATION":str(self.generation), "CC_FIXTURE_LOG":str(log), "CC_FIXTURE_WEB":str(self.web), "CC_SERVICE":"fixture", "CC_SERVICE_USER":"fixture", "CC_BINARY":str(self.binary), "CC_WEB_DIR":str(self.web), "CC_CONFIG":str(config), "CC_DATA_DIR":str(data), "CC_ROLLBACK_DIR":str(self.rollback), "CC_CERT":str(self.cert), "CC_BASE_URL":"https://fixture", "CC_SERVER_FILE":str(new_server), "CC_WEB_ZIP":str(web_zip), "CC_SERVER_MANIFEST":str(server_manifest), "CC_SERVER_MANIFEST_SIG":str(sig1), "CC_WEB_MANIFEST":str(web_manifest), "CC_WEB_MANIFEST_SIG":str(sig2), "CC_RELEASE_PUB":str(pub), "CC_EXPECTED_RELEASE_PUB_SHA256":digest(pub), "CC_EXPECTED_SERVER_MANIFEST_SHA256":digest(server_manifest), "CC_EXPECTED_SERVER_MANIFEST_SIG_SHA256":digest(sig1), "CC_EXPECTED_WEB_MANIFEST_SHA256":digest(web_manifest), "CC_EXPECTED_WEB_MANIFEST_SIG_SHA256":digest(sig2), "CC_EXPECTED_KEY_ID":"key", "CC_EXPECTED_OLD_BINARY_SHA256":hashlib.sha256(b"old-server").hexdigest(), "CC_EXPECTED_NEW_BINARY_SHA256":digest(new_server), "CC_EXPECTED_WEB_SHA256":digest(web_zip), "CC_EXPECTED_VERSION":"0.7.2", "CC_EXPECTED_WEB_BUILD":NEW_BUILD}
+        return env, log
+
+    def test_full_deploy_preserves_persistent_state_while_replacing_payload_pair(self):
+        """A normal deployment reaches PASS: payloads change, settings do not."""
+        env, log = self._deployment_env()
+        config = pathlib.Path(env["CC_CONFIG"])
+        library = pathlib.Path(env["CC_DATA_DIR"]) / "library.json"
+        token = pathlib.Path(env["CC_DATA_DIR"]) / "tmdb-token"
         result = subprocess.run(["bash", str(self.script), "--deploy"], env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("deployment=PASS", result.stdout)

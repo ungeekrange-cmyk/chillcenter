@@ -1,5 +1,16 @@
 # Contexte du projet
 
+## BUG0128 — correctif local,21octobre2026
+
+Branche `codex/bug0128-durable-operator`, base `0122c22`. Verrou noyau hérité
+par l'opérateur et ses sauvegardes, garde de récupération interne, lancement
+détaché avec UUID, journal privé et reçu atomique durable. PID/boot/démarrage et
+incertitude après perte du superviseur explicités. Voir [BUG0128](debug/BUG-0128-operator-transport-and-recovery-overlap.md)
+et [le guide FR/EN](operations/LEGACY-DEPLOYMENT-JOBS.md). Tests d'interruption
+Linux et vraie coupure SSH uniquement en VM locale isolée ; revues en cours.
+Aucune connexion Pi/NAS, aucune version publiée, tag, main ou configuration réelle
+modifiée. Le checkpoint publié ci-dessous reste historique et effectif au foyer.
+
 ## v0.7.2 publiée — 21 octobre 2026
 
 [BUG0127](debug/BUG-0127-component-check-helper-coupling.md), source exacte

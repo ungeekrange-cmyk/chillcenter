@@ -1,10 +1,9 @@
 # Journal des bugs, observations et risques
 
-[BUG0128](BUG-0128-operator-transport-and-recovery-overlap.md) : incident
-d'orchestration SSH/récupération concurrente pendant la sauvegarde ; suivi
-distant durable et sérialisation requis avant réutilisation de l'opérateur.
-La paire applicative0.7.2 est installée et vérifiée indépendamment ; le défaut
-d'orchestration reste ouvert avant une nouvelle utilisation de cet opérateur.
+[BUG0128](BUG-0128-operator-transport-and-recovery-overlap.md) : correctif local
+en revue, verrou hérité/sauvegarde, UUID et reçus durables après coupure SSH,
+récupération sérialisée. Tests uniquement en VM locale, aucun Pi/tag/paquet publié
+modifié. La version0.7.2 déjà installée au foyer reste inchangée.
 
 [BUG0127](BUG-0127-component-check-helper-coupling.md) : recherche des mises à
 jour couplée à tort au helper d'installation ; capacités séparées, recherche

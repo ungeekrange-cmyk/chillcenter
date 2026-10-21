@@ -1,5 +1,9 @@
 # Index des décisions techniques
 
+[ADR0033](ADR-0033-durable-manual-operator.md), IMPLEMENTED_DETAIL,21octobre2026 :
+BUG0128, verrou hérité par les sauvegardes, supervision détachée/reçus durables
+et récupération sérialisée. Aucun Pi ou paquet publié modifié ; preuves isolées.
+
 [ADR0032](ADR-0032-discovery-interface-enumeration.md), **ACCEPTED_BY_USER**,
 21octobre2026 : exception AF_NETLINK au filtre du service pour la découverte,
 nécessité prouvée par deux probes isolés ; sauvegarde/mise à jour explicitement

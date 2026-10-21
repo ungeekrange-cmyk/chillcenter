@@ -2,6 +2,7 @@
 # Legacy v0.7 bridge. No first-install, updater/timer, unit, config, TLS, account,
 # mount, NAS or update-policy change. Review exact bytes and authorize target/SHA first.
 set -Eeuo pipefail
+umask 077
 trap '' PIPE
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 die(){ printf '%s
@@ -42,13 +43,33 @@ mode="${1:-}"; [[ $# -eq 1 ]] || die usage 2
 [[ "$mode" == --preflight || "$mode" == --deploy || "$mode" == --recover ]] || die usage 2
 : "${CC_SERVICE:?}" "${CC_BINARY:?}" "${CC_WEB_DIR:?}" "${CC_ROLLBACK_DIR:?}" "${CC_CERT:?}" "${CC_BASE_URL:?}" "${CC_EXPECTED_OLD_BINARY_SHA256:?}"
 [[ "$(id -u)" == 0 && "$CC_BASE_URL" =~ ^https://[^/]+$ ]] || die root_or_https_required 2
-for t in curl mktemp mv python3 runuser sha256sum ss stat systemctl unzip timeout setsid install find chown cmp; do command -v "$t" >/dev/null || die missing_tool 2; done
+for t in curl mktemp mv python3 runuser sha256sum ss stat systemctl unzip timeout setsid install find chown cmp flock; do command -v "$t" >/dev/null || die missing_tool 2; done
 for p in "$CC_BINARY" "$CC_WEB_DIR" "$CC_ROLLBACK_DIR"; do [[ "$p" == /* ]] || die absolute_path_required 2; done
 journal="$CC_ROLLBACK_DIR/v07-transition.json"
+
+# Stable inodes: never unlink these locks, including after a crash. FD 9 is
+# inherited by the entire command tree, including the detached backup. Killing
+# the operator cannot grant recovery authority while that tree is still alive.
+directory "$CC_ROLLBACK_DIR"
+[[ "$(stat -c '%a:%u:%g' "$CC_ROLLBACK_DIR")" == 700:0:0 ]] || die private_rollback_required 2
+for lease in operator.lock backup.lock; do
+ [[ ! -L "$CC_ROLLBACK_DIR/$lease" ]] || die unsafe_operation_lock 2
+ : >>"$CC_ROLLBACK_DIR/$lease"
+ regular "$CC_ROLLBACK_DIR/$lease"
+ [[ "$(stat -c '%h:%a:%u:%g' "$CC_ROLLBACK_DIR/$lease")" == 1:600:0:0 ]] || die unsafe_operation_lock 2
+done
+# A durable supervisor may already own this exact open-file description. Reuse
+# it, not an unrelated inherited descriptor; taking the lock again is mandatory.
+if [[ -e /dev/fd/9 && "$(stat -Lc '%d:%i' /dev/fd/9)" == "$(stat -c '%d:%i' "$CC_ROLLBACK_DIR/operator.lock")" ]]; then :
+else exec 9<>"$CC_ROLLBACK_DIR/operator.lock"; fi
+flock -n 9 || die operation_busy_poll_existing_job 42
 
 # Recovery is deliberately based on the durable receipt and the filesystem, never
 # on shell flags.  It is safe to run repeatedly after TERM, SIGKILL, or power loss.
 recover_transition(){
+ # Also protects this process's EXIT trap: it must not restart the service
+ # while a backup that escaped its parent still owns the data lock.
+ flock -n "$CC_ROLLBACK_DIR/backup.lock" true || die backup_busy_poll_existing_job 42
  python3 -I - "$journal" "$CC_BINARY" "$CC_WEB_DIR" <<'PY'
 import hashlib,json,pathlib,sys
 j,b,w=map(pathlib.Path,sys.argv[1:]); d=json.loads(j.read_bytes())
@@ -196,7 +217,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 systemctl stop "$CC_SERVICE"; state=stopped; ! systemctl is-active --quiet "$CC_SERVICE" || die service_failed_to_stop 1
-out="$(timeout --signal=TERM --kill-after=20s 600s /bin/bash -c 'set -e; child=; cleanup(){ [ -z "$child" ] || { kill -TERM -- -"$child" 2>/dev/null || true; sleep 2; kill -KILL -- -"$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }; }; trap "cleanup; exit 124" TERM INT HUP; cd "$1"; setsid runuser -u "$2" -- "$3" --backup --config "$4" </dev/null & child=$!; wait "$child"' -- /usr/lib/chillcenter "$CC_SERVICE_USER" "$CC_BINARY" "$CC_CONFIG")" || die backup_failed_or_timed_out 1
+out="$(flock -n "$CC_ROLLBACK_DIR/backup.lock" timeout --signal=TERM --kill-after=20s 600s /bin/bash -c 'set -e; child=; cleanup(){ [ -z "$child" ] || { kill -TERM -- -"$child" 2>/dev/null || true; sleep 2; kill -KILL -- -"$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }; }; trap "cleanup; exit 124" TERM INT HUP; cd "$1"; setsid runuser -u "$2" -- "$3" --backup --config "$4" </dev/null & child=$!; wait "$child"' -- /usr/lib/chillcenter "$CC_SERVICE_USER" "$CC_BINARY" "$CC_CONFIG")" || die backup_failed_or_timed_out 1
 backup="${out#Sauvegarde terminée : }"; [[ "$out" != "$backup" && "$backup" == "$CC_DATA_DIR/backups/"* ]] || die backup_receipt_refused 1; backup_ok "$backup"
 install -o root -g root -m 0755 "$CC_BINARY" "$old_bin"; [[ "$(hash "$old_bin")" == "$CC_EXPECTED_OLD_BINARY_SHA256" ]] || die old_binary_backup_mismatch 1
 mv -T "$CC_WEB_DIR" "$old_web"; mv -T "$new_web" "$CC_WEB_DIR"; mv -T "$CC_BINARY" "$CC_ROLLBACK_DIR/server-replaced-$(date -u +%Y%m%dT%H%M%SZ)"; mv -T "$new_bin" "$CC_BINARY"
