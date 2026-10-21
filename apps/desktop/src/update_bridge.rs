@@ -522,7 +522,12 @@ impl UpdateHost {
             .and_then(|_| std::fs::read(path).ok())
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
             .and_then(|v| v["version"].as_str().map(str::to_owned))
-            .unwrap_or_else(|| "0.7.0".into())
+            .or_else(|| {
+                serde_json::from_str::<Value>(include_str!("../../../themes/default/manifest.json"))
+                    .ok()
+                    .and_then(|v| v["version"].as_str().map(str::to_owned))
+            })
+            .unwrap_or_else(|| "unknown".into())
     }
     pub fn policy(
         &self,
@@ -1454,13 +1459,17 @@ mod tests {
             );
             fs::read_to_string(signature).unwrap()
         };
+        // Keep the signed candidate newer than the build under test. This
+        // fixture must exercise expiry replay, not fail the downgrade guard.
+        let mut next_version = semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
+        next_version.patch += 1;
         let manifest = |source_commit: &str, expires_at: &str| {
             serde_json::to_vec(&json!({
                 "schema_version": 1,
                 "component": "mac",
-                "version": "0.7.1",
+                "version": next_version.to_string(),
                 "release_sequence": 7,
-                "release_tag": "mac-v0.7.1",
+                "release_tag": format!("mac-v{next_version}"),
                 "source_commit": source_commit,
                 "issued_at": "2026-10-18T00:00:00Z",
                 "expires_at": expires_at,
@@ -1471,7 +1480,7 @@ mod tests {
                 },
                 "assets": [{
                     "target": "darwin-aarch64",
-                    "url": "https://github.com/ungeekrange-cmyk/chillcenter/releases/download/mac-v0.7.1/test-mac",
+                    "url": format!("https://github.com/ungeekrange-cmyk/chillcenter/releases/download/mac-v{next_version}/test-mac"),
                     "byte_length": 7,
                     "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                     "format": "raw",
