@@ -499,6 +499,67 @@ fn event(g: &PlaybackGrant, seq: u64, pos: u64) -> Progress {
         seek: true,
     }
 }
+
+#[tokio::test]
+async fn measured_progress_batch_observes_a_real_lease_and_keeps_profiles_separate() {
+    let f = fixture().await;
+    let a = f.profiles[0].clone();
+    let b = f.profiles[1].clone();
+    let path = format!("/api/2026-10-14/profiles/{a}/playback-progress");
+    let (status, empty) = json_reply(&f.app, "GET", &path, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(empty["items"], json!([]));
+    let g = grant(&f, 0, 0).await;
+    let (status, _) = json_reply(
+        &f.app,
+        "POST",
+        &format!("/api/2026-10-14/profiles/{a}/playback/progress"),
+        serde_json::to_value(event(&g, 1, 42000)).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, measured) = json_reply(&f.app, "GET", &path, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(measured["items"][0]["position_ms"], 42000);
+    assert_eq!(measured["items"][0]["duration_ms"], 100000);
+    let token = measured["revision"].as_str().unwrap();
+    let (_, unchanged) = json_reply(
+        &f.app,
+        "GET",
+        &format!("{path}?known_revision={token}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(unchanged["unchanged"], true);
+    assert!(unchanged.get("items").is_none());
+    let (_, stale) = json_reply(
+        &f.app,
+        "GET",
+        &format!("{path}?known_revision=old-boot:{token}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(
+        stale["unchanged"], false,
+        "a restored/restarted server cannot trust an old boot token"
+    );
+    let (_, other) = json_reply(
+        &f.app,
+        "GET",
+        &format!("/api/2026-10-14/profiles/{b}/playback-progress"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(other["items"], json!([]));
+    let (status, _) = json_reply(
+        &f.app,
+        "GET",
+        &format!("{path}?known_revision={}", "x".repeat(256)),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
 fn stream_request(g: &PlaybackGrant, range: &str) -> Request<Body> {
     Request::builder()
         .uri(format!("/api/2026-10-14/media/{}/stream", g.lease.media_id))

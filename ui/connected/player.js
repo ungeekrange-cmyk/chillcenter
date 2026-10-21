@@ -126,6 +126,7 @@ async function returnFromPlayback(completion=completedPlayback?.promise){
   if(completion)await completion;
   else if(typeof syncAfterMutation==="function")await syncAfterMutation();
   if(!current())return;
+  void window.refreshProgress?.(true);
   if(window.catalogReturnFromPlayback)await window.catalogReturnFromPlayback(playback,current);
   else if(typeof loadPage==="function")await loadPage();
 }

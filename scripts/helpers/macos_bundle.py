@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 
-SYSTEM_PREFIXES = ("/System/Library/", "/usr/lib/", "/Applications/Xcode.app/")
+SYSTEM_PREFIXES = ("/System/Library/", "/usr/lib/")
 FORBIDDEN_PREFIXES = ("/opt/homebrew/", "/usr/local/", "/opt/local/")
 LICENSE_NAMES = re.compile(r"^(license|copying|copyright|notice)(\.|$)", re.IGNORECASE)
 
@@ -77,7 +77,36 @@ def safe_output_name(source: Path, root: Path, assigned: dict[Path, str]) -> str
     return candidate
 
 
-def copy_closure(libmpv: Path, frameworks: Path) -> tuple[dict[Path, str], dict[str, dict[str, object]]]:
+def resolve_media_dependency(load_path: str, media_root: Path | None = None, source: Path | None = None) -> Path:
+    if load_path.startswith(("@rpath/", "@loader_path/")) and media_root is not None and source is not None:
+        # Relocatable bottles (e.g. Brotli) use peer dylib names. Resolve only a
+        # flat sibling in the same pinned formula, never system/installed rpaths.
+        name = load_path.split("/", 1)[1]
+        if name != Path(name).name or name in {".", ".."}:
+            raise RuntimeError("Non-peer relative bottle dependency refused")
+        result = (source.parent / name).resolve(strict=True)
+        if media_root.resolve() not in result.parents or not result.is_file():
+            raise RuntimeError("Relative media dependency escaped isolated root")
+        return result
+    for prefix, relative in (("/opt/homebrew/", ""), ("@@HOMEBREW_PREFIX@@/", ""),
+                             ("@@HOMEBREW_CELLAR@@/", "Cellar/")):
+        if load_path.startswith(prefix):
+            suffix = load_path[len(prefix):]
+            if ".." in Path(suffix).parts:
+                raise RuntimeError("Media dependency traversal refused")
+            if media_root is None:
+                if prefix != "/opt/homebrew/":
+                    raise RuntimeError("Unrelocated bottle needs an isolated media root")
+                return Path(load_path).resolve(strict=True)
+            root = media_root.resolve(strict=True)
+            result = (root / relative / suffix).resolve(strict=True)
+            if root not in result.parents or not result.is_file():
+                raise RuntimeError("Media dependency escaped isolated root")
+            return result
+    raise RuntimeError(f"unsupported external dependency: {load_path}")
+
+
+def copy_closure(libmpv: Path, frameworks: Path, media_root: Path | None = None) -> tuple[dict[Path, str], dict[str, dict[str, object]]]:
     root = libmpv.resolve(strict=True)
     assigned: dict[Path, str] = {root: "libmpv.dylib"}
     original_dependencies: dict[Path, list[str]] = {}
@@ -87,13 +116,11 @@ def copy_closure(libmpv: Path, frameworks: Path) -> tuple[dict[Path, str], dict[
         deps = dependencies(source)
         original_dependencies[source] = deps
         for load_path in deps:
-            if is_system(load_path) or load_path.startswith(("@loader_path/", "@rpath/", "@executable_path/")):
-                if load_path.startswith(("@loader_path/", "@rpath/", "@executable_path/")):
-                    raise RuntimeError(f"unresolved non-absolute dependency in Homebrew bottle: {source}: {load_path}")
+            if load_path == f"@rpath/{source.name}":
+                continue  # The bottle's own LC_ID_DYLIB, rewritten below.
+            if is_system(load_path):
                 continue
-            if not load_path.startswith("/opt/homebrew/"):
-                raise RuntimeError(f"unsupported external dependency: {source}: {load_path}")
-            dependency = Path(load_path).resolve(strict=True)
+            dependency = resolve_media_dependency(load_path, media_root, source)
             if dependency not in assigned:
                 assigned[dependency] = safe_output_name(dependency, root, assigned)
                 queue.append(dependency)
@@ -117,13 +144,15 @@ def copy_closure(libmpv: Path, frameworks: Path) -> tuple[dict[Path, str], dict[
         destination = frameworks / output_name
         call_quiet("/usr/bin/install_name_tool", "-id", f"@rpath/{output_name}", str(destination))
         for old in original_dependencies[source]:
-            if old.startswith("/opt/homebrew/"):
-                dependency = Path(old).resolve(strict=True)
+            if not is_system(old):
+                dependency = resolve_media_dependency(old, media_root, source)
+                if dependency == source:
+                    continue  # LC_ID_DYLIB was already replaced by -id.
                 call_quiet(
                     "/usr/bin/install_name_tool", "-change", old, f"@loader_path/{assigned[dependency]}", str(destination)
                 )
         for old_rpath in rpaths(destination):
-            if old_rpath.startswith(FORBIDDEN_PREFIXES):
+            if old_rpath.startswith((*FORBIDDEN_PREFIXES, "@@HOMEBREW_PREFIX@@/", "@@HOMEBREW_CELLAR@@/")):
                 call_quiet("/usr/bin/install_name_tool", "-delete_rpath", old_rpath, str(destination))
 
     verify_relocated(frameworks)
@@ -227,6 +256,7 @@ def main() -> int:
     parser.add_argument("--frameworks", type=Path, required=True)
     parser.add_argument("--licenses", type=Path)
     parser.add_argument("--brew", type=Path)
+    parser.add_argument("--media-root", type=Path)
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--load-test", action="store_true")
     arguments = parser.parse_args()
@@ -245,10 +275,17 @@ def main() -> int:
         return 0
     if arguments.load_test:
         parser.error("--load-test requires --verify-only")
-    if arguments.libmpv is None or arguments.licenses is None or arguments.brew is None:
-        parser.error("--libmpv, --licenses and --brew are required unless --verify-only is used")
-    _, formulas = copy_closure(arguments.libmpv, arguments.frameworks)
-    metadata = brew_metadata(arguments.brew, sorted(formulas))
+    if arguments.libmpv is None or arguments.licenses is None or (arguments.brew is None and arguments.media_root is None):
+        parser.error("--libmpv, --licenses and either --brew or --media-root are required")
+    _, formulas = copy_closure(arguments.libmpv, arguments.frameworks, arguments.media_root)
+    if arguments.media_root:
+        rows = json.loads((arguments.media_root / "media-lock.json").read_text(encoding="utf-8"))["packages"]
+        metadata = {item["name"]: item for item in rows}
+        if any(name not in metadata or record["version"] != metadata[name]["version"] for name, record in formulas.items()):
+            raise RuntimeError("Media formula version differs from isolated provenance")
+        shutil.copy2(arguments.media_root / "media-lock.json", arguments.licenses.parent / "media-inputs.lock.json")
+    else:
+        metadata = brew_metadata(arguments.brew, sorted(formulas))
     copy_licenses(arguments.licenses, formulas, metadata)
     print(f"Bundled {sum(len(record['dylibs']) for record in formulas.values())} arm64 dylibs from {len(formulas)} formulas.")
     return 0

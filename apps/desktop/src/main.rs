@@ -179,6 +179,44 @@ async fn ui_command(
     let epoch = bridge
         .context_epoch
         .load(std::sync::atomic::Ordering::Acquire);
+    if let UiCommand::PlaybackProgress { known_revision } = &command {
+        if known_revision
+            .as_ref()
+            .is_some_and(|value| value.len() > 255)
+        {
+            return Err(player_bridge::error("Révision de progression invalide."));
+        }
+        let client = bridge.client.clone();
+        let (transport, profile) = tauri::async_runtime::spawn_blocking(move || {
+            client
+                .lock()
+                .map_err(|_| player_bridge::error("Client indisponible."))?
+                .progress_request()
+        })
+        .await
+        .map_err(|_| player_bridge::error("Préparation de progression interrompue."))??;
+        let query = known_revision
+            .as_ref()
+            .map(|value| vec![("known_revision", value.clone())])
+            .unwrap_or_default();
+        let result: Value = transport
+            .json_with_options(
+                chill_client::HttpMethod::GET,
+                &format!("/api/2026-10-14/profiles/{profile}/playback-progress"),
+                None,
+                &query,
+                &[],
+            )
+            .await?;
+        if epoch
+            != bridge
+                .context_epoch
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Ok(serde_json::json!({"discarded":true}));
+        }
+        return Ok(result);
+    }
     if matches!(&command, UiCommand::SyncCatalog) {
         // This is deliberately before `slot`: a potentially slow HTTPS fetch
         // must not freeze controls, player status, or a subsequent context

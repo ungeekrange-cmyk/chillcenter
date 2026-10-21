@@ -80,7 +80,8 @@ The same verification applies to the Mac DMG, web install ZIP and themes install
 ZIP using their respective filenames. The Mac distribution is Apple Silicon
 only and **requires macOS 27+** for the 0.7.2 DMG, due to its bundled media libraries.
 The Rust 13.0 minimum is not the complete bundle's minimum. The macOS 15 Sequoia / 26 / 27
-target remains **not shipped/not validated**: do not merely lower Info.plist;
+target is approved, but support remains **not shipped/not validated** on older
+physical devices: do not merely lower Info.plist;
 rebuild the dependencies and verify the new bundle.
 The [full prerequisites](../../README.en.md#installation-prerequisites) distinguish
 using the package from building it; Homebrew is not needed at runtime. Open the DMG,

@@ -1,5 +1,31 @@
 # Contexte du projet
 
+## 21 octobre 2026 — candidat macOS15 et reprises mesurées
+
+Branche `codex/macos15-build`, base `e8d6f53`. Autorisation explicite de cible
+macOS15+, puis catégorie En cours>=5%, barres de vignettes et pourcentage sur
+fiche. L'utilisateur refuse les estimations TMDB et demande la durée totale
+mesurée au premier lancement. Décisions proposées : [ADR0034](architecture/decisions/ADR-0034-macos15-media-build.md)
+et [ADR0035](architecture/decisions/ADR-0035-measured-resume-view.md).
+
+Entrées officielles ARM64 Sequoia figées, téléchargement/extraction isolés,
+aucun remplacement Homebrew. Sonde :51 Mach-O avec minimum global15.0,
+50 bibliothèques relocalisées et chargement libmpv API2.5 PASS sur macOS27.
+Le packaging refuse les minima supérieurs à15.0 avant signature.
+Candidat Mac local0.7.2/build12 distinct du DMG publié0.7.2/build11/macOS27+.
+Pas de nouvelle version publique, de remplacement de release ou d'installation.
+
+Durées exactes de Progress validés persistées transactionnellement dans une
+table additive liée à l'état personnel; historique sans mesure conservé sans
+pourcentage. Lecture groupée avec jeton opaque scindée des deltas catalogue,
+cache local par serveur/profil et HTTPS natif hors verrou UI. API2026-10-14
+conservée; ancien serveur404 : seul ce nouvel affichage reste indisponible.
+Client web adapté via UI partagée et entrée du menu mobile Plus, non déployé.
+Le Pi reste0.7.2 publié; les fonctions mesurées nécessiteront une livraison
+serveur ultérieure explicitement autorisée. Aucune connexion Pi/NAS ici.
+Build final, contrôles et revues du candidat restent à consigner. Essais physiques
+macOS15/26 NOT_RUN; un minimum Mach-O n'est pas cette preuve.
+
 ## 21 octobre 2026 — prérequis Mac et serveur explicités
 
 Documentation/commentaires uniquement, branche `codex/platform-prerequisites`.

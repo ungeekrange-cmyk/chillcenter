@@ -354,6 +354,10 @@
         }
         case "save_library": await request("PUT", "/admin/library", { body: { video_root: c.video_root ?? null, additional_video_roots: c.additional_video_roots, expected_revision: c.expected_revision } }); return view();
         case "save_preferences": await request("PUT", personal("/preferences"), { body: { audio_language: c.audio_language, subtitle_language: c.subtitle_language, autoplay_seconds: c.autoplay_seconds ?? null } }); return view();
+        case "playback_progress": {
+          if(c.known_revision!=null&&(typeof c.known_revision!=="string"||c.known_revision.length>255))throw invalid("Révision de progression invalide.");
+          return get(personal("/playback-progress"),c.known_revision==null?[]:[["known_revision",c.known_revision]]);
+        }
         case "catalog": {
           const remote = catalogQuery(c);                     // validates the command exactly like before
           if (await localReady()) { try { return Query.browse(mirror.index, localQuery(c)); } catch (e) { throw invalid(e.message); } }

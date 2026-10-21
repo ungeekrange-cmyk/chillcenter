@@ -50,9 +50,9 @@ users are a goal, not a throughput guarantee for every bitrate.
 - **Apple Silicon (ARM64)** Mac; no Intel package is published.
 - The **0.7.2 DMG requires macOS 27.0 or newer**: bundled player dependencies
   impose this minimum even though the Rust executable targets macOS 13.0.
-- **Future target, not shipped: macOS 15 Sequoia or newer**, covering macOS
+- **Approved target, not shipped: macOS 15 Sequoia or newer**, covering macOS
   15, 26 and 27. This requires a new bundle and compatible dependencies;
-  compatibility with the older versions is not yet validated.
+  physical-device compatibility with the older versions is not yet validated.
 - Network access to the Chill Center server; no NAS mount, Homebrew, Rust,
   libmpv or FFmpeg installation is needed to use the DMG. Ad hoc signature,
   without Apple notarization: read the installation guide's limitations.
@@ -96,8 +96,13 @@ offered in the web client.
 ## Development
 
 Prerequisites: the Rust version in `rust-toolchain.toml`, platform build tools
-and libmpv for playback. Mac packaging uses Xcode tools and a local mpv
-installation as a build input.
+and libmpv for development playback. Mac packaging uses Xcode tools, Python 3
+and curl. It downloads official ARM64 Sequoia bottles pinned in the
+[media lockfile](deploy/macos/media-sequoia.lock.json), verifies their hashes and
+isolates them from installed Homebrew. Any library requiring newer than macOS
+15.0 fails the build; no Mach-O minimum is forged. `CHILLCENTER_MEDIA_ROOT`
+can reuse a verified input directory. This packaging change does not alter
+the published0.7.2 bundle.
 
 ```sh
 cargo test --workspace --all-targets --locked

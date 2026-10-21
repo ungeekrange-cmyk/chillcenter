@@ -77,3 +77,12 @@ test("warm facet base is reused locally and invalidated after a catalogue mutati
  vm.runInContext("invalidateFacetBase()",f.sandbox);await f.load();
  assert.deepEqual(calls,[0,48,96,0,48,96]);
 });
+
+test("In progress reads individual episodes locally, filters before rendering and keeps series playback context",async()=>{
+ const calls=[],played=[],items=[{id:"episode",title:"Episode",series:"Show",category:"serie",season:1,episode:2,available:true,watched:false},{id:"not-started",title:"Other",category:"film",available:true,watched:false}];
+ const f=fixture(async command=>{calls.push(command);return {items,has_more:false};});
+ f.sandbox.window.isProgressView=()=>true;f.sandbox.window.filterProgressItems=rows=>rows.filter(row=>row.id==="episode");f.sandbox.window.chillPlay=(...args)=>played.push(args);
+ await f.load();assert.deepEqual(f.ids(),["episode"]);assert.equal(calls[0].grouped,false);assert.equal(calls[0].category,null);
+ const card=f.get("media").children[0].children[0],play=card.children[0].children[1].children[0];play.onclick();
+ assert.equal(played[0][0],"episode");assert.equal(played[0][1].kind,"series");assert.equal(played[0][1].id,"media:episode");
+});

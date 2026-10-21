@@ -219,6 +219,16 @@ impl Store {
                 last_sequence INTEGER,
                 PRIMARY KEY(profile_id, stable_media_id)
              );
+             -- Exact durations observed during lease-validated playback only.
+             -- Separate from catalogue sync: playhead updates must not rebuild it.
+             CREATE TABLE IF NOT EXISTS cc_resume_measurement (
+                profile_id TEXT NOT NULL,
+                stable_media_id TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL CHECK(duration_ms>0),
+                PRIMARY KEY(profile_id,stable_media_id),
+                FOREIGN KEY(profile_id,stable_media_id)
+                  REFERENCES cc_profile_state(profile_id,stable_media_id) ON DELETE CASCADE ON UPDATE CASCADE
+             );
              CREATE TABLE IF NOT EXISTS cc_preferences (
                 profile_id TEXT PRIMARY KEY REFERENCES cc_profiles(id) ON DELETE CASCADE,
                 audio_language TEXT NOT NULL, subtitle_language TEXT NOT NULL,
@@ -830,6 +840,48 @@ impl Store {
         state(&self.personal, profile_id, stable_id)
     }
 
+    /// Compact profile-only read, independent of catalogue delta revisions.
+    /// Legacy resumes without a measured duration are intentionally omitted.
+    pub fn playback_progress(
+        &self,
+        profile: &str,
+        known: Option<&str>,
+    ) -> Result<serde_json::Value, String> {
+        self.require_profile(profile)?;
+        let epoch: i64 = self
+            .personal
+            .query_row(
+                "SELECT revision FROM cc_personal_epoch WHERE profile_id=?1",
+                [profile],
+                |r| r.get(0),
+            )
+            .map_err(db_error)?;
+        // Include a format marker: an older schema's token cannot hide new data.
+        let revision = format!("measured-1:{profile}:{epoch}");
+        if known == Some(revision.as_str()) {
+            return Ok(json!({"revision":revision,"unchanged":true}));
+        }
+        let mut query = self.personal.prepare(
+            "SELECT s.stable_media_id,s.position_ms,d.duration_ms,s.watched FROM cc_profile_state s
+             JOIN cc_resume_measurement d USING(profile_id,stable_media_id)
+             WHERE s.profile_id=?1 AND s.position_ms>0 ORDER BY s.stable_media_id LIMIT 30001"
+        ).map_err(db_error)?;
+        let items = query
+            .query_map([profile], |row| {
+                Ok(json!({
+                    "media_id":row.get::<_,String>(0)?,"position_ms":row.get::<_,i64>(1)?,
+                    "duration_ms":row.get::<_,i64>(2)?,"watched":row.get::<_,bool>(3)?
+                }))
+            })
+            .map_err(db_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_error)?;
+        if items.len() > 30000 {
+            return Err("PROGRESS_TOO_LARGE".into());
+        }
+        Ok(json!({"revision":revision,"unchanged":false,"items":items}))
+    }
+
     /// Context is server-derived: a client cannot attach an arbitrary playlist,
     /// saga or series to influence autoplay.
     pub fn validate_playback_context(
@@ -1242,6 +1294,7 @@ impl Store {
         self.require_profile(profile_id)?;
         if progress.media_id != stable_id
             || progress.duration_ms == 0
+            || progress.duration_ms > i64::MAX as u64
             || progress.position_ms > progress.duration_ms
             || !valid_speed(progress.speed)
         {
@@ -1302,6 +1355,9 @@ impl Store {
             None,
         )?;
         tx.execute("UPDATE cc_profile_state SET last_session_id=?1,last_generation=?2,last_sequence=?3 WHERE profile_id=?4 AND stable_media_id=?5",params![progress.session_id,progress.generation as i64,progress.sequence as i64,profile_id,stable_id]).map_err(db_error)?;
+        tx.execute("INSERT INTO cc_resume_measurement(profile_id,stable_media_id,duration_ms) VALUES(?1,?2,?3)
+            ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET duration_ms=excluded.duration_ms",
+            params![profile_id,stable_id,progress.duration_ms as i64]).map_err(db_error)?;
         tx.commit().map_err(db_error)?;
         Ok(PersonalState {
             position_ms: progress.position_ms,
@@ -3529,6 +3585,90 @@ mod tests {
         assert!(
             s.save_validated_progress(&p.id, &id, &event(4, 30_000, true, false, false, 0))
                 .is_err()
+        );
+    }
+    #[test]
+    fn measured_progress_is_exact_profile_scoped_and_independent_of_catalogue_sync() {
+        let mut s = store();
+        let p = s.create_profile("Progress").unwrap();
+        let other = s.create_profile("Other").unwrap();
+        let id = s.catalog(&p.id).unwrap()[0].id.clone();
+        // A pre-existing resume has no measured duration: never infer from metadata.
+        s.personal.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms) VALUES(?1,?2,5000)",params![p.id,id]).unwrap();
+        assert_eq!(
+            s.playback_progress(&p.id, None).unwrap()["items"],
+            json!([])
+        );
+        let before = s.sync_revision(&p.id).unwrap();
+        let mut event = Progress {
+            media_id: id.clone(),
+            media_revision: 1,
+            session_id: "measured".into(),
+            generation: 1,
+            sequence: 1,
+            position_ms: 5000,
+            duration_ms: 100000,
+            speed: 1.0,
+            final_elapsed_ms: 0,
+            playing: true,
+            buffering: false,
+            seek: false,
+        };
+        s.save_validated_progress(&p.id, &id, &event).unwrap();
+        assert_eq!(
+            s.sync_revision(&p.id).unwrap(),
+            before,
+            "a playhead must not invalidate the catalogue"
+        );
+        let result = s.playback_progress(&p.id, None).unwrap();
+        assert_eq!(
+            result["items"][0],
+            json!({"media_id":id,"position_ms":5000,"duration_ms":100000,"watched":false})
+        );
+        assert_eq!(
+            s.playback_progress(&other.id, None).unwrap()["items"],
+            json!([])
+        );
+        assert!(s.playback_progress("missing", None).is_err());
+        assert_eq!(
+            s.playback_progress(&p.id, result["revision"].as_str())
+                .unwrap()["unchanged"],
+            true
+        );
+        event.position_ms = 42000;
+        event.sequence += 1;
+        event.playing = false;
+        s.save_validated_progress(&p.id, &id, &event).unwrap();
+        let moved = s
+            .playback_progress(&p.id, result["revision"].as_str())
+            .unwrap();
+        assert_eq!(moved["unchanged"], false);
+        assert_eq!(moved["items"][0]["position_ms"], 42000);
+        let path = std::path::PathBuf::from(s.personal.path().unwrap());
+        let reopened = Store::open(&path).unwrap();
+        assert_eq!(
+            reopened.playback_progress(&p.id, None).unwrap()["items"][0]["duration_ms"],
+            100000
+        );
+        drop(reopened);
+        event.duration_ms = 200000; // replay must not corrupt a previously measured duration
+        assert!(s.save_validated_progress(&p.id, &id, &event).is_err());
+        assert_eq!(
+            s.playback_progress(&p.id, None).unwrap()["items"][0]["duration_ms"],
+            100000
+        );
+        s.set_watched(&p.id, &id, true).unwrap();
+        assert_eq!(
+            s.playback_progress(&p.id, None).unwrap()["items"][0]["watched"],
+            true
+        );
+        s.delete_profile(&p.id).unwrap();
+        assert_eq!(
+            s.personal
+                .query_row("SELECT COUNT(*) FROM cc_resume_measurement", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
         );
     }
     #[test]

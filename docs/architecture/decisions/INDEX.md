@@ -1,5 +1,12 @@
 # Index des décisions techniques
 
+[ADR0034](ADR-0034-macos15-media-build.md), PROPOSED implementation,21octobre2026 :
+cible macOS15+ approuvée, entrées multimédias Sequoia isolées/épinglées, minimum
+contrôlé avant signature; exécution physique15/26 à distinguer du build.
+[ADR0035](ADR-0035-measured-resume-view.md), PROPOSED implementation,21octobre2026 :
+catégorie En cours>=5%, barres/pourcentages mesurés, durée au premier lancement,
+lecture groupée indépendante des deltas catalogue, pas de déploiement Pi implicite.
+
 [ADR0033](ADR-0033-durable-manual-operator.md), IMPLEMENTED_DETAIL,21octobre2026 :
 BUG0128, verrou hérité par les sauvegardes, supervision détachée/reçus durables
 et récupération sérialisée. Aucun Pi ou paquet publié modifié ; preuves isolées.

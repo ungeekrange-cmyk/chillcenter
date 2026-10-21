@@ -47,9 +47,9 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 - Mac **Apple Silicon (ARM64)** ; aucun paquet Intel n’est publié.
 - Le DMG **0.7.2 nécessite macOS 27.0 minimum** : les dépendances embarquées
   du lecteur imposent ce minimum, même si l’exécutable Rust cible macOS 13.0.
-- **Objectif futur, non livré : macOS 15 Sequoia minimum**, pour couvrir macOS
+- **Cible approuvée, non livrée : macOS 15 Sequoia minimum**, pour couvrir macOS
   15, 26 et 27. Cela nécessite un nouveau bundle et des dépendances compatibles ;
-  la compatibilité des anciennes versions n’est pas encore validée.
+  la compatibilité sur appareil des anciennes versions n’est pas encore validée.
 - Accès réseau au serveur Chill Center ; aucun montage NAS, Homebrew, Rust,
   libmpv ou FFmpeg à installer pour utiliser le DMG. Signature ad hoc,
   sans notarisation Apple : consulter les limites du guide d’installation.
@@ -88,7 +88,14 @@ TMDB et les fonctions IA optionnelles du client Mac utilisent des services exter
 
 ## Développer
 
-Prérequis : Rust indiqué par `rust-toolchain.toml`, outils de compilation de la plateforme et libmpv pour le lecteur. Le packaging Mac utilise les outils Xcode et une installation locale de mpv comme entrée.
+Prérequis : Rust indiqué par `rust-toolchain.toml`, outils de compilation de la
+plateforme et libmpv pour le lecteur en développement. Le packaging Mac utilise
+les outils Xcode, Python 3 et curl. Il télécharge les paquets ARM64 Sequoia officiels
+figés dans [le verrou multimédia](deploy/macos/media-sequoia.lock.json), vérifie
+leurs empreintes et les isole de Homebrew installé. Toute bibliothèque exigeant
+plus que macOS 15.0 fait échouer le build ; aucun minimum Mach-O n’est falsifié.
+`CHILLCENTER_MEDIA_ROOT` permet de réutiliser un dossier d’entrées vérifiées.
+Le bundle publié0.7.2 n’est pas modifié par ce changement du packaging.
 
 ```sh
 cargo test --workspace --all-targets --locked

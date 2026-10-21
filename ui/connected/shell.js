@@ -14,15 +14,16 @@ window.renderShell=()=>{
  for(const [id,section] of [["collections-panel","collections"],["collection-panel","collection"],["picker-panel","picker"]])$(id).hidden=!active||shellSection!==section;
  for(const [id,kind] of [["show-sagas","saga"],["show-playlists","playlist"]])$(id).classList.toggle("active",active&&["collections","collection","picker"].includes(shellSection)&&collectionKind===kind);
  if(shellSection!=="admin")$("admin-panel").hidden=true;
- document.querySelectorAll("[data-category]").forEach(button=>button.classList.toggle("active",shellSection==="catalog"&&button.dataset.category===$("category").value));
+ document.querySelectorAll("[data-category]").forEach(button=>button.classList.toggle("active",shellSection==="catalog"&&!window.isProgressView?.()&&button.dataset.category===$("category").value));
+ $("show-in-progress").disabled=!active;$("show-in-progress").classList.toggle("active",shellSection==="catalog"&&Boolean(window.isProgressView?.()));
  $("admin-toggle").classList.toggle("active",shellSection==="admin");$("advice-toggle").classList.toggle("active",shellSection==="advice");
- $("catalog-title").textContent=categoryNames[$("category").value]||uiText("Toute la collection");
+ $("catalog-title").textContent=window.isProgressView?.()?uiText("En cours"):categoryNames[$("category").value]||uiText("Toute la collection");
 };
 function shellShow(section){if(!["collections","collection","picker"].includes(section))window.leaveCollectionPages?.();shellSection=section;window.recoveryContextChanged?.();window.renderShell();}
 document.querySelectorAll("[data-category]").forEach(button=>button.onclick=async()=>{
  if(!state.profile_id)return;
  if(!await stopPlayerForNavigation())return;
- $("category").value=button.dataset.category;shellShow("catalog");scrollTo({top:0,behavior:"instant"});await loadPage();
+ window.leaveProgressView?.();$("category").value=button.dataset.category;shellShow("catalog");scrollTo({top:0,behavior:"instant"});await loadPage();
 });
 $("advice-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("advice");};
 $("admin-close").addEventListener("click",()=>shellShow("catalog"));

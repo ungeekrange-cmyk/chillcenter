@@ -61,6 +61,10 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/scan", get(scan_status).post(start_scan))
         .route("/profiles/{profile}/catalog", get(catalog))
         .route(
+            "/profiles/{profile}/playback-progress",
+            get(playback_progress),
+        )
+        .route(
             "/profiles/{profile}/catalog/snapshot",
             post(create_snapshot),
         )
@@ -1070,6 +1074,41 @@ async fn playback_info(
             })
             .await?,
     ))
+}
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProgressQuery {
+    known_revision: Option<String>,
+}
+async fn playback_progress(
+    State(state): State<AppState>,
+    Path(profile): Path<String>,
+    Query(query): Query<ProgressQuery>,
+) -> Result<Json<Value>, ApiError> {
+    if query
+        .known_revision
+        .as_ref()
+        .is_some_and(|value| value.len() > 255)
+    {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "INVALID_QUERY"));
+    }
+    // A restart/restore must invalidate a device's cached token even if a
+    // restored database happens to contain the same numeric epoch.
+    let boot = SNAPSHOT_BOOT
+        .get_or_init(|| Uuid::new_v4().to_string())
+        .clone();
+    let known = query
+        .known_revision
+        .and_then(|value| value.strip_prefix(&(boot.clone() + ":")).map(str::to_owned));
+    let mut result = state
+        .database
+        .call(move |store| store.playback_progress(&profile, known.as_deref()))
+        .await?;
+    result["revision"] = json!(format!(
+        "{boot}:{}",
+        result["revision"].as_str().unwrap_or_default()
+    ));
+    Ok(Json(result))
 }
 async fn catalog(
     State(state): State<AppState>,

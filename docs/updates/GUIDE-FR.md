@@ -84,8 +84,9 @@ tar -xzf Chill-Center-server-0.7.0-linux-aarch64.tar.gz
 Même vérification pour le DMG Mac, le ZIP d'installation web et celui des thèmes
 en adaptant le nom. La distribution Mac est réservée à Apple Silicon et
 **nécessite macOS 27+** pour le DMG 0.7.2, à cause des bibliothèques multimédias
-embarquées. Le minimum Rust 13.0 n’est pas celui du bundle complet. L’objectif
-macOS 15 Sequoia / 26 / 27 reste **non livré/non validé** : ne pas abaisser seulement
+embarquées. Le minimum Rust 13.0 n’est pas celui du bundle complet. La cible
+macOS 15 Sequoia / 26 / 27 est approuvée, mais le support reste **non livré/non validé**
+sur appareil ancien : ne pas abaisser seulement
 Info.plist, il faut reconstruire les dépendances et vérifier le nouveau bundle.
 Les [prérequis complets](../../README.md#prérequis-dinstallation) distinguent
 utilisation du paquet et compilation ; aucun Homebrew n’est requis à l’exécution.

@@ -24,6 +24,7 @@
 <script src="player-settings.js" defer></script>
 <link rel="stylesheet" href="shell.css">
 <script src="shell.js" defer></script>
+<script src="progress.js" defer></script>
 <script src="tmdb.js" defer></script>
 <link rel="stylesheet" href="collections.css">
 <link rel="stylesheet" href="events.css">
@@ -35,7 +36,7 @@
 <a class="brand" href="#" aria-label="Chill Center"><img id="brand-logo" src="branding/default.svg" alt="Chill Center"></a>
 <nav class="sidebar-nav" aria-label="Bibliothèque">
 <button data-category="" class="nav-item active">◉ <span>Toute la collection</span></button><button data-category="film" class="nav-item">▣ <span>Films</span></button><button data-category="serie" class="nav-item">▤ <span>Séries</span></button><button data-category="spectacle" class="nav-item">◈ <span>Spectacles</span></button><button data-category="documentaire" class="nav-item">◌ <span>Documentaires</span></button>
-<p class="group-label">Collections</p><button id="show-sagas" class="nav-item">⌘ <span>Sagas</span></button><button id="show-playlists" class="nav-item">☷ <span>Listes de lecture</span></button></nav>
+<button id="show-in-progress" class="nav-item">◷ <span>En cours</span></button><p class="group-label">Collections</p><button id="show-sagas" class="nav-item">⌘ <span>Sagas</span></button><button id="show-playlists" class="nav-item">☷ <span>Listes de lecture</span></button></nav>
 <div class="sidebar-footer"><button id="advice-toggle" class="nav-item" hidden>✦ <span>Demande de conseil</span></button><button id="admin-toggle" class="nav-item" hidden>⚙ <span>Configuration</span></button></div></aside>
 <div class="workspace"><header class="app-topbar"><label class="global-search"><svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.75" cy="10.75" r="6.75"></circle><path d="m16 16 5 5"></path></svg><input id="search" type="search" placeholder="Rechercher dans toute la collection…" aria-label="Rechercher dans toute la collection" maxlength="500"><span class="shortcut">⌘ F</span></label><details id="profile-menu" class="profile-menu" hidden><summary aria-label="Changer ou créer un profil"><span id="profile-name"></span><span id="profile-avatar" class="profile-avatar" aria-hidden="true"></span></summary><div class="profile-menu-popover"><label>Changer de profil<select id="profile-switch" aria-label="Changer de profil"></select></label><form id="create-profile-menu" class="inline"><input name="name" aria-label="Nom du nouveau profil" placeholder="Nouveau profil" maxlength="80" required><button>Créer</button></form></div></details>
 </header>

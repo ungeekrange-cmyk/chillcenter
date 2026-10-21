@@ -258,6 +258,28 @@ This optional 2026-10-14 addition needs no old-web-client update for its
 historical operations. The new Mac bundle sends the selector explicitly;
 11aa529 remains an older partial client, notably for new key-based edits.
 
+## Measured progress — additive change in preparation
+
+`GET /profiles/{profile}/playback-progress` reads profile resumes with a total
+duration **measured by the player**, persisted on a lease-validated `Progress`
+event. The server does not probe videos, transcode or infer duration from TMDB.
+Legacy resumes without a measured duration are omitted until playback occurs.
+
+The response contains `revision`, `unchanged` and, when changed, `items` (up to
+30000), with `media_id`, `position_ms`, `duration_ms`, `watched`. Supply the
+previous opaque token as `known_revision` to receive `unchanged: true` without
+items when nothing changed. A restart invalidates the token. This read does not
+change catalogue revisions; clients query this separate stream in the background,
+at most once every30seconds during normal use. Cache it separately per
+server/profile and never publish a late response from an old context.
+
+“In progress” includes unwatched videos whose position is at least5% of their
+measured duration. Thumbnail bars and detail percentages use that same duration;
+no approximate percentages. Position does not prove content was watched after a
+seek: the automatic watched rule is unchanged. Release0.7.2 lacks this route404;
+disable only this feature and keep the remaining client compatible. No implicit
+household Pi deployment is authorized by this documentation.
+
 ## Playback: lease, SSE and Range
 
 Streaming requires acquiring the profile's lease first. Use a persistent

@@ -63,6 +63,10 @@ pub enum UiCommand {
     Refresh,
     /// Host-intercepted: transport runs after the UI client mutex is released.
     SyncCatalog,
+    /// Host-intercepted; network I/O never owns the UI client mutex.
+    PlaybackProgress {
+        known_revision: Option<String>,
+    },
     SaveLibrary {
         video_root: Option<String>,
         /// `None` preserves additional locations for clients compiled before
@@ -881,6 +885,9 @@ impl UiClient {
             .as_ref()
             .map(|connection| connection.transport.clone())
             .ok_or_else(|| invalid("Connectez un serveur."))
+    }
+    pub fn progress_request(&self) -> Result<(Transport, String), UiError> {
+        Ok((self.server_transport()?, self.profile()?))
     }
     /// Advice captures a coherent, grouped local snapshot only on explicit submit.
     /// Never download the library or call a provider while holding the UI lock.
@@ -2287,6 +2294,7 @@ impl UiClient {
             }
             UiCommand::Refresh => self.view(),
             UiCommand::SyncCatalog => Err(invalid("Synchronisation gérée par l’hôte.")),
+            UiCommand::PlaybackProgress { .. } => Err(invalid("Progression gérée par l’hôte.")),
             UiCommand::SeasonArtwork { .. } => Err(invalid("Affiche gérée par le cache.")),
             UiCommand::SelectProfile { id } => {
                 valid_id(&id)?;

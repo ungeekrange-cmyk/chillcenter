@@ -1,0 +1,782 @@
+{
+  "schema_version": 1,
+  "minimum_macos": "15.0",
+  "architecture": "arm64",
+  "source": "https://formulae.brew.sh/api/formula",
+  "packages": [
+    {
+      "name": "brotli",
+      "version": "1.2.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/brotli/blobs/sha256:b8e388c96be5a63a46e0335c390fecb20dda7adb1368a2ba0209b38cae17c708",
+      "sha256": "b8e388c96be5a63a46e0335c390fecb20dda7adb1368a2ba0209b38cae17c708",
+      "license": "MIT",
+      "homepage": "https://github.com/google/brotli",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/google/brotli/archive/refs/tags/v1.2.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec"
+        }
+      }
+    },
+    {
+      "name": "libunistring",
+      "version": "1.5",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libunistring/blobs/sha256:5001abe192babcfaf0f97ad322e2e59958d0d991de3da9f2e941b24924b8a2b8",
+      "sha256": "5001abe192babcfaf0f97ad322e2e59958d0d991de3da9f2e941b24924b8a2b8",
+      "license": "GPL-2.0-or-later OR LGPL-3.0-or-later",
+      "homepage": "https://www.gnu.org/software/libunistring/",
+      "urls": {
+        "stable": {
+          "url": "https://ftpmirror.gnu.org/libunistring/libunistring-1.5.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "5b0ecd46cbf225375f20ab4056197e66a7ac590e2684c069af407ae3383c9d81"
+        }
+      }
+    },
+    {
+      "name": "dav1d",
+      "version": "1.5.4",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/dav1d/blobs/sha256:5f573db161c0685ba7e8d27bd3b6a494e6952e47c7c99355a0d090b253b566af",
+      "sha256": "5f573db161c0685ba7e8d27bd3b6a494e6952e47c7c99355a0d090b253b566af",
+      "license": "BSD-2-Clause",
+      "homepage": "https://code.videolan.org/videolan/dav1d",
+      "urls": {
+        "stable": {
+          "url": "https://code.videolan.org/videolan/dav1d/-/archive/1.5.4/dav1d-1.5.4.tar.bz2",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "2abfb0c89212e6e4733a54e0ae509ec00a5b845a6360946f918806e14aedb011"
+        }
+      }
+    },
+    {
+      "name": "ffmpeg",
+      "version": "9.0.2_1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/ffmpeg/blobs/sha256:65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
+      "sha256": "65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
+      "license": "GPL-3.0-or-later",
+      "homepage": "https://ffmpeg.org/",
+      "urls": {
+        "stable": {
+          "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
+        }
+      }
+    },
+    {
+      "name": "fontconfig",
+      "version": "2.18.3",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/fontconfig/blobs/sha256:a5f5df5f8d02e8a5b2587cac464c7bd45128447da06b7ab39938a9645982ef49",
+      "sha256": "a5f5df5f8d02e8a5b2587cac464c7bd45128447da06b7ab39938a9645982ef49",
+      "license": "HPND-sell-variant AND Unicode-3.0 AND MIT-Modern-Variant AND MIT AND LicenseRef-Homebrew-public-domain",
+      "homepage": "https://wiki.freedesktop.org/www/Software/fontconfig/",
+      "urls": {
+        "stable": {
+          "url": "https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/2.18.3/fontconfig-2.18.3.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496b3"
+        }
+      }
+    },
+    {
+      "name": "freetype",
+      "version": "2.15.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/freetype/blobs/sha256:7e7a7bb07a484cf6fccb168587d697ed24b98cce52e6ac735debb22adb422237",
+      "sha256": "7e7a7bb07a484cf6fccb168587d697ed24b98cce52e6ac735debb22adb422237",
+      "license": "FTL",
+      "homepage": "https://www.freetype.org/",
+      "urls": {
+        "stable": {
+          "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5"
+        }
+      }
+    },
+    {
+      "name": "fribidi",
+      "version": "1.0.17",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/fribidi/blobs/sha256:c1e62df532f06bf13ebb31df04d7e78645271a00e4261b17594248d16cf7e5b8",
+      "sha256": "c1e62df532f06bf13ebb31df04d7e78645271a00e4261b17594248d16cf7e5b8",
+      "license": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+      "homepage": "https://github.com/fribidi/fribidi",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/fribidi/fribidi/releases/download/v1.0.17/fribidi-1.0.17.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "6949dcde27d41cebad1fd741fcafc36d55a1020d2d872d4a6eb3914caabbada2"
+        }
+      }
+    },
+    {
+      "name": "gettext",
+      "version": "1.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/gettext/blobs/sha256:98a116d35792ccd730360ffc8c0d8fc5799b2282b96bb7696192c573f064a331",
+      "sha256": "98a116d35792ccd730360ffc8c0d8fc5799b2282b96bb7696192c573f064a331",
+      "license": "GPL-3.0-or-later AND LGPL-2.1-or-later",
+      "homepage": "https://www.gnu.org/software/gettext/",
+      "urls": {
+        "stable": {
+          "url": "https://ftpmirror.gnu.org/gettext/gettext-1.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a"
+        }
+      }
+    },
+    {
+      "name": "glib",
+      "version": "2.90.1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/glib/blobs/sha256:ce9568a335281cb6bd12c48fd89d7a118a046f9df16761c120826fdae116e468",
+      "sha256": "ce9568a335281cb6bd12c48fd89d7a118a046f9df16761c120826fdae116e468",
+      "license": "LGPL-2.1-or-later",
+      "homepage": "https://docs.gtk.org/glib/",
+      "urls": {
+        "stable": {
+          "url": "https://download.gnome.org/sources/glib/2.90/glib-2.90.1.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "93c941aa17d5eb1d53fe838365f29a8b4e539c222a256d974ec8f30fc413e396"
+        }
+      }
+    },
+    {
+      "name": "graphite2",
+      "version": "1.3.15",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/graphite2/blobs/sha256:bcbf8282acc59c6ed6a0c9a7cf076935735c21de1495bb4e22c3d6bf32f31ee0",
+      "sha256": "bcbf8282acc59c6ed6a0c9a7cf076935735c21de1495bb4e22c3d6bf32f31ee0",
+      "license": "MIT OR MPL-2.0 OR LGPL-2.1-or-later OR GPL-2.0-or-later",
+      "homepage": "https://graphite.sil.org/",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/silnrsi/graphite/releases/download/1.3.15/graphite2-1.3.15.tgz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "c6bc8b4252724665297f7cad0c55897285c673f9b8e6db3522ace833593fe0b1"
+        }
+      }
+    },
+    {
+      "name": "harfbuzz",
+      "version": "14.6.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/harfbuzz/blobs/sha256:cc62ba7fd7ee2b04d81bd5e032cb49af70613039fefe09063c7c47c055da4607",
+      "sha256": "cc62ba7fd7ee2b04d81bd5e032cb49af70613039fefe09063c7c47c055da4607",
+      "license": "MIT",
+      "homepage": "https://github.com/harfbuzz/harfbuzz",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/harfbuzz/harfbuzz/releases/download/14.6.0/harfbuzz-14.6.0.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "d07a007327277708a2a73ae437887cdbaf282937f6d03ca5467723e9099af586"
+        }
+      }
+    },
+    {
+      "name": "jpeg-turbo",
+      "version": "3.2.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/jpeg-turbo/blobs/sha256:6dc55edcd33c693e474299ed2bba3c472ac1331cbe300066ec8ef99b88fab17c",
+      "sha256": "6dc55edcd33c693e474299ed2bba3c472ac1331cbe300066ec8ef99b88fab17c",
+      "license": "IJG AND Zlib AND BSD-3-Clause",
+      "homepage": "https://www.libjpeg-turbo.org/",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e"
+        }
+      }
+    },
+    {
+      "name": "lame",
+      "version": "4.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/lame/blobs/sha256:552d24d56ff0d3255e9a3519a368d0ce45de86b5b2967b338209c1a22cd12969",
+      "sha256": "552d24d56ff0d3255e9a3519a368d0ce45de86b5b2967b338209c1a22cd12969",
+      "license": "LGPL-2.0-or-later",
+      "homepage": "https://lame.sourceforge.io/",
+      "urls": {
+        "stable": {
+          "url": "https://downloads.sourceforge.net/project/lame/lame/4.0/lame-4.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "3df5124d5ad3a98312ffd7ba6a9b36230e4f8a3e66d3ce0f425e336c32d216eb"
+        }
+      }
+    },
+    {
+      "name": "libarchive",
+      "version": "3.8.10",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libarchive/blobs/sha256:171706f55d0de1d512524bf20a62b1053b42603436a86fe4631043b7ac7be842",
+      "sha256": "171706f55d0de1d512524bf20a62b1053b42603436a86fe4631043b7ac7be842",
+      "license": "BSD-2-Clause",
+      "homepage": "https://www.libarchive.org",
+      "urls": {
+        "stable": {
+          "url": "https://www.libarchive.org/downloads/libarchive-3.8.10.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "56cad765459d5ee25a3b761f90c47d99379d28297fbfb72d908880d6b875fb96"
+        }
+      }
+    },
+    {
+      "name": "libass",
+      "version": "0.17.5_1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libass/blobs/sha256:b893a0f114554c1b9ea3e046d8102d59c6cf98106936da144835310cab2878f3",
+      "sha256": "b893a0f114554c1b9ea3e046d8102d59c6cf98106936da144835310cab2878f3",
+      "license": "ISC",
+      "homepage": "https://github.com/libass/libass",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc"
+        }
+      }
+    },
+    {
+      "name": "libb2",
+      "version": "0.98.1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libb2/blobs/sha256:cc4304b760722128b914944f85788795f1f02de3072d1fd8e921b836b508776f",
+      "sha256": "cc4304b760722128b914944f85788795f1f02de3072d1fd8e921b836b508776f",
+      "license": "CC0-1.0",
+      "homepage": "https://blake2.net/",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/BLAKE2/libb2/releases/download/v0.98.1/libb2-0.98.1.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "53626fddce753c454a3fea581cbbc7fe9bbcf0bc70416d48fdbbf5d87ef6c72e"
+        }
+      }
+    },
+    {
+      "name": "libbluray",
+      "version": "1.5.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libbluray/blobs/sha256:90d5839c5058c8fc7a1b5504a75c350bdd4ee65617a47c02c80d992fd3bba70c",
+      "sha256": "90d5839c5058c8fc7a1b5504a75c350bdd4ee65617a47c02c80d992fd3bba70c",
+      "license": "LGPL-2.1-or-later",
+      "homepage": "https://www.videolan.org/developers/libbluray.html",
+      "urls": {
+        "stable": {
+          "url": "https://download.videolan.org/videolan/libbluray/1.5.0/libbluray-1.5.0.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "f676408e91a5d321abf8b8d4dfdae36205c297dab5c54c3ec519639025f474a2"
+        }
+      }
+    },
+    {
+      "name": "libplacebo",
+      "version": "7.360.1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libplacebo/blobs/sha256:1fd6531a9de50d0121d1ff4ec67163dfb1dcb8c682d96c6587b960f04be0fe34",
+      "sha256": "1fd6531a9de50d0121d1ff4ec67163dfb1dcb8c682d96c6587b960f04be0fe34",
+      "license": "LGPL-2.1-or-later",
+      "homepage": "https://code.videolan.org/videolan/libplacebo",
+      "urls": {
+        "stable": {
+          "url": "https://code.videolan.org/videolan/libplacebo/-/archive/v7.360.1/libplacebo-v7.360.1.tar.bz2",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "937aa5eeea596798b3274d362de2e3bd32bc537a66d149dd85043349c74dffb6"
+        }
+      }
+    },
+    {
+      "name": "libpng",
+      "version": "1.6.59",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libpng/blobs/sha256:6461c4dde6a693b559c531357b32126bd649ab67f53db5a5b70c25a5c12de4f1",
+      "sha256": "6461c4dde6a693b559c531357b32126bd649ab67f53db5a5b70c25a5c12de4f1",
+      "license": "libpng-2.0",
+      "homepage": "https://www.libpng.org/pub/png/libpng.html",
+      "urls": {
+        "stable": {
+          "url": "https://downloads.sourceforge.net/project/libpng/libpng16/1.6.59/libpng-1.6.59.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "d80dd2a38a37f803cb9b6ac7b14bd6e74ddc3b654780a8380bdf93523fdb4389"
+        }
+      }
+    },
+    {
+      "name": "libsamplerate",
+      "version": "0.2.2",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libsamplerate/blobs/sha256:d51907988e3ab62f6e49ddd1253a723fd5964b78a0361453e8d9b75a2106b4e7",
+      "sha256": "d51907988e3ab62f6e49ddd1253a723fd5964b78a0361453e8d9b75a2106b4e7",
+      "license": "BSD-2-Clause",
+      "homepage": "https://github.com/libsndfile/libsamplerate",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/libsndfile/libsamplerate/releases/download/0.2.2/libsamplerate-0.2.2.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "3258da280511d24b49d6b08615bbe824d0cacc9842b0e4caf11c52cf2b043893"
+        }
+      }
+    },
+    {
+      "name": "libudfread",
+      "version": "1.2.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libudfread/blobs/sha256:a563689c17ca21d204a228773ec9380b5b0880bd3b0ab322170f8596be7f844a",
+      "sha256": "a563689c17ca21d204a228773ec9380b5b0880bd3b0ab322170f8596be7f844a",
+      "license": "LGPL-2.1-or-later",
+      "homepage": "https://code.videolan.org/videolan/libudfread",
+      "urls": {
+        "stable": {
+          "url": "https://download.videolan.org/videolan/libudfread/libudfread-1.2.0.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "bb477cbd4cfbfc7787d9d05b71ee5e70430f5cfebf1297497f7e83547958050f"
+        }
+      }
+    },
+    {
+      "name": "libunibreak",
+      "version": "8.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libunibreak/blobs/sha256:fdd04ab1291384622b07b5409786fd297ddb2ceec4715074f9f35c807649ff50",
+      "sha256": "fdd04ab1291384622b07b5409786fd297ddb2ceec4715074f9f35c807649ff50",
+      "license": "Zlib",
+      "homepage": "https://github.com/adah1972/libunibreak",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/adah1972/libunibreak/releases/download/libunibreak_8_0/libunibreak-8.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "9c4fad6e517338a098373acc9f35579ae2c325e6446666fb9ac2666ba15ceba4"
+        }
+      }
+    },
+    {
+      "name": "libvmaf",
+      "version": "3.2.1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libvmaf/blobs/sha256:d3cf35724639ceb6d9d92ee25a7fa4953f7ff952dc4be90aa83eb006910248b4",
+      "sha256": "d3cf35724639ceb6d9d92ee25a7fa4953f7ff952dc4be90aa83eb006910248b4",
+      "license": "BSD-2-Clause-Patent",
+      "homepage": "https://github.com/Netflix/vmaf",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/Netflix/vmaf/archive/refs/tags/v3.2.1.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "5df7386911bc15fd1ca783132528748d219768ae4fc5f8e0b61184f041648092"
+        }
+      }
+    },
+    {
+      "name": "libvpx",
+      "version": "1.17.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/libvpx/blobs/sha256:dd7924c0a05fa5f840f17ab9f5fac72d8672d75b2a7d44dbbf811274f70d17d6",
+      "sha256": "dd7924c0a05fa5f840f17ab9f5fac72d8672d75b2a7d44dbbf811274f70d17d6",
+      "license": "BSD-3-Clause",
+      "homepage": "https://www.webmproject.org/code/",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/webmproject/libvpx/archive/refs/tags/v1.17.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "1020f184046187baa2985dbde38e0691f49c44088bca7a1842b0236c6081dc0a"
+        }
+      }
+    },
+    {
+      "name": "little-cms2",
+      "version": "2.19.1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/little-cms2/blobs/sha256:f68c3c93b9ee63891388f6485b27c5bc2605638df36b4806bdc52f0636e8254b",
+      "sha256": "f68c3c93b9ee63891388f6485b27c5bc2605638df36b4806bdc52f0636e8254b",
+      "license": "MIT",
+      "homepage": "https://www.littlecms.com/",
+      "urls": {
+        "stable": {
+          "url": "https://downloads.sourceforge.net/project/lcms/lcms/2.19.1/lcms2-2.19.1.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8"
+        }
+      }
+    },
+    {
+      "name": "luajit",
+      "version": "2.1.1792527110",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/luajit/blobs/sha256:e4ee1e21b4fa8a5067820156db556624f09497c158e36074451068fe796d1e9c",
+      "sha256": "e4ee1e21b4fa8a5067820156db556624f09497c158e36074451068fe796d1e9c",
+      "license": "MIT",
+      "homepage": "https://luajit.org/luajit.html",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/LuaJIT/LuaJIT/archive/95f931cb1ee7ab14f249d61fb3734803429025f8.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "284b59730849d399dfd6137c3d492e3d21ee6e32ee0f00d2dce7898ab54b270e"
+        }
+      }
+    },
+    {
+      "name": "lz4",
+      "version": "1.10.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/lz4/blobs/sha256:91674f1c7407b1f7b73d5bd1d85ed1abaaca93be3b68607af4ef3df632540ac0",
+      "sha256": "91674f1c7407b1f7b73d5bd1d85ed1abaaca93be3b68607af4ef3df632540ac0",
+      "license": "BSD-2-Clause",
+      "homepage": "https://lz4.github.io/lz4/",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/lz4/lz4/archive/refs/tags/v1.10.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b"
+        }
+      }
+    },
+    {
+      "name": "mpg123",
+      "version": "1.33.7",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/mpg123/blobs/sha256:80869bcfed43252f222be16fd652b8e691cb4a144778681853ed76e1d45a7143",
+      "sha256": "80869bcfed43252f222be16fd652b8e691cb4a144778681853ed76e1d45a7143",
+      "license": "LGPL-2.1-only",
+      "homepage": "https://www.mpg123.de/",
+      "urls": {
+        "stable": {
+          "url": "https://www.mpg123.de/download/mpg123-1.33.7.tar.bz2",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "31d0e35a4ca567ec9b5ebda6c3062bb4435d6d3eacd6ef0d95cadd7854dc03ee"
+        }
+      }
+    },
+    {
+      "name": "mpv",
+      "version": "0.41.0_11",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/mpv/blobs/sha256:6bba3d36c339ed518ce497f95dcd3bb769b4cce70e8064d65fd8fcb0a9c175cb",
+      "sha256": "6bba3d36c339ed518ce497f95dcd3bb769b4cce70e8064d65fd8fcb0a9c175cb",
+      "license": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+      "homepage": "https://mpv.io",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+        }
+      }
+    },
+    {
+      "name": "mujs",
+      "version": "1.3.11",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/mujs/blobs/sha256:aa9870c50c9719b443e085dc8391d133971b66702d69752f1ecb48e71355e640",
+      "sha256": "aa9870c50c9719b443e085dc8391d133971b66702d69752f1ecb48e71355e640",
+      "license": "ISC",
+      "homepage": "https://www.mujs.com/",
+      "urls": {
+        "stable": {
+          "url": "https://mujs.com/downloads/mujs-1.3.11.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "456a395769daf110a30f9bf6f793044261e261481d5dca33b63cdc8714774ca4"
+        }
+      }
+    },
+    {
+      "name": "openssl@4",
+      "version": "4.0.3",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/openssl/4/blobs/sha256:e9968c63732a4aa642c6131f120d0a89a119885f7ce3cfec796ae672369b98a6",
+      "sha256": "e9968c63732a4aa642c6131f120d0a89a119885f7ce3cfec796ae672369b98a6",
+      "license": "Apache-2.0",
+      "homepage": "https://openssl-library.org",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/openssl/openssl/releases/download/openssl-4.0.3/openssl-4.0.3.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "325b5c806167c13b40b1ffeadfe0248197c00eccc4cf123ec1e28d2d2fd216d9"
+        }
+      }
+    },
+    {
+      "name": "opus",
+      "version": "1.6.1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/opus/blobs/sha256:85d6f1e885117016478e468f92033f648d9bab05210708fe195cacefe5be8266",
+      "sha256": "85d6f1e885117016478e468f92033f648d9bab05210708fe195cacefe5be8266",
+      "license": "BSD-3-Clause",
+      "homepage": "https://www.opus-codec.org/",
+      "urls": {
+        "stable": {
+          "url": "https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.6.1.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1"
+        }
+      }
+    },
+    {
+      "name": "pcre2",
+      "version": "10.49",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/pcre2/blobs/sha256:0ec47d18c50f5770db2b3f07b5b85644284cc6ee8e07e23b11d2727e95932b77",
+      "sha256": "0ec47d18c50f5770db2b3f07b5b85644284cc6ee8e07e23b11d2727e95932b77",
+      "license": "BSD-3-Clause",
+      "homepage": "https://www.pcre.org/",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.bz2",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "53c156e1ba416a20da8e65395daa132da0d80e76910424caca3fcdae7831d384"
+        }
+      }
+    },
+    {
+      "name": "rubberband",
+      "version": "4.0.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/rubberband/blobs/sha256:5ac29718f68b181de61e81dd42bc85cc74cb1fc4ed5fdca541a94224bc43feaa",
+      "sha256": "5ac29718f68b181de61e81dd42bc85cc74cb1fc4ed5fdca541a94224bc43feaa",
+      "license": "GPL-2.0-or-later",
+      "homepage": "https://breakfastquay.com/rubberband/",
+      "urls": {
+        "stable": {
+          "url": "https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "af050313ee63bc18b35b2e064e5dce05b276aaf6d1aa2b8a82ced1fe2f8028e9"
+        }
+      }
+    },
+    {
+      "name": "shaderc",
+      "version": "2026.4",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/shaderc/blobs/sha256:1313ffbae9ac1559f7160cc89657ecd5fc324895ff46e15a4bd198ec3bbebec0",
+      "sha256": "1313ffbae9ac1559f7160cc89657ecd5fc324895ff46e15a4bd198ec3bbebec0",
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/google/shaderc",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/google/shaderc/archive/refs/tags/v2026.4.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "f06ce5bcca94e5df7f34e115743597d0ad2e13c5fe9213c67dc8c76031241947"
+        }
+      }
+    },
+    {
+      "name": "svt-av1",
+      "version": "4.2.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/svt-av1/blobs/sha256:2e6f7cbf3ff42f59ca251f3c84d4ad5a3ecfd518340237a6f70a54a428de1676",
+      "sha256": "2e6f7cbf3ff42f59ca251f3c84d4ad5a3ecfd518340237a6f70a54a428de1676",
+      "license": "BSD-3-Clause",
+      "homepage": "https://gitlab.com/AOMediaCodec/SVT-AV1",
+      "urls": {
+        "stable": {
+          "url": "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v4.2.0/SVT-AV1-v4.2.0.tar.bz2",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "512f2ea5649e3e76c2dddcc25c2556fb67a9582baaab207c9c96161c94659dad"
+        }
+      }
+    },
+    {
+      "name": "uchardet",
+      "version": "0.0.8",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/uchardet/blobs/sha256:171e31b14ade23db98fd45f32cebdd1c278ce5b5d629d4e3be7c81a56bee03a7",
+      "sha256": "171e31b14ade23db98fd45f32cebdd1c278ce5b5d629d4e3be7c81a56bee03a7",
+      "license": "MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later",
+      "homepage": "https://www.freedesktop.org/wiki/Software/uchardet/",
+      "urls": {
+        "stable": {
+          "url": "https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0"
+        }
+      }
+    },
+    {
+      "name": "vulkan-loader",
+      "version": "1.4.363.0",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/vulkan-loader/blobs/sha256:4b99cecb4fe7115a6faf770cfa9e8f14426c24baa6e4566e2473fe5beedad5af",
+      "sha256": "4b99cecb4fe7115a6faf770cfa9e8f14426c24baa6e4566e2473fe5beedad5af",
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/KhronosGroup/Vulkan-Loader",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/vulkan-sdk-1.4.363.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "941eff558fc74f248745fb7df367640cf89a8457f216dae498a74ae14b6ba6f7"
+        }
+      }
+    },
+    {
+      "name": "x264",
+      "version": "r3222",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/x264/blobs/sha256:a613d44ead5d3999270970f41283eadfad8001061faf063945def6b8fb5145f4",
+      "sha256": "a613d44ead5d3999270970f41283eadfad8001061faf063945def6b8fb5145f4",
+      "license": "GPL-2.0-or-later",
+      "homepage": "https://www.videolan.org/developers/x264.html",
+      "urls": {
+        "stable": {
+          "url": "https://code.videolan.org/videolan/x264.git",
+          "tag": null,
+          "revision": "b35605ace3ddf7c1a5d67a2eb553f034aef41d55",
+          "using": null,
+          "checksum": null
+        }
+      }
+    },
+    {
+      "name": "x265",
+      "version": "4.3",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/x265/blobs/sha256:18e89a5822e2f4f91f919c5bf2fbac31433a561c48174fc15e13b4911a1232ac",
+      "sha256": "18e89a5822e2f4f91f919c5bf2fbac31433a561c48174fc15e13b4911a1232ac",
+      "license": "GPL-2.0-or-later",
+      "homepage": "https://github.com/Multicorewareinc/x265",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/Multicorewareinc/x265/releases/download/4.3/x265_4.3.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "83c53e4c8bbb8f1e33ed59e10a7d621d1d7801ca853910c3eb41f038b8ffb121"
+        }
+      }
+    },
+    {
+      "name": "xz",
+      "version": "5.8.4",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/xz/blobs/sha256:c2724c0db0398134694b8366d30d14f4de376115fb54c559c331d5fd0474af76",
+      "sha256": "c2724c0db0398134694b8366d30d14f4de376115fb54c559c331d5fd0474af76",
+      "license": "0BSD AND GPL-2.0-or-later",
+      "homepage": "https://tukaani.org/xz/",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "0014c7886930454fe8bd4228665b51af55eeae560ea135c9c4cd33f55b2591d9"
+        }
+      }
+    },
+    {
+      "name": "zimg",
+      "version": "3.0.6",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/zimg/blobs/sha256:ee8314ce01c48102e3f977540d6095a444ceb8bce71f1868199c47cad4ce12e4",
+      "sha256": "ee8314ce01c48102e3f977540d6095a444ceb8bce71f1868199c47cad4ce12e4",
+      "license": "WTFPL",
+      "homepage": "https://github.com/sekrit-twc/zimg",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.6.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "be89390f13a5c9b2388ce0f44a5e89364a20c1c57ce46d382b1fcc3967057577"
+        }
+      }
+    },
+    {
+      "name": "zstd",
+      "version": "1.5.7_1",
+      "bottle_tag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/zstd/blobs/sha256:d72adf48460a8384b256f88061cd7b9df4977df7fa2e0794051d427db754a565",
+      "sha256": "d72adf48460a8384b256f88061cd7b9df4977df7fa2e0794051d427db754a565",
+      "license": "(BSD-3-Clause OR GPL-2.0-only) AND BSD-2-Clause AND MIT",
+      "homepage": "https://facebook.github.io/zstd/",
+      "urls": {
+        "stable": {
+          "url": "https://github.com/facebook/zstd/archive/refs/tags/v1.5.7.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3"
+        }
+      }
+    }
+  ]
+}

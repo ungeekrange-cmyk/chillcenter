@@ -58,6 +58,20 @@ class MinimumVersionTests(unittest.TestCase):
                 update_minimum(bundle, lambda _: "unrecognized")
             self.assertEqual(info.read_bytes(), before)
 
+    def test_macos15_target_refuses_newer_library_without_rewriting_plist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = self.make_bundle(Path(directory), "15.0")
+            info = bundle / "Contents/Info.plist"
+            before = info.read_bytes()
+            with self.assertRaises(ValueError):
+                update_minimum(bundle, lambda p: modern("26.0" if p.suffix == ".dylib" else "15.0"), maximum="15.0")
+            self.assertEqual(info.read_bytes(), before)
+
+    def test_macos15_target_accepts_newer_sdk_but_not_newer_deployment_minimum(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = self.make_bundle(Path(directory), "15.0")
+            self.assertEqual(update_minimum(bundle, lambda _: modern("15.0", sdk="27.0"), maximum="15.0"), ("15.0", 2))
+
 
 if __name__ == "__main__":
     unittest.main()

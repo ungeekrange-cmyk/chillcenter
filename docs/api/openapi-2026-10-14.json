@@ -499,6 +499,39 @@
         }
       ]
     },
+    "/profiles/{profile}/playback-progress": {
+      "get": {
+        "tags": ["Playback"],
+        "operationId": "measured_playback_progress_get",
+        "description": "Ajout compatible en préparation, non disponible dans la release0.7.2. Durées mesurées uniquement, état personnel du profil, hors synchronisation catalogue. Un ancien serveur retourne404. Le jeton opaque change après progression, changement personnel ou redémarrage; jamais de lecture NAS.",
+        "parameters": [
+          {"name":"profile","in":"path","required":true,"schema":{"$ref":"#/components/schemas/Uuid"}},
+          {"name":"known_revision","in":"query","required":false,"schema":{"type":"string","maxLength":255}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Durées exactes connues et reprises, ou unchanged=true sans items. Les reprises historiques sans durée mesurée sont omises.",
+            "content": {"application/json":{"schema":{
+              "type":"object","required":["revision","unchanged"],
+              "properties":{
+                "revision":{"type":"string","maxLength":255},
+                "unchanged":{"type":"boolean"},
+                "items":{"type":"array","maxItems":30000,"items":{
+                  "type":"object","required":["media_id","position_ms","duration_ms","watched"],
+                  "properties":{
+                    "media_id":{"$ref":"#/components/schemas/Uuid"},
+                    "position_ms":{"type":"integer","format":"int64","minimum":0},
+                    "duration_ms":{"type":"integer","format":"int64","minimum":1},
+                    "watched":{"type":"boolean"}
+                  }
+                }}
+              }
+            }}}
+          },
+          "default":{"$ref":"#/components/responses/Error"}
+        }
+      }
+    },
     "/profiles/{profile}/catalog": {
       "get": {
         "tags": [

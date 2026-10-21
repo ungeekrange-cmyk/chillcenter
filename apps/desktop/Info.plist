@@ -10,8 +10,9 @@
   <key>CFBundleLocalizations</key><array><string>en</string><string>fr</string></array>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>0.7.2</string>
-  <key>CFBundleVersion</key><string>11</string>
-  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>CFBundleVersion</key><string>12</string>
+  <!-- Source target only: package-macos verifies every bundled Mach-O before signing. -->
+  <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSLocalNetworkUsageDescription</key><string>Chill Center se connecte au serveur vidéo que vous choisissez sur le réseau du foyer.</string>
   <key>NSBonjourServices</key><array><string>_chillcenter._tcp</string></array>

@@ -30,7 +30,7 @@ def macho_minimum(output):
     return version(match.group(1))
 
 
-def update_minimum(bundle, inspect=None):
+def update_minimum(bundle, inspect=None, maximum=None):
     info_path = bundle / "Contents/Info.plist"
     with info_path.open("rb") as stream:
         info = plistlib.load(stream)
@@ -47,6 +47,10 @@ def update_minimum(bundle, inspect=None):
             ["/usr/bin/vtool", "-show-build", str(binary)], text=True
         )
         required = max(required, macho_minimum(output))
+    # Refuse incompatible inputs before changing plist/signing. A newer SDK is
+    # fine; a newer deployment minimum is not a macOS 15-compatible build.
+    if maximum is not None and required > version(maximum):
+        raise ValueError(f"Bundle requires {required}, exceeding supported minimum {maximum}")
     # Only the new staging bundle is modified; this must run before codesign.
     value = f"{required[0]}.{required[1]}" + (f".{required[2]}" if required[2] else "")
     info["LSMinimumSystemVersion"] = value
@@ -58,6 +62,7 @@ def update_minimum(bundle, inspect=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("bundle", type=Path)
+    parser.add_argument("--maximum", help="Fail if any deployment minimum exceeds this target")
     arguments = parser.parse_args()
-    minimum, count = update_minimum(arguments.bundle)
+    minimum, count = update_minimum(arguments.bundle, maximum=arguments.maximum)
     print(f"Bundle requires macOS {minimum} or newer ({count} Mach-O files inspected).")

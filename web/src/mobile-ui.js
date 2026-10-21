@@ -57,6 +57,9 @@
     sheet.id = "mobile-more-sheet"; sheet.className = "mobile-more-sheet"; sheet.setAttribute("aria-label", t("Plus de rubriques"));
     sheet.innerHTML = `<div class="mobile-sheet-handle" aria-hidden="true"></div><div class="mobile-sheet-heading"><strong>${t("Bibliothèque")}</strong><button type="button" class="secondary" data-mobile-close aria-label="${t("Fermer")}">×</button></div><div class="mobile-sheet-actions"><button type="button" data-mobile-all>${icon("M4 5h16M4 12h16M4 19h16")}<span>${t("Toute la collection")}</span></button><button type="button" data-mobile-sagas>${icon("M4 5h16v14H4zM8 5v14")}<span>${t("Sagas")}</span></button><button type="button" data-mobile-playlists>${icon("M5 5h14M5 12h14M5 19h14")}<span>${t("Listes de lecture")}</span></button><button type="button" data-mobile-config>${icon("M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4")}<span>${t("Configuration")}</span></button></div>`;
     doc.body.append(sheet);
+    const progressButton=doc.createElement("button");progressButton.type="button";progressButton.textContent=t("En cours");progressButton.setAttribute("data-mobile-progress","");
+    progressButton.addEventListener("click",()=>{closeSheet();forward("#show-in-progress");});
+    sheet.querySelector(".mobile-sheet-actions").prepend(progressButton);
     sheet.querySelector("[data-mobile-close]").addEventListener("click", closeSheet);
     sheet.addEventListener("click", event => { if (event.target === sheet) closeSheet(); });
     sheet.querySelector("[data-mobile-all]").addEventListener("click", () => { closeSheet(); forward('[data-category=""]'); });

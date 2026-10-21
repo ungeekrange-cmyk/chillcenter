@@ -41,6 +41,16 @@ test("json64 keeps uint64 exact and leaves strings alone", () => {
   assert.equal(Json64.stringify(v), '{"media_revision":18446744073709551615,"t":"123456789012345678901","n":12,"f":1.5}');
 });
 
+test("measured progress uses one profile-scoped dated read, independent of catalogue sync",async()=>{
+ const {ui,calls}=make({[`GET /profiles/${P}/playback-progress`]:ok({revision:"opaque",unchanged:false,items:[{media_id:M,position_ms:42000,duration_ms:100000,watched:false}]})});
+ await ui({action:"boot"});await ui({action:"select_profile",id:P});calls.length=0;
+ const result=await ui({action:"playback_progress",known_revision:"opaque"});
+ assert.equal(result.items[0].duration_ms,100000);assert.equal(calls.length,1);
+ assert.equal(calls[0].url,BASE+`/profiles/${P}/playback-progress?known_revision=opaque`);
+ assert.equal(calls[0].method,"GET");
+ await assert.rejects(ui({action:"playback_progress",known_revision:"x".repeat(256)}));assert.equal(calls.length,1);
+});
+
 test("boot connects same-origin, restores nothing without a saved profile", async () => {
   const { ui } = make();
   const v = await ui({ action: "boot" });
