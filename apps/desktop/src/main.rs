@@ -203,7 +203,7 @@ async fn ui_command(
             .json_with_options(
                 chill_client::HttpMethod::GET,
                 &format!("/api/2026-10-14/profiles/{profile}/playback-progress"),
-                None,
+                None::<&Value>,
                 &query,
                 &[],
             )
