@@ -1,5 +1,9 @@
 # Journal des bugs, observations et risques
 
+[BUG0131](BUG-0131-measured-progress-server-rollback.md) : cache des reprises
+mesurées conservé après rollback serveur ; corrigé dans `e54eb357`, régressions
+404/405/503 et reprise PASS, deux revues indépendantes R2 APPROVED. Local seulement.
+
 [BUG0130](BUG-0130-adoption-trust-schema.md) : schéma du nouveau registre
 d'adoption erroné1 au lieu de2; refus correct du helper avant activation,
 correction atomique du seul tag, séquences3 inchangées. VERIFIED_OPERATIONAL.

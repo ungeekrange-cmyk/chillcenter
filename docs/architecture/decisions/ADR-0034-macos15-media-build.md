@@ -1,7 +1,8 @@
 # ADR0034 — macOS 15+ media build / Chaîne multimédia macOS15+
 
 - Status: PROPOSED implementation detail; user explicitly approved macOS15+.
-- Date:2026-10-21; author/owner `/root`; independent reviewer PENDING.
+- Date:2026-10-21; author/owner `/root`; formal ADR review not performed.
+- Implementation code/security reviews: APPROVED at `e54eb357`; see delivery record.
 - Branch `codex/macos15-build`, base `e8d6f53`; supersedes NONE; complements ADR0004.
 - Mode: scoped local build, no public release, Pi, web deployment or data migration.
 
@@ -21,7 +22,7 @@ Changing only plist/Mach-O minima would be a false compatibility claim.
 
 Lock exact versions, SHA-256, official content-addressed URLs and license/source
 metadata in `deploy/macos/media-sequoia.lock.json`. Download over HTTPS; verify
-hashes before bounded extraction of dylibs/notices only. Never execute a recipe
+hashes before bounded extraction of dylibs, notices and provenance recipes only. Never execute a recipe
 or bottle binary during extraction. Reject traversal, special files, duplicate
 names and escaping links. Resolve the transitive closure exclusively inside the
 isolated Cellar; never fall back to newer installed libraries. Preserve notices.

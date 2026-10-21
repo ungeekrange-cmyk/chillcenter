@@ -1,7 +1,8 @@
 # ADR0035 — measured resume view / Vue des reprises mesurées
 
 - Status: PROPOSED implementation detail under explicit user feature request.
-- Author/owner `/root`; independent reviewer PENDING; date2026-10-21.
+- Author/owner `/root`; formal ADR review not performed; date2026-10-21.
+- Implementation code/security reviews: APPROVED at `e54eb357`; see delivery record.
 - Branch `codex/macos15-build`; complements ADR0014/0022, supersedes NONE.
 - Authority: user requested “En cours” >=5%, thumbnail bars, detail percentage;
   rejected TMDB estimates and requested measuring duration at first playback.

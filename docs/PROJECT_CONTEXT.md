@@ -23,8 +23,12 @@ conservée; ancien serveur404 : seul ce nouvel affichage reste indisponible.
 Client web adapté via UI partagée et entrée du menu mobile Plus, non déployé.
 Le Pi reste0.7.2 publié; les fonctions mesurées nécessiteront une livraison
 serveur ultérieure explicitement autorisée. Aucune connexion Pi/NAS ici.
-Build final, contrôles et revues du candidat restent à consigner. Essais physiques
-macOS15/26 NOT_RUN; un minimum Mach-O n'est pas cette preuve.
+Source finale `e54eb357`, revues code/sécurité R2 APPROVED, BUG0131 corrigé.
+Bundle/DMG final local0.7.2/build12 construit, signature/minima/chargement et
+inspection DMG PASS ;334 tests Node UI/web,25 doc,24 Python,276 Rust PASS,
+2 NFR explicitement ignorés. Smoke Chromium desktop/mobile avec API fictive PASS.
+Voir [preuves, empreintes et bundle](releases/REL-MACOS15-PROGRESS-CANDIDATE.md).
+Essais physiques macOS15/26 NOT_RUN; un minimum Mach-O n'est pas cette preuve.
 
 ## 21 octobre 2026 — prérequis Mac et serveur explicités
 

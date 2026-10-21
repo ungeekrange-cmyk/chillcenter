@@ -24,3 +24,16 @@ advertises 27.0. Any final rebuild must repeat those checks before publication.
 
 Résumé : le bundle fourni exige macOS 27 à cause de ses dépendances embarquées.
 Le packaging calcule et annonce désormais le vrai minimum, avant signature.
+
+## 2026-10-21 — separate macOS15 candidate, not a published replacement
+
+The user approved targeting macOS15+. Source `e54eb357` now packages pinned
+official ARM64 Sequoia inputs, isolated from installed Homebrew, and refuses
+any deployment minimum above15.0 before signing. It does not forge load commands
+or replace the existing public0.7.2 asset. Candidate build12 is separate from
+published build11; full candidate evidence belongs to
+[the local delivery record](../releases/REL-MACOS15-PROGRESS-CANDIDATE.md).
+
+FR : le candidat local utilise réellement des bibliothèques compatibles avec
+un minimum15.0. Les essais physiques sur macOS15/26 restent **NOT_RUN** ; ne pas
+les déduire du contrôle statique. Le DMG publié27+ n'a pas été modifié.
