@@ -6,16 +6,18 @@ Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).
 
-**Sources on `main`: Mac 0.7.3 · server 0.7.3 · web 0.7.3 · themes 0.7.1.**
+**Published versions: Mac 0.7.3 · server 0.7.3 · web 0.7.3 · themes 0.7.1.**
 [0.7.3 changes, FR/EN](docs/releases/REL-0.7.3.md): macOS 15+ Mac target,
 **In progress** from 5%, poster bars and detail percentages, using only exact
-duration measured on first playback. This source version has no published
-packages yet and does not update the Pi. The earlier local test DMG is a
-0.7.2/build12 candidate, not a 0.7.3 DMG.
+duration measured on first playback. The 0.7.3 packages are published; this page
+does not install them on your server. An already-enabled automatic update
+policy may install them according to its settings.
 
 ### Currently published packages
 
-**[Download the Apple Silicon Mac app v0.7.2 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-0.7.2-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.2)
+**[Download the Apple Silicon Mac app v0.7.3 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-0.7.3-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.3)
+
+[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-0.7.3-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
 
 Mac, server, web and themes are independently versioned in
 [versions.json](versions.json). Installed versions and update policies appear
@@ -25,23 +27,24 @@ can update at 02:00 local time, outside playback and active jobs.
 
 | Component and published version | Package and instructions |
 | --- | --- |
-| Apple Silicon Mac 0.7.2, build 11 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-0.7.2-macos-arm64.dmg), macOS 27+ for this bundle |
-| ARM64 Linux server 0.7.2 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-server-0.7.2-linux-aarch64.tar.gz), 64-bit systemd host |
-| Web/PWA client 0.7.2 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-web-0.7.2-install.zip), requires server 0.7 |
-| Independent themes 0.7.1 | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.2/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
+| Apple Silicon Mac 0.7.3, build 13 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-0.7.3-macos-arm64.dmg), macOS 15+ |
+| ARM64 Linux server 0.7.3 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-server-0.7.3-linux-aarch64.tar.gz), 64-bit systemd host |
+| Web/PWA client 0.7.3 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-web-0.7.3-install.zip), server 0.7.3 for measured progress |
+| Independent themes 0.7.1 | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
 
 Read the [verification/installation guide](docs/updates/GUIDE-EN.md) and
-[release notes and limits](docs/releases/REL-0.7.2.md). Signed manifests are
+[release notes and limits](docs/releases/REL-0.7.3.md). Signed manifests are
 published in each component's release. Publication does not update an existing
-server; v0.6 and previous packages remain available. Do not run the initial
-installer on an existing installation: it deliberately refuses to overwrite it.
+server directly; its update policy may detect it. v0.6 and previous packages
+remain available. Do not run the initial installer on an existing installation:
+it deliberately refuses to overwrite it.
 
 ## Features
 
 - Films, series, seasons, sagas and playlists.
 - Mac server discovery with Bonjour, with manual entry as a fallback.
 - Profiles with synchronized resume positions, history, watched status and personal ratings.
-- Since source version 0.7.3: In progress, poster bars and detail percentages
+- Since version 0.7.3: In progress, poster bars and detail percentages
   with exact measured duration; this feature requires server 0.7.3.
 - Native libmpv/FFmpeg player: audio, subtitles, playback speed and next episode.
 - TMDB metadata using your own key, manual corrections and artwork imports.
@@ -59,19 +62,19 @@ users are a goal, not a throughput guarantee for every bitrate.
 ### Mac client
 
 - **Apple Silicon (ARM64)** Mac; no Intel package is published.
-- The **0.7.2 DMG requires macOS 27.0 or newer**: bundled player dependencies
-  impose this minimum even though the Rust executable targets macOS 13.0.
-- **Source version 0.7.3 targets macOS 15 Sequoia or newer**, covering macOS
+- The **0.7.3 DMG requires macOS 15 Sequoia or newer**, covering macOS
   15, 26 and 27, with pinned Sequoia dependencies checked before signing.
-  The local candidate was built and verified; the public 0.7.3 package is
-  not shipped. Physical macOS 15/26 execution has not yet been tested.
+  The 51 Mach-O minima, signature and DMG mount were verified.
+  Physical macOS 15/26 execution has not yet been tested.
+- Historical: the 0.7.2 DMG required macOS 27.0 because of its dependencies,
+  even though its Rust executable targeted macOS 13.0; this is not the 0.7.3 floor.
 - Network access to the Chill Center server; no NAS mount, Homebrew, Rust,
   libmpv or FFmpeg installation is needed to use the DMG. Ad hoc signature,
   without Apple notarization: read the installation guide's limitations.
 
 ### Linux server
 
-- Published package **0.7.2 targets Linux ARM64/AArch64, a 64-bit system with
+- Published package **0.7.3 targets Linux ARM64/AArch64, a 64-bit system with
   glibc 2.28 or newer for the binaries**. Raspberry Pi 3 B/B+ running 64-bit Linux
   is the target; a 32-bit ARM OS or Alpine/musl cannot use this package.
   The verified real configuration is Debian 13; another compatible distribution
@@ -114,7 +117,7 @@ and curl. It downloads official ARM64 Sequoia bottles pinned in the
 isolates them from installed Homebrew. Any library requiring newer than macOS
 15.0 fails the build; no Mach-O minimum is forged. `CHILLCENTER_MEDIA_ROOT`
 can reuse a verified input directory. This packaging change does not alter
-the published0.7.2 bundle.
+previously published bundles.
 
 ```sh
 cargo test --workspace --all-targets --locked

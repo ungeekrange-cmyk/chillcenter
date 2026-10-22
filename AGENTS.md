@@ -11,3 +11,11 @@ Avant de coder, examiner l'état Git, travailler sur une branche `codex/`, figer
 Documenter chaque décision significative dans un nouvel ADR. Ne pas réécrire une décision acceptée : la remplacer par un ADR lié. Chaque défaut reproductible reçoit un BUG avec symptômes, environnement, hypothèses, preuves, correction et résultat de régression. Distinguer un bug applicatif, une dépendance indisponible et une observation d'outillage. Ne pas présenter une vérification prévue comme exécutée.
 
 Si une revue indépendante est utilisée, le reviewer n'est pas l'auteur et n'édite pas le contenu revu. Un seul auteur par chemin ; pas de délégation récursive implicite. Les restrictions de ressources du Pi et le périmètre familial restent prioritaires.
+
+Après une publication autorisée, synchroniser README FR/EN, guides et notes
+courantes avec les versions et noms d'assets réellement publics. Conserver les
+versions indépendantes des composants et l'historique ; ne pas déplacer les
+tags publiés. Exécuter `node --test scripts/test-bilingual-docs.mjs`, puis après
+push relire les README de `main` sur GitHub et comparer leurs téléchargements à
+l'inventaire public. Une release en ligne avec un README obsolète n'est pas une
+livraison documentaire terminée. Ce contrôle n'autorise aucun déploiement.

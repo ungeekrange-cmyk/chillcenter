@@ -1,5 +1,32 @@
 # Contexte du projet
 
+## 22 octobre 2026 — documentation de la release publique 0.7.3
+
+La release v0.7.3 est publique depuis le 21 octobre, avec le DMG Mac build13,
+les paquets serveur/web0.7.3 et les thèmes0.7.1 inchangés. La correction
+documentaire aligne README FR/EN, guides d'installation, notes et intitulé de
+l'ajout API sur ces paquets réellement publiés ; elle ne change aucun binaire,
+tag, API, Pi, NAS ou réglage. Les liens courants vers0.7.2 étaient restés en place
+après publication : le contrôle documentaire vérifie désormais le tag de tous
+les téléchargements et l'inventaire exact des cinq paquets recommandés, sources
+correspondantes comprises. Voir [les notes courantes](releases/REL-0.7.3.md).
+Un skill personnel `release-docs-sync` et un rappel persistant imposent aussi
+la comparaison avec les assets GitHub et la relecture distante après push.
+Le dépôt permanent propre est réutilisé sur une branche documentaire : les
+métadonnées du worktree temporaire précédent sont incomplètes ; aucune source
+n'y est réinitialisée, aucun nouvel environnement/build n'est créé.
+
+Les sections datées précédentes conservent l'état historique avant publication.
+
+Preuves ciblées :26 tests documentaires Node PASS ; `git diff --check` PASS.
+GitHub : v0.7.3 Latest/public/non-prerelease,25 assets ; les cinq téléchargements
+uniques des README existent avec signatures, quatre digests de paquets comparés
+aux octets scellés concordent. Skill validé avec Ruby/Psych (YAML, métadonnées,
+absence de scaffold) ; validateur Python officiel indisponible faute de PyYAML,
+aucune installation ni nouvel environnement pour contourner cette limite.
+Le contrôle final après push doit relire les deux blobs README sur `main` et
+les comparer exactement aux fichiers du commit livré.
+
 ## 21 octobre 2026 — intégration main des sources0.7.3
 
 Demande explicite : fusion/push main et README actualisés. Mac/serveur/web

@@ -258,7 +258,7 @@ This optional 2026-10-14 addition needs no old-web-client update for its
 historical operations. The new Mac bundle sends the selector explicitly;
 11aa529 remains an older partial client, notably for new key-based edits.
 
-## Measured progress — additive change in preparation
+## Measured progress — available since server 0.7.3
 
 `GET /profiles/{profile}/playback-progress` reads profile resumes with a total
 duration **measured by the player**, persisted on a lease-validated `Progress`

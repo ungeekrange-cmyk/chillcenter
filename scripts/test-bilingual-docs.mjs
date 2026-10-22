@@ -32,19 +32,24 @@ const unique = values => [...new Set(values)].sort();
 
 test('README distinguishes source versions from immutable published download packages', async () => {
   const versions = JSON.parse(await read('versions.json'));
-  // The newest source is not a release. These receipts remain v0.7.2 until a
-  // distinct publication is authorized; never invent download links on a bump.
-  const published = {mac:'0.7.2',server:'0.7.2',web:'0.7.2',themes:'0.7.1'};
+  // Public receipts verified against GitHub v0.7.3, not inferred from a bump.
+  // Keep independent component versions; unchanged themes stay at 0.7.1.
+  const published = {mac:'0.7.3',server:'0.7.3',web:'0.7.3',themes:'0.7.1'};
   const packages = [
     `Chill-Center-${published.mac}-macos-arm64.dmg`,
     `Chill-Center-server-${published.server}-linux-aarch64.tar.gz`,
     `Chill-Center-web-${published.web}-install.zip`,
     `Chill-Center-themes-${published.themes}-install.zip`,
+    `Chill-Center-${published.mac}-corresponding-sources.tar.gz`,
   ];
   for (const file of ['README.md', 'README.en.md']) {
     const text = await read(file);
     for (const name of packages) assert.ok(text.includes(`/${name})`), `${file}: stale package ${name}`);
     assert.ok(text.includes(`/releases/tag/v${published.mac})`), `${file}: stale release link`);
+    const downloads = [...text.matchAll(/https:\/\/github\.com\/ungeekrange-cmyk\/chillcenter\/releases\/download\/([^/]+)\/([^\s)]+)/g)];
+    assert.deepEqual([...new Set(downloads.map(match => match[1]))], ['v0.7.3'], `${file}: obsolete download release`);
+    assert.deepEqual([...new Set(downloads.map(match => match[2]))].sort(), [...packages].sort(), `${file}: unexpected package inventory`);
+    assert.ok(text.includes('GPL-3.0-or-later'), `${file}: missing player license scope`);
     for (const component of ['mac','server','web','themes']) {
       const label = {mac:'Mac',server:file==='README.md'?'serveur':'server',web:'web',themes:file==='README.md'?'thèmes':'themes'}[component];
       assert.ok(text.includes(`${label} ${versions[component]}`), `${file}: stale ${component} source version`);
@@ -69,11 +74,11 @@ test('source component versions agree with crates, lockfile, Tauri, plist and re
   }
 });
 
-test('platform prerequisites distinguish published bundles, future targets and server hosts', async () => {
+test('platform prerequisites distinguish published bundles, untested systems and server hosts', async () => {
   for (const [file, pending] of [
-    ['README.md', 'non livré'], ['README.en.md', 'not shipped'],
-    ['docs/updates/GUIDE-FR.md', 'non livré/non validé'],
-    ['docs/updates/GUIDE-EN.md', 'not shipped/not validated'],
+    ['README.md', 'non réalisés'], ['README.en.md', 'not yet been tested'],
+    ['docs/updates/GUIDE-FR.md', 'non réalisés'],
+    ['docs/updates/GUIDE-EN.md', 'not yet been tested'],
   ]) {
     const text = await read(file);
     for (const literal of ['macOS 27', 'macOS 15 Sequoia', '13.0', 'ARM64',

@@ -2,10 +2,10 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-The [v0.7 release](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7)
-groups the four independently versioned 0.7.0 components. Publication does not
+The [v0.7.3 release](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.3)
+groups Mac, server and web 0.7.3, with unchanged themes 0.7.1. Publication does not
 install them on an existing server. Earlier releases remain available; see the
-[release evidence and limits](../releases/REL-V0.7.en.md).
+[release evidence and limits](../releases/REL-0.7.3.md).
 
 ## Four components
 
@@ -65,24 +65,26 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives from v0.7, not GitHub's automatically
+Use the complete distribution archives from v0.7.3, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.
 
 ```sh
-minisign -Vm Chill-Center-server-0.7.0-linux-aarch64.tar.gz \
+minisign -Vm Chill-Center-server-0.7.3-linux-aarch64.tar.gz \
   -P 'RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
-tar -xzf Chill-Center-server-0.7.0-linux-aarch64.tar.gz
+tar -xzf Chill-Center-server-0.7.3-linux-aarch64.tar.gz
 ```
 
 The same verification applies to the Mac DMG, web install ZIP and themes install
 ZIP using their respective filenames. The Mac distribution is Apple Silicon
-only and **requires macOS 27+** for the 0.7.2 DMG, due to its bundled media libraries.
-The Rust 13.0 minimum is not the complete bundle's minimum. The macOS 15 Sequoia / 26 / 27
-target is approved, but support remains **not shipped/not validated** on older
-physical devices: do not merely lower Info.plist;
-rebuild the dependencies and verify the new bundle.
+only and the 0.7.3 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
+pinned Sequoia inputs, and all 51 Mach-O minima were verified. Physical macOS
+15/26 execution has not yet been tested; static checks do not replace it.
+Historical: the 0.7.2 DMG required macOS 27+, despite its Rust 13.0 floor.
+Never just lower Info.plist to bypass a dependency minimum. The release also
+provides corresponding player sources and rebuild recipes, including FFmpeg
+under GPL-3.0-or-later, with their signatures and licenses.
 The [full prerequisites](../../README.en.md#installation-prerequisites) distinguish
 using the package from building it; Homebrew is not needed at runtime. Open the DMG,
 quit the old app, then drag **Chill Center** onto the **Applications** shortcut.
@@ -94,7 +96,7 @@ keys, consent or update protocols.
 The server archive contains both ARM64 binaries, signed manifest/public key,
 `scripts/` and `deploy/updates/`. Keep that layout. A fresh Linux installation
 requires a 64-bit ARM64 OS using glibc, systemd, Python 3.10+, Minisign, curl,
-Bash, tar and standard Linux tools. The 0.7.2 binaries have a glibc 2.28 minimum
+Bash, tar and standard Linux tools. The 0.7.3 binaries have a glibc 2.28 minimum
 according to their provenance; this alone does not guarantee OS/systemd-unit
 compatibility. Debian 13 is the verified real configuration; ARM32 OSes and musl
 are not covered by this package. Allow administrator rights, a synchronized
@@ -108,7 +110,7 @@ sudo ./scripts/install-server.sh \
   --server "$PWD/chill-server" --updater "$PWD/chill-update" \
   --release-pub "$PWD/release.pub" --manifest "$PWD/server-manifest.json" \
   --manifest-signature "$PWD/server-manifest.json.minisig" \
-  --version 0.7.0 --library /absolute/read-only-library \
+  --version 0.7.3 --library /absolute/read-only-library \
   --listen LAN_ADDRESS:8443 --tls-name LAN_DNS_OR_IP
 ```
 

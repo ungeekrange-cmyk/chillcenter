@@ -2,10 +2,10 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La [release v0.7](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7)
-regroupe les quatre composants 0.7.0 versionnés indépendamment. La publication
+La [release v0.7.3](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.3)
+regroupe Mac, serveur et web 0.7.3, avec les thèmes 0.7.1 inchangés. La publication
 ne les installe pas sur un serveur existant. Les anciennes releases restent
-disponibles ; voir les [preuves et limites](../releases/REL-V0.7.md).
+disponibles ; voir les [preuves et limites](../releases/REL-0.7.3.md).
 
 ## Quatre composants
 
@@ -69,25 +69,27 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution de v0.7, pas le ZIP des sources
+Utiliser les archives complètes de distribution de v0.7.3, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
 suffit pas, à elle seule, à établir la confiance.
 
 ```sh
-minisign -Vm Chill-Center-server-0.7.0-linux-aarch64.tar.gz \
+minisign -Vm Chill-Center-server-0.7.3-linux-aarch64.tar.gz \
   -P 'RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
-tar -xzf Chill-Center-server-0.7.0-linux-aarch64.tar.gz
+tar -xzf Chill-Center-server-0.7.3-linux-aarch64.tar.gz
 ```
 
 Même vérification pour le DMG Mac, le ZIP d'installation web et celui des thèmes
-en adaptant le nom. La distribution Mac est réservée à Apple Silicon et
-**nécessite macOS 27+** pour le DMG 0.7.2, à cause des bibliothèques multimédias
-embarquées. Le minimum Rust 13.0 n’est pas celui du bundle complet. La cible
-macOS 15 Sequoia / 26 / 27 est approuvée, mais le support reste **non livré/non validé**
-sur appareil ancien : ne pas abaisser seulement
-Info.plist, il faut reconstruire les dépendances et vérifier le nouveau bundle.
+en adaptant le nom. La distribution Mac 0.7.3 est réservée à Apple Silicon et
+**nécessite macOS 15 Sequoia minimum**. Les dépendances utilisent des entrées
+Sequoia figées, et les 51 minima Mach-O ont été vérifiés. Les essais physiques
+sur macOS 15/26 restent non réalisés ; les contrôles statiques ne les remplacent
+pas. Historique : le DMG 0.7.2 exigeait macOS 27+, malgré son minimum Rust 13.0.
+Ne pas simplement abaisser Info.plist pour contourner un minimum. La release
+fournit aussi les sources correspondantes et recettes du lecteur, dont FFmpeg
+sous GPL-3.0-or-later, avec leurs signatures et licences.
 Les [prérequis complets](../../README.md#prérequis-dinstallation) distinguent
 utilisation du paquet et compilation ; aucun Homebrew n’est requis à l’exécution.
 Ouvrir le DMG, quitter l'ancienne application, puis glisser **Chill Center** sur
@@ -101,7 +103,7 @@ L'archive serveur contient les deux binaires ARM64, le manifeste signé/la clé
 publique, `scripts/` et `deploy/updates/`. Conserver cette arborescence. Une
 installation Linux neuve requiert un OS ARM64 64 bits utilisant glibc, systemd,
 Python 3.10+, Minisign, curl, Bash, tar et les outils Linux standards.
-Les binaires 0.7.2 ont un minimum glibc 2.28 selon leur provenance ; ce seul
+Les binaires 0.7.3 ont un minimum glibc 2.28 selon leur provenance ; ce seul
 minimum ne garantit pas la compatibilité de l’OS et de ses unités systemd.
 Debian 13 est la configuration réelle vérifiée ; OS ARM32 et musl ne sont pas
 couverts par ce paquet. Prévoir les droits administrateur, une horloge synchronisée,
@@ -116,7 +118,7 @@ sudo ./scripts/install-server.sh \
   --server "$PWD/chill-server" --updater "$PWD/chill-update" \
   --release-pub "$PWD/release.pub" --manifest "$PWD/server-manifest.json" \
   --manifest-signature "$PWD/server-manifest.json.minisig" \
-  --version 0.7.0 --library /absolute/read-only-library \
+  --version 0.7.3 --library /absolute/read-only-library \
   --listen LAN_ADDRESS:8443 --tls-name LAN_DNS_OR_IP
 ```
 

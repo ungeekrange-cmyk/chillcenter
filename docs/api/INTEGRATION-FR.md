@@ -121,7 +121,7 @@ Une série peut être identifiée et éditée au niveau série avec les scopes T
 
 Compatibilité des clients existants : les segments de série sont des **titres par défaut**, même s'ils commencent par `media:` ou `tmdb:tv:`. Ils conservent leur vue historique agrégée, en GET comme en PUT, sous la base datée ; `?selector=title` est équivalent à l'absence de paramètre. Un PUT avec un titre applique les métadonnées communes à l'ensemble de cette vue, avec le même CAS global et le même refus de collision au renommage qu'auparavant. Il ne change aucun identifiant TMDB, fichier ou rattachement de saison. Si plusieurs séries distinctes portent ce titre, le GET ne présente pas l'identité/saisons de la première comme une identité commune (`tmdb_id: null`, `season_metadata: {}`). Pour isoler une série homonyme, les nouveaux clients doivent utiliser les clés `media:<uuid>` ou `tmdb:tv:<id>` fournies par le catalogue **avec `?selector=key` en GET et PUT** ; aucun préfixe ne déclenche implicitement ce mode. Les autres valeurs de `selector` sont refusées400. Une vue historique par titre n'est pas une fusion des identités persistées. Ajout facultatif compatible à l'API2026-10-14 : il n'est pas nécessaire de mettre à jour l'ancien client web pour continuer ses opérations historiques. Le nouveau bundle Mac envoie ce paramètre explicite ;11aa529 reste un ancien client partiel, notamment pour les nouvelles éditions par clé.
 
-## Progression mesurée — ajout compatible en préparation
+## Progression mesurée — disponible depuis le serveur 0.7.3
 
 `GET /profiles/{profile}/playback-progress` lit les reprises du profil avec
 une durée totale **mesurée par le lecteur**, enregistrée lors d'un événement
