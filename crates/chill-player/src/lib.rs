@@ -659,6 +659,11 @@ impl Player {
         Ok(property_bool(self.property("paused-for-cache")?))
     }
 
+    /// True only after the playback core has started advancing media.
+    pub fn is_core_playing(&self) -> Result<bool, PlayerError> {
+        Ok(self.property("core-idle")?.as_deref() == Some("no"))
+    }
+
     /// Compressed packet-cache advance, measured by mpv (not the target).
     pub fn buffered_ahead_seconds(&self) -> Result<Option<f64>, PlayerError> {
         Ok(self
@@ -1263,6 +1268,66 @@ mod tests {
         let player =
             Player::new(PlayerOptions::default()).expect("installed libmpv should initialize");
         assert!(player.decoder().is_ok());
+        assert!(!player.is_core_playing().unwrap());
+    }
+
+    #[test]
+    fn installed_core_distinguishes_playing_pause_resume_and_end() {
+        if !controlled_library_paths().iter().any(|path| path.exists()) {
+            return;
+        }
+        // Local synthetic audio/video only; no transport, NAS or household data.
+        let directory = tempfile::tempdir().unwrap();
+        let video = directory.path().join("wake-playback.mp4");
+        let ffmpeg = if Path::new("/opt/homebrew/bin/ffmpeg").exists() {
+            "/opt/homebrew/bin/ffmpeg"
+        } else {
+            "ffmpeg"
+        };
+        let status = std::process::Command::new(ffmpeg)
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=160x96:r=24:d=2",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                "-shortest",
+            ])
+            .arg(&video)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let mut options = PlayerOptions::default();
+        options.extra.insert("vo".into(), "null".into());
+        options.extra.insert("ao".into(), "null".into());
+        let player = Player::new(options).unwrap();
+        let wait = |playing| {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while player.is_core_playing().unwrap() != playing {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "core state never became {playing}"
+                );
+                player.poll_event(Duration::from_millis(10));
+            }
+        };
+        assert!(!player.is_core_playing().unwrap());
+        player.load(video.to_str().unwrap()).unwrap();
+        wait(true);
+        player.pause(true).unwrap();
+        wait(false);
+        player.pause(false).unwrap();
+        wait(true);
+        wait(false); // actual EOF, without an explicit pause/stop command
     }
 
     #[test]

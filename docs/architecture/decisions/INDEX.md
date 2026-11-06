@@ -95,3 +95,6 @@ Complément d'implémentation, distinct des sept décisions approuvées en G-02 
 
 [ADR-0020](ADR-0020-web-audio-transcode-to-aac.md), PROPOSED, 2026-10-15, branche `codex/web-pwa` : audio AC-3/E-AC-3/DTS/TrueHD converti en AAC dans le navigateur (FFmpeg LGPL en WebAssembly, Worker), le serveur ne transcode rien ; corrige l'absence de son (BUG-0071). Complète ADR-0015 et ADR-0016.
 [ADR0025](ADR-0025-web-shared-ui-parity.md), ACCEPTED,17octobre2026 : interface commune Mac/web, adaptateurs navigateur dédiés, deltas et récupération CAS ; IA explicitement exclue du web, API et Pi inchangés.
+[ADR-0036](ADR-0036-playback-only-wake-lock.md), implémenté localement, 6 novembre 2026 :
+maintien éveillé lié à la lecture effective uniquement sur web/macOS, limites HTTPS
+et politiques OS explicites ; complète ADR-0004 et ADR-0015.

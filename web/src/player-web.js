@@ -8,6 +8,32 @@
   const STATUS_MS = 500;
   const FALLBACK_NOTE = "Piste anglaise absente : piste d'origine utilisée.";
 
+  // Requests may settle after Pause/Stop or after a different video starts.
+  // Keep ownership until settlement and release obsolete grants immediately.
+  class ScreenWakeLock {
+    constructor(wakeLock) { this.api = wakeLock; this.active = false; this.epoch = 0; this.lock = null; this.pending = null; }
+    setActive(active) {
+      if (active === this.active) return;
+      this.active = active; ++this.epoch;
+      if (!active) {
+        const lock = this.lock; this.lock = null;
+        if (lock) Promise.resolve(lock.release()).catch(() => {});
+      } else this.acquire();
+    }
+    acquire() {
+      if (!this.active || this.lock || this.pending || !this.api?.request) return;
+      const epoch = this.epoch;
+      this.pending = Promise.resolve().then(() => this.api.request("screen")).then(async lock => {
+        if (!this.active || epoch !== this.epoch) { await lock.release(); return; }
+        this.lock = lock;
+        lock.addEventListener("release", () => { if (this.lock === lock) this.lock = null; }, { once: true });
+      }).catch(() => { /* Unsupported/refused: playback remains available. */ }).finally(() => {
+        this.pending = null;
+        if (this.active && epoch !== this.epoch) this.acquire();
+      });
+    }
+  }
+
   // F-10/F-11: preferred language, else original/first audio; subtitles off when absent.
   function pickTrack(tracks, language, kind) {
     const list = tracks.filter(t => t.kind === kind);
@@ -25,6 +51,18 @@
     constructor(deps) {
       this.d = deps; this.state = null; this.timers = []; this.events = null;
       this.clock = new Clock.WatchClock(); this.busy = false;
+      this.wake = new ScreenWakeLock(deps.wakeLock);
+      const doc = deps.document, page = deps.page;
+      doc?.addEventListener("visibilitychange", () => this.syncWakeLock());
+      for (const name of ["playing", "pause", "waiting", "seeking", "seeked", "ended", "error", "emptied"]) {
+        doc?.addEventListener(name, event => { if (event.target === this.engine?.video) this.syncWakeLock(); }, true);
+      }
+      page?.addEventListener("pagehide", () => { this.pageHidden = true; this.wake.setActive(false); });
+      page?.addEventListener("pageshow", () => { this.pageHidden = false; this.syncWakeLock(); });
+    }
+    syncWakeLock() {
+      const s = this.engine?.snapshot();
+      this.wake.setActive(Boolean(!this.pageHidden && this.d.document?.visibilityState !== "hidden" && this.lease && !this.serverPaused && !this.transfer && s?.loaded && !s.paused && !s.buffering && !s.seeking && !s.ended && !s.error && !s.play_blocked));
     }
     get deviceId() {
       let id = null;
@@ -42,7 +80,7 @@
         case "confirm_transfer": return this.confirmTransfer();
         case "refuse_transfer": await this.stop(false); return this.closed();
         case "next": return this.playNext(c.expected_id);
-        case "pause": this.engine?.pause(); await this.report(false, true); return this.view();
+        case "pause": this.engine?.pause(); this.wake.setActive(false); await this.report(false, true); return this.view();
         case "resume": this.resume(); return this.view();
         case "stop": await this.stop(true); return this.closed();
         case "mount": return this.view();
@@ -143,6 +181,7 @@
         let token; try { token = JSON.parse(ev.data).token; } catch { return; }
         this.serverPaused = true;
         this.engine?.pause();
+        this.wake.setActive(false);
         const progress = this.observe(false, true);
         try { await this.d.request("POST", this.api("/playback/transfer/ack"), { body: { token, lease: this.control(), progress } }); } catch { /* deadline path */ }
         await this.stop(false);
@@ -153,13 +192,16 @@
     async heartbeat() {
       if (!this.lease) return;
       try { this.lease = { ...this.lease, ...(await this.d.request("POST", this.api("/playback/heartbeat"), { body: this.control() })) }; }
-      catch (e) { if (e.status === 409 || e.code === "LEASE_INVALID") { this.serverPaused = true; this.engine?.pause(); this.note = "Lecture interrompue : le bail n'est plus valide."; } }
+      catch (e) { if (e.status === 409 || e.code === "LEASE_INVALID") { this.serverPaused = true; this.engine?.pause(); this.wake.setActive(false); this.note = "Lecture interrompue : le bail n'est plus valide."; } }
     }
     // A server-ordered pause is effective before the ACK/release network round
     // trip. Neither the regular Play control nor a fresh iOS gesture may undo it.
     resume() {
       if (this.serverPaused || this.transfer || !this.engine || !this.lease) return false;
-      return this.engine.play();
+      const result = this.engine.play();
+      this.syncWakeLock();
+      Promise.resolve(result).then(() => this.syncWakeLock(), () => this.syncWakeLock());
+      return result;
     }
     observe(seek, forcePaused) {
       const s = this.engine.snapshot();
@@ -199,6 +241,7 @@
         return this.transfer || this.opening ? this.view() : this.closed();
       }
       const s = this.engine.snapshot();
+      this.syncWakeLock();
       if (s.ended && !this.ended) {
         this.ended = true;
         await this.report(false, true);
@@ -219,6 +262,7 @@
     }
 
     async release() {
+      this.wake.setActive(false);
       if (!this.lease) return;
       const lease = this.control();
       this.lease = null; this.timers.splice(0).forEach(t => this.d.clearInterval(t));
@@ -226,6 +270,8 @@
       try { await this.d.request("POST", this.api("/playback/release"), { body: { lease, progress: null } }); } catch { /* lease expires */ }
     }
     async stop(report) {
+      this.engine?.pause();
+      this.wake.setActive(false);
       this.clearTransfer(); this.transfer = null;
       if (this.opening) { this.opening.cancelled = true; try { this.opening.engine.close(); } catch { /* not opened yet */ } this.opening = null; }
       if (this.engine && this.lease && report) await this.report(false, true);
@@ -268,7 +314,7 @@
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
   }
 
-  const api = { WebPlayer, pickTrack, uuidV4 };
+  const api = { WebPlayer, ScreenWakeLock, pickTrack, uuidV4 };
   if (typeof module !== "undefined") module.exports = api;
   else {
     root.ChillPlayerCore = api;
@@ -285,6 +331,7 @@
           engineFactory: () => root.ChillEngines.create(document.getElementById("native-video")),
           storage: root.localStorage, now: () => performance.now(), setInterval: (f, t) => root.setInterval(f, t), clearInterval: t => root.clearInterval(t),
           EventSource: root.EventSource, uuid: () => uuidV4(root.crypto),
+          wakeLock: root.navigator?.wakeLock, document: root.document, page: root,
           isFullscreen: () => root.ChillMobilePlayback?.isPhone()
             ? root.ChillMobilePlayback.isActualFullscreen()
             : Boolean(document.fullscreenElement || document.webkitFullscreenElement || document.querySelector("#native-video video")?.webkitDisplayingFullscreen),

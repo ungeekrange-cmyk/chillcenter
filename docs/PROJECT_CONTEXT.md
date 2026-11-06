@@ -1,5 +1,17 @@
 # Contexte du projet
 
+## 6 novembre 2026 — maintien éveillé pendant la lecture uniquement
+
+Correctif local sur `codex/playback-wake-lock`, base distante `bacee3c` vérifiée :
+assertion IOKit macOS et Wake Lock web liés à la lecture effective ; pause,
+arrêt, fin, erreur et attente de données libèrent le maintien éveillé. Le web
+requiert un contexte sécurisé et une page visible, sous réserve du navigateur.
+347 tests Node, 60 tests Rust, Clippy strict, formatage et build web PASS.
+IOKit et libmpv réels testés ; GUI assemblée et veille physique NOT_RUN.
+Aucun paquet publié ni installation/déploiement Mac/Pi/web.
+Voir [BUG0132](debug/BUG-0132-playback-idle-sleep.md) et
+[ADR0036](architecture/decisions/ADR-0036-playback-only-wake-lock.md).
+
 ## 22 octobre 2026 — documentation de la release publique 0.7.3
 
 La release v0.7.3 est publique depuis le 21 octobre, avec le DMG Mac build13,

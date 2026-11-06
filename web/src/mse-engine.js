@@ -284,7 +284,7 @@
       const v = this.video;
       if (!v) return { loaded: false, paused: true, buffering: false, ended: false, error: this.errorText, position: 0, duration: 0, speed: this.rate, volume: 100, tracks: [] };
       return {
-        loaded: v.readyState >= 1, paused: v.paused, buffering: !v.paused && !v.ended && v.readyState < 3, ended: v.ended,
+        loaded: v.readyState >= 1, paused: v.paused, buffering: !v.paused && !v.ended && v.readyState < 3, seeking: Boolean(v.seeking), ended: v.ended,
         error: this.errorText || this.soft?.errorText || null,
         notice: [this.notice, this.playBlocked ? playbackNotice(this.d.document, this.playBlockReason) : null].filter(Boolean).join(" ") || null,
         play_blocked: Boolean(this.playBlocked), position: v.currentTime || 0, duration: this.movie.duration, speed: v.playbackRate, volume: Math.round(v.volume * 100),

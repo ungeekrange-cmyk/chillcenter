@@ -8,6 +8,7 @@ mod ai_bridge;
 mod artwork_bridge;
 mod discovery_bridge;
 mod native_player;
+mod playback_wake;
 mod player_bridge;
 mod theme_bridge;
 mod update_bridge;

@@ -264,7 +264,8 @@ pub async fn deadline_tick<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), 
     on_main_unit(window, |_view| {
         PLAYER.with(|slot| {
             if let Some(state) = slot.borrow().clone() {
-                state.borrow_mut().expire_if_needed()?;
+                // Observe EOF/buffering even while the bridge awaits the network.
+                state.borrow_mut().poll_and_render()?;
             }
             Ok(())
         })
@@ -278,6 +279,7 @@ pub async fn close_if_loaded<R: Runtime>(
         PLAYER.with(|slot| {
             if let Some(state) = slot.borrow().clone() {
                 let mut state = state.borrow_mut();
+                state.wake.set_playing(false);
                 state.player.pause(true)?;
                 state.paused = true;
                 state.view.setHidden(true);
@@ -376,6 +378,7 @@ where
 }
 
 struct SurfacePlayer {
+    wake: crate::playback_wake::PlaybackWake,
     player: Player,
     factory: HttpMediaFactory,
     renderer: OpenGlRenderer,
@@ -445,6 +448,7 @@ impl SurfacePlayer {
         let renderer = player.create_opengl_renderer(gl_proc)?;
         let now = SystemTime::now();
         Ok(Self {
+            wake: crate::playback_wake::PlaybackWake::default(),
             player,
             factory,
             renderer,
@@ -481,6 +485,7 @@ impl SurfacePlayer {
     ) -> Result<(), NativePlayerError> {
         // The registered callback observes this factory; replacing the active grant does not
         // destroy libmpv or its existing HTTP worker on the AppKit main thread.
+        self.wake.set_playing(false);
         self.player.pause(true)?;
         self.paused = true;
         self.player.set_cache_limits(cache)?;
@@ -521,6 +526,9 @@ impl SurfacePlayer {
                 self.deadline_wall = SystemTime::now() + d
             }
             NativeAction::Pause { paused } => {
+                if paused {
+                    self.wake.set_playing(false);
+                }
                 if !paused && self.expired() {
                     return Err(NativePlayerError::Surface("bail expiré".into()));
                 }
@@ -551,6 +559,7 @@ impl SurfacePlayer {
             }
             NativeAction::Fullscreen => {}
             NativeAction::Close => {
+                self.wake.set_playing(false);
                 self.view.setHidden(true);
                 self.paused = true;
                 self.player.pause(true)?;
@@ -614,6 +623,7 @@ impl SurfacePlayer {
     }
     fn expire_if_needed(&mut self) -> Result<(), NativePlayerError> {
         if self.expired() && !self.paused {
+            self.wake.set_playing(false);
             self.player.pause(true)?;
             self.paused = true;
             self.error = Some("bail expiré".into())
@@ -685,6 +695,17 @@ impl SurfacePlayer {
                 },
             }
         }
+        // core-idle includes decoder startup and seeks; a requested unpause is
+        // insufficient to prove that the video is actually playing.
+        let playing = self.loaded
+            && !self.paused
+            && !self.ended
+            && self.error.is_none()
+            && !self.view.isHidden()
+            && !self.expired()
+            && !self.player.is_buffering().unwrap_or(true)
+            && self.player.is_core_playing().unwrap_or(false);
+        self.wake.set_playing(playing);
         self.render_tick()
     }
     fn apply_pending(&mut self) -> Result<(), NativePlayerError> {

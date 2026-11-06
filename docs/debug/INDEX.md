@@ -1,5 +1,9 @@
 # Journal des bugs, observations et risques
 
+[BUG0132](BUG-0132-playback-idle-sleep.md) : veille pendant la lecture web/macOS ;
+correctif local liant les assertions à la lecture effective, avec libération
+sur pause/arrêt/fin et contrôle des autorisations web tardives.
+
 [BUG0131](BUG-0131-measured-progress-server-rollback.md) : cache des reprises
 mesurées conservé après rollback serveur ; corrigé dans `e54eb357`, régressions
 404/405/503 et reprise PASS, deux revues indépendantes R2 APPROVED. Local seulement.
