@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "mac": "0.7.3",
+  "mac": "0.7.4",
   "server": "0.7.3",
-  "web": "0.7.3",
+  "web": "0.7.4",
   "themes": "0.7.1",
   "api": "2026-10-14",
   "theme_format": 1,

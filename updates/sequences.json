@@ -1,6 +1,18 @@
 {
-  "mac": {"version": "0.7.3", "sequence": 4},
-  "server": {"version": "0.7.3", "sequence": 4},
-  "web": {"version": "0.7.3", "sequence": 4},
-  "themes": {"version": "0.7.1", "sequence": 2}
+  "mac": {
+    "version": "0.7.4",
+    "sequence": 5
+  },
+  "server": {
+    "version": "0.7.3",
+    "sequence": 4
+  },
+  "web": {
+    "version": "0.7.4",
+    "sequence": 5
+  },
+  "themes": {
+    "version": "0.7.1",
+    "sequence": 2
+  }
 }

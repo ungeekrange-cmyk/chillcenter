@@ -1,5 +1,7 @@
 # Chill Center
 
+Sources en préparation : Mac 0.7.4 · web 0.7.4 ; serveur 0.7.3 et thèmes 0.7.1 inchangés. Les téléchargements ci-dessous restent les paquets déjà publiés.
+
 **Français** | [English](README.en.md)
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).

@@ -1,5 +1,7 @@
 # Chill Center
 
+Source candidate: Mac 0.7.4 · web 0.7.4; server 0.7.3 and themes 0.7.1 unchanged. Downloads below still refer to already-published packages.
+
 [Français](README.md) | **English**
 
 Your video library, on your own network: a lightweight
