@@ -14,6 +14,9 @@ séquence **5** pour ces deux composants. Serveur **0.7.3/séquence4** et thème
 - Sur le web : API Wake Lock du navigateur, contexte sécurisé requis et page
   visible. Sur HTTP LAN non sécurisé ou si le navigateur refuse, la lecture
   reste disponible mais le maintien éveillé ne peut pas être garanti.
+- Correctif de dépendance ZIP 9.0.5 dans le client Mac, suite à l'alerte
+  GHSA-m665-v7pm-7grj ; le lecteur ZIP à accès aléatoire et les signatures
+  existantes empêchent déjà le scénario de redirection décrit, régression dédiée.
 
 La publication fournit les paquets pour le mécanisme de mise à jour existant.
 Le Mac demande « Installer maintenant » ; le web suit sa politique configurée.
@@ -29,6 +32,9 @@ Aucune connexion directe au Pi/NAS ni modification des réglages du foyer.
 - Web uses the browser's Wake Lock API and requires a secure context and a
   visible page. Plain LAN HTTP and browser refusals cannot guarantee inhibition;
   playback remains available.
+- Mac updates its ZIP dependency to 9.0.5 for GHSA-m665-v7pm-7grj, with a
+  dual-header regression. Existing signed inputs and random-access extraction
+  already avoid the advisory's mixed-parser path.
 
 Publication supplies packages for the existing updater. Mac requires “Install now”;
 web follows its configured policy. No direct Pi/NAS connection or household
@@ -38,8 +44,10 @@ settings change is performed by this publication.
 
 Correctif / functional source : `935b0fa`, base `bacee3c`.
 Revue indépendante source/sécurité par `/root/release_review` : **APPROVED**
-le 6 novembre 2026 pour `935b0fa`. Aucun changement de dépendance, API, confiance,
-authentification, autorisation ou journalisation sensible.
+le 6 novembre 2026 pour `935b0fa` puis `671fafe`. Le contrôle de publication a
+ensuite imposé le correctif ZIP9.0.5 documenté dans
+[BUG0133](../debug/BUG-0133-release-zip-advisory.md). Aucun changement d'API,
+confiance, authentification, autorisation ou journalisation sensible.
 
 - 347 tests Node UI/web PASS, dont 13 régressions Wake Lock.
 - 60 tests Rust desktop/lecteur PASS, assertion IOKit et lecture libmpv réelles.

@@ -1,5 +1,9 @@
 # Journal des bugs, observations et risques
 
+[BUG0133](BUG-0133-release-zip-advisory.md) : alerte ZIP qualifiée à la publication,
+pin9.0.5 pour le nouveau Mac ; serveur public inchangé, chemin ZIP Windows
+transitif non compilé sur Mac. Aucune clôture implicite des autres alertes.
+
 [BUG0132](BUG-0132-playback-idle-sleep.md) : veille pendant la lecture web/macOS ;
 correctif local liant les assertions à la lecture effective, avec libération
 sur pause/arrêt/fin et contrôle des autorisations web tardives.

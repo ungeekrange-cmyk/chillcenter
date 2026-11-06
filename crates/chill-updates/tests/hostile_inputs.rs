@@ -106,6 +106,30 @@ fn make_duplicate_zip_entry(path: &Path) {
 }
 
 #[test]
+fn local_zip_header_cannot_redirect_a_central_directory_entry() {
+    let temp = tempfile::tempdir().unwrap();
+    let archive = temp.path().join("dual-header.zip");
+    write_zip(&archive, &[("safe.txt", b"payload", 0o100644)], false);
+    let mut bytes = fs::read(&archive).unwrap();
+    assert_eq!(&bytes[..4], b"PK\x03\x04");
+    assert_eq!(&bytes[30..38], b"safe.txt");
+    // LFH traversal with a different CDFH name (GHSA-m665-v7pm-7grj).
+    bytes[30..38].copy_from_slice(b"../owned");
+    fs::write(&archive, bytes).unwrap();
+    let destination = temp.path().join("stage");
+    let result = extract_zip(&archive, &destination, ExtractionLimits::default());
+    assert!(!temp.path().join("owned").exists());
+    // A reader may reject the mismatch or consistently use its validated CDFH.
+    // It must never validate one name and write a different one.
+    if result.is_ok() {
+        assert_eq!(fs::read(destination.join("safe.txt")).unwrap(), b"payload");
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 1);
+    } else {
+        assert!(!destination.exists(), "failed extraction retained a stage");
+    }
+}
+
+#[test]
 fn zip_special_duplicate_and_limit_inputs_are_refused_without_staging_residue() {
     let temp = tempfile::tempdir().unwrap();
     let normal = temp.path().join("normal.zip");
