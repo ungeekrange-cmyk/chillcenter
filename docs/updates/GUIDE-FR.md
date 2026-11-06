@@ -2,10 +2,10 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La [release v0.7.3](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.3)
-regroupe Mac, serveur et web 0.7.3, avec les thèmes 0.7.1 inchangés. La publication
+La [release v0.7.4](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.4)
+regroupe Mac et web 0.7.4 ; serveur 0.7.3 et thèmes 0.7.1 restent inchangés. La publication
 ne les installe pas sur un serveur existant. Les anciennes releases restent
-disponibles ; voir les [preuves et limites](../releases/REL-0.7.3.md).
+disponibles ; voir les [preuves et limites](../releases/REL-0.7.4.md).
 
 ## Quatre composants
 
@@ -69,7 +69,7 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution de v0.7.3, pas le ZIP des sources
+Utiliser les archives complètes de distribution : v0.7.4 pour Mac/web, v0.7.3 pour serveur/thèmes, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
@@ -82,7 +82,7 @@ tar -xzf Chill-Center-server-0.7.3-linux-aarch64.tar.gz
 ```
 
 Même vérification pour le DMG Mac, le ZIP d'installation web et celui des thèmes
-en adaptant le nom. La distribution Mac 0.7.3 est réservée à Apple Silicon et
+en adaptant le nom. La distribution Mac 0.7.4 est réservée à Apple Silicon et
 **nécessite macOS 15 Sequoia minimum**. Les dépendances utilisent des entrées
 Sequoia figées, et les 51 minima Mach-O ont été vérifiés. Les essais physiques
 sur macOS 15/26 restent non réalisés ; les contrôles statiques ne les remplacent

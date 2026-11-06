@@ -32,9 +32,9 @@ const unique = values => [...new Set(values)].sort();
 
 test('README distinguishes source versions from immutable published download packages', async () => {
   const versions = JSON.parse(await read('versions.json'));
-  // Public receipts verified against GitHub v0.7.3, not inferred from a bump.
+  // Public receipts verified against GitHub Mac/web0.7.4; server0.7.3, themes0.7.1, not inferred from a bump.
   // Keep independent component versions; unchanged themes stay at 0.7.1.
-  const published = {mac:'0.7.3',server:'0.7.3',web:'0.7.3',themes:'0.7.1'};
+  const published = {mac:'0.7.4',server:'0.7.3',web:'0.7.4',themes:'0.7.1'};
   const packages = [
     `Chill-Center-${published.mac}-macos-arm64.dmg`,
     `Chill-Center-server-${published.server}-linux-aarch64.tar.gz`,
@@ -47,7 +47,10 @@ test('README distinguishes source versions from immutable published download pac
     for (const name of packages) assert.ok(text.includes(`/${name})`), `${file}: stale package ${name}`);
     assert.ok(text.includes(`/releases/tag/v${published.mac})`), `${file}: stale release link`);
     const downloads = [...text.matchAll(/https:\/\/github\.com\/ungeekrange-cmyk\/chillcenter\/releases\/download\/([^/]+)\/([^\s)]+)/g)];
-    assert.deepEqual([...new Set(downloads.map(match => match[1]))], ['v0.7.3'], `${file}: obsolete download release`);
+    for (const match of downloads) {
+      const expectedTag = /Chill-Center-(server|themes)-/.test(match[2]) ? 'v0.7.3' : 'v0.7.4';
+      assert.equal(match[1], expectedTag, `${file}: obsolete download release for ${match[2]}`);
+    }
     assert.deepEqual([...new Set(downloads.map(match => match[2]))].sort(), [...packages].sort(), `${file}: unexpected package inventory`);
     assert.ok(text.includes('GPL-3.0-or-later'), `${file}: missing player license scope`);
     for (const component of ['mac','server','web','themes']) {

@@ -2,10 +2,10 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-The [v0.7.3 release](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.3)
-groups Mac, server and web 0.7.3, with unchanged themes 0.7.1. Publication does not
+The [v0.7.4 release](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.4)
+groups Mac and web 0.7.4; server 0.7.3 and themes 0.7.1 remain unchanged. Publication does not
 install them on an existing server. Earlier releases remain available; see the
-[release evidence and limits](../releases/REL-0.7.3.md).
+[release evidence and limits](../releases/REL-0.7.4.md).
 
 ## Four components
 
@@ -65,7 +65,7 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives from v0.7.3, not GitHub's automatically
+Use the complete distribution archives: v0.7.4 for Mac/web, v0.7.3 for server/themes, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.
@@ -78,7 +78,7 @@ tar -xzf Chill-Center-server-0.7.3-linux-aarch64.tar.gz
 
 The same verification applies to the Mac DMG, web install ZIP and themes install
 ZIP using their respective filenames. The Mac distribution is Apple Silicon
-only and the 0.7.3 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
+only and the 0.7.4 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
 pinned Sequoia inputs, and all 51 Mach-O minima were verified. Physical macOS
 15/26 execution has not yet been tested; static checks do not replace it.
 Historical: the 0.7.2 DMG required macOS 27+, despite its Rust 13.0 floor.

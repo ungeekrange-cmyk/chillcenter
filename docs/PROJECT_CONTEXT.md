@@ -1,5 +1,20 @@
 # Contexte du projet
 
+## 6 novembre 2026 — publication Mac/web0.7.4
+
+Source immuable `d1d663e5a5d2f713c0983a28ebfb3ce617196080` fusionnée/poussée
+sur main. Mac0.7.4/build14 et web0.7.4 publics, séquence5 ; release récapitulative
+v0.7.4 Latest. Serveur0.7.3 et thèmes0.7.1 inchangés, aucun binaire serveur/Windows
+republié. Anti-veille lié à la lecture effective et correctif ZIP9.0.5 côté Mac.
+Revue indépendante du candidat exact et des inventaires signés APPROVED.
+CodeQL et Shipping dependency security GitHub PASS. Bundle macOS15+, DMG,
+signatures, provenance et empreintes GitHub des31 assets (10Mac/4web/17récap.)
+vérifiés. Documentation FR/EN actualisée après disponibilité réelle des paquets.
+Aucun accès Pi/NAS ni installation Mac ; le web suit sa politique existante.
+Voir [release0.7.4 et limites](releases/REL-0.7.4.md),
+[BUG0132](debug/BUG-0132-playback-idle-sleep.md) et
+[qualification ZIP](debug/BUG-0133-release-zip-advisory.md).
+
 ## 6 novembre 2026 — maintien éveillé pendant la lecture uniquement
 
 Correctif local sur `codex/playback-wake-lock`, base distante `bacee3c` vérifiée :

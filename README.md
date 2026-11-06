@@ -1,24 +1,20 @@
 # Chill Center
 
-Sources en préparation : Mac 0.7.4 · web 0.7.4 ; serveur 0.7.3 et thèmes 0.7.1 inchangés. Les téléchargements ci-dessous restent les paquets déjà publiés.
-
 **Français** | [English](README.en.md)
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
-**Versions publiées : Mac 0.7.3 · serveur 0.7.3 · web 0.7.3 · thèmes 0.7.1.**
-[Changements 0.7.3 FR/EN](docs/releases/REL-0.7.3.md) : cible Mac macOS 15+,
-catégorie **En cours** dès 5 %, barres sur les vignettes et pourcentage sur les
-fiches, calculés uniquement avec la durée mesurée au premier lancement.
-Les paquets 0.7.3 sont publiés ; aucune installation sur votre serveur n'est
-effectuée par cette page. Une politique de mise à jour automatique déjà activée
-peut les installer selon ses réglages.
+**Versions publiées : Mac 0.7.4 · serveur 0.7.3 · web 0.7.4 · thèmes 0.7.1.**
+[Changements 0.7.4 FR/EN](docs/releases/REL-0.7.4.md) : maintien éveillé uniquement
+pendant la lecture vidéo, avec libération à la pause et à l’arrêt. Le web requiert
+un contexte sécurisé et une page visible. Mac inclut le correctif ZIP 9.0.5.
+Le serveur et les thèmes restent inchangés ; cette publication ne les installe pas.
 
 ### Paquets actuellement publiés
 
-**[Télécharger l’application Mac Apple Silicon v0.7.3 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-0.7.3-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.3)
+**[Télécharger l’application Mac Apple Silicon v0.7.4 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.4)
 
-[Sources correspondantes et recettes de reconstruction du Mac](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-0.7.3-corresponding-sources.tar.gz) : les bibliothèques du lecteur incluent FFmpeg sous **GPL-3.0-or-later**. Licences, signatures et instructions accompagnent la release.
+[Sources correspondantes et recettes de reconstruction du Mac](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-corresponding-sources.tar.gz) : les bibliothèques du lecteur incluent FFmpeg sous **GPL-3.0-or-later**. Licences, signatures et instructions accompagnent la release.
 
 Mac, serveur, web et thèmes sont versionnés séparément dans
 [versions.json](versions.json). Les versions installées et les réglages de mise
@@ -29,13 +25,13 @@ décrivent leur calendrier et priorité.
 
 | Composant et version publiée | Paquet et instructions |
 | --- | --- |
-| Mac Apple Silicon 0.7.3, build 13 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-0.7.3-macos-arm64.dmg), macOS 15+ |
+| Mac Apple Silicon 0.7.4, build 14 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-macos-arm64.dmg), macOS 15+ |
 | Serveur Linux ARM64 0.7.3 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-server-0.7.3-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
-| Client web/PWA 0.7.3 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-web-0.7.3-install.zip), serveur 0.7.3 pour la progression mesurée |
+| Client web/PWA 0.7.4 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-web-0.7.4-install.zip), serveur 0.7.3 pour la progression mesurée |
 | Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
-et les [notes de version et limites](docs/releases/REL-0.7.3.md). Les manifestes
+et les [notes de version et limites](docs/releases/REL-0.7.4.md). Les manifestes
 signés sont dans les releases propres à chaque composant. Le serveur existant
 n’est pas modifié directement par cette publication ; sa politique de mise à
 jour peut la détecter. La v0.6 et les anciens paquets
@@ -62,7 +58,7 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 ### Client Mac
 
 - Mac **Apple Silicon (ARM64)** ; aucun paquet Intel n’est publié.
-- Le DMG **0.7.3 nécessite macOS 15 Sequoia minimum**, pour couvrir macOS
+- Le DMG **0.7.4 nécessite macOS 15 Sequoia minimum**, pour couvrir macOS
   15, 26 et 27, avec dépendances Sequoia figées et contrôlées avant signature.
   Les minima des 51 Mach-O, la signature et le montage du DMG ont été vérifiés.
   Les essais physiques sur macOS 15/26 restent non réalisés.
