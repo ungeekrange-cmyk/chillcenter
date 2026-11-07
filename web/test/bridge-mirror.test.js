@@ -26,7 +26,7 @@ function world(initial) {
     if (path === `/profiles/${P}/catalog/changes`) return json(404, { code: "ROUTE_NOT_FOUND" });
     if (path === `/profiles/${P}/catalog/snapshot` && method === "POST") {
       const known = JSON.parse(init.body).known_revision;
-      return known === w.revision ? json(200, { revision: w.revision, unchanged: true }) : json(200, { revision: w.revision, snapshot_id: "s", total: w.items.length, items: w.items.slice(0, 100), sagas: w.sagas, playlists: [], series_revisions: {}, season_metadata: w.seasonMetadata, has_more: w.items.length > 100, next_offset: w.items.length > 100 ? 100 : null });
+      return known === w.revision ? json(200, { revision: w.revision, unchanged: true }) : json(200, { revision: w.revision, snapshot_id: "s", total: w.items.length, items: w.items.slice(0, 100), sagas: w.sagas, playlists: w.playlists || [], series_revisions: {}, season_metadata: w.seasonMetadata, has_more: w.items.length > 100, next_offset: w.items.length > 100 ? 100 : null });
     }
     if (path.startsWith(`/profiles/${P}/catalog/snapshot/`)) { const off = Number(new URL("http://x" + url.slice(url.indexOf("?"))).searchParams.get("offset")); return json(200, { revision: w.revision, items: w.items.slice(off, off + 100), has_more: w.items.length > off + 100, next_offset: w.items.length > off + 100 ? off + 100 : null }); }
     if (path.endsWith("/artwork")) { w.artworkCalls += 1; return json(200, ""); }
@@ -219,4 +219,22 @@ test("series names that are prototype keys never read a prototype property", asy
   const w = world([film(1, { category: "serie", series: "constructor", season: 1, episode: 1 })]), c = client(w, Store.createMemoryBackend()); await select(c); await c.flush();
   const v = await c.ui({ action: "series", name: "constructor" });
   assert.equal(v.revision, null); assert.equal(v.name, "constructor");
+});
+test("collection poster writes invalidate artwork and the local mirror before any explicit refresh",async()=>{
+ const w=world([film(1)]),baseFetch=w.fetch;let revision=1;const revoked=[];w.playlists=[{id:uid(900),name:'List',revision:1,media_ids:[uid(1)],poster:'old'}];
+ w.fetch=async(url,init={})=>{
+  if(init.method==='PUT' && (/\/poster\/(member|tmdb)$/.test(url))){w.revision='rev-'+(++revision);w.playlists[0].revision=revision;return {ok:true,status:200,text:async()=>JSON.stringify({playlist:{id:uid(900)}})};}
+  return baseFetch(url,init);
+ };
+ const c=client(w,Store.createMemoryBackend(),{revoke:u=>revoked.push(u)});await select(c);await c.flush();
+ for(const command of [
+  {action:'playlist_member_artwork',id:uid(900),media_id:uid(1),expected_revision:1},
+  {action:'collection_tmdb_artwork',kind:'playlist',id:uid(900),candidate_token:uid(800),expected_revision:2}
+ ]){
+  const old=await c.ui({action:'playlist_artwork',id:uid(900)}),before=w.artworkCalls;
+  await c.ui(command);assert.equal(c.bridge._mirror().dirty,true);assert.ok(c.timers.length>0,'write schedules reconciliation');
+  assert.ok(revoked.includes(old.src),'the previously visible artwork URL was invalidated');
+  await c.flush();assert.equal(c.bridge._mirror().dirty,false);
+  const next=await c.ui({action:'playlist_artwork',id:uid(900)});assert.notEqual(next.src,old.src);assert.equal(w.artworkCalls,before+1);
+ }
 });

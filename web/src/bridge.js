@@ -173,7 +173,7 @@
       if (touched) { mirror.entries = entries; mirror.index = Query.prepare(entries); }
     }
     const localQuery = c => ({ offset: c.offset || 0, limit: 48, category: c.category || null, q: c.q || null, genre: c.genre || null, year: c.year, watched: c.watched, sort: c.sort || null, grouped: Boolean(c.grouped), available: c.available });
-    const WRITES = new Set(["set_watched", "set_rating", "group_rating", "edit_media", "edit_series", "create_saga", "rename_saga", "add_saga", "remove_saga_member", "reorder_saga", "delete_saga", "create_playlist", "add_playlist", "remove_playlist_member", "reorder_playlist", "delete_playlist", "rename_playlist", "save_library", "saga_member_artwork", "tmdb_select", "tmdb_refresh", "tmdb_restore_poster", "confirm_reassociation", "forget_unavailable"]);
+    const WRITES = new Set(["set_watched", "set_rating", "group_rating", "edit_media", "edit_series", "create_saga", "rename_saga", "add_saga", "remove_saga_member", "reorder_saga", "delete_saga", "create_playlist", "add_playlist", "remove_playlist_member", "reorder_playlist", "delete_playlist", "rename_playlist", "save_library", "saga_member_artwork", "playlist_member_artwork", "collection_tmdb_artwork", "tmdb_select", "tmdb_refresh", "tmdb_restore_poster", "confirm_reassociation", "forget_unavailable"]);
 
     async function request(method, path, { body, query, headers, signal } = {}) {
       let url = BASE + path;

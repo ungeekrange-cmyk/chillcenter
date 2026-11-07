@@ -64,6 +64,7 @@ const MAX_STATE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_IDENTIFIER_BYTES: usize = 128;
 const ARTWORK_CANDIDATE_TTL: Duration = Duration::from_secs(10 * 60);
 const MAX_ARTWORK_CANDIDATES: usize = 256;
+const MAX_ARTWORK_RESULTS: usize = 24;
 fn now_seconds() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -441,14 +442,20 @@ impl TmdbJobService {
             )
         })?;
         cache.retain(|_, value| value.expires_at > now);
+        let candidates = candidates
+            .into_iter()
+            .take(MAX_ARTWORK_RESULTS)
+            .collect::<Vec<_>>();
+        // Reserve this complete response before inserting any token. Evicting
+        // inside the loop could evict an earlier UUID from this same response.
+        while cache.len() + candidates.len() > MAX_ARTWORK_CANDIDATES {
+            let Some(key) = cache.keys().next().cloned() else {
+                break;
+            };
+            cache.remove(&key);
+        }
         let mut output = Vec::with_capacity(candidates.len());
         for candidate in candidates {
-            while cache.len() >= MAX_ARTWORK_CANDIDATES {
-                let Some(key) = cache.keys().next().cloned() else {
-                    break;
-                };
-                cache.remove(&key);
-            }
             let token = uuid::Uuid::new_v4().to_string();
             cache.insert(
                 token.clone(),
@@ -1780,6 +1787,51 @@ mod tests {
             "TMDB_REQUEST_BUSY"
         );
         drop((first, second));
+    }
+
+    #[test]
+    fn a_full_cache_never_evicts_tokens_from_the_current_search_response() {
+        let service = TmdbJobService::default();
+        {
+            let mut cache = service.artwork_candidates.lock().unwrap();
+            for index in 0..MAX_ARTWORK_CANDIDATES {
+                // Sort after every generated UUID: the old insertion loop
+                // would deterministically evict its own new response tokens.
+                cache.insert(
+                    format!("z{index:03}"),
+                    ArtworkCandidate {
+                        profile: "profile".into(),
+                        kind: CollectionKind::Saga,
+                        collection: "42".into(),
+                        poster_path: "/old.jpg".into(),
+                        expires_at: now_seconds() + 600,
+                    },
+                );
+            }
+        }
+        let candidates = (0..MAX_ARTWORK_RESULTS + 1)
+            .map(|index| chill_catalog::metadata::ArtworkCandidate {
+                title: format!("Film {index}"),
+                source: "TMDB".into(),
+                poster_path: format!("/{index}.jpg"),
+                poster: "unused".into(),
+            })
+            .collect();
+        let response = service
+            .store_artwork_candidates("profile", CollectionKind::Saga, "42", candidates)
+            .unwrap();
+        assert_eq!(response.len(), MAX_ARTWORK_RESULTS);
+        assert_eq!(
+            service.artwork_candidates.lock().unwrap().len(),
+            MAX_ARTWORK_CANDIDATES
+        );
+        for item in response {
+            assert!(
+                service
+                    .artwork_candidate("profile", CollectionKind::Saga, "42", &item.token)
+                    .is_ok()
+            );
+        }
     }
 
     #[test]
