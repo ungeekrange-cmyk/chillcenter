@@ -20,7 +20,10 @@ body.player-open .app-topbar,body.player-open main>:not(#player-panel){display:n
 #player-close{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;padding:10px;border:1px solid #ffffff28;border-radius:12px;background:#ffffff1c;color:#fff}
 #player-close svg{width:24px;height:24px}
 #player-panel.controls-hidden #player-overlay,#player-panel.controls-hidden .player-heading{opacity:0;pointer-events:none}
-#player-panel.controls-hidden #native-video{cursor:none}
+/* The WebKit layer receives the pointer above the native OpenGL sibling on
+   macOS; browsers can instead target the media/canvas child. Cover each
+   player-only hit target so the cursor follows the exact chrome state. */
+#player-panel.controls-hidden #player-stage,#player-panel.controls-hidden #native-video,#player-panel.controls-hidden #native-video video,#player-panel.controls-hidden #native-video canvas{cursor:none}
 .player-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
 .player-controls button{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:10px;border:1px solid #ffffff28;border-radius:12px;color:#fff;background:#ffffff1c;flex-shrink:0}
 .player-controls button:hover,#player-close:hover,.player-controls label:focus-within{background:#ffffff30}

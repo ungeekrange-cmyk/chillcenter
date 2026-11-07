@@ -43,6 +43,13 @@ test('controls hide after 2.5 seconds of playing inactivity and pointer brings t
  h.get('player-panel').events.pointermove();assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
  await h.advance(2500);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),true);
 });
+test('cursor hiding is scoped to the same player chrome state and restores with it',async()=>{
+ const css=fs.readFileSync(__dirname+'/player.css','utf8');assert.match(css,/#player-panel\.controls-hidden #player-stage/);assert.match(css,/#player-panel\.controls-hidden #native-video video/);assert.match(css,/cursor:none/);
+ const h=harness(null);playing(h);await h.advance(2500);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),true);
+ h.get('player-panel').events.pointermove();assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
+ vm.runInContext('playerState.native.paused=true;updatePlayerControls();',h.sandbox);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
+ vm.runInContext('hidePlayer();',h.sandbox);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
+});
 test('pause, buffering, loading, ended, keyboard focus and an active select pin native-overlay controls',async()=>{
  for(const native of [{paused:true},{buffering:true},{loaded:false},{ended:true},{error:'failed'}]){
   const h=harness(null);playing(h,native);await h.advance(5000);assert.equal(h.get('player-panel').classList.contains('controls-hidden'),false);
