@@ -33,7 +33,7 @@ function render(){
   const cacheNotice=state.catalog_cache?.offline?(state.catalog_cache.notice||uiText("Catalogue local disponible hors connexion.")):"";
   const notice=[state.notice,cacheNotice].filter(Boolean).join(" · ");
   $("connection-notice").textContent=notice;$("connection-notice").hidden=!notice;
-  for(const id of ["server-panel","trust-panel","profile-panel","catalog-panel"])$(id).hidden=true;
+  for(const id of ["server-panel","trust-panel","profile-panel","home-panel","catalog-panel"])$(id).hidden=true;
   const connected=state.stage==="connected";
   $("admin-toggle").hidden=!connected;$("server-switch").hidden=!connected;$("profile-menu").hidden=!connected||!(state.profiles?.length);
   document.documentElement.dataset.theme=state.theme||"system";$("theme").value=state.theme||"system";
@@ -63,7 +63,7 @@ function render(){
   $("profile-avatar").textContent=activeName.trim().slice(0,1).toLocaleUpperCase()||"?";
   if(activeProfile)$("profile-menu").open=false;
   $("profile-empty").hidden=Boolean(state.profiles.length);
-  $("profile-panel").hidden=Boolean(state.profile_id);$("catalog-panel").hidden=!state.profile_id;
+  $("profile-panel").hidden=Boolean(state.profile_id);$("home-panel").hidden=!state.profile_id;$("catalog-panel").hidden=!state.profile_id;
   if(!state.profile_id)$("media").replaceChildren();
   if(window.refreshLibraryLocations)window.refreshLibraryLocations(state.library);else $("video-root").value=state.library.video_root||"";$("personal-settings").hidden=!state.profile_id;
   if(!$("autoplay").querySelector('option[value="15"]'))$("autoplay").append(new Option(uiText("Après 15 secondes"),"15"));
@@ -154,6 +154,7 @@ async function catalogRequest(command,generation,context){
 // Stage the complete replacement before rendering: background refresh must not blank the grid.
 // Generation/context guards also discard replies from a previous filter, server or profile.
 async function loadPage(reuseFacetBase=false){
+ if(typeof shellSection!=="undefined"&&shellSection==="home")return window.refreshHome?.()||false;
  const context=state.server_id+":"+state.profile_id;if(context!==catalogContext){clearCatalogContext();catalogContext=context;}const generation=++catalogGeneration;
  if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return false;}
  const filters=catalogFilters(),baseFilters={...filters,genre:"",year:""},grouped=!window.isProgressView?.(),baseKey=context+"\u0000"+JSON.stringify({...baseFilters,grouped});
@@ -235,7 +236,7 @@ async function syncCatalog(){
   icon.title=result.discarded?uiText("Mise à jour différée après une modification locale"):uiText("Catalogue à jour");return result;
  }catch(error){if(context===state.server_id+":"+state.profile_id){icon.title=uiText("Serveur indisponible — catalogue local conservé");}return {error};}finally{icon.classList.remove("syncing");icon.setAttribute("aria-label",icon.title);syncPromise=null;}})();return syncPromise;
 }
-async function syncAfterMutation(){if(syncPromise)await syncPromise;const result=await syncCatalog();if(typeof window!=="undefined")void window.refreshProgress?.(true);return result;}
+async function syncAfterMutation(){if(syncPromise)await syncPromise;const result=await syncCatalog();if(typeof window!=="undefined"){void window.refreshProgress?.(true);window.refreshHomeAfterMutation?.();}return result;}
 window.addEventListener("focus",()=>{if(state.stage!=="connected"||!state.profile_id||busy)return;const now=Date.now();if(now-lastFocusRefresh<5000)return;lastFocusRefresh=now;void syncCatalog();});
 window.chillReady=(async()=>{
  // All deferred modules (artwork, shell, appearance...) must be installed before
