@@ -356,6 +356,11 @@
     }
     async function uiRaw(c) {
       switch (c.action) {
+        case "home": {
+          const context = currentContext(), p = profile();
+          const result = await get(`/profiles/${p}/home`);
+          return context === currentContext() ? result : {discarded:true};
+        }
         case "boot": case "connect": case "approve":
           try { return await connect(); } catch (e) { conn = null; const v = disconnectedView(e.message); return c.action === "boot" ? v : Promise.reject(e); }
         case "disconnect": mirrorClose(); conn = null; for (const u of artwork.values()) env.revoke?.(u); artwork.clear(); return view();

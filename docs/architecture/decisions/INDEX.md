@@ -102,3 +102,7 @@ et politiques OS explicites ; complète ADR-0004 et ADR-0015.
 [ADR-0037](ADR-0037-collection-cover-selection.md), implémenté localement,
 7 novembre 2026 : jaquettes explicites depuis un membre ou TMDB, jetons bornés,
 actions de gestion visibles et confirmation de suppression.
+
+[ADR-0038](ADR-0038-home-shelves.md), implémenté localement,7 novembre2026 :
+Accueil personnel, trois rangées horizontales de20, reprise par saison,
+suggestions locales depuis les derniers visionnages datés.

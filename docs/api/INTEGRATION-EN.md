@@ -478,3 +478,21 @@ Tokens expire after 10 minutes and belong to the profile/kind/group; clients
 never supply provider URLs or paths. At most two provider requests run at once,
 sharing capacity with existing enrichment; saturation returns 503. Revision
 conflicts return 409 and require an explicit cover confirmation after refresh.
+
+## Home — compatible addition awaiting release
+
+`GET /profiles/{profile}/home` returns `continue_watching`, `recently_added` and
+`recommendations`, with at most20 items each. An item contains `media`,
+`series_key`, `season`, `progress` and `matches`. A series appears once per shelf;
+its media is a show-level card while `season` identifies the season to resume.
+Empty shelves are hidden. A completed season followed by an untouched next
+season does not qualify for Continue watching.
+
+This local read calls neither TMDB, AI nor the NAS. Suggestions use genres,
+cast and directors from the profile's five latest dated watched entities.
+Historical views without dates never receive invented timestamps. The new
+nullable personal timestamp survives new exports/imports; old archives remain
+readable and produce null timestamps. Older versions cannot import an archive
+containing the new field. Home is bounded to10000 videos; larger libraries get
+an explicit error rather than a truncated selection. Older servers return404;
+search and categories remain usable. Clients discard stale-profile responses.

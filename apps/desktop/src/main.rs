@@ -266,14 +266,15 @@ async fn ui_command(
     }
     if matches!(
         &command,
-        UiCommand::TmdbCandidates { .. }
+        UiCommand::Home {}
+            | UiCommand::TmdbCandidates { .. }
             | UiCommand::CollectionArtworkCandidates { .. }
             | UiCommand::CollectionArtworkPreview { .. }
             | UiCommand::CollectionTmdbArtwork { .. }
             | UiCommand::TmdbSelect { .. }
             | UiCommand::TmdbRefresh { .. }
     ) {
-        // Provider HTTP can be slow; prepare its allowlisted immutable request
+        // Remote reads may be slow; prepare their allowlisted immutable request
         // under the lock, then release both UI gates for the network wait.
         let client = bridge.client.clone();
         let task = tauri::async_runtime::spawn_blocking(move || {

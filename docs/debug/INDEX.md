@@ -228,3 +228,4 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 
 - [BUG-0134](BUG-0134-update-availability-permissions.md) — disponibilité web illisible sous UMask0077 et résultat de polling masqué ; réparation ponctuelle réelle vérifiée, correction durable non publiée.
 - [BUG-0135](BUG-0135-collection-management.md) — gestion et choix des jaquettes de collections ; corrigé et vérifié localement, publication restante.
+- [BUG-0136](BUG-0136-idle-player-cursor.md) — curseur synchronisé avec les commandes vidéo masquées, source corrigée et revue ; non publié.

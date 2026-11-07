@@ -45,6 +45,243 @@
     }
   ],
   "paths": {
+    "/profiles/{profile}/home": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "profileHome_get",
+        "description": "Accueil local du profil : trois rangées de 20 éléments au plus, séries regroupées. Reprendre exige une saison commencée et inachevée ; ajouts récents par date maximale des membres disponibles ; suggestions locales sur les cinq dernières entités vues datées, genres/distribution/réalisation. Aucun appel fournisseur/NAS. Lecture bornée à 10000 vidéos ; erreur explicite au-delà. Ajout compatible non encore publié ; ancien serveur404.",
+        "responses": {
+          "200": {
+            "description": "Rangées ; tableaux vides à masquer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "continue_watching",
+                    "recently_added",
+                    "recommendations"
+                  ],
+                  "properties": {
+                    "continue_watching": {
+                      "type": "array",
+                      "maxItems": 20,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "media",
+                          "series_key",
+                          "season",
+                          "progress",
+                          "matches"
+                        ],
+                        "properties": {
+                          "media": {
+                            "$ref": "#/components/schemas/Media"
+                          },
+                          "series_key": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "season": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "minimum": 0,
+                            "description": "Saison reprise ; les champs season/episode de media restent null pour une série."
+                          },
+                          "progress": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "position_ms",
+                                  "duration_ms"
+                                ],
+                                "properties": {
+                                  "position_ms": {
+                                    "type": "integer",
+                                    "format": "uint64",
+                                    "minimum": 0
+                                  },
+                                  "duration_ms": {
+                                    "type": "integer",
+                                    "format": "uint64",
+                                    "minimum": 1
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "matches": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "recently_added": {
+                      "type": "array",
+                      "maxItems": 20,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "media",
+                          "series_key",
+                          "season",
+                          "progress",
+                          "matches"
+                        ],
+                        "properties": {
+                          "media": {
+                            "$ref": "#/components/schemas/Media"
+                          },
+                          "series_key": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "season": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "minimum": 0,
+                            "description": "Saison reprise ; les champs season/episode de media restent null pour une série."
+                          },
+                          "progress": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "position_ms",
+                                  "duration_ms"
+                                ],
+                                "properties": {
+                                  "position_ms": {
+                                    "type": "integer",
+                                    "format": "uint64",
+                                    "minimum": 0
+                                  },
+                                  "duration_ms": {
+                                    "type": "integer",
+                                    "format": "uint64",
+                                    "minimum": 1
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "matches": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "recommendations": {
+                      "type": "array",
+                      "maxItems": 20,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "media",
+                          "series_key",
+                          "season",
+                          "progress",
+                          "matches"
+                        ],
+                        "properties": {
+                          "media": {
+                            "$ref": "#/components/schemas/Media"
+                          },
+                          "series_key": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "season": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "minimum": 0,
+                            "description": "Saison reprise ; les champs season/episode de media restent null pour une série."
+                          },
+                          "progress": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "position_ms",
+                                  "duration_ms"
+                                ],
+                                "properties": {
+                                  "position_ms": {
+                                    "type": "integer",
+                                    "format": "uint64",
+                                    "minimum": 0
+                                  },
+                                  "duration_ms": {
+                                    "type": "integer",
+                                    "format": "uint64",
+                                    "minimum": 1
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "matches": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+,
     "/profiles/{profile}/playlists/{playlist}/poster/member": {
       "put": {
         "tags": [

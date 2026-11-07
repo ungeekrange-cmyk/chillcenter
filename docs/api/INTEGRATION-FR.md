@@ -259,3 +259,22 @@ client ne fournit d'URL ou de chemin fournisseur. Deux opérations fournisseur
 simultanées au maximum, partagées avec les enrichissements existants ; une
 saturation renvoie 503. Un conflit de révision renvoie 409 ; une confirmation
 explicite de la jaquette reste nécessaire après relecture.
+
+## Accueil — ajout compatible en préparation
+
+`GET /profiles/{profile}/home` retourne `continue_watching`, `recently_added` et
+`recommendations`, au plus20 éléments chacun. Un élément contient `media`,
+`series_key`, `season`, `progress` et `matches`. Les séries n'apparaissent qu'une
+fois par rangée ; leur média est une fiche de série, tandis que `season` indique
+la saison à poursuivre. Les tableaux vides sont masqués. Une saison terminée
+suivie d'une saison jamais commencée ne suffit pas pour « Reprendre ».
+
+Cette lecture locale n'appelle ni TMDB, ni IA, ni NAS. Les suggestions utilisent
+les genres, acteurs et réalisateurs des cinq dernières entités vues datées du
+profil. Les anciennes lectures sans date ne reçoivent aucune date inventée.
+Le nouvel horodatage personnel nullable est conservé par les exports/imports
+nouveaux ; les archives anciennes restent lisibles et produisent une date nulle.
+Une ancienne version ne peut pas importer une archive contenant le nouveau champ.
+La lecture Home est bornée à10000 vidéos ; au-delà, une erreur explicite remplace
+une sélection tronquée. Un ancien serveur répond404 ; recherche et catégories
+restent utilisables. Les clients rejettent les réponses d'un ancien profil.

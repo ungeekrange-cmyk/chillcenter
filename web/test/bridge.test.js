@@ -338,3 +338,10 @@ test("collection covers use closed profile-scoped search, preview, member-copy a
  for(const command of [{action:"collection_artwork_candidates",kind:"other",id:M,query:"x"},{action:"collection_artwork_candidates",kind:"playlist",id:M,query:" "},{action:"collection_artwork_candidates",kind:"saga",id:"../escape",query:"x"},{action:"collection_artwork_preview",kind:"playlist",id:M,token:"https://evil"}])await assert.rejects(ui(command));
  assert.equal(calls.length,before);
 });
+test('Home uses one profile-scoped dated read, propagates old-server404 and discards a late former profile',async()=>{
+ const B='33333333-3333-4333-8333-333333333333';let finish;
+ const {ui,calls}=make({'GET /profiles':ok([{id:P,name:'A',revision:1},{id:B,name:'B',revision:1}]),[`GET /profiles/${B}/preferences`]:ok({}),[`GET /profiles/${P}/home`]:()=>new Promise(resolve=>{finish=resolve;})});
+ await ui({action:'boot'});await ui({action:'select_profile',id:P});calls.length=0;
+ const pending=ui({action:'home',url:'https://untrusted.invalid/'});await new Promise(r=>setImmediate(r));assert.equal(calls.length,1);assert.equal(calls[0].url,BASE+`/profiles/${P}/home`);assert.equal(calls[0].method,'GET');
+ await ui({action:'select_profile',id:B});finish(ok({continue_watching:[],recently_added:[],recommendations:[]}));assert.deepEqual(await pending,{discarded:true});await assert.rejects(ui({action:'home'}),e=>e.status===404);
+});

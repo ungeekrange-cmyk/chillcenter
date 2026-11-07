@@ -20,6 +20,7 @@ use std::{
 #[derive(Debug, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum UiCommand {
+    Home {},
     TmdbStatus,
     TmdbConfigure {
         credential_type: String,
@@ -686,6 +687,13 @@ impl UiClient {
             .as_ref()
             .ok_or_else(|| invalid("Connectez un serveur."))?;
         let (method, path, body, query, mutation) = match command {
+            UiCommand::Home {} => (
+                HttpMethod::GET,
+                format!("/api/2026-10-14/profiles/{profile}/home"),
+                None,
+                None,
+                false,
+            ),
             UiCommand::CollectionArtworkCandidates { kind, id, query } => {
                 valid_artwork_collection(&kind, &id)?;
                 valid_tmdb_query(&query)?;
@@ -1674,7 +1682,8 @@ impl UiClient {
             return Ok(value);
         }
         match command {
-            command @ (UiCommand::CollectionArtworkCandidates { .. }
+            command @ (UiCommand::Home {}
+            | UiCommand::CollectionArtworkCandidates { .. }
             | UiCommand::CollectionArtworkPreview { .. }
             | UiCommand::CollectionTmdbArtwork { .. }) => {
                 let task = self.prepare_provider_task(command)?;
@@ -3172,6 +3181,48 @@ mod tests {
         assert!(matches!(confirm, UiCommand::ConfirmReassociation { .. }));
         assert!(serde_json::from_value::<UiCommand>(json!({"action":"request_full_fingerprint","media_id":"bad","confirmed":true,"path":"/nas/x"})).is_err());
     }
+    #[test]
+    fn home_read_is_closed_profile_scoped_and_discards_stale_results() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut client = UiClient::open(directory.path()).unwrap();
+        let server = uuid::Uuid::new_v4().to_string();
+        let profile = uuid::Uuid::new_v4().to_string();
+        let transport = Transport::new(
+            ServerEndpoint::parse(&server, "https://127.0.0.1:9").unwrap(),
+            Arc::new(RwLock::new(TrustStore::default())),
+            Some(Duration::from_millis(100)),
+        )
+        .unwrap();
+        client.connected = Some(Connected {
+            address: "https://127.0.0.1:9".into(),
+            id: server,
+            transport,
+            profiles: json!([]),
+            active: Some(profile.clone()),
+            notice: None,
+        });
+        let task = client.prepare_provider_task(UiCommand::Home {}).unwrap();
+        assert_eq!(
+            task.path,
+            format!("/api/2026-10-14/profiles/{profile}/home")
+        );
+        assert_eq!(task.method, HttpMethod::GET);
+        assert!(task.body.is_none());
+        assert!(!task.mutation);
+        client.connected.as_mut().unwrap().active = Some(uuid::Uuid::new_v4().to_string());
+        let result = client
+            .commit_provider_task(
+                task,
+                json!({"continue_watching":[],"recently_added":[],"recommendations":[]}),
+            )
+            .unwrap();
+        assert_eq!(result, json!({"discarded":true}));
+        assert!(
+            serde_json::from_value::<UiCommand>(json!({"action":"home","path":"/private"}))
+                .is_err()
+        );
+    }
+
     #[test]
     fn collection_artwork_commands_reject_paths_urls_and_unknown_targets() {
         let id = uuid::Uuid::new_v4().to_string();
