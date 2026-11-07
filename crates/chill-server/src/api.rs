@@ -2168,6 +2168,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn home_is_profile_scoped_bounded_and_redacts_local_paths() {
+        let (dir, app) = setup();
+        let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let profile = store.create_profile("A").unwrap().id;
+        let mut media = chill_catalog::scanner::parse_file(
+            std::path::Path::new("/fixture"),
+            std::path::Path::new("/fixture/Private.mkv"),
+        );
+        media.poster = Some("/secret/poster.png".into());
+        store.snapshot(vec![media]).unwrap();
+        let (status, body) = json_call(
+            &app,
+            "GET",
+            &format!("/api/2026-10-14/profiles/{profile}/home"),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        for shelf in ["continue_watching", "recently_added", "recommendations"] {
+            assert!(body[shelf].as_array().unwrap().len() <= 20);
+        }
+        let item = &body["recently_added"][0];
+        assert!(!item["media"]["path"].as_str().unwrap().starts_with('/'));
+        assert!(
+            item["media"]["poster"]
+                .as_str()
+                .unwrap()
+                .contains("/artwork")
+        );
+        let (missing, missing_body) = json_call(
+            &app,
+            "GET",
+            "/api/2026-10-14/profiles/missing/home",
+            Value::Null,
+        )
+        .await;
+        assert_eq!(missing, StatusCode::NOT_FOUND);
+        assert_eq!(missing_body["code"], "PROFILE_NOT_FOUND");
+    }
+
+    #[tokio::test]
     async fn http_catalog_queries_are_paged_and_personal_state_is_isolated() {
         let dir = tempfile::tempdir().unwrap();
         let config = ServerConfig {

@@ -31,6 +31,7 @@ struct Row {
     stable: String,
     relative_path: String,
     watched: bool,
+    rating: Option<u8>,
     position: u64,
     duration: Option<u64>,
     last: Option<i64>,
@@ -101,6 +102,7 @@ impl Store {
         media.id = row.stable.clone();
         media.path = row.relative_path.clone();
         media.watched = row.watched;
+        media.rating = row.rating;
         if media.poster.is_some() {
             media.poster = Some(format!(
                 "/api/2026-10-14/profiles/{profile}/media/{}/artwork",
@@ -125,7 +127,7 @@ impl Store {
         self.require_profile(profile)?;
         self.refresh_series_groups()?;
         // One bounded projection: never call profile_view (several SQL reads) for each raw row.
-        let mut statement=self.personal.prepare(r#"SELECT m.data,i.stable_id,i.relative_path,COALESCE(s.watched,0),COALESCE(s.position_ms,0),d.duration_ms,s.last_watched_at,CASE WHEN json_extract(m.data,'$.category')='serie' THEN CASE WHEN json_extract(m.data,'$.tmdb_id') IS NOT NULL THEN 'tmdb:tv:'||json_extract(m.data,'$.tmdb_id') ELSE COALESCE(g.source_key,'media:'||i.stable_id) END ELSE 'video:'||i.stable_id END FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id LEFT JOIN cc_profile_state s ON s.profile_id=?1 AND s.stable_media_id=i.stable_id LEFT JOIN cc_resume_measurement d ON d.profile_id=?1 AND d.stable_media_id=i.stable_id LEFT JOIN cc_series_group g ON g.legacy_id=m.id ORDER BY m.id LIMIT 10001"#).map_err(|_|"Accueil indisponible.".to_string())?;
+        let mut statement=self.personal.prepare(r#"SELECT m.data,i.stable_id,i.relative_path,COALESCE(s.watched,0),s.rating,COALESCE(s.position_ms,0),d.duration_ms,s.last_watched_at,CASE WHEN json_extract(m.data,'$.category')='serie' THEN CASE WHEN json_extract(m.data,'$.tmdb_id') IS NOT NULL THEN 'tmdb:tv:'||json_extract(m.data,'$.tmdb_id') ELSE COALESCE(g.source_key,'media:'||i.stable_id) END ELSE 'video:'||i.stable_id END FROM media m JOIN cc_media_identity i ON i.legacy_id=m.id LEFT JOIN cc_profile_state s ON s.profile_id=?1 AND s.stable_media_id=i.stable_id LEFT JOIN cc_resume_measurement d ON d.profile_id=?1 AND d.stable_media_id=i.stable_id LEFT JOIN cc_series_group g ON g.legacy_id=m.id ORDER BY m.id LIMIT 10001"#).map_err(|_|"Accueil indisponible.".to_string())?;
         let values = statement
             .query_map([profile], |r| {
                 Ok((
@@ -133,16 +135,17 @@ impl Store {
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, bool>(3)?,
-                    r.get::<_, i64>(4)?,
-                    r.get::<_, Option<i64>>(5)?,
+                    r.get::<_, Option<u8>>(4)?,
+                    r.get::<_, i64>(5)?,
                     r.get::<_, Option<i64>>(6)?,
-                    r.get::<_, String>(7)?,
+                    r.get::<_, Option<i64>>(7)?,
+                    r.get::<_, String>(8)?,
                 ))
             })
             .map_err(|_| "Accueil indisponible.".to_string())?;
         let mut all = Vec::new();
         for value in values {
-            let (data, stable, relative_path, watched, position, duration, last, key) =
+            let (data, stable, relative_path, watched, rating, position, duration, last, key) =
                 value.map_err(|_| "Accueil indisponible.".to_string())?;
             all.push(Row {
                 media: serde_json::from_str(&data)
@@ -150,6 +153,7 @@ impl Store {
                 stable,
                 relative_path,
                 watched,
+                rating,
                 position: position.max(0) as u64,
                 duration: duration.map(|v| v.max(0) as u64),
                 last,
@@ -399,9 +403,89 @@ mod tests {
             .unwrap()
             .id;
         store.set_watched(&a, &id, true).unwrap();
+        store.set_rating(&b, &id, Some(5), "video").unwrap();
         let home_a = store.home_catalog(&a).unwrap();
         assert_eq!(home_a.recommendations[0].media.title, "Related");
         assert!(home_a.recommendations[0].matches.contains(&"Drama".into()));
-        assert!(store.home_catalog(&b).unwrap().recommendations.is_empty());
+        let home_b = store.home_catalog(&b).unwrap();
+        assert!(home_b.recommendations.is_empty());
+        assert!(
+            home_a
+                .recently_added
+                .iter()
+                .all(|item| item.media.rating.is_none())
+        );
+        assert!(
+            home_b
+                .recently_added
+                .iter()
+                .any(|item| item.media.id == id && item.media.rating == Some(5))
+        );
+    }
+
+    #[test]
+    fn completed_show_with_untouched_next_season_is_not_continue_but_started_next_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("home.sqlite")).unwrap();
+        let profile = store.create_profile("A").unwrap().id;
+        store
+            .snapshot(vec![
+                episode("Show.S01E01.mkv", 1, 1, 1),
+                episode("Show.S02E01.mkv", 2, 1, 2),
+                episode("Show.S02E02.mkv", 2, 2, 3),
+            ])
+            .unwrap();
+        let catalog = store.catalog(&profile).unwrap();
+        let s1 = catalog
+            .iter()
+            .find(|m| m.season == Some(1))
+            .unwrap()
+            .id
+            .clone();
+        let s2 = catalog
+            .iter()
+            .find(|m| m.season == Some(2) && m.episode == Some(1))
+            .unwrap()
+            .id
+            .clone();
+        store.set_watched(&profile, &s1, true).unwrap();
+        assert!(
+            store
+                .home_catalog(&profile)
+                .unwrap()
+                .continue_watching
+                .is_empty()
+        );
+        store.set_watched(&profile, &s2, true).unwrap();
+        let home = store.home_catalog(&profile).unwrap();
+        assert_eq!(home.continue_watching.len(), 1);
+        assert_eq!(home.continue_watching[0].season, Some(2));
+    }
+
+    #[test]
+    fn manual_history_only_changes_on_real_transition_and_legacy_toggle_clears_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("home.sqlite");
+        let mut store = Store::open(&path).unwrap();
+        let profile = store.create_profile("A").unwrap().id;
+        store.snapshot(vec![media("Movie.mkv")]).unwrap();
+        let id = store.catalog(&profile).unwrap()[0].id.clone();
+        store.set_watched(&profile, &id, true).unwrap();
+        let db = rusqlite::Connection::open(&path).unwrap();
+        let first: Option<i64> = db.query_row("SELECT last_watched_at FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2", rusqlite::params![profile,id], |r| r.get(0)).unwrap();
+        assert!(first.is_some());
+        store.set_watched(&profile, &id, true).unwrap();
+        let stable: Option<i64> = db.query_row("SELECT last_watched_at FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2", rusqlite::params![profile,id], |r| r.get(0)).unwrap();
+        assert_eq!(stable, first);
+        db.execute(
+            "UPDATE cc_profile_state SET watched=0 WHERE profile_id=?1 AND stable_media_id=?2",
+            rusqlite::params![profile, id],
+        )
+        .unwrap();
+        let cleared: Option<i64> = db.query_row("SELECT last_watched_at FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2", rusqlite::params![profile,id], |r| r.get(0)).unwrap();
+        assert_eq!(cleared, None);
+        store.set_watched(&profile, &id, true).unwrap();
+        let fresh: Option<i64> = db.query_row("SELECT last_watched_at FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2", rusqlite::params![profile,id], |r| r.get(0)).unwrap();
+        assert!(fresh.is_some());
     }
 }
