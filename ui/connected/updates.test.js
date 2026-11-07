@@ -13,3 +13,34 @@ test("install appears only for a detected strictly newer stable version",()=>{
   ['0.7.1','0.7.2-beta.1',false]
  ])assert.equal(hasNewerVersion({version:installed},{version:available}),wanted);
 });
+function updateHarness(){
+ const vm=require("node:vm"),fs=require("node:fs"),nodes=[];
+ class Element{
+  constructor(tag,text){this.tag=tag;this.textContent=text||"";this.children=[];this.dataset={};this.hidden=false;this.disabled=false;this.value="";this.isConnected=true;nodes.push(this);}
+  append(...items){this.children.push(...items);for(const item of items)item.parentElement=this;}
+  replaceChildren(...items){this.children=[];this.append(...items);}
+  contains(target){return this===target||this.children.some(child=>child?.contains?.(target));}
+  setAttribute(){}querySelector(selector){return selector===".admin-grid"?grid:null;}
+ }
+ const grid=new Element("div"),admin=new Element("section");admin.hidden=false;admin.querySelector=selector=>selector===".admin-grid"?grid:null;
+ const document={hidden:false,activeElement:null,createElement:tag=>new Element(tag)};
+ const states=[
+  {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[],available:{},helper_available:true,check_available:true,timezone:"UTC"},
+  {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"pending"}],available:{},helper_available:true,check_available:true,timezone:"UTC"},
+  {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"failed",result_code:"check_failed"}],available:{},helper_available:true,check_available:true,timezone:"UTC"},
+  {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"succeeded",result_code:"available"}],available:{web:{version:"0.7.4"}},helper_available:true,check_available:true,timezone:"UTC"},
+  {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"succeeded",result_code:"available"}],available:{},helper_available:true,check_available:true,timezone:"UTC"}
+ ];let index=0;const commands=[];
+ const window={ChillBridge:{},chillReady:Promise.resolve(),__TAURI__:{core:{invoke:async(_name,{command})=>{commands.push(command);if(command.action==="status")return states[index];if(command.action==="server_check"){index=1;return {operation:{id:"check"}};}throw Error("unexpected "+command.action);}}}};
+ vm.runInNewContext(fs.readFileSync(__dirname+"/updates.js","utf8"),{window,document,node:(tag,text,cls)=>{const e=new Element(tag,text);e.className=cls||"";return e;},$:id=>id==="admin-panel"?admin:null,MutationObserver:class{observe(){}},setInterval(){},globalThis:{},console,BigInt});
+ return {window,document,nodes,commands,setState(value){index=value;},async settled(){for(let i=0;i<4;i++)await new Promise(resolve=>setImmediate(resolve));}};
+}
+test("check status refreshes in place while a policy input has focus",async()=>{
+ const h=updateHarness();await h.settled();const card=h.nodes.find(node=>node.dataset.updateComponent==="web"),form=card.children.find(node=>node.tag==="form"),time=form.children.find(node=>node.tag==="input"),check=card.children.find(node=>node.textContent==="Vérifier maintenant");
+ time.value="06:30";h.document.activeElement=time;check.onclick();check.onclick();await h.settled();assert.equal(h.commands.filter(command=>command.action==="server_check").length,1);assert.ok(card.contains(time));assert.equal(time.value,"06:30");assert.ok(card.children.some(node=>node.textContent.includes("En attente du service")));
+ h.setState(2);await h.window.chillUpdates.refresh();assert.ok(card.children.some(node=>node.textContent.includes("Vérification impossible")));assert.equal(time.value,"06:30");
+ h.setState(3);await h.window.chillUpdates.refresh();assert.ok(card.children.some(node=>node.textContent.includes("Version disponible : 0.7.4")));assert.equal(time.value,"06:30");
+});
+test("available without cached details remains visible and never claims installation",async()=>{
+ const h=updateHarness();await h.settled();h.setState(4);await h.window.chillUpdates.refresh();assert.ok(h.nodes.some(node=>node.textContent.includes("Mise à jour détectée ; détails indisponibles")));assert.ok(!h.nodes.some(node=>node.textContent==="Mise à jour installée"));
+});

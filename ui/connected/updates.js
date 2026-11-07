@@ -22,37 +22,49 @@
  const native=!window.ChillBridge;let refreshing=false,local=null,server=null,lastRefresh=0;
  const call=command=>window.__TAURI__.core.invoke("update_command",{command});
  const names={mac:"Client Mac",server:"Serveur",web:"Client web",themes:"Ambiances"};
- const resultLabels={AVAILABLE:"Mise à jour disponible",NO_UPDATE:"Vous utilisez la dernière version",CHECK_FAILED:"Vérification impossible. Réessayez plus tard.",CHECK_INCOMPATIBLE:"Cette mise à jour nécessite une version compatible des autres composants.",CHECK_INTERRUPTED:"Vérification interrompue. Réessayez dans quelques minutes.",DEFERRED_BUSY:"Installation différée pendant l’utilisation",INSTALLED:"Mise à jour installée",PENDING:"En attente",RUNNING:"En cours",SUCCEEDED:"Terminé",FAILED:"Échec"};
+ const resultLabels={NO_UPDATE:"Vous utilisez la dernière version",CHECK_FAILED:"Vérification impossible. Réessayez maintenant ou plus tard.",CHECK_INCOMPATIBLE:"Cette mise à jour nécessite une version compatible des autres composants.",CHECK_INTERRUPTED:"Vérification interrompue. Réessayez dans quelques minutes.",DEFERRED_BUSY_AUTO:"Installation différée : une lecture ou une tâche est active.",DEFERRED_BUSY_MANUAL:"Installation différée : une lecture ou une tâche est active. Elle reprendra automatiquement.",BUSY_RETRY_EXHAUSTED:"Installation non effectuée après plusieurs attentes. Vérifiez qu’aucune lecture ou tâche n’est active, puis réessayez.",RECHECK_REQUIRED:"Une nouvelle vérification est nécessaire avant l’installation.",LOCAL_RECOVERY_REQUIRED:"Une intervention locale est nécessaire avant de reprendre cette mise à jour.",APPLY_FAILED:"Installation non effectuée. La version actuelle est conservée.",AUTOMATIC_POLICY_CHANGED:"Installation annulée car la politique de mise à jour a changé.",AVAILABLE:"Mise à jour disponible",INSTALLED:"Mise à jour installée",PENDING:"En attente du service de mise à jour (moins d’une minute)",RUNNING:"Vérification en cours",SUCCEEDED:"Terminé",FAILED:"Échec"};
+ const cards=new Map(),cardKey=(scope,component)=>scope+":"+component;
+ const currentView=scope=>scope==="local"?local:server;
+ function operationFor(view,component){return (view?.operations||[]).filter(op=>op.component===component).at(-1);}
+ function statusText(op,detected,available){
+  if(op?.status==="pending")return t(resultLabels.PENDING);
+  if(op?.status==="running")return t(resultLabels.RUNNING);
+  if(op?.status==="deferred_busy")return t(resultLabels[(op.result_code||"DEFERRED_BUSY_MANUAL").toUpperCase()]||resultLabels.DEFERRED_BUSY_MANUAL);
+  if(detected)return `${t("Version disponible")} : ${available.version}`;
+  const result=(op?.result_code||op?.status||"").toUpperCase();if(result==="AVAILABLE"&&!available)return t("Mise à jour détectée ; détails indisponibles. Réactualisez.");return t(resultLabels[result]||result);
+ }
+ function createCard(scope,component){
+  const card=node("div"),form=node("form",undefined,"inline"),select=node("select"),time=node("input"),save=node("button",t("Enregistrer")),check=node("button",t("Vérifier maintenant"),"secondary"),install=node("button",t("Installer maintenant")),status=node("p",undefined,"muted"),heading=node("h3"),next=node("p",undefined,"muted"),hint=node("p",undefined,"muted"),record={scope,component,card,form,select,time,save,check,install,status,heading,next,hint,inFlight:false,policy:null,canCheck:false,supported:false,busy:false};
+  card.dataset.updateScope=scope;card.dataset.updateComponent=component;time.type="time";check.type=install.type="button";select.setAttribute("aria-label",t("Mode de mise à jour"));time.setAttribute("aria-label",t("Heure locale de vérification"));
+  for(const [value,label]of [["manual","Manuel"],["check","Vérification automatique"],...(component==="mac"?[]:[["automatic","Installation automatique"]])]){const option=node("option",t(label));option.value=value;select.append(option);}
+  async function action(action,extra={}){
+   if(record.inFlight)return;record.inFlight=true;record.check.disabled=record.install.disabled=true;record.status.textContent=t("Demande enregistrée. Le service de mise à jour la traitera en moins d’une minute.");
+   try{note.textContent="";await call({action:(scope==="server"?"server_":"")+action,component,...extra});await refresh();}
+   catch(error){note.textContent=error.message||String(error);if(error.code?.includes("CHANGED"))await refresh();}
+   finally{record.inFlight=false;if(record.card.isConnected)renderCard(record,currentView(scope));}
+  }
+  check.onclick=()=>{void action("check");};install.onclick=()=>{void action("install",scope==="server"?{confirmed:true}:{});};
+  form.onsubmit=event=>{event.preventDefault();try{const [hour,minute]=time.value.split(":").map(Number);void action("policy",commandForPolicy(component,record.policy||{},hour,minute,select.value));}catch(error){note.textContent=error.message;}};
+  form.append(select,time,save);card.append(heading,form,next,check,install,status,hint);rows.append(card);cards.set(cardKey(scope,component),record);return record;
+ }
+ function renderCard(record,view){
+  const {scope,component,select,time,heading,next,hint,save,check,install,status,form}=record,policy=view?.policies?.[component];if(!policy)return;
+  record.policy=policy;heading.textContent=t(names[component])+` · ${t(scope==="local"?"Cet appareil":"Serveur")} · ${visibleVersion(view.installed?.[component])||t("Indisponible")}`;
+  // Never overwrite an in-progress policy edit. Status and action controls remain live.
+  if(!form.contains(document.activeElement)){select.value=policy.mode;time.value=String(policy.hour).padStart(2,"0")+":"+String(policy.minute).padStart(2,"0");}
+  const supported=scope==="local"||view.helper_available,canCheck=supported||view.check_available===true,available=view.available?.[component],op=operationFor(view,component),busy=["pending","running","deferred_busy"].includes(op?.status),detected=hasNewerVersion(view.installed?.[component],available)&&!busy&&!(op?.kind==="check"&&op.status==="failed");
+  record.supported=supported;record.canCheck=canCheck;record.busy=busy;save.disabled=record.inFlight||!supported;check.disabled=record.inFlight||!canCheck||busy;install.hidden=!detected;install.disabled=record.inFlight||!supported||busy;status.textContent=statusText(op,detected,available);next.textContent=`${t("Prochain contrôle à")} ${time.value} · ${view.timezone||t("Heure locale")}`;
+  hint.textContent=!supported?t(canCheck?"La recherche est disponible sans service d’installation. Installez ce service sur le serveur pour autoriser les installations et leur planification.":"Mettez à jour le serveur pour rechercher les versions sans service d’installation."):"";
+ }
  function render(force=false){
-  // Polling must never destroy an unsaved settings edit or steal focus.
-  if(!force&&rows.contains(document.activeElement))return;
-  summary.replaceChildren();rows.replaceChildren();
+  summary.replaceChildren();
   const installed={...(server?.installed||{}),...(local?.installed||{})};if(!native)installed.web={version:WEB_VERSION};
   for(const key of [native?"mac":"web","server","themes"])summary.append(node("p",`${t(names[key])} : ${visibleVersion(installed[key])||t("Indisponible")}`));
   summary.append(node("p",`API : ${server?.installed?.api||local?.installed?.api||"2026-10-14"}`,"muted"));
   if(server?.unsupported)summary.append(node("p",t("Ce serveur ne gère pas encore les mises à jour. Le reste de l’application reste disponible."),"muted"));
   for(const [scope,view,components]of [["local",local,native?["mac","themes"]:[]],["server",server,["server","web","themes"]]]){
    if(!view||view.unsupported)continue;
-   for(const component of components){
-    const policy=view.policies?.[component];if(!policy)continue;
-    const card=node("div"),form=node("form",undefined,"inline"),select=node("select"),time=node("input"),save=node("button",t("Enregistrer")),check=node("button",t("Vérifier maintenant"),"secondary"),install=node("button",t("Installer maintenant")),status=node("p",undefined,"muted");
-    card.dataset.updateScope=scope;card.dataset.updateComponent=component;
-    card.append(node("h3",t(names[component])+` · ${t(scope==="local"?"Cet appareil":"Serveur")} · ${visibleVersion(view.installed?.[component])||t("Indisponible")}`));
-    for(const [value,label]of [["manual","Manuel"],["check","Vérification automatique"],...(component==="mac"?[]:[["automatic","Installation automatique"]])]){const option=node("option",t(label));option.value=value;select.append(option);}
-    select.value=policy.mode;select.setAttribute("aria-label",t("Mode de mise à jour"));time.type="time";time.value=String(policy.hour).padStart(2,"0")+":"+String(policy.minute).padStart(2,"0");time.setAttribute("aria-label",t("Heure locale de vérification"));
-    form.append(select,time,save);check.type=install.type="button";
-    const supported=scope==="local"||view.helper_available,canCheck=supported||view.check_available===true;
-    const available=view.available?.[component],op=(view.operations||[]).filter(op=>op.component===component).at(-1);
-    const result=(op?.result_code||op?.status||"").toUpperCase(),busy=["pending","running","deferred_busy"].includes(op?.status);
-    const detected=hasNewerVersion(view.installed?.[component],available)&&!busy&&!(op?.kind==="check"&&op.status==="failed");
-    save.disabled=!supported;check.disabled=!canCheck||busy;install.hidden=!detected;install.disabled=!supported||busy;
-    status.textContent=busy?t("Vérification en arrière-plan…"):detected?`${t("Version disponible")} : ${available.version}`:t(resultLabels[result]||result);
-    if(!supported)card.append(node("p",t(canCheck?"La recherche est disponible sans service d’installation. Installez ce service sur le serveur pour autoriser les installations et leur planification.":"Mettez à jour le serveur pour rechercher les versions sans service d’installation."),"muted"));
-    async function action(action,extra={}){check.disabled=install.disabled=true;status.textContent=t("Vérification en arrière-plan…");try{note.textContent="";await call({action:(scope==="server"?"server_":"")+action,component,...extra});await refresh(true);}catch(error){note.textContent=error.message||String(error);if(error.code?.includes("CHANGED"))await refresh(true);}finally{if(card.isConnected){check.disabled=!canCheck||busy;install.disabled=!supported||busy;}}}
-    check.onclick=()=>action("check");install.onclick=()=>{void action("install",scope==="server"?{confirmed:true}:{});};
-    form.onsubmit=event=>{event.preventDefault();try{const [hour,minute]=time.value.split(":").map(Number);void action("policy",commandForPolicy(component,policy,hour,minute,select.value));}catch(error){note.textContent=error.message;}};
-    card.append(form,node("p",`${t("Prochain contrôle à")} ${time.value} · ${view.timezone||t("Heure locale")}`,"muted"),check,install,status);rows.append(card);
-   }
+   for(const component of components){if(!view.policies?.[component])continue;renderCard(cards.get(cardKey(scope,component))||createCard(scope,component),view);}
   }
   if(native)summary.append(node("p",t("Sur Mac, l’installation demande toujours votre validation. La vérification automatique fonctionne lorsque l’application est ouverte."),"muted"));
  }
