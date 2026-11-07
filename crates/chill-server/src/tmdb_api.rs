@@ -420,6 +420,12 @@ impl Default for TmdbJobService {
     }
 }
 impl TmdbJobService {
+    fn reserve_provider_request(&self) -> Result<tokio::sync::OwnedSemaphorePermit, ApiError> {
+        self.task_slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "TMDB_REQUEST_BUSY"))
+    }
     fn store_artwork_candidates(
         &self,
         profile: &str,
@@ -1206,21 +1212,23 @@ async fn ensure_collection_revision(
 ) -> Result<(), ApiError> {
     let profile = profile.to_owned();
     let collection = collection.to_owned();
-    state
+    let current = state
         .database
         .call(move |s| {
-            let revision = match kind {
+            Ok::<_, String>(match kind {
                 CollectionKind::Saga => {
                     s.preferences(&profile)?;
                     s.saga(&collection)?.revision
                 }
                 CollectionKind::Playlist => s.playlist(&profile, &collection)?.revision,
-            };
-            (revision == expected_revision)
-                .then_some(())
-                .ok_or_else(|| "La collection a changé entre-temps.".into())
+            })
         })
-        .await
+        .await?;
+    if current == expected_revision {
+        Ok(())
+    } else {
+        Err(ApiError(StatusCode::CONFLICT, "REVISION_CONFLICT"))
+    }
 }
 async fn collection_artwork_candidates(
     State(state): State<AppState>,
@@ -1229,10 +1237,9 @@ async fn collection_artwork_candidates(
 ) -> Result<Json<Value>, ApiError> {
     let kind = CollectionKind::parse(&kind)?;
     let query = query.query.unwrap_or_default();
-    if query.trim().is_empty() || query.chars().count() > 500 {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "TMDB_QUERY_INVALID"));
-    }
+    valid_artwork_query(&query)?;
     ensure_collection(&state, &profile, kind, &collection).await?;
+    let _provider_slot = state.tmdb_jobs.reserve_provider_request()?;
     let found = provider(&state)?
         .artwork_candidates(&query)
         .await
@@ -1242,6 +1249,12 @@ async fn collection_artwork_candidates(
             .tmdb_jobs
             .store_artwork_candidates(&profile, kind, &collection, found)?;
     Ok(Json(json!({"candidates":candidates})))
+}
+fn valid_artwork_query(query: &str) -> Result<(), ApiError> {
+    if query.trim().is_empty() || query.chars().count() > 500 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "TMDB_QUERY_INVALID"));
+    }
+    Ok(())
 }
 fn preview_response(cache: &std::path::Path, path: &std::path::Path) -> Result<Response, ApiError> {
     let (mut file, version) = crate::media_stream::open_indexed(cache, path)
@@ -1282,6 +1295,7 @@ async fn collection_artwork_preview(
         .tmdb_jobs
         .artwork_candidate(&profile, kind, &collection, &token)?;
     let cache = state.config.data_dir.join("posters");
+    let _provider_slot = state.tmdb_jobs.reserve_provider_request()?;
     let path = provider(&state)?
         .download_artwork(&candidate.poster_path, &cache)
         .await
@@ -1309,6 +1323,7 @@ async fn apply_collection_artwork(
             .tmdb_jobs
             .artwork_candidate(&profile, kind, &collection, &body.candidate_token)?;
     let cache = state.config.data_dir.join("posters");
+    let _provider_slot = state.tmdb_jobs.reserve_provider_request()?;
     let downloaded = provider(&state)?
         .download_artwork(&candidate.poster_path, &cache)
         .await
@@ -1733,5 +1748,44 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn artwork_candidates_are_bounded_and_provider_slots_are_shared() {
+        let service = TmdbJobService::default();
+        for index in 0..=MAX_ARTWORK_CANDIDATES {
+            service
+                .store_artwork_candidates(
+                    "profile",
+                    CollectionKind::Saga,
+                    "42",
+                    vec![chill_catalog::metadata::ArtworkCandidate {
+                        title: format!("Film {index}"),
+                        source: "TMDB".into(),
+                        poster_path: format!("/{index}.jpg"),
+                        poster: "https://image.tmdb.org/t/p/w342/safe.jpg".into(),
+                    }],
+                )
+                .unwrap();
+        }
+        assert!(service.artwork_candidates.lock().unwrap().len() <= MAX_ARTWORK_CANDIDATES);
+        assert!(matches!(
+            CollectionKind::parse("unknown"),
+            Err(ApiError(StatusCode::NOT_FOUND, _))
+        ));
+        let first = service.reserve_provider_request().unwrap();
+        let second = service.reserve_provider_request().unwrap();
+        assert_eq!(
+            service.reserve_provider_request().unwrap_err().1,
+            "TMDB_REQUEST_BUSY"
+        );
+        drop((first, second));
+    }
+
+    #[test]
+    fn artwork_query_is_required_and_bounded() {
+        assert!(valid_artwork_query(" ").is_err());
+        assert!(valid_artwork_query(&"x".repeat(501)).is_err());
+        assert!(valid_artwork_query(&"x".repeat(500)).is_ok());
     }
 }
