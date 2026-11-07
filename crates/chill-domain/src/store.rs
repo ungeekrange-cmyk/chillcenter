@@ -214,6 +214,7 @@ impl Store {
                 final_watched_ms INTEGER NOT NULL DEFAULT 0 CHECK(final_watched_ms >= 0),
                 watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN (0,1)),
                 rating INTEGER CHECK(rating BETWEEN 1 AND 5),
+                last_watched_at INTEGER,
                 last_session_id TEXT,
                 last_generation INTEGER,
                 last_sequence INTEGER,
@@ -288,6 +289,7 @@ impl Store {
         CREATE TRIGGER IF NOT EXISTS cc_sync_state_i AFTER INSERT ON cc_profile_state WHEN NEW.watched<>0 OR NEW.rating IS NOT NULL BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
         CREATE TRIGGER IF NOT EXISTS cc_sync_state_u AFTER UPDATE OF watched,rating ON cc_profile_state WHEN NEW.watched IS NOT OLD.watched OR NEW.rating IS NOT OLD.rating BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
         CREATE TRIGGER IF NOT EXISTS cc_sync_state_d AFTER DELETE ON cc_profile_state WHEN OLD.watched<>0 OR OLD.rating IS NOT NULL BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=OLD.profile_id; END;
+        CREATE TRIGGER IF NOT EXISTS cc_clear_last_watched_on_toggle AFTER UPDATE OF watched ON cc_profile_state WHEN NEW.watched IS NOT OLD.watched BEGIN UPDATE cc_profile_state SET last_watched_at=NULL WHERE profile_id=NEW.profile_id AND stable_media_id=NEW.stable_media_id; END;
         CREATE TRIGGER IF NOT EXISTS cc_sync_playlist_i AFTER INSERT ON cc_playlists BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
         CREATE TRIGGER IF NOT EXISTS cc_sync_playlist_u AFTER UPDATE ON cc_playlists BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=NEW.profile_id; END;
         CREATE TRIGGER IF NOT EXISTS cc_sync_playlist_d AFTER DELETE ON cc_playlists BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=OLD.profile_id; END;
@@ -338,6 +340,7 @@ impl Store {
         add_column_if_missing(&personal, "cc_profile_state", "last_session_id TEXT")?;
         add_column_if_missing(&personal, "cc_profile_state", "last_generation INTEGER")?;
         add_column_if_missing(&personal, "cc_profile_state", "last_sequence INTEGER")?;
+        add_column_if_missing(&personal, "cc_profile_state", "last_watched_at INTEGER")?;
         add_column_if_missing(&personal, "cc_media_fingerprint", "source_path TEXT")?;
         add_column_if_missing(
             &personal,
@@ -1239,6 +1242,7 @@ impl Store {
         self.require_profile(profile_id)?;
         self.legacy_id(stable_id)?;
         let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let old = state_in(&tx, profile_id, stable_id)?;
         // Manual false deliberately resets only the cumulative watched counter, not resume position.
         upsert_state(
             &tx,
@@ -1249,6 +1253,9 @@ impl Store {
             Some(watched),
             None,
         )?;
+        if watched && !old.watched {
+            tx.execute("UPDATE cc_profile_state SET last_watched_at=?1 WHERE profile_id=?2 AND stable_media_id=?3", params![chill_catalog::model::now(),profile_id,stable_id]).map_err(db_error)?;
+        }
         tx.commit().map_err(db_error)
     }
 
@@ -1354,6 +1361,9 @@ impl Store {
             Some(watched),
             None,
         )?;
+        if watched && !old.watched {
+            tx.execute("UPDATE cc_profile_state SET last_watched_at=?1 WHERE profile_id=?2 AND stable_media_id=?3", params![chill_catalog::model::now(),profile_id,stable_id]).map_err(db_error)?;
+        }
         tx.execute("UPDATE cc_profile_state SET last_session_id=?1,last_generation=?2,last_sequence=?3 WHERE profile_id=?4 AND stable_media_id=?5",params![progress.session_id,progress.generation as i64,progress.sequence as i64,profile_id,stable_id]).map_err(db_error)?;
         tx.execute("INSERT INTO cc_resume_measurement(profile_id,stable_media_id,duration_ms) VALUES(?1,?2,?3)
             ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET duration_ms=excluded.duration_ms",
@@ -2600,8 +2610,8 @@ impl Store {
             speeds.push(row.map_err(db_error)?);
         }
         let mut states = Vec::new();
-        let mut q=self.personal.prepare("SELECT stable_media_id,position_ms,final_watched_ms,watched,rating FROM cc_profile_state WHERE profile_id=?1").map_err(db_error)?;
-        for r in q.query_map([&p.id],|r|Ok(json!({"media_id":r.get::<_,String>(0)?,"position_ms":r.get::<_,i64>(1)?,"final_watched_ms":r.get::<_,i64>(2)?,"watched":r.get::<_,bool>(3)?,"rating":r.get::<_,Option<i64>>(4)?}))).map_err(db_error)? { states.push(r.map_err(db_error)?); }
+        let mut q=self.personal.prepare("SELECT stable_media_id,position_ms,final_watched_ms,watched,rating,last_watched_at FROM cc_profile_state WHERE profile_id=?1").map_err(db_error)?;
+        for r in q.query_map([&p.id],|r|Ok(json!({"media_id":r.get::<_,String>(0)?,"position_ms":r.get::<_,i64>(1)?,"final_watched_ms":r.get::<_,i64>(2)?,"watched":r.get::<_,bool>(3)?,"rating":r.get::<_,Option<i64>>(4)?,"last_watched_at":r.get::<_,Option<i64>>(5)?}))).map_err(db_error)? { states.push(r.map_err(db_error)?); }
         Ok(
             json!({"profile_id":p.id,"preferences":prefs,"speeds":speeds,"states":states,"playlists":self.export_playlists(&p.id)?}),
         )

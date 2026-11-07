@@ -248,6 +248,7 @@ pub fn convert_cinefolio_snapshot(
             final_watched_ms: if m.watched { 10_000 } else { 0 },
             watched: m.watched,
             rating: m.rating,
+            last_watched_at: None,
         })
         .collect();
     let mut playlists = Vec::new();

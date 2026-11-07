@@ -3,6 +3,7 @@ pub mod ai;
 pub mod catalog_browser;
 pub mod catalog_delta;
 pub mod fingerprint;
+pub mod home;
 pub mod import;
 pub mod legacy;
 pub mod metadata_edit;

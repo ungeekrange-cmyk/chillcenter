@@ -60,6 +60,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/admin/scan", get(scan_status).post(start_scan))
         .route("/profiles/{profile}/catalog", get(catalog))
+        .route("/profiles/{profile}/home", get(home))
         .route(
             "/profiles/{profile}/playback-progress",
             get(playback_progress),
@@ -1163,6 +1164,17 @@ async fn catalog(
         .await?;
     Ok(Json(
         json!({"items":page.items,"has_more":page.has_more,"series_counters":page.series_counters}),
+    ))
+}
+async fn home(
+    State(state): State<AppState>,
+    Path(profile): Path<String>,
+) -> Result<Json<chill_domain::home::HomeCatalog>, ApiError> {
+    Ok(Json(
+        state
+            .database
+            .call(move |store| store.home_catalog(&profile))
+            .await?,
     ))
 }
 #[derive(Deserialize)]

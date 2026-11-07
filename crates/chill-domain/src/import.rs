@@ -75,6 +75,8 @@ pub struct PortableState {
     pub final_watched_ms: u64,
     pub watched: bool,
     pub rating: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_watched_at: Option<i64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -693,7 +695,7 @@ impl Store {
                     )
                     .map_err(db)?;
                 }
-                tx.execute("INSERT OR IGNORE INTO cc_profile_state(profile_id,stable_media_id,position_ms,final_watched_ms,watched,rating) VALUES(?1,?2,?3,?4,?5,?6)",params![p.profile_id,state.media_id,state.position_ms as i64,state.final_watched_ms as i64,state.watched,state.rating]).map_err(db)?;
+                tx.execute("INSERT OR IGNORE INTO cc_profile_state(profile_id,stable_media_id,position_ms,final_watched_ms,watched,rating,last_watched_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![p.profile_id,state.media_id,state.position_ms as i64,state.final_watched_ms as i64,state.watched,state.rating,state.last_watched_at]).map_err(db)?;
             }
             for list in &p.playlists {
                 let exists: bool = tx
@@ -856,6 +858,7 @@ mod tests {
                     final_watched_ms: 10000,
                     watched: true,
                     rating: Some(4),
+                    last_watched_at: None,
                 }],
                 playlists: vec![PortablePlaylist {
                     id: uuid::Uuid::new_v4().to_string(),

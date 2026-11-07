@@ -360,7 +360,19 @@ impl Store {
                 tx.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,rating) VALUES(?1,?2,?3) ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET rating=excluded.rating",params![profile,&c.id,rating]).map_err(super::store::db_error)?;
             }
             if let Some(w) = c.patch.watched {
+                let was_watched: bool = tx
+                    .query_row(
+                        "SELECT watched FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2",
+                        params![profile, &c.id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(super::store::db_error)?
+                    .unwrap_or(false);
                 tx.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,watched,final_watched_ms,last_session_id,last_generation,last_sequence) VALUES(?1,?2,?3,0,NULL,NULL,NULL) ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET watched=excluded.watched,final_watched_ms=0,last_session_id=NULL,last_generation=NULL,last_sequence=NULL",params![profile,&c.id,w as i64]).map_err(super::store::db_error)?;
+                if w && !was_watched {
+                    tx.execute("UPDATE cc_profile_state SET last_watched_at=?1 WHERE profile_id=?2 AND stable_media_id=?3", params![chill_catalog::model::now(), profile, &c.id]).map_err(super::store::db_error)?;
+                }
             }
         }
         let out = AiApplied {
