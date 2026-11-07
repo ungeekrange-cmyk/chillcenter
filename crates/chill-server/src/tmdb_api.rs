@@ -1227,7 +1227,7 @@ async fn ensure_collection_revision(
     if current == expected_revision {
         Ok(())
     } else {
-        Err(ApiError(StatusCode::CONFLICT, "REVISION_CONFLICT"))
+        Err(ApiError(StatusCode::CONFLICT, "PROFILE_CONFLICT"))
     }
 }
 async fn collection_artwork_candidates(

@@ -526,6 +526,109 @@ mod tests {
             serde_json::from_slice(&bytes).unwrap_or(Value::Null),
         )
     }
+
+    #[tokio::test]
+    async fn playlist_member_poster_is_scoped_cas_protected_and_leaves_media_unchanged() {
+        let (dir, app) = setup();
+        let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let first = store.create_profile("First").unwrap();
+        let second = store.create_profile("Second").unwrap();
+        let data = dir.path().canonicalize().unwrap();
+        let poster = chill_catalog::poster::store(
+            include_bytes!("../../../icons/icon.png"),
+            &data.join("posters"),
+        )
+        .unwrap();
+        let mut media = chill_catalog::scanner::parse_file(
+            std::path::Path::new("/fixture"),
+            &std::path::PathBuf::from("/fixture/Film.mkv"),
+        );
+        media.poster = Some(poster);
+        media.poster_custom = true;
+        store.snapshot(vec![media]).unwrap();
+        let media_id = store.catalog(&first.id).unwrap()[0].id.clone();
+        let before = store.media(&first.id, &media_id).unwrap();
+        let source = store.artwork_path(&first.id, &media_id).unwrap();
+        let cache = data.join("posters");
+        let source = std::path::PathBuf::from(source).canonicalize().unwrap();
+        let opened = crate::media_stream::open_indexed(&cache, &source);
+        assert!(opened.is_ok(), "{:#?}", opened.err());
+        let playlist = store
+            .create_playlist_with_members(&first.id, "Sélection", &[media_id.clone()])
+            .unwrap();
+        let excluded = store
+            .create_playlist_with_members(&first.id, "Vide", &[])
+            .unwrap();
+        drop(store);
+
+        let route = format!(
+            "/api/2026-10-14/profiles/{}/playlists/{}/poster/member",
+            first.id, playlist.id
+        );
+        let (status, copied) = json_call(
+            &app,
+            "PUT",
+            &route,
+            json!({"expected_revision":playlist.revision,"media_id":media_id}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{copied}");
+        assert_eq!(copied["playlist"]["revision"], playlist.revision + 1);
+        assert!(
+            copied["playlist"]["poster"]
+                .as_str()
+                .unwrap()
+                .contains("/playlists/")
+        );
+
+        let mut store = Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        assert_eq!(store.media(&first.id, &media_id).unwrap(), before);
+        drop(store);
+        assert_eq!(
+            json_call(
+                &app,
+                "PUT",
+                &format!(
+                    "/api/2026-10-14/profiles/{}/playlists/{}/poster/member",
+                    second.id, playlist.id
+                ),
+                json!({"expected_revision":playlist.revision + 1,"media_id":media_id}),
+            )
+            .await
+            .0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            json_call(
+                &app,
+                "PUT",
+                &format!(
+                    "/api/2026-10-14/profiles/{}/playlists/{}/poster/member",
+                    first.id, excluded.id
+                ),
+                json!({"expected_revision":excluded.revision,"media_id":media_id}),
+            )
+            .await
+            .0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let stale = json_call(
+            &app,
+            "PUT",
+            &format!(
+                "/api/2026-10-14/admin/profiles/{}/collections/playlist/{}/poster/tmdb",
+                first.id, playlist.id
+            ),
+            json!({"expected_revision":playlist.revision,"candidate_token":uuid::Uuid::new_v4()}),
+        )
+        .await;
+        assert_eq!(
+            stale.0,
+            StatusCode::CONFLICT,
+            "stale revision is rejected before a TMDB provider request"
+        );
+        assert_eq!(stale.1["code"], "PROFILE_CONFLICT");
+    }
     #[tokio::test]
     async fn catalog_mirror_is_coherent_scoped_and_ignores_unrelated_progress() {
         let (dir, app) = setup();
@@ -690,7 +793,9 @@ mod tests {
     fn setup_with(http: bool) -> (tempfile::TempDir, Router) {
         let dir = tempfile::tempdir().unwrap();
         let config = ServerConfig {
-            data_dir: dir.path().to_owned(),
+            // `open_indexed` deliberately refuses symlinked path components.
+            // macOS exposes temporary paths through /var -> /private/var.
+            data_dir: dir.path().canonicalize().unwrap(),
             http_listen: http.then(|| "127.0.0.1:8080".parse().unwrap()),
             ..ServerConfig::default()
         };
