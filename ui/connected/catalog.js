@@ -354,7 +354,7 @@ function renderCollectionMembers(){
   // Scroll keeps the same cards; changed membership/filter must renew action
   // closures and their move-button bounds, not retain an earlier visible order.
   if(visibleIds.length!==collectionCardsOrder.length||visibleIds.some((id,index)=>id!==collectionCardsOrder[index])){discardCollectionCards();collectionCardsOrder=visibleIds;}
-  const view=catalogWindow(visibleIds.length,Math.max(1,rect.width),200,-rect.top,innerHeight);
+  const view=catalogWindow(visibleIds.length,Math.max(1,rect.width),200,-rect.top,innerHeight,false,168);
   const focused=document.activeElement?.closest?.(".collection-media-card")?.dataset.mediaId;
   target.style.height=view.height+"px";
   const grid=node("div",undefined,"virtual-window"),wanted=new Set();grid.style.top=view.top+"px";grid.style.gridTemplateColumns="repeat("+view.columns+",minmax(0,1fr))";grid.style.gridAutoRows=view.gridRowHeight+"px";
