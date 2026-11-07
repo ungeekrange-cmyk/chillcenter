@@ -883,6 +883,58 @@ mod tests {
         }
     }
     #[test]
+    fn watched_dates_survive_portable_roundtrip_and_old_archives_remain_undated() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut first = Store::open(&temporary.path().join("first.sqlite")).unwrap();
+        let mut source = document();
+        source.personal[0].states[0].last_watched_at = Some(1234567890);
+        let plan = first
+            .prepare_portable_import(source.clone(), &mapping(&source), Path::new("/srv/videos"))
+            .unwrap();
+        first
+            .apply_portable_import(&plan, &BTreeMap::new())
+            .unwrap();
+        let exported = first.export_json().unwrap();
+        assert_eq!(
+            exported["personal"][0]["states"][0]["last_watched_at"],
+            1234567890
+        );
+        let roundtrip: ArchiveDocument = serde_json::from_value(exported).unwrap();
+        let mut second = Store::open(&temporary.path().join("second.sqlite")).unwrap();
+        let plan = second
+            .prepare_portable_import(
+                roundtrip.clone(),
+                &mapping(&roundtrip),
+                Path::new("/srv/videos"),
+            )
+            .unwrap();
+        second
+            .apply_portable_import(&plan, &BTreeMap::new())
+            .unwrap();
+        assert_eq!(
+            second.export_json().unwrap()["personal"][0]["states"][0]["last_watched_at"],
+            1234567890
+        );
+        let mut old = serde_json::to_value(document()).unwrap();
+        old["personal"][0]["states"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("last_watched_at");
+        let old: ArchiveDocument = serde_json::from_value(old).unwrap();
+        assert!(old.personal[0].states[0].last_watched_at.is_none());
+        let mut legacy = Store::open(&temporary.path().join("legacy.sqlite")).unwrap();
+        let plan = legacy
+            .prepare_portable_import(old.clone(), &mapping(&old), Path::new("/srv/videos"))
+            .unwrap();
+        legacy
+            .apply_portable_import(&plan, &BTreeMap::new())
+            .unwrap();
+        assert!(
+            legacy.export_json().unwrap()["personal"][0]["states"][0]["last_watched_at"].is_null()
+        );
+    }
+
+    #[test]
     fn new_profile_roundtrip_is_readonly_until_apply_atomic_and_idempotent() {
         let temp = tempfile::tempdir().unwrap();
         let mut store = Store::open(&temp.path().join("db.sqlite")).unwrap();

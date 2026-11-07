@@ -67,14 +67,26 @@ fn common_series(media: &mut Media) {
         media.overview = metadata.overview.clone();
     }
 }
+fn features(media: &Media) -> (&[String], &[String], &[String]) {
+    if media.category == "serie"
+        && let Some(metadata) = &media.series_metadata
+    {
+        (&metadata.genres, &metadata.cast, &metadata.directors)
+    } else {
+        (&media.genres, &media.cast, &media.directors)
+    }
+}
 fn matches(seed: &Media, candidate: &Media) -> Vec<String> {
-    let mut out = common(&seed.genres, &candidate.genres);
-    out.extend(common(&seed.cast, &candidate.cast));
-    out.extend(common(&seed.directors, &candidate.directors));
+    let (genres, cast, directors) = features(seed);
+    let (other_genres, other_cast, other_directors) = features(candidate);
+    let mut out = common(genres, other_genres);
+    out.extend(common(cast, other_cast));
+    out.extend(common(directors, other_directors));
     out.sort();
     out.dedup();
     out
 }
+
 fn score(seeds: &[&Row], candidate: &Row) -> (usize, Vec<String>) {
     let mut total = 0;
     let mut labels = Vec::new();
@@ -223,7 +235,7 @@ impl Store {
                             profile,
                             proxy,
                             Some(key.clone()),
-                            Some(season),
+                            (season >= 0).then_some(season),
                             progress,
                             vec![],
                         ),
@@ -351,6 +363,65 @@ mod tests {
         m.added_at = added_at;
         m.genres = vec!["Drama".into()];
         m
+    }
+
+    #[test]
+    fn recommendations_use_shared_series_metadata_in_both_directions() {
+        let mut seed = episode("Show.S01E01.mkv", 1, 1, 1);
+        seed.genres.clear();
+        seed.cast.clear();
+        seed.directors.clear();
+        seed.series_metadata = Some(chill_catalog::model::SeriesMetadata {
+            year: None,
+            genres: vec!["Shared genre".into()],
+            overview: String::new(),
+            cast: vec!["Shared actor".into()],
+            directors: vec!["Shared director".into()],
+        });
+        let mut candidate = media("Related.mkv");
+        candidate.genres = vec!["Shared genre".into()];
+        candidate.cast = vec!["Shared actor".into()];
+        candidate.directors = vec!["Shared director".into()];
+        assert_eq!(matches(&seed, &candidate).len(), 3);
+        assert_eq!(matches(&candidate, &seed).len(), 3);
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("meta.sqlite")).unwrap();
+        let profile = store.create_profile("A").unwrap().id;
+        store.snapshot(vec![seed, candidate]).unwrap();
+        let id = store
+            .catalog(&profile)
+            .unwrap()
+            .into_iter()
+            .find(|m| m.category == "serie")
+            .unwrap()
+            .id;
+        store.set_watched(&profile, &id, true).unwrap();
+        let result = store.home_catalog(&profile).unwrap();
+        assert_eq!(result.recommendations[0].media.title, "Related");
+        assert_eq!(result.recommendations[0].matches.len(), 3);
+    }
+    #[test]
+    fn started_unknown_season_is_nullable_in_the_home_contract() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("unknown.sqlite")).unwrap();
+        let profile = store.create_profile("A").unwrap().id;
+        let mut first = episode("Show.E01.mkv", 1, 1, 1);
+        first.season = None;
+        let mut next = episode("Show.E02.mkv", 1, 2, 2);
+        next.season = None;
+        store.snapshot(vec![first, next]).unwrap();
+        let id = store
+            .catalog(&profile)
+            .unwrap()
+            .into_iter()
+            .find(|m| m.episode == Some(1))
+            .unwrap()
+            .id;
+        store.set_watched(&profile, &id, true).unwrap();
+        let result = store.home_catalog(&profile).unwrap();
+        assert_eq!(result.continue_watching.len(), 1);
+        assert!(result.continue_watching[0].season.is_none());
+        assert!(result.continue_watching[0].media.season.is_none());
     }
 
     #[test]

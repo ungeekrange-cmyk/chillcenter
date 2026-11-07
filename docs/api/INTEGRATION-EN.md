@@ -496,3 +496,8 @@ readable and produce null timestamps. Older versions cannot import an archive
 containing the new field. Home is bounded to10000 videos; larger libraries get
 an explicit error rather than a truncated selection. Older servers return404;
 search and categories remain usable. Clients discard stale-profile responses.
+
+As specified by ADR-0035, legacy portable archives do not carry measured
+durations. After import, a resume may disappear from Home until playback
+remeasures it; no duration is invented. Full SQLite backups preserve
+cc_resume_measurement.

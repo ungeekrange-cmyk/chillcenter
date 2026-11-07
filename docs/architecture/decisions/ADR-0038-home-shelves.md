@@ -35,3 +35,8 @@ le catalogue. Une erreur réseau conserve uniquement la vue du même profil.
 Aucun déploiement ni nouvelle publication autorisé implicitement par cet ADR.
 Rollback logiciel : versions précédentes, colonne additive laissée en place ;
 aucune suppression de donnée ni migration inverse destructive.
+
+Portabilité des reprises : la décision ADR-0035 est conservée. Les archives
+portables historiques omettent les durées mesurées ; après import une reprise
+Home peut être absente jusqu’à une nouvelle mesure, sans durée inventée. Les
+sauvegardes complètes SQLite conservent la table cc_resume_measurement.

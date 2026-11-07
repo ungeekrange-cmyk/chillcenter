@@ -278,3 +278,8 @@ Une ancienne version ne peut pas importer une archive contenant le nouveau champ
 La lecture Home est bornée à10000 vidéos ; au-delà, une erreur explicite remplace
 une sélection tronquée. Un ancien serveur répond404 ; recherche et catégories
 restent utilisables. Les clients rejettent les réponses d'un ancien profil.
+
+Comme décidé dans ADR-0035, les archives portables historiques ne transportent
+pas les durées mesurées. Après import, une reprise peut donc disparaître de
+l’Accueil jusqu’à une nouvelle mesure de lecture ; aucune durée n’est inventée.
+Une sauvegarde complète SQLite conserve cc_resume_measurement.

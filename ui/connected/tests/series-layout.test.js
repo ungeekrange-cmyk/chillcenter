@@ -105,3 +105,6 @@ test('series synopsis, counts and rating share the header copy; TMDB and edit co
 test('Home can explicitly open a started season0 even when another season has unseen episodes',async()=>{
  const f=seriesFixture([episode('s0',0,1),episode('s1',1,1)]);await f.execute('openSeries("Fixture",0)');assert.deepEqual(f.openSeasons(),['0']);
 });
+test('Home can explicitly open an unknown started season while a known season is untouched',async()=>{
+ const f=seriesFixture([episode('unknown',null,1),episode('known',1,1)]);await f.execute('openSeries("Fixture",null)');assert.deepEqual(f.openSeasons(),['null']);
+});

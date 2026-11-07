@@ -44,3 +44,6 @@ test('concurrent Home reads coalesce and a mutation during that read schedules a
  let resolve;let count=0;const f=home(()=>++count===1?new Promise(r=>resolve=r):payload([movie('fresh')]));
  const first=f.sandbox.window.refreshHome();const second=f.sandbox.window.refreshHome(true);assert.equal(count,1);resolve(payload([movie('old')]));await Promise.all([first,second]);await new Promise(r=>setImmediate(r));assert.equal(count,2);assert.equal(cards(f.get('home-rails'))[0].dataset.homeMediaId,'fresh');
 });
+test('recent series opens with default season selection while unknown Continue opens null explicitly',async()=>{
+ const series={...movie('show',{category:'serie',series:'Show'}),series_key:'show',season:null};const f=home(()=>payload([series],[series]));const calls=[];f.sandbox.window.catalogOpenSeries=(...args)=>calls.push(args);await f.sandbox.window.refreshHome();const result=cards(f.get('home-rails'));await result[0].onclick();await result[1].onclick();assert.deepEqual(calls,[['show',null],['show']]);
+});

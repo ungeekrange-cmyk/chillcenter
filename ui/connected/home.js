@@ -22,6 +22,7 @@
   function badge(item) {
     const values = [];
     if (Number.isInteger(item.season) && item.season >= 0) values.push(uiText("Saison ") + item.season);
+    else if (item.series_key) values.push(uiText("Saison inconnue"));
     const p = item.progress;
     if (p && Number.isSafeInteger(p.position_ms) && Number.isSafeInteger(p.duration_ms) && p.position_ms >= 0 && p.duration_ms > 0) values.push(Math.min(100, Math.floor(p.position_ms / p.duration_ms * 100)) + " %");
     return values.join(" · ");
@@ -35,7 +36,11 @@
         label, previousLabel: uiText("Éléments précédents — {0}", label), nextLabel: uiText("Éléments suivants — {0}", label),
         beforeOpen(item) {
           if (context() !== key || !visible()) return false;
-          if (item.series_key) { void window.catalogOpenSeries?.(item.series_key, byId.get(item.id)?.season); return false; }
+          if (item.series_key) {
+            if (field === "continue_watching") void window.catalogOpenSeries?.(item.series_key, byId.get(item.id)?.season);
+            else void window.catalogOpenSeries?.(item.series_key);
+            return false;
+          }
         }
       });
       if (!rail) continue;

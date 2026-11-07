@@ -1,1 +1,9 @@
-#home-rails{display:grid;gap:28px}.home-badge{display:block;margin-top:5px;color:var(--accent);font-size:12px}
+#home-panel>.section-head{margin-bottom:24px}
+#home-rails{display:grid;gap:36px}
+#home-rails>.recommendation-rail-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 16px;margin-top:0}
+#home-rails .recommendation-rail-wrap>h3{align-self:center;margin:0;font-size:20px}
+#home-rails .recommendation-controls{grid-column:2;margin:0}
+#home-rails .recommendation-controls button{width:44px;height:44px}
+#home-rails .recommendation-rail{grid-column:1/-1}
+.home-badge{display:block;margin-top:5px;color:var(--accent);font-size:12px}
+@media(max-width:760px){#home-rails{gap:28px}#home-rails .recommendation-rail-wrap>h3{font-size:18px}}
