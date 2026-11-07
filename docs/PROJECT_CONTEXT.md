@@ -1,5 +1,18 @@
 # Contexte du projet
 
+## 7 novembre 2026 — publication Mac/web 0.7.5 et serveur 0.7.4
+
+Source immuable `52fc3999b312a472efa463c6eb6a286a1026694b`, main fusionnée/poussée.
+Mac0.7.5/build15 et web0.7.5 séquence6, serveur0.7.4 séquence5 ; thèmes0.7.1
+inchangés. Accueil en trois rangées, jaquettes membres/TMDB et gestion simplifiée,
+curseur masqué avec commandes, résultat de vérification lisible et helper0640.
+397 tests Rust,396 Node, Clippy strict, contrat86routes, revue indépendante et
+CodeQL/dépendances livrées PASS. Paquets Mac15+ ARM64, serveur/helper ARM64 glibc2.28
+avec14smokes réels dans VM Linux, sources correspondantes et signatures vérifiés.
+Les51 assets publics et les README distants sont contrôlés avant clôture. Aucun
+déploiement direct Pi/NAS/Mac ; ancien helper à remplacer par administrateur.
+Voir [release0.7.5](releases/REL-0.7.5.md).
+
 ## 6 novembre 2026 — publication Mac/web0.7.4
 
 Source immuable `d1d663e5a5d2f713c0983a28ebfb3ce617196080` fusionnée/poussée

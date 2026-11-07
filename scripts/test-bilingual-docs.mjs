@@ -32,9 +32,9 @@ const unique = values => [...new Set(values)].sort();
 
 test('README distinguishes source versions from immutable published download packages', async () => {
   const versions = JSON.parse(await read('versions.json'));
-  // Public receipts verified against GitHub Mac/web0.7.4; server0.7.3, themes0.7.1, not inferred from a bump.
+  // Public receipts verified against GitHub Mac/web0.7.5; server0.7.4, themes0.7.1, not inferred from a bump.
   // Keep independent component versions; unchanged themes stay at 0.7.1.
-  const published = {mac:'0.7.4',server:'0.7.3',web:'0.7.4',themes:'0.7.1'};
+  const published = {mac:'0.7.5',server:'0.7.4',web:'0.7.5',themes:'0.7.1'};
   const packages = [
     `Chill-Center-${published.mac}-macos-arm64.dmg`,
     `Chill-Center-server-${published.server}-linux-aarch64.tar.gz`,
@@ -48,7 +48,7 @@ test('README distinguishes source versions from immutable published download pac
     assert.ok(text.includes(`/releases/tag/v${published.mac})`), `${file}: stale release link`);
     const downloads = [...text.matchAll(/https:\/\/github\.com\/ungeekrange-cmyk\/chillcenter\/releases\/download\/([^/]+)\/([^\s)]+)/g)];
     for (const match of downloads) {
-      const expectedTag = /Chill-Center-(server|themes)-/.test(match[2]) ? 'v0.7.3' : 'v0.7.4';
+      const expectedTag = /Chill-Center-themes-/.test(match[2]) ? 'v0.7.3' : 'v0.7.5';
       assert.equal(match[1], expectedTag, `${file}: obsolete download release for ${match[2]}`);
     }
     assert.deepEqual([...new Set(downloads.map(match => match[2]))].sort(), [...packages].sort(), `${file}: unexpected package inventory`);
@@ -181,4 +181,15 @@ test('both documentation indexes list every translated reference pair', async ()
       }
     }
   }
+});
+
+
+test('current FR/EN install commands and DMG labels match the published component versions', async () => {
+ const versions=JSON.parse(await read('versions.json'));
+ for(const language of ['FR','EN']){
+  const text=await read(`docs/updates/GUIDE-${language}.md`);
+  assert.ok(text.includes(`--version ${versions.server} --library`));
+  for(const match of text.matchAll(/--version (\d+\.\d+\.\d+)/g))assert.equal(match[1],versions.server);
+  assert.ok(text.includes(language==='FR'?`distribution Mac ${versions.mac}`:`the ${versions.mac} DMG`));
+ }
 });

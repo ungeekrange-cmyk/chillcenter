@@ -2,22 +2,19 @@
 
 **Français** | [English](README.en.md)
 
-**Sources en cours de livraison : Mac 0.7.5 · serveur 0.7.4 · web 0.7.5 · thèmes 0.7.1.** Les liens ci-dessous désignent encore les paquets publiés ; voir [le candidat 0.7.5](docs/releases/REL-0.7.5.md).
-
-
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
-**Versions publiées : Mac 0.7.4 · serveur 0.7.3 · web 0.7.4 · thèmes 0.7.1.**
-[Changements 0.7.4 FR/EN](docs/releases/REL-0.7.4.md) : maintien éveillé uniquement
-pendant la lecture vidéo, avec libération à la pause et à l’arrêt. Le web requiert
-un contexte sécurisé et une page visible. Mac inclut le correctif ZIP 9.0.5.
-Le serveur et les thèmes restent inchangés ; cette publication ne les installe pas.
+**Versions publiées : Mac 0.7.5 · serveur 0.7.4 · web 0.7.5 · thèmes 0.7.1.**
+[Changements 0.7.5 FR/EN](docs/releases/REL-0.7.5.md) : Accueil en trois rangées,
+jaquettes depuis un film ou TMDB, gestion simplifiée et curseur masqué avec les
+commandes vidéo. Le serveur corrige aussi le résumé de disponibilité du helper ;
+un ancien helper nécessite un remplacement administrateur vérifié.
 
 ### Paquets actuellement publiés
 
-**[Télécharger l’application Mac Apple Silicon v0.7.4 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.4)
+**[Télécharger l’application Mac Apple Silicon v0.7.5 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.5)
 
-[Sources correspondantes et recettes de reconstruction du Mac](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-corresponding-sources.tar.gz) : les bibliothèques du lecteur incluent FFmpeg sous **GPL-3.0-or-later**. Licences, signatures et instructions accompagnent la release.
+[Sources correspondantes et recettes de reconstruction du Mac](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-corresponding-sources.tar.gz) : les bibliothèques du lecteur incluent FFmpeg sous **GPL-3.0-or-later**. Licences, signatures et instructions accompagnent la release.
 
 Mac, serveur, web et thèmes sont versionnés séparément dans
 [versions.json](versions.json). Les versions installées et les réglages de mise
@@ -28,13 +25,13 @@ décrivent leur calendrier et priorité.
 
 | Composant et version publiée | Paquet et instructions |
 | --- | --- |
-| Mac Apple Silicon 0.7.4, build 14 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-macos-arm64.dmg), macOS 15+ |
-| Serveur Linux ARM64 0.7.3 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-server-0.7.3-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
-| Client web/PWA 0.7.4 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-web-0.7.4-install.zip), serveur 0.7.3 pour la progression mesurée |
+| Mac Apple Silicon 0.7.5, build 15 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-macos-arm64.dmg), macOS 15+ |
+| Serveur Linux ARM64 0.7.4 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-server-0.7.4-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
+| Client web/PWA 0.7.5 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-web-0.7.5-install.zip), serveur 0.7.4 pour Accueil et les jaquettes TMDB |
 | Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
-et les [notes de version et limites](docs/releases/REL-0.7.4.md). Les manifestes
+et les [notes de version et limites](docs/releases/REL-0.7.5.md). Les manifestes
 signés sont dans les releases propres à chaque composant. Le serveur existant
 n’est pas modifié directement par cette publication ; sa politique de mise à
 jour peut la détecter. La v0.6 et les anciens paquets
@@ -43,6 +40,8 @@ existante : il refuse volontairement de l’écraser.
 
 ## Fonctionnalités
 
+- Accueil : Reprendre, Ajouts récents, Pour vous ; vingt cartes par rangée, séries regroupées et reprise par saison.
+- Jaquettes de collections depuis leurs membres, TMDB ou un fichier ; suppression confirmée conservant les vidéos.
 - Films, séries, saisons, sagas et listes de lecture.
 - Découverte du serveur sur Mac avec Bonjour, saisie manuelle en secours.
 - Profils : reprise synchronisée, historique, vidéos vues et notes personnelles.
@@ -61,7 +60,7 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 ### Client Mac
 
 - Mac **Apple Silicon (ARM64)** ; aucun paquet Intel n’est publié.
-- Le DMG **0.7.4 nécessite macOS 15 Sequoia minimum**, pour couvrir macOS
+- Le DMG **0.7.5 nécessite macOS 15 Sequoia minimum**, pour couvrir macOS
   15, 26 et 27, avec dépendances Sequoia figées et contrôlées avant signature.
   Les minima des 51 Mach-O, la signature et le montage du DMG ont été vérifiés.
   Les essais physiques sur macOS 15/26 restent non réalisés.
@@ -73,7 +72,7 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 
 ### Serveur Linux
 
-- Le paquet publié **0.7.3 cible Linux ARM64/AArch64, système 64 bits avec
+- Le paquet publié **0.7.4 cible Linux ARM64/AArch64, système 64 bits avec
   glibc 2.28 minimum pour les binaires**. Raspberry Pi 3 B/B+ avec Linux 64 bits
   est la cible ; un OS ARM 32 bits ou Alpine/musl ne convient pas à ce paquet.
   La configuration réelle vérifiée est Debian 13 ; une autre distribution

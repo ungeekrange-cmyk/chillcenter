@@ -2,10 +2,7 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-The [v0.7.4 release](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.4)
-groups Mac and web 0.7.4; server 0.7.3 and themes 0.7.1 remain unchanged. Publication does not
-install them on an existing server. Earlier releases remain available; see the
-[release evidence and limits](../releases/REL-0.7.4.md).
+Release v0.7.5 provides Mac0.7.5/build15, web0.7.5 and server0.7.4. Themes0.7.1 remain unchanged. Publication performs no direct installation on an existing server.
 
 ## Four components
 
@@ -65,20 +62,20 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives: v0.7.4 for Mac/web, v0.7.3 for server/themes, not GitHub's automatically
+Use the complete distribution archives: v0.7.5 for Mac/web/server, with themes0.7.1 in v0.7.3, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.
 
 ```sh
-minisign -Vm Chill-Center-server-0.7.3-linux-aarch64.tar.gz \
+minisign -Vm Chill-Center-server-0.7.4-linux-aarch64.tar.gz \
   -P 'RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
-tar -xzf Chill-Center-server-0.7.3-linux-aarch64.tar.gz
+tar -xzf Chill-Center-server-0.7.4-linux-aarch64.tar.gz
 ```
 
 The same verification applies to the Mac DMG, web install ZIP and themes install
 ZIP using their respective filenames. The Mac distribution is Apple Silicon
-only and the 0.7.4 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
+only and the 0.7.5 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
 pinned Sequoia inputs, and all 51 Mach-O minima were verified. Physical macOS
 15/26 execution has not yet been tested; static checks do not replace it.
 Historical: the 0.7.2 DMG required macOS 27+, despite its Rust 13.0 floor.
@@ -96,7 +93,7 @@ keys, consent or update protocols.
 The server archive contains both ARM64 binaries, signed manifest/public key,
 `scripts/` and `deploy/updates/`. Keep that layout. A fresh Linux installation
 requires a 64-bit ARM64 OS using glibc, systemd, Python 3.10+, Minisign, curl,
-Bash, tar and standard Linux tools. The 0.7.3 binaries have a glibc 2.28 minimum
+Bash, tar and standard Linux tools. The 0.7.4 binaries have a glibc 2.28 minimum
 according to their provenance; this alone does not guarantee OS/systemd-unit
 compatibility. Debian 13 is the verified real configuration; ARM32 OSes and musl
 are not covered by this package. Allow administrator rights, a synchronized
@@ -110,7 +107,7 @@ sudo ./scripts/install-server.sh \
   --server "$PWD/chill-server" --updater "$PWD/chill-update" \
   --release-pub "$PWD/release.pub" --manifest "$PWD/server-manifest.json" \
   --manifest-signature "$PWD/server-manifest.json.minisig" \
-  --version 0.7.3 --library /absolute/read-only-library \
+  --version 0.7.4 --library /absolute/read-only-library \
   --listen LAN_ADDRESS:8443 --tls-name LAN_DNS_OR_IP
 ```
 
@@ -143,3 +140,24 @@ signing key offline: losing it prevents signing new updates with that identity.
 
 References: [contract](CONTRACT.md), [ADR0029](../architecture/decisions/ADR-0029-component-releases-updates.md),
 [third-party API](../api/INTEGRATION-EN.md).
+
+
+## This release
+
+Home replaces Entire library with Continue watching, Recently added and For you:
+up to20 entries per horizontal shelf, with one card per show. Continue watching
+requires a started, unfinished season. Local recommendations use recent dated
+watched entities; historical views receive no invented dates. Empty shelves are
+hidden; search and categories remain available.
+
+Saga/playlist artwork can use a member, an explicit TMDB search or an import.
+Selection requires confirmation and never changes member metadata. Management
+and named deletion confirmation are visible and keep video files. Playback hides
+the pointer with its controls and restores it on movement, pause or closure.
+
+Update results stay live while a policy field is focused; obsolete server cards
+are removed. The helper publishes its availability snapshot0640 despite UMask0077.
+The signed server package includes the new helper; the current mechanism does
+not replace an older helper itself. Existing installations require verified
+administrator replacement; the first-install-only wrapper must not be reused.
+Publication performs no direct Pi/NAS installation or settings change.

@@ -2,24 +2,21 @@
 
 [Français](README.md) | **English**
 
-**Sources awaiting publication: Mac 0.7.5 · server 0.7.4 · web 0.7.5 · themes 0.7.1.** Downloads below still point to published packages; see [the 0.7.5 candidate](docs/releases/REL-0.7.5.md).
-
-
 Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).
 
-**Published versions: Mac 0.7.4 · server 0.7.3 · web 0.7.4 · themes 0.7.1.**
-[0.7.4 changes, FR/EN](docs/releases/REL-0.7.4.md): keep awake only during
-video playback, releasing on pause and stop. Web requires a secure context and a
-visible page. Mac includes the ZIP 9.0.5 fix. Server and themes remain unchanged;
-publication does not install packages on your devices.
+**Published versions: Mac 0.7.5 · server 0.7.4 · web 0.7.5 · themes 0.7.1.**
+[0.7.5 changes, FR/EN](docs/releases/REL-0.7.5.md): three-shelf Home, artwork from
+a member or TMDB, simpler management and pointer hiding with playback controls.
+The server also fixes helper availability publication; an older helper requires
+verified administrator replacement.
 
 ### Currently published packages
 
-**[Download the Apple Silicon Mac app v0.7.4 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.4)
+**[Download the Apple Silicon Mac app v0.7.5 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.5)
 
-[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
+[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
 
 Mac, server, web and themes are independently versioned in
 [versions.json](versions.json). Installed versions and update policies appear
@@ -29,13 +26,13 @@ can update at 02:00 local time, outside playback and active jobs.
 
 | Component and published version | Package and instructions |
 | --- | --- |
-| Apple Silicon Mac 0.7.4, build 14 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-0.7.4-macos-arm64.dmg), macOS 15+ |
-| ARM64 Linux server 0.7.3 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-server-0.7.3-linux-aarch64.tar.gz), 64-bit systemd host |
-| Web/PWA client 0.7.4 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.4/Chill-Center-web-0.7.4-install.zip), server 0.7.3 for measured progress |
+| Apple Silicon Mac 0.7.5, build 15 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-macos-arm64.dmg), macOS 15+ |
+| ARM64 Linux server 0.7.4 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-server-0.7.4-linux-aarch64.tar.gz), 64-bit systemd host |
+| Web/PWA client 0.7.5 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-web-0.7.5-install.zip), server 0.7.4 for Home and TMDB collection artwork |
 | Independent themes 0.7.1 | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
 
 Read the [verification/installation guide](docs/updates/GUIDE-EN.md) and
-[release notes and limits](docs/releases/REL-0.7.4.md). Signed manifests are
+[release notes and limits](docs/releases/REL-0.7.5.md). Signed manifests are
 published in each component's release. Publication does not update an existing
 server directly; its update policy may detect it. v0.6 and previous packages
 remain available. Do not run the initial installer on an existing installation:
@@ -43,6 +40,8 @@ it deliberately refuses to overwrite it.
 
 ## Features
 
+- Home: Continue watching, Recently added, For you; twenty cards per shelf, grouped shows and season resume.
+- Collection artwork from members, TMDB or a file; confirmed deletion keeps video files.
 - Films, series, seasons, sagas and playlists.
 - Mac server discovery with Bonjour, with manual entry as a fallback.
 - Profiles with synchronized resume positions, history, watched status and personal ratings.
@@ -64,7 +63,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 ### Mac client
 
 - **Apple Silicon (ARM64)** Mac; no Intel package is published.
-- The **0.7.4 DMG requires macOS 15 Sequoia or newer**, covering macOS
+- The **0.7.5 DMG requires macOS 15 Sequoia or newer**, covering macOS
   15, 26 and 27, with pinned Sequoia dependencies checked before signing.
   The 51 Mach-O minima, signature and DMG mount were verified.
   Physical macOS 15/26 execution has not yet been tested.
@@ -76,7 +75,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 
 ### Linux server
 
-- Published package **0.7.3 targets Linux ARM64/AArch64, a 64-bit system with
+- Published package **0.7.4 targets Linux ARM64/AArch64, a 64-bit system with
   glibc 2.28 or newer for the binaries**. Raspberry Pi 3 B/B+ running 64-bit Linux
   is the target; a 32-bit ARM OS or Alpine/musl cannot use this package.
   The verified real configuration is Debian 13; another compatible distribution

@@ -1,6 +1,6 @@
 # 0.7.5 — Accueil, collections et mises à jour / Home, collections and updates
 
-Candidat en préparation ; aucun paquet de cette version déclaré publié ici.
+Publication du 7 novembre 2026 ; composants indépendants signés et versions ci-dessous.
 Mac0.7.5/build15 et web0.7.5/séquence6 ; serveur0.7.4/séquence5 ;
 ambiances0.7.1/séquence2 inchangées. API2026-10-14, schéma3 et rendu2 conservés.
 
@@ -59,5 +59,33 @@ ADR0035 : une reprise peut disparaître jusqu'à nouvelle lecture. Les sauvegard
 SQLite complètes les conservent. Le nouvel horodatage est nullable et portable ;
 les anciens importeurs stricts refusent une archive contenant ce nouveau champ.
 Accueil borné à10000 vidéos avec erreur explicite au-delà. Signature Mac ad hoc,
-sans notarisation Apple, macOS15+ Apple Silicon. Les paquets finaux et la preuve
-publique seront ajoutés après construction et vérification réelle.
+sans notarisation Apple, macOS15+ Apple Silicon. Paquets finaux : Mac0.7.5/build15 signé ad hoc,50 bibliothèques ARM64 vérifiées ; serveur/helper ARM64 glibc 2.28, 14 contrôles TLS/HTTP/Home dans la VM Linux ; web0.7.5. Inventaires et signatures Minisign vérifiés. Source immuable : `52fc3999b312a472efa463c6eb6a286a1026694b`. Le helper nécessite un remplacement administrateur sur une installation existante.
+
+
+## Publication vérifiée / Verified publication
+
+Source immuable `52fc3999b312a472efa463c6eb6a286a1026694b`, fusionnée/poussée sur main.
+Revue indépendante source et inventaires : APPROVED_FOR_PUBLICATION.
+Tags Mac/web0.7.5, serveur0.7.4 et récapitulatif v0.7.5 ; thèmes inchangés.
+Tous les inventaires publics, digests, téléchargements et signatures concordent ;
+v0.7.5 est Latest. Aucun tag ou asset antérieur remplacé.
+
+[Release 0.7.5](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.5).
+
+CodeQL PASS : https://github.com/ungeekrange-cmyk/chillcenter/actions/runs/42423193938 ;
+Shipping dependency security PASS : https://github.com/ungeekrange-cmyk/chillcenter/actions/runs/42421847420 .
+Ce scan porte sur `eaab2919d5fc5f26236911796a5241be8388dddc` ; les dépendances
+et Cargo.lock sont inchangés dans la source publiée `52fc399`.
+Les 36 contrôles documentaires, de signature/version et de manifeste source passent.
+
+| Paquet | SHA-256 |
+| --- | --- |
+| `Chill-Center-0.7.5-macos-arm64.dmg` | `6fe15f898630898d75fdeca8b8a827ab6e52c579122c8101530085257f3d791b` |
+| `Chill-Center-server-0.7.4-linux-aarch64.tar.gz` | `0e685b6bc0902bcb0dff3f7c32dce63310d04f8859c4a78f2070494359ebf38b` |
+| `Chill-Center-web-0.7.5-install.zip` | `780deb4e9bc4c782435588289b354d3c5c381088b990a0ff97060072f61858d8` |
+| `Chill-Center-0.7.5-corresponding-sources.tar.gz` | `a4a5f4a778b3a75e0c56d179f0082f94262ab6253f0da8906499280bbd6da15a` |
+
+Vérification publique : 35 fichiers uniques, 51 assets dans quatre releases.
+La VM Linux de test a été arrêtée. Sources, livraisons et caches conservés ;
+aucune purge. Aucun déploiement sur le Pi, NAS ou Mac utilisateur effectué.
+Les politiques automatiques existantes peuvent détecter ces publications.

@@ -61,7 +61,7 @@
           "Catalog"
         ],
         "operationId": "profileHome_get",
-        "description": "Accueil local du profil : trois rangées de 20 éléments au plus, séries regroupées. Reprendre exige une saison commencée et inachevée ; ajouts récents par date maximale des membres disponibles ; suggestions locales sur les cinq dernières entités vues datées, genres/distribution/réalisation. Aucun appel fournisseur/NAS. Lecture bornée à 10000 vidéos ; erreur explicite au-delà. Ajout compatible non encore publié ; ancien serveur404.",
+        "description": "Accueil local du profil : trois rangées de 20 éléments au plus, séries regroupées. Reprendre exige une saison commencée et inachevée ; ajouts récents par date maximale des membres disponibles ; suggestions locales sur les cinq dernières entités vues datées, genres/distribution/réalisation. Aucun appel fournisseur/NAS. Lecture bornée à 10000 vidéos ; erreur explicite au-delà. Disponible depuis le serveur0.7.4 ; ancien serveur404.",
         "responses": {
           "200": {
             "description": "Rangées ; tableaux vides à masquer.",

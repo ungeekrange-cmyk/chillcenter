@@ -241,9 +241,9 @@ Le serveur ne promet pas un codec particulier dans MKV/MP4/AVI : le décodage et
 
 Avant une mise à jour de client, lisez `GET /server` et n'activez une capacité que si elle est annoncée. Avant une intégration de production domestique, testez les erreurs Range, l'expiration du bail, la reprise après transfert, une modification concurrente, et une connexion TLS avec certificat renouvelé.
 
-## Jaquettes des collections — ajout compatible en préparation
+## Jaquettes des collections — depuis le serveur0.7.4
 
-Les nouvelles routes de ce lot ne sont pas encore publiées. Un serveur ancien
+Ces routes sont disponibles depuis le serveur0.7.4. Un serveur ancien
 répond 404 ; le client propose sa mise à jour sans modifier les métadonnées.
 `PUT /profiles/{profile}/playlists/{playlist}/poster/member` copie la jaquette
 validée d'un membre de la liste avec `{expected_revision, media_id}`, comme pour
@@ -260,7 +260,7 @@ simultanées au maximum, partagées avec les enrichissements existants ; une
 saturation renvoie 503. Un conflit de révision renvoie 409 ; une confirmation
 explicite de la jaquette reste nécessaire après relecture.
 
-## Accueil — ajout compatible en préparation
+## Accueil — depuis le serveur0.7.4
 
 `GET /profiles/{profile}/home` retourne `continue_watching`, `recently_added` et
 `recommendations`, au plus20 éléments chacun. Un élément contient `media`,

@@ -2,10 +2,7 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La [release v0.7.4](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.4)
-regroupe Mac et web 0.7.4 ; serveur 0.7.3 et thèmes 0.7.1 restent inchangés. La publication
-ne les installe pas sur un serveur existant. Les anciennes releases restent
-disponibles ; voir les [preuves et limites](../releases/REL-0.7.4.md).
+La release v0.7.5 fournit Mac0.7.5/build15, web0.7.5 et serveur0.7.4. Les thèmes0.7.1 restent inchangés. La publication ne réalise aucune installation directe sur un serveur existant.
 
 ## Quatre composants
 
@@ -69,20 +66,20 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution : v0.7.4 pour Mac/web, v0.7.3 pour serveur/thèmes, pas le ZIP des sources
+Utiliser les archives complètes de distribution : v0.7.5 pour Mac/web/serveur, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
 suffit pas, à elle seule, à établir la confiance.
 
 ```sh
-minisign -Vm Chill-Center-server-0.7.3-linux-aarch64.tar.gz \
+minisign -Vm Chill-Center-server-0.7.4-linux-aarch64.tar.gz \
   -P 'RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
-tar -xzf Chill-Center-server-0.7.3-linux-aarch64.tar.gz
+tar -xzf Chill-Center-server-0.7.4-linux-aarch64.tar.gz
 ```
 
 Même vérification pour le DMG Mac, le ZIP d'installation web et celui des thèmes
-en adaptant le nom. La distribution Mac 0.7.4 est réservée à Apple Silicon et
+en adaptant le nom. La distribution Mac 0.7.5 est réservée à Apple Silicon et
 **nécessite macOS 15 Sequoia minimum**. Les dépendances utilisent des entrées
 Sequoia figées, et les 51 minima Mach-O ont été vérifiés. Les essais physiques
 sur macOS 15/26 restent non réalisés ; les contrôles statiques ne les remplacent
@@ -103,7 +100,7 @@ L'archive serveur contient les deux binaires ARM64, le manifeste signé/la clé
 publique, `scripts/` et `deploy/updates/`. Conserver cette arborescence. Une
 installation Linux neuve requiert un OS ARM64 64 bits utilisant glibc, systemd,
 Python 3.10+, Minisign, curl, Bash, tar et les outils Linux standards.
-Les binaires 0.7.3 ont un minimum glibc 2.28 selon leur provenance ; ce seul
+Les binaires 0.7.4 ont un minimum glibc 2.28 selon leur provenance ; ce seul
 minimum ne garantit pas la compatibilité de l’OS et de ses unités systemd.
 Debian 13 est la configuration réelle vérifiée ; OS ARM32 et musl ne sont pas
 couverts par ce paquet. Prévoir les droits administrateur, une horloge synchronisée,
@@ -118,7 +115,7 @@ sudo ./scripts/install-server.sh \
   --server "$PWD/chill-server" --updater "$PWD/chill-update" \
   --release-pub "$PWD/release.pub" --manifest "$PWD/server-manifest.json" \
   --manifest-signature "$PWD/server-manifest.json.minisig" \
-  --version 0.7.3 --library /absolute/read-only-library \
+  --version 0.7.4 --library /absolute/read-only-library \
   --listen LAN_ADDRESS:8443 --tls-name LAN_DNS_OR_IP
 ```
 
@@ -154,3 +151,25 @@ ligne ; sa perte interdit de signer de nouvelles mises à jour avec cette identi
 
 Références : [contrat](CONTRACT.md), [ADR0029](../architecture/decisions/ADR-0029-component-releases-updates.md),
 [API tierce](../api/INTEGRATION-FR.md).
+
+
+## Cette livraison
+
+Accueil remplace Toute la collection : Reprendre, Ajouts récents et Pour vous,
+vingt éléments au maximum par rangée horizontale, séries regroupées. Reprendre
+s'appuie sur une saison commencée mais inachevée. Les suggestions locales utilisent
+les dernières entités vues datées ; les anciennes lectures restent sans date.
+Les rangées vides sont masquées, la recherche et les catégories restent accessibles.
+
+Jaquettes de saga/liste depuis les membres, recherche TMDB explicite ou import ;
+appliquer confirme le choix sans changer les métadonnées des films. Gestion et
+suppression visibles, confirmation nommée conservant les vidéos. Curseur masqué
+avec les commandes pendant la lecture, rétabli au mouvement/pause/fermeture.
+
+Résultat des contrôles de mise à jour affiché même sous focus ; anciennes cartes
+retirées après changement de serveur. Le helper corrige le résumé illisible sous
+UMask0077 par publication0640. Le nouveau helper est inclus et signé avec le
+paquet serveur ; le mécanisme actuel ne remplace pas lui-même un ancien helper.
+Une installation existante nécessite son remplacement administrateur vérifié,
+sans réutiliser le wrapper réservé à la première installation. Publier n'effectue
+aucune installation directe ni modification du Pi/NAS.

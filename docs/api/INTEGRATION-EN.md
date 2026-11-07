@@ -461,9 +461,9 @@ capabilities. Before a household production integration, test Range errors,
 lease expiry, resume after transfer, concurrent modification and TLS connection
 with a renewed certificate.
 
-## Collection artwork — compatible addition awaiting release
+## Collection artwork — available since server0.7.4
 
-These new routes are not yet published. Older servers return 404; the client
+These routes are available since server0.7.4. Older servers return 404; the client
 suggests a server update without changing media metadata.
 `PUT /profiles/{profile}/playlists/{playlist}/poster/member` copies a validated
 member poster with `{expected_revision, media_id}`, just like the saga route.
@@ -479,7 +479,7 @@ never supply provider URLs or paths. At most two provider requests run at once,
 sharing capacity with existing enrichment; saturation returns 503. Revision
 conflicts return 409 and require an explicit cover confirmation after refresh.
 
-## Home — compatible addition awaiting release
+## Home — available since server0.7.4
 
 `GET /profiles/{profile}/home` returns `continue_watching`, `recently_added` and
 `recommendations`, with at most20 items each. An item contains `media`,
