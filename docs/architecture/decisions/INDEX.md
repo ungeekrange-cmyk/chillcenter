@@ -98,3 +98,7 @@ Complément d'implémentation, distinct des sept décisions approuvées en G-02 
 [ADR-0036](ADR-0036-playback-only-wake-lock.md), implémenté localement, 6 novembre 2026 :
 maintien éveillé lié à la lecture effective uniquement sur web/macOS, limites HTTPS
 et politiques OS explicites ; complète ADR-0004 et ADR-0015.
+
+[ADR-0037](ADR-0037-collection-cover-selection.md), implémenté localement,
+7 novembre 2026 : jaquettes explicites depuis un membre ou TMDB, jetons bornés,
+actions de gestion visibles et confirmation de suppression.

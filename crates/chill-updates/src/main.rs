@@ -15,7 +15,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::os::fd::AsRawFd;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -1633,13 +1633,22 @@ fn publish_availability(
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(&temporary)?;
     file.write_all(&bytes)?;
-    file.sync_all()?;
     if unsafe { libc::fchown(file.as_raw_fd(), 0, config.service_gid) } != 0 {
         return Err(std::io::Error::last_os_error().into());
     }
+    make_availability_service_readable(&file)?;
     fs::rename(&temporary, &path)?;
     state_handle.sync_all()?;
     Ok(())
+}
+
+// The root helper intentionally runs with UMask=0077. OpenOptions::mode(0644)
+// alone therefore creates 0600, hiding a successful check from the server.
+// Only this non-authoritative UI snapshot is shared with the configured service
+// group. Root cache, signatures, accepted sequences and private config stay private.
+fn make_availability_service_readable(file: &File) -> std::io::Result<()> {
+    file.set_permissions(fs::Permissions::from_mode(0o640))?;
+    file.sync_all()
 }
 
 fn pin_service_state_root(config: &RootConfig) -> chill_updates::Result<(File, PathBuf)> {
@@ -2122,6 +2131,32 @@ fn private_health_ip(ip: IpAddr) -> bool {
 #[cfg(test)]
 mod helper_tests {
     use super::*;
+
+    #[test]
+    fn availability_snapshot_restores_service_read_after_private_creation() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("available.json");
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .unwrap();
+        let bytes = br#"{"web":{"version":"0.7.4","release_sequence":5}}"#;
+        file.write_all(bytes).unwrap();
+        let before = file.metadata().unwrap();
+        assert_eq!(
+            before.mode() & 0o777,
+            0o600,
+            "same mode as UMask0077 creation"
+        );
+        make_availability_service_readable(&file).unwrap();
+        let after = file.metadata().unwrap();
+        assert_eq!(after.mode() & 0o777, 0o640);
+        assert_eq!((after.uid(), after.gid()), (before.uid(), before.gid()));
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
 
     #[test]
     fn interrupted_download_never_publishes_a_partial_digest_and_retries_exact_bytes() {

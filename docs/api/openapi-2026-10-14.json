@@ -45,6 +45,326 @@
     }
   ],
   "paths": {
+    "/profiles/{profile}/playlists/{playlist}/poster/member": {
+      "put": {
+        "tags": [
+          "Collections"
+        ],
+        "operationId": "playlistMemberPoster_put",
+        "description": "Copie une affiche valide depuis un membre de cette playlist, avec contrôle CAS. Ne modifie ni le média ni son association TMDB.",
+        "responses": {
+          "200": {
+            "description": "Playlist avec sa nouvelle affiche.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPosterRequest"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "playlist",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ]
+    },
+    "/admin/profiles/{profile}/collections/{kind}/{collection}/artwork/tmdb/candidates": {
+      "get": {
+        "tags": [
+          "Collections",
+          "TMDB"
+        ],
+        "operationId": "collectionArtworkCandidates_get",
+        "description": "Recherche explicite TMDB, au plus 24 résultats. Jetons opaques liés au profil/type/groupe, valides 10 minutes ; aucun chemin ou URL fournisseur. Deux requêtes TMDB simultanées au maximum, partagées avec les autres opérations ; 503 si occupé.",
+        "responses": {
+          "200": {
+            "description": "Succès.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "candidates"
+                  ],
+                  "properties": {
+                    "candidates": {
+                      "type": "array",
+                      "maxItems": 24,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "token",
+                          "title",
+                          "source"
+                        ],
+                        "properties": {
+                          "token": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "kind",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "saga",
+              "playlist"
+            ]
+          }
+        },
+        {
+          "name": "collection",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque de saga, UUID de playlist."
+          }
+        }
+      ]
+    },
+    "/admin/profiles/{profile}/collections/{kind}/{collection}/artwork/tmdb/candidates/{token}/preview": {
+      "get": {
+        "tags": [
+          "Collections",
+          "TMDB"
+        ],
+        "operationId": "collectionArtworkPreview_get",
+        "description": "Aperçu validé du jeton dans son contexte, JPEG/PNG/WebP de 8 Mio au plus ; Cache-Control: private, no-cache.",
+        "responses": {
+          "200": {
+            "description": "Succès.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "maxLength": 8388608
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "maxLength": 8388608
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "maxLength": 8388608
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "kind",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "saga",
+              "playlist"
+            ]
+          }
+        },
+        {
+          "name": "collection",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque de saga, UUID de playlist."
+          }
+        },
+        {
+          "name": "token",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/admin/profiles/{profile}/collections/{kind}/{collection}/poster/tmdb": {
+      "put": {
+        "tags": [
+          "Collections",
+          "TMDB"
+        ],
+        "operationId": "collectionTmdbPoster_put",
+        "description": "Applique uniquement la jaquette du groupe après vérification du jeton et CAS avant et après téléchargement. Aucun changement de métadonnées des membres.",
+        "responses": {
+          "200": {
+            "description": "Succès.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SagaEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PlaylistEnvelope"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expected_revision",
+                  "candidate_token"
+                ],
+                "properties": {
+                  "expected_revision": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0
+                  },
+                  "candidate_token": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "kind",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "saga",
+              "playlist"
+            ]
+          }
+        },
+        {
+          "name": "collection",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Identifiant opaque de saga, UUID de playlist."
+          }
+        }
+      ]
+    }
+,
     "/admin/updates": {
       "get": {
         "tags": ["Administration"],
@@ -500,12 +820,12 @@
       ]
     },
     "/profiles/{profile}/playback-progress": {
+      "parameters": [{"name":"profile","in":"path","required":true,"schema":{"$ref":"#/components/schemas/Uuid"}}],
       "get": {
         "tags": ["Playback"],
         "operationId": "measured_playback_progress_get",
         "description": "Ajout compatible en préparation, non disponible dans la release0.7.2. Durées mesurées uniquement, état personnel du profil, hors synchronisation catalogue. Un ancien serveur retourne404. Le jeton opaque change après progression, changement personnel ou redémarrage; jamais de lecture NAS.",
         "parameters": [
-          {"name":"profile","in":"path","required":true,"schema":{"$ref":"#/components/schemas/Uuid"}},
           {"name":"known_revision","in":"query","required":false,"schema":{"type":"string","maxLength":255}}
         ],
         "responses": {

@@ -199,6 +199,27 @@ pub enum UiCommand {
         expected_revision: u64,
         media_id: String,
     },
+    PlaylistMemberArtwork {
+        id: String,
+        expected_revision: u64,
+        media_id: String,
+    },
+    CollectionArtworkCandidates {
+        kind: String,
+        id: String,
+        query: String,
+    },
+    CollectionArtworkPreview {
+        kind: String,
+        id: String,
+        token: String,
+    },
+    CollectionTmdbArtwork {
+        kind: String,
+        id: String,
+        expected_revision: u64,
+        candidate_token: String,
+    },
     GroupRating {
         media_id: String,
         rating: Option<u8>,
@@ -520,16 +541,25 @@ impl ProviderTask {
             .as_ref()
             .map(|value| vec![("query", value.clone())])
             .unwrap_or_default();
-        let value = self
-            .transport
-            .json_with_options(
-                self.method.clone(),
-                &self.path,
-                self.body.as_ref(),
-                &query,
-                &[],
-            )
-            .await?;
+        let value = if self.path.ends_with("/preview") {
+            let bytes = self
+                .transport
+                .get_binary(&self.path, &[], 8 * 1024 * 1024)
+                .await?;
+            let src = crate::artwork::preview_data_uri(&bytes)
+                .map_err(|_| invalid("Affiche non prise en charge."))?;
+            json!({"src":src})
+        } else {
+            self.transport
+                .json_with_options(
+                    self.method.clone(),
+                    &self.path,
+                    self.body.as_ref(),
+                    &query,
+                    &[],
+                )
+                .await?
+        };
         Ok((self, value))
     }
 }
@@ -656,6 +686,56 @@ impl UiClient {
             .as_ref()
             .ok_or_else(|| invalid("Connectez un serveur."))?;
         let (method, path, body, query, mutation) = match command {
+            UiCommand::CollectionArtworkCandidates { kind, id, query } => {
+                valid_artwork_collection(&kind, &id)?;
+                valid_tmdb_query(&query)?;
+                if query.trim().is_empty() {
+                    return Err(invalid("Recherche TMDB vide."));
+                }
+                (
+                    HttpMethod::GET,
+                    format!(
+                        "/api/2026-10-14/admin/profiles/{profile}/collections/{kind}/{id}/artwork/tmdb/candidates"
+                    ),
+                    None,
+                    Some(query),
+                    false,
+                )
+            }
+            UiCommand::CollectionArtworkPreview { kind, id, token } => {
+                valid_artwork_collection(&kind, &id)?;
+                valid_id(&token)?;
+                (
+                    HttpMethod::GET,
+                    format!(
+                        "/api/2026-10-14/admin/profiles/{profile}/collections/{kind}/{id}/artwork/tmdb/candidates/{token}/preview"
+                    ),
+                    None,
+                    None,
+                    false,
+                )
+            }
+            UiCommand::CollectionTmdbArtwork {
+                kind,
+                id,
+                expected_revision,
+                candidate_token,
+            } => {
+                valid_artwork_collection(&kind, &id)?;
+                valid_id(&candidate_token)?;
+                (
+                    HttpMethod::PUT,
+                    format!(
+                        "/api/2026-10-14/admin/profiles/{profile}/collections/{kind}/{id}/poster/tmdb"
+                    ),
+                    Some(
+                        json!({"expected_revision":expected_revision,"candidate_token":candidate_token}),
+                    ),
+                    None,
+                    true,
+                )
+            }
+
             UiCommand::TmdbCandidates { media_id, query } => {
                 valid_id(&media_id)?;
                 let query = query.unwrap_or_default();
@@ -1594,6 +1674,29 @@ impl UiClient {
             return Ok(value);
         }
         match command {
+            command @ (UiCommand::CollectionArtworkCandidates { .. }
+            | UiCommand::CollectionArtworkPreview { .. }
+            | UiCommand::CollectionTmdbArtwork { .. }) => {
+                let task = self.prepare_provider_task(command)?;
+                let (task, value) = self.runtime.block_on(task.fetch())?;
+                self.commit_provider_task(task, value)
+            }
+            UiCommand::PlaylistMemberArtwork {
+                id,
+                expected_revision,
+                media_id,
+            } => {
+                valid_id(&id)?;
+                valid_id(&media_id)?;
+                let p = self.profile()?;
+                self.request(
+                    HttpMethod::PUT,
+                    &format!("/api/2026-10-14/profiles/{p}/playlists/{id}/poster/member"),
+                    Some(&json!({"expected_revision":expected_revision,"media_id":media_id})),
+                    &[],
+                    &[],
+                )
+            }
             UiCommand::PlaylistArtwork { id } => {
                 let task = self.artwork_task("playlists", &id)?;
                 self.runtime.block_on(task.fetch())
@@ -2524,6 +2627,13 @@ fn valid_id(id: &str) -> Result<(), UiError> {
         .map(|_| ())
         .map_err(|_| invalid("Identifiant invalide."))
 }
+fn valid_artwork_collection(kind: &str, id: &str) -> Result<(), UiError> {
+    match kind {
+        "saga" => valid_collection_id(id),
+        "playlist" => valid_id(id),
+        _ => Err(invalid("Type de collection invalide.")),
+    }
+}
 fn valid_tmdb_query(query: &str) -> Result<(), UiError> {
     if query.chars().count() > 500 {
         return Err(invalid("Recherche TMDB trop longue."));
@@ -3061,6 +3171,34 @@ mod tests {
         let confirm: UiCommand=serde_json::from_value(json!({"action":"confirm_reassociation","source_id":source,"target_id":target,"expected_source_revision":1,"expected_target_revision":2,"expected_epoch":3,"confirmed":true})).unwrap();
         assert!(matches!(confirm, UiCommand::ConfirmReassociation { .. }));
         assert!(serde_json::from_value::<UiCommand>(json!({"action":"request_full_fingerprint","media_id":"bad","confirmed":true,"path":"/nas/x"})).is_err());
+    }
+    #[test]
+    fn collection_artwork_commands_reject_paths_urls_and_unknown_targets() {
+        let id = uuid::Uuid::new_v4().to_string();
+        assert!(valid_artwork_collection("playlist", &id).is_ok());
+        assert!(valid_artwork_collection("saga", "saga_42").is_ok());
+        assert!(valid_artwork_collection("playlist", "../other").is_err());
+        assert!(valid_artwork_collection("series", &id).is_err());
+        for action in [
+            "collection_artwork_candidates",
+            "collection_artwork_preview",
+            "collection_tmdb_artwork",
+        ] {
+            let mut value = json!({"action":action,"kind":"playlist","id":id});
+            match action {
+                "collection_artwork_candidates" => value["query"] = json!("Space"),
+                "collection_artwork_preview" => {
+                    value["token"] = json!(uuid::Uuid::new_v4().to_string())
+                }
+                _ => {
+                    value["candidate_token"] = json!(uuid::Uuid::new_v4().to_string());
+                    value["expected_revision"] = json!(3);
+                }
+            }
+            assert!(serde_json::from_value::<UiCommand>(value.clone()).is_ok());
+            value["url"] = json!("https://untrusted.invalid/poster.jpg");
+            assert!(serde_json::from_value::<UiCommand>(value).is_err());
+        }
     }
     #[test]
     fn saga_artwork_commands_are_closed_and_scoped() {

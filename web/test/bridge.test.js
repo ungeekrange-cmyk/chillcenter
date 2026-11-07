@@ -317,3 +317,24 @@ test("watch clock: final-tenth credit is real time, never doubled by speed, neve
   assert.equal(new WatchClock().event(lease, obs(1, { speed: 3 }), 0), null);
   assert.equal(second.media_revision, 1n);
 });
+
+test("collection covers use closed profile-scoped search, preview, member-copy and apply requests",async()=>{
+ const token="33333333-3333-4333-8333-333333333333";
+ const prefix=`/admin/profiles/${P}/collections/playlist/${M}`;
+ const {ui,calls}=make({
+  [`GET ${prefix}/artwork/tmdb/candidates`]:ok({candidates:[{token,title:"Space",source:"Collection TMDB"}]}),
+  [`GET ${prefix}/artwork/tmdb/candidates/${token}/preview`]:[200,"",new Blob(["png"],{type:"image/png"})],
+  [`PUT ${prefix}/poster/tmdb`]:ok({playlist:{id:M,revision:4}}),
+  [`PUT /profiles/${P}/playlists/${M}/poster/member`]:ok({playlist:{id:M,revision:5}}),
+ });
+ await ui({action:"boot"});await ui({action:"select_profile",id:P});calls.length=0;
+ const found=await ui({action:"collection_artwork_candidates",kind:"playlist",id:M,query:"Space",url:"https://untrusted.invalid"});assert.equal(found.candidates[0].token,token);
+ assert.equal(calls.at(-1).url,BASE+prefix+"/artwork/tmdb/candidates?query=Space");
+ assert.deepEqual(await ui({action:"collection_artwork_preview",kind:"playlist",id:M,token}),{src:"blob:x"});
+ await ui({action:"collection_tmdb_artwork",kind:"playlist",id:M,candidate_token:token,expected_revision:3,url:"https://untrusted.invalid"});
+ assert.deepEqual(JSON.parse(calls.at(-1).body),{expected_revision:3,candidate_token:token});
+ await ui({action:"playlist_member_artwork",id:M,media_id:token,expected_revision:4});assert.deepEqual(JSON.parse(calls.at(-1).body),{expected_revision:4,media_id:token});
+ const before=calls.length;
+ for(const command of [{action:"collection_artwork_candidates",kind:"other",id:M,query:"x"},{action:"collection_artwork_candidates",kind:"playlist",id:M,query:" "},{action:"collection_artwork_candidates",kind:"saga",id:"../escape",query:"x"},{action:"collection_artwork_preview",kind:"playlist",id:M,token:"https://evil"}])await assert.rejects(ui(command));
+ assert.equal(calls.length,before);
+});

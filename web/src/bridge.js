@@ -263,6 +263,27 @@
       }
       return { src: artwork.get(key) };
     }
+    function collectionArtworkPath(c) {
+      if (!["saga", "playlist"].includes(c.kind)) throw invalid("Type de collection invalide.");
+      if (c.kind === "playlist") validId(c.id); else if (!SAGA_ID.test(c.id)) throw invalid("Identifiant de saga invalide.");
+      return `/admin/profiles/${profile()}/collections/${c.kind}/${c.id}`;
+    }
+    async function collectionArtworkPreview(c) {
+      const path = collectionArtworkPath(c); validId(c.token);
+      const context = currentContext(), generation = artworkGeneration;
+      const response = await doFetch(BASE + path + `/artwork/tmdb/candidates/${c.token}/preview`, {credentials:"same-origin",cache:"no-store"});
+      if (!response.ok) throw apiError(response.status, null);
+      const blob = await response.blob();
+      if (blob.size > 8 * 1024 * 1024 || !["image/png", "image/jpeg", "image/webp"].includes(blob.type)) throw invalid("Affiche non prise en charge.");
+      if (context !== currentContext() || generation !== artworkGeneration) return {discarded:true};
+      const key = context + ":tmdb-preview:" + c.token;
+      if (!artwork.has(key)) {
+        const keys = [...artwork.keys()].filter(k => k.includes(":tmdb-preview:"));
+        while (keys.length >= 24) { const old = keys.shift(); env.revoke?.(artwork.get(old)); artwork.delete(old); }
+        artwork.set(key, env.objectUrl(blob));
+      }
+      return {src:artwork.get(key)};
+    }
     const unsupported = () => { throw fail("Cette fonction n'est pas encore disponible dans le client web.", "WEB_UNSUPPORTED"); };
     const adminJobs = new Map();
     async function choose(accept) {
@@ -432,6 +453,14 @@
         case "season_artwork":
           if (!Number.isSafeInteger(c.tv_id) || c.tv_id < 1 || !Number.isSafeInteger(c.season) || c.season < 0) throw invalid("Saison invalide.");
           return artworkFor(`series/${c.tv_id}/seasons/${c.season}`, null);
+        case "playlist_member_artwork": validId(c.id); validId(c.media_id); return request("PUT", personal(`/playlists/${c.id}/poster/member`), {body:{expected_revision:c.expected_revision,media_id:c.media_id}});
+        case "collection_artwork_candidates": {
+          const path = collectionArtworkPath(c), query = typeof c.query === "string" ? c.query.trim() : "";
+          if (!query || query.length > 500) throw invalid("Recherche TMDB invalide.");
+          return get(path + "/artwork/tmdb/candidates", [["query", query]]);
+        }
+        case "collection_artwork_preview": return collectionArtworkPreview(c);
+        case "collection_tmdb_artwork": { const path = collectionArtworkPath(c); validId(c.candidate_token); return request("PUT", path + "/poster/tmdb", {body:{expected_revision:c.expected_revision,candidate_token:c.candidate_token}}); }
         case "saga_member_artwork":
           if (!SAGA_ID.test(c.id)) throw invalid("Identifiant de saga invalide."); validId(c.media_id);
           return request("PUT", personal(`/sagas/${c.id}/poster/member`), { body: { expected_revision: c.expected_revision, media_id: c.media_id } });

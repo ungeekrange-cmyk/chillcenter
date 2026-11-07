@@ -240,3 +240,22 @@ Au lancement, `503 MEDIA_FILE_MISSING` signifie que le serveur a confirmé l'abs
 Le serveur ne promet pas un codec particulier dans MKV/MP4/AVI : le décodage et les pistes sont gérés par la machine cliente. Les sous-titres externes sont des ressources protégées par le bail, limitées à 16 Mio. Les affiches chargées sont JPEG/PNG/WebP, limitées à 8 Mio. Les appels JSON ordinaires sont limités à 1 Mio.
 
 Avant une mise à jour de client, lisez `GET /server` et n'activez une capacité que si elle est annoncée. Avant une intégration de production domestique, testez les erreurs Range, l'expiration du bail, la reprise après transfert, une modification concurrente, et une connexion TLS avec certificat renouvelé.
+
+## Jaquettes des collections — ajout compatible en préparation
+
+Les nouvelles routes de ce lot ne sont pas encore publiées. Un serveur ancien
+répond 404 ; le client propose sa mise à jour sans modifier les métadonnées.
+`PUT /profiles/{profile}/playlists/{playlist}/poster/member` copie la jaquette
+validée d'un membre de la liste avec `{expected_revision, media_id}`, comme pour
+les sagas. Le membre et ses métadonnées restent identiques.
+
+Sous `/admin/profiles/{profile}/collections/{kind}/{collection}` (`kind` =
+`saga` ou `playlist`), `GET /artwork/tmdb/candidates?query=...` renvoie au plus
+24 `{token,title,source}` ; `GET /artwork/tmdb/candidates/{token}/preview`
+renvoie une image validée de 8 Mio au plus. `PUT /poster/tmdb` accepte exactement
+`{expected_revision,candidate_token}` et renvoie `{saga}` ou `{playlist}`.
+Les jetons expirent après 10 minutes et sont liés au profil/type/groupe ; aucun
+client ne fournit d'URL ou de chemin fournisseur. Deux opérations fournisseur
+simultanées au maximum, partagées avec les enrichissements existants ; une
+saturation renvoie 503. Un conflit de révision renvoie 409 ; une confirmation
+explicite de la jaquette reste nécessaire après relecture.

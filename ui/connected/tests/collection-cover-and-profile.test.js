@@ -6,7 +6,8 @@ const app=fs.readFileSync(__dirname+"/../app.js","utf8");
 test("collection covers are a bounded nine-poster mosaic unless a custom image exists",()=>{
   assert.match(catalog,/collection\.media_ids\.slice\(0,9\)/);
   assert.match(catalog,/if\(collection\.poster\)\{observeArtwork\(poster,collection\.id,kind\);return;\}/);
-  assert.match(catalog,/importArtwork\(\{kind,id:view\.id,expected_revision:view\.revision\}/);
+  const management=fs.readFileSync(__dirname+"/../collection-management.js","utf8");
+  assert.match(management,/importArtwork\(\{ kind: x\.kind, id: x\.view\.id, expected_revision: x\.view\.revision \}/);
   assert.match(catalog,/action:"playlist_artwork",id/);
 });
 

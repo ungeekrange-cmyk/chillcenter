@@ -225,3 +225,6 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 [BUG0085](BUG-0085-series-season-card-layout.md) : saison non vue ouverte, grille et fiche série réorganisée, corrigé localement. [BUG0086](BUG-0086-terminal-playback-return.md) : fin du dernier élément et conservation du contexte de lecture, corrigé localement. [BUG0087](BUG-0087-watched-eof-local-refresh.md) : rafraîchissement personnel à EOF et exception courte approuvée corrigés localement. Preuves synthétiques ciblées, pas de nouveau test vidéo réel ou déploiement Pi/web.
 - [BUG-0070](BUG-0070-web-player-stale-title-while-opening.md) — client web : titre de la vidéo précédente pendant l'ouverture de la suivante ; FIXED (branche `codex/web-pwa`).
 - [BUG-0071](BUG-0071-web-audio-missing-ac3-eac3.md) — client web : pas de son sur les films AC-3/E-AC-3 ; FIXED (branche `codex/web-pwa`), à vérifier sur le Pi.
+
+- [BUG-0134](BUG-0134-update-availability-permissions.md) — disponibilité web illisible sous UMask0077 et résultat de polling masqué ; réparation ponctuelle réelle vérifiée, correction durable non publiée.
+- [BUG-0135](BUG-0135-collection-management.md) — gestion et choix des jaquettes de collections ; corrigé et vérifié localement, publication restante.
