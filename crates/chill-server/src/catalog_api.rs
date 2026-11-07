@@ -150,6 +150,10 @@ pub fn routes() -> Router<AppState> {
             put(upload_playlist_poster).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
         )
         .route(
+            "/profiles/{profile}/playlists/{playlist}/poster/member",
+            put(playlist_member_poster),
+        )
+        .route(
             "/profiles/{profile}/playlists/{playlist}/members",
             post(add_members),
         )
@@ -903,6 +907,44 @@ async fn upload_playlist_poster(
                 &profile,
                 &playlist,
                 query.expected_revision,
+                &bytes,
+                &cache,
+            )?;
+            s.playlist(&profile, &playlist)
+        })
+        .await?;
+    Ok(Json(json!({"playlist":view})))
+}
+async fn playlist_member_poster(
+    State(state): State<AppState>,
+    Path((profile, playlist)): Path<(String, String)>,
+    Json(body): Json<MemberPoster>,
+) -> Result<Json<Value>, ApiError> {
+    let cache = state.config.data_dir.join("posters");
+    let view = state
+        .database
+        .call(move |s| {
+            let members = s.playlist(&profile, &playlist)?;
+            if !members.media_ids.contains(&body.media_id) {
+                return Err("Cette vidéo n'appartient pas à cette playlist.".into());
+            }
+            let source = s.artwork_path(&profile, &body.media_id)?;
+            let (file, version) = crate::media_stream::open_indexed(&cache, &source)
+                .map_err(|_| "Affiche inaccessible.")?;
+            if version.size > 8 * 1024 * 1024 {
+                return Err("Affiche trop volumineuse.".into());
+            }
+            let mut bytes = Vec::new();
+            file.take(8 * 1024 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| "Affiche inaccessible.")?;
+            if bytes.len() > 8 * 1024 * 1024 {
+                return Err("Affiche trop volumineuse.".into());
+            }
+            s.set_playlist_artwork_at_revision(
+                &profile,
+                &playlist,
+                body.expected_revision,
                 &bytes,
                 &cache,
             )?;

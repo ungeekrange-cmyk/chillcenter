@@ -4,8 +4,9 @@ use crate::api::{ApiError, AppState};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
-    routing::{get, post},
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
+    routing::{get, post, put},
 };
 use chill_domain::catalog_browser::BrowserQuery;
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,18 @@ pub fn routes() -> Router<AppState> {
             "/admin/profiles/{profile}/media/{media}/tmdb/candidates",
             get(candidates),
         )
+        .route(
+            "/admin/profiles/{profile}/collections/{kind}/{collection}/artwork/tmdb/candidates",
+            get(collection_artwork_candidates),
+        )
+        .route(
+            "/admin/profiles/{profile}/collections/{kind}/{collection}/artwork/tmdb/candidates/{token}/preview",
+            get(collection_artwork_preview),
+        )
+        .route(
+            "/admin/profiles/{profile}/collections/{kind}/{collection}/poster/tmdb",
+            put(apply_collection_artwork),
+        )
         .route("/admin/profiles/{profile}/media/{media}/tmdb", post(select))
         .route(
             "/admin/profiles/{profile}/media/{media}/tmdb/refresh",
@@ -49,6 +62,8 @@ const HISTORY_TTL: Duration = Duration::from_secs(15 * 60);
 const MAX_WORKLIST: usize = 3000;
 const MAX_STATE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_IDENTIFIER_BYTES: usize = 128;
+const ARTWORK_CANDIDATE_TTL: Duration = Duration::from_secs(10 * 60);
+const MAX_ARTWORK_CANDIDATES: usize = 256;
 fn now_seconds() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -149,6 +164,29 @@ pub struct TmdbJobService {
     task_slots: Arc<tokio::sync::Semaphore>,
     inflight: Arc<Mutex<BTreeSet<String>>>,
     persist_gate: Arc<Mutex<()>>,
+    artwork_candidates: Arc<Mutex<BTreeMap<String, ArtworkCandidate>>>,
+}
+#[derive(Clone, Debug)]
+struct ArtworkCandidate {
+    profile: String,
+    kind: CollectionKind,
+    collection: String,
+    poster_path: String,
+    expires_at: u64,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CollectionKind {
+    Saga,
+    Playlist,
+}
+impl CollectionKind {
+    fn parse(value: &str) -> Result<Self, ApiError> {
+        match value {
+            "saga" => Ok(Self::Saga),
+            "playlist" => Ok(Self::Playlist),
+            _ => Err(ApiError(StatusCode::NOT_FOUND, "COLLECTION_KIND_NOT_FOUND")),
+        }
+    }
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -377,10 +415,85 @@ impl Default for TmdbJobService {
             task_slots: Arc::new(tokio::sync::Semaphore::new(MAX_TASKS)),
             inflight: Arc::new(Mutex::new(BTreeSet::new())),
             persist_gate: Arc::new(Mutex::new(())),
+            artwork_candidates: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 }
 impl TmdbJobService {
+    fn store_artwork_candidates(
+        &self,
+        profile: &str,
+        kind: CollectionKind,
+        collection: &str,
+        candidates: Vec<chill_catalog::metadata::ArtworkCandidate>,
+    ) -> Result<Vec<ArtworkCandidateDto>, ApiError> {
+        let now = now_seconds();
+        let mut cache = self.artwork_candidates.lock().map_err(|_| {
+            ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "TMDB_CANDIDATE_UNAVAILABLE",
+            )
+        })?;
+        cache.retain(|_, value| value.expires_at > now);
+        let mut output = Vec::with_capacity(candidates.len());
+        for candidate in candidates {
+            while cache.len() >= MAX_ARTWORK_CANDIDATES {
+                let Some(key) = cache.keys().next().cloned() else {
+                    break;
+                };
+                cache.remove(&key);
+            }
+            let token = uuid::Uuid::new_v4().to_string();
+            cache.insert(
+                token.clone(),
+                ArtworkCandidate {
+                    profile: profile.into(),
+                    kind,
+                    collection: collection.into(),
+                    poster_path: candidate.poster_path,
+                    expires_at: now + ARTWORK_CANDIDATE_TTL.as_secs(),
+                },
+            );
+            output.push(ArtworkCandidateDto {
+                token,
+                title: candidate.title,
+                source: candidate.source,
+            });
+        }
+        Ok(output)
+    }
+    fn artwork_candidate(
+        &self,
+        profile: &str,
+        kind: CollectionKind,
+        collection: &str,
+        token: &str,
+    ) -> Result<ArtworkCandidate, ApiError> {
+        let now = now_seconds();
+        let mut cache = self.artwork_candidates.lock().map_err(|_| {
+            ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "TMDB_CANDIDATE_UNAVAILABLE",
+            )
+        })?;
+        let Some(candidate) = cache.get(token).cloned() else {
+            return Err(ApiError(StatusCode::NOT_FOUND, "TMDB_CANDIDATE_NOT_FOUND"));
+        };
+        if candidate.expires_at <= now {
+            cache.remove(token);
+            return Err(ApiError(StatusCode::GONE, "TMDB_CANDIDATE_EXPIRED"));
+        }
+        if candidate.profile != profile
+            || candidate.kind != kind
+            || candidate.collection != collection
+        {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                "TMDB_CANDIDATE_SCOPE_FORBIDDEN",
+            ));
+        }
+        Ok(candidate)
+    }
     pub(crate) fn update_busy(&self) -> bool {
         self.inflight.lock().map_or(true, |jobs| !jobs.is_empty())
             || self
@@ -1054,6 +1167,184 @@ struct CandidateQuery {
     query: Option<String>,
 }
 #[derive(Serialize)]
+struct ArtworkCandidateDto {
+    token: String,
+    title: String,
+    source: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArtworkSelection {
+    expected_revision: u64,
+    candidate_token: String,
+}
+async fn ensure_collection(
+    state: &AppState,
+    profile: &str,
+    kind: CollectionKind,
+    collection: &str,
+) -> Result<(), ApiError> {
+    let profile = profile.to_owned();
+    let collection = collection.to_owned();
+    state
+        .database
+        .call(move |s| match kind {
+            CollectionKind::Saga => {
+                s.preferences(&profile)?;
+                s.saga(&collection).map(|_| ())
+            }
+            CollectionKind::Playlist => s.playlist(&profile, &collection).map(|_| ()),
+        })
+        .await
+}
+async fn ensure_collection_revision(
+    state: &AppState,
+    profile: &str,
+    kind: CollectionKind,
+    collection: &str,
+    expected_revision: u64,
+) -> Result<(), ApiError> {
+    let profile = profile.to_owned();
+    let collection = collection.to_owned();
+    state
+        .database
+        .call(move |s| {
+            let revision = match kind {
+                CollectionKind::Saga => {
+                    s.preferences(&profile)?;
+                    s.saga(&collection)?.revision
+                }
+                CollectionKind::Playlist => s.playlist(&profile, &collection)?.revision,
+            };
+            (revision == expected_revision)
+                .then_some(())
+                .ok_or_else(|| "La collection a changé entre-temps.".into())
+        })
+        .await
+}
+async fn collection_artwork_candidates(
+    State(state): State<AppState>,
+    Path((profile, kind, collection)): Path<(String, String, String)>,
+    Query(query): Query<CandidateQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let kind = CollectionKind::parse(&kind)?;
+    let query = query.query.unwrap_or_default();
+    if query.trim().is_empty() || query.chars().count() > 500 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "TMDB_QUERY_INVALID"));
+    }
+    ensure_collection(&state, &profile, kind, &collection).await?;
+    let found = provider(&state)?
+        .artwork_candidates(&query)
+        .await
+        .map_err(unavailable)?;
+    let candidates =
+        state
+            .tmdb_jobs
+            .store_artwork_candidates(&profile, kind, &collection, found)?;
+    Ok(Json(json!({"candidates":candidates})))
+}
+fn preview_response(cache: &std::path::Path, path: &std::path::Path) -> Result<Response, ApiError> {
+    let (mut file, version) = crate::media_stream::open_indexed(cache, path)
+        .map_err(|_| ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"))?;
+    if version.size > 8 * 1024 * 1024 {
+        return Err(ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"));
+    }
+    let mut bytes = Vec::new();
+    Read::by_ref(&mut file)
+        .take(8 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"))?;
+    let content_type = if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        "image/jpeg"
+    } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "image/png"
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        "image/webp"
+    } else {
+        return Err(ApiError(StatusCode::NOT_FOUND, "ARTWORK_NOT_FOUND"));
+    };
+    Ok((
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, "private, no-cache"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+async fn collection_artwork_preview(
+    State(state): State<AppState>,
+    Path((profile, kind, collection, token)): Path<(String, String, String, String)>,
+) -> Result<Response, ApiError> {
+    let kind = CollectionKind::parse(&kind)?;
+    ensure_collection(&state, &profile, kind, &collection).await?;
+    let candidate = state
+        .tmdb_jobs
+        .artwork_candidate(&profile, kind, &collection, &token)?;
+    let cache = state.config.data_dir.join("posters");
+    let path = provider(&state)?
+        .download_artwork(&candidate.poster_path, &cache)
+        .await
+        .map_err(unavailable)?;
+    let path = PathBuf::from(path);
+    let response = tokio::task::spawn_blocking({
+        let cache = cache.clone();
+        let path = path.clone();
+        move || preview_response(&cache, &path)
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "ARTWORK_UNAVAILABLE"))?;
+    let _ = std::fs::remove_file(path);
+    response
+}
+async fn apply_collection_artwork(
+    State(state): State<AppState>,
+    Path((profile, kind, collection)): Path<(String, String, String)>,
+    Json(body): Json<ArtworkSelection>,
+) -> Result<Json<Value>, ApiError> {
+    let kind = CollectionKind::parse(&kind)?;
+    ensure_collection_revision(&state, &profile, kind, &collection, body.expected_revision).await?;
+    let candidate =
+        state
+            .tmdb_jobs
+            .artwork_candidate(&profile, kind, &collection, &body.candidate_token)?;
+    let cache = state.config.data_dir.join("posters");
+    let downloaded = provider(&state)?
+        .download_artwork(&candidate.poster_path, &cache)
+        .await
+        .map_err(unavailable)?;
+    let owned = downloaded.clone();
+    let result = state
+        .database
+        .call(move |s| match kind {
+            CollectionKind::Saga => {
+                s.set_saga_artwork_at_revision(
+                    &profile,
+                    &collection,
+                    body.expected_revision,
+                    &downloaded,
+                )?;
+                Ok(json!({"saga":s.saga(&collection)?}))
+            }
+            CollectionKind::Playlist => {
+                let bytes = std::fs::read(&downloaded).map_err(|_| "Affiche inaccessible.")?;
+                s.set_playlist_artwork_at_revision(
+                    &profile,
+                    &collection,
+                    body.expected_revision,
+                    &bytes,
+                    &cache,
+                )?;
+                Ok(json!({"playlist":s.playlist(&profile, &collection)?}))
+            }
+        })
+        .await;
+    if result.is_err() || kind == CollectionKind::Playlist {
+        let _ = std::fs::remove_file(owned);
+    }
+    Ok(Json(result?))
+}
+#[derive(Serialize)]
 struct CandidateDto {
     id: i64,
     title: String,
@@ -1382,5 +1673,65 @@ mod tests {
         assert!(rendered.contains("poster_available"));
         assert!(!rendered.contains("http"));
         assert!(!rendered.contains("poster_path"));
+    }
+
+    #[test]
+    fn collection_artwork_tokens_are_opaque_scoped_and_expire() {
+        let service = TmdbJobService::default();
+        let candidates = service
+            .store_artwork_candidates(
+                "profile-a",
+                CollectionKind::Playlist,
+                "list-a",
+                vec![chill_catalog::metadata::ArtworkCandidate {
+                    title: "Alien".into(),
+                    source: "Film / série TMDB · affiche".into(),
+                    poster_path: "/safe.jpg".into(),
+                    poster: "https://image.tmdb.org/t/p/w342/safe.jpg".into(),
+                }],
+            )
+            .unwrap();
+        let rendered = serde_json::to_string(&candidates).unwrap();
+        assert!(!rendered.contains("http"));
+        assert!(!rendered.contains("poster_path"));
+        let token = &candidates[0].token;
+        assert!(
+            service
+                .artwork_candidate("profile-a", CollectionKind::Playlist, "list-a", token)
+                .is_ok()
+        );
+        assert_eq!(
+            service
+                .artwork_candidate("profile-b", CollectionKind::Playlist, "list-a", token)
+                .unwrap_err()
+                .0,
+            StatusCode::FORBIDDEN
+        );
+        service
+            .artwork_candidates
+            .lock()
+            .unwrap()
+            .get_mut(token)
+            .unwrap()
+            .expires_at = 0;
+        assert_eq!(
+            service
+                .artwork_candidate("profile-a", CollectionKind::Playlist, "list-a", token)
+                .unwrap_err()
+                .0,
+            StatusCode::GONE
+        );
+    }
+
+    #[test]
+    fn collection_artwork_selection_is_closed_to_urls() {
+        assert!(
+            serde_json::from_value::<ArtworkSelection>(json!({
+                "expected_revision": 1,
+                "candidate_token": uuid::Uuid::new_v4().to_string(),
+                "url": "https://example.invalid/poster.jpg"
+            }))
+            .is_err()
+        );
     }
 }
