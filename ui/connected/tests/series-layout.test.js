@@ -102,3 +102,6 @@ test('series synopsis, counts and rating share the header copy; TMDB and edit co
   assert.ok(tools.children.some(item => item.tagName === 'FORM'));
   assert.equal(header.children.some(item => item.tagName === 'FORM'), false);
 });
+test('Home can explicitly open a started season0 even when another season has unseen episodes',async()=>{
+ const f=seriesFixture([episode('s0',0,1),episode('s1',1,1)]);await f.execute('openSeries("Fixture",0)');assert.deepEqual(f.openSeasons(),['0']);
+});

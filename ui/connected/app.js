@@ -154,7 +154,7 @@ async function catalogRequest(command,generation,context){
 // Stage the complete replacement before rendering: background refresh must not blank the grid.
 // Generation/context guards also discard replies from a previous filter, server or profile.
 async function loadPage(reuseFacetBase=false){
- if(typeof shellSection!=="undefined"&&shellSection==="home")return window.refreshHome?.()||false;
+ if(typeof shellSection!=="undefined"&&shellSection==="home"){await window.refreshHome?.();return true;}
  const context=state.server_id+":"+state.profile_id;if(context!==catalogContext){clearCatalogContext();catalogContext=context;}const generation=++catalogGeneration;
  if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return false;}
  const filters=catalogFilters(),baseFilters={...filters,genre:"",year:""},grouped=!window.isProgressView?.(),baseKey=context+"\u0000"+JSON.stringify({...baseFilters,grouped});

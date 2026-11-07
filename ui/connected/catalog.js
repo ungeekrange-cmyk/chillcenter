@@ -124,16 +124,16 @@ function recommendationScroll(viewport,direction){
  const reduce=globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
  viewport.scrollBy({left:direction*viewport.clientWidth,behavior:reduce?"auto":"smooth"});
 }
-function catalogRecommendationRail(items,{label="",beforeOpen}={}){
+function catalogRecommendationRail(items,{label="",beforeOpen,previousLabel,nextLabel}={}){
  const recommended=recommendationItems(items),context=collectionScope();if(!recommended.length)return null;
  const rail=node("section",undefined,"recommendation-rail-wrap"),head=node("div",undefined,"recommendation-controls"),viewport=node("div",undefined,"recommendation-rail");
  viewport.tabIndex=0;viewport.setAttribute("role","region");viewport.setAttribute("aria-label",label||uiText("Sélection de vidéos recommandées"));
  if(label)rail.append(node("h3",label));
  const previous=button("←",()=>recommendationScroll(viewport,-1),"secondary"),next=button("→",()=>recommendationScroll(viewport,1),"secondary");
- previous.setAttribute("aria-label",uiText("Voir les recommandations précédentes"));next.setAttribute("aria-label",uiText("Voir les recommandations suivantes"));head.append(previous,next);rail.append(head,viewport);
+ previous.setAttribute("aria-label",previousLabel||uiText("Voir les recommandations précédentes"));next.setAttribute("aria-label",nextLabel||uiText("Voir les recommandations suivantes"));head.append(previous,next);rail.append(head,viewport);
  for(const item of recommended){
   const displayTitle=typeof item.title==="string"&&item.title?item.title:uiText("Sans titre"),card=document.createElement("button"),poster=node("div",displayTitle.slice(0,1).toUpperCase(),"poster recommendation-poster"),title=node("span",displayTitle,"recommendation-title"),reasons=Array.isArray(item.matches)&&item.matches.length?node("span",item.matches.join(" · "),"recommendation-reasons"):null;
-  card.type="button";card.className="recommendation-card";card.append(poster,title,node("span",[({film:uiText("Film"),serie:uiText("Série"),documentaire:uiText("Documentaire"),spectacle:uiText("Spectacle")})[item.category],item.year].filter(Boolean).join(" · "),"recommendation-meta"));if(reasons)card.append(reasons);
+  card.type="button";card.dataset.homeMediaId=item.id;card.className="recommendation-card";card.append(poster,title,node("span",[({film:uiText("Film"),serie:uiText("Série"),documentaire:uiText("Documentaire"),spectacle:uiText("Spectacle")})[item.category],item.year].filter(Boolean).join(" · "),"recommendation-meta"));if(reasons)card.append(reasons);
   card.onclick=async()=>{if(!card.isConnected||context!==collectionScope()||beforeOpen&&beforeOpen(item)===false)return;if(item.category==="serie"){if($("media-dialog").open)$("media-dialog").close();await openSeries(item.series_key);}else await openMedia(item.id);};
   viewport.append(card);if(item.category!=="serie")window.renderMediaProgress?.(poster,item);if(item.poster){poster.dataset.recommendationMediaId=item.id;observeArtwork(poster,item.id);}
  }

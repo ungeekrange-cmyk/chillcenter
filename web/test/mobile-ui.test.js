@@ -33,7 +33,7 @@ test("bottom navigation is resynchronised after player class transitions", () =>
   assert.match(source, /syncShell\(\);/);
 });
 test("mobile sheet keeps web AI absent and provides the four approved destinations", () => {
-  for (const label of ["Toute la collection", "Sagas", "Listes de lecture", "Configuration"]) assert.match(source, new RegExp(label));
+  for (const label of ["Accueil", "Sagas", "Listes de lecture", "Configuration"]) assert.match(source, new RegExp(label));
   assert.doesNotMatch(source, /Demande de conseil/);
 });
 test("phone header retains the approved logo while the desktop sidebar is hidden", () => {

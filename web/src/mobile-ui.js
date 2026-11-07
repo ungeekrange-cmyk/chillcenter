@@ -127,7 +127,7 @@
     }
     const more = nav.querySelector("[data-mobile-more]");
     const nonCatalog = !byId("collections-panel")?.hidden || !byId("collection-panel")?.hidden || !byId("picker-panel")?.hidden || !byId("admin-panel")?.hidden;
-    const selectedMore = Boolean(nonCatalog) || (category === "" && !byId("catalog-panel")?.hidden);
+    const selectedMore = !byId("home-panel")?.hidden || Boolean(nonCatalog) || (category === "" && !byId("catalog-panel")?.hidden);
     more?.classList.toggle("active", selectedMore); more?.setAttribute("aria-current", selectedMore ? "page" : "false"); more && (more.disabled = !active);
   }
   function installVirtualizer() {

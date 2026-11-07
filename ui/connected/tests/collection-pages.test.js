@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),{fixture}=r
 test('already-booted context is baselined before the first later refresh and profile changes invalidate pages',async()=>{
  const f=fixture(async()=>({items:[]}));await f.execute('openCollections("saga")');assert.equal(f.sandbox.shellSection,'collections');
  f.sandbox.window.catalogProfileChanged();assert.equal(f.sandbox.shellSection,'collections','a first refresh must not be mistaken for a profile switch');
- f.sandbox.state.profile_id='other';f.sandbox.window.catalogProfileChanged();assert.equal(f.sandbox.shellSection,'catalog');assert.equal(f.json('collectionView'),null);
+ f.sandbox.state.profile_id='other';f.sandbox.window.catalogProfileChanged();assert.equal(f.sandbox.shellSection,'home');assert.equal(f.json('collectionView'),null);
 });
 test('collections use poster tiles and an empty collection keeps its plus and back navigation',async()=>{
  const f=fixture(async c=>c.action==='sagas'?{items:[{id:'saga',name:'Ma saga',media_ids:[]}]}:{saga:{id:'saga',name:'Ma saga',revision:1,media_ids:[]}});

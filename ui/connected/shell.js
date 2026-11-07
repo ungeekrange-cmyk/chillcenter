@@ -10,7 +10,7 @@ window.renderShell=()=>{
  if(!connected)shellSection="home";
  $("advice-panel").hidden=!active||shellSection!=="advice";
  window.aiAdviceVisibilityChanged?.(!$("advice-panel").hidden);
- $("home-panel").hidden=!active||shellSection!=="home";$("catalog-panel").hidden=!active||shellSection!=="catalog";
+ $("home-panel").hidden=!active||shellSection!=="home";window.homeVisibilityChanged?.(active&&shellSection==="home");$("catalog-panel").hidden=!active||shellSection!=="catalog";
  for(const [id,section] of [["collections-panel","collections"],["collection-panel","collection"],["picker-panel","picker"]])$(id).hidden=!active||shellSection!==section;
  for(const [id,kind] of [["show-sagas","saga"],["show-playlists","playlist"]])$(id).classList.toggle("active",active&&["collections","collection","picker"].includes(shellSection)&&collectionKind===kind);
  if(shellSection!=="admin")$("admin-panel").hidden=true;

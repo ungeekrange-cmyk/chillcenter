@@ -49,6 +49,7 @@
   const entry=entryFor(media);label.hidden=!started(entry,media.watched);label.textContent=label.hidden?"":uiText("Lecture en cours · {0} %",Math.floor(percent(entry)));
  };
  function redraw(){
+  if(typeof shellSection!=="undefined"&&shellSection==="home")void root.refreshHome?.(true);
   for(const poster of document.querySelectorAll(".poster[data-progress-media-id]"))root.renderMediaProgress(poster,{id:poster.dataset.progressMediaId,watched:poster.dataset.progressWatched==="true"});
   const label=$("detail-progress");if(label)root.renderDetailProgress({id:label.dataset.progressMediaId,watched:label.dataset.progressWatched==="true"});
   if(typeof loadPage==="function"&&context()&&typeof shellSection!=="undefined"&&shellSection==="catalog")void loadPage(true);
