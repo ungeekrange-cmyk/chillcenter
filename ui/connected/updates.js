@@ -62,10 +62,12 @@
   for(const key of [native?"mac":"web","server","themes"])summary.append(node("p",`${t(names[key])} : ${visibleVersion(installed[key])||t("Indisponible")}`));
   summary.append(node("p",`API : ${server?.installed?.api||local?.installed?.api||"2026-10-14"}`,"muted"));
   if(server?.unsupported)summary.append(node("p",t("Ce serveur ne gère pas encore les mises à jour. Le reste de l’application reste disponible."),"muted"));
+  const expectedCards=new Set();
   for(const [scope,view,components]of [["local",local,native?["mac","themes"]:[]],["server",server,["server","web","themes"]]]){
    if(!view||view.unsupported)continue;
-   for(const component of components){if(!view.policies?.[component])continue;renderCard(cards.get(cardKey(scope,component))||createCard(scope,component),view);}
+   for(const component of components){if(!view.policies?.[component])continue;const key=cardKey(scope,component);expectedCards.add(key);renderCard(cards.get(key)||createCard(scope,component),view);}
   }
+  for(const [key,record]of cards)if(!expectedCards.has(key)){record.card.remove();cards.delete(key);}
   if(native)summary.append(node("p",t("Sur Mac, l’installation demande toujours votre validation. La vérification automatique fonctionne lorsque l’application est ouverte."),"muted"));
  }
  async function refresh(force=false){if(refreshing)return;refreshing=true;const before=visibleVersion((native?local:server)?.installed?.themes);try{local=await call({action:"status"});try{server=native?await call({action:"server_status"}):local;}catch(error){if(isUnsupportedServerError(error)){server={unsupported:true,installed:server?.installed};}else{note.textContent=error?.message||"État du serveur temporairement indisponible. Les dernières informations connues sont conservées.";}}const after=visibleVersion((native?local:server)?.installed?.themes);if(before&&after&&before!==after)void window.reloadThemePack?.();render(force);}catch(error){note.textContent=error.message||String(error);}finally{refreshing=false;lastRefresh=Date.now();}}

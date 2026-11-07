@@ -20,6 +20,7 @@ function updateHarness(){
   append(...items){this.children.push(...items);for(const item of items)item.parentElement=this;}
   replaceChildren(...items){this.children=[];this.append(...items);}
   contains(target){return this===target||this.children.some(child=>child?.contains?.(target));}
+  remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);this.isConnected=false;}
   setAttribute(){}querySelector(selector){return selector===".admin-grid"?grid:null;}
  }
  const grid=new Element("div"),admin=new Element("section");admin.hidden=false;admin.querySelector=selector=>selector===".admin-grid"?grid:null;
@@ -29,7 +30,9 @@ function updateHarness(){
   {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"pending"}],available:{},helper_available:true,check_available:true,timezone:"UTC"},
   {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"failed",result_code:"check_failed"}],available:{},helper_available:true,check_available:true,timezone:"UTC"},
   {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"succeeded",result_code:"available"}],available:{web:{version:"0.7.4"}},helper_available:true,check_available:true,timezone:"UTC"},
-  {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"succeeded",result_code:"available"}],available:{},helper_available:true,check_available:true,timezone:"UTC"}
+  {installed:{web:{version:"0.7.2"}},policies:{web:{mode:"check",hour:2,minute:0,revision:1}},operations:[{component:"web",kind:"check",status:"succeeded",result_code:"available"}],available:{},helper_available:true,check_available:true,timezone:"UTC"},
+  {unsupported:true,installed:{web:{version:"0.7.2"}}},
+  {installed:{web:{version:"0.7.2"}},policies:{},operations:[],available:{},helper_available:true,check_available:true,timezone:"UTC"}
  ];let index=0;const commands=[];
  const window={ChillBridge:{},chillReady:Promise.resolve(),__TAURI__:{core:{invoke:async(_name,{command})=>{commands.push(command);if(command.action==="status")return states[index];if(command.action==="server_check"){index=1;return {operation:{id:"check"}};}throw Error("unexpected "+command.action);}}}};
  vm.runInNewContext(fs.readFileSync(__dirname+"/updates.js","utf8"),{window,document,node:(tag,text,cls)=>{const e=new Element(tag,text);e.className=cls||"";return e;},$:id=>id==="admin-panel"?admin:null,MutationObserver:class{observe(){}},setInterval(){},globalThis:{},console,BigInt});
@@ -43,4 +46,9 @@ test("check status refreshes in place while a policy input has focus",async()=>{
 });
 test("available without cached details remains visible and never claims installation",async()=>{
  const h=updateHarness();await h.settled();h.setState(4);await h.window.chillUpdates.refresh();assert.ok(h.nodes.some(node=>node.textContent.includes("Mise à jour détectée ; détails indisponibles")));assert.ok(!h.nodes.some(node=>node.textContent==="Mise à jour installée"));
+});
+test("obsolete cards are removed after unsupported or policy-less status",async()=>{
+ const h=updateHarness();await h.settled();const first=h.nodes.find(node=>node.dataset.updateComponent==="web");h.setState(5);await h.window.chillUpdates.refresh();assert.equal(first.isConnected,false);
+ h.setState(0);await h.window.chillUpdates.refresh();const replacement=h.nodes.filter(node=>node.dataset.updateComponent==="web").at(-1);assert.notEqual(replacement,first);assert.equal(replacement.isConnected,true);
+ h.setState(6);await h.window.chillUpdates.refresh();assert.equal(replacement.isConnected,false);
 });
