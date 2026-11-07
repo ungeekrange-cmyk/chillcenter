@@ -38,7 +38,7 @@ function playlistArtworkCommand(id){return {action:"playlist_artwork",id};}
 function sagaMemberArtworkCommand(id,expectedRevision,mediaId){return {action:"saga_member_artwork",id,expected_revision:expectedRevision,media_id:mediaId};}
 if(typeof module!=="undefined")module.exports={playlistOrderForVisibleMove,seriesEditCommand,relatedMediaCommand,tmdbCommand,sagaArtworkCommand,playlistArtworkCommand,sagaMemberArtworkCommand,collectionMosaic};
 function closeCatalogDialogs(){for(const id of ["media-dialog","playlist-target-dialog","collection-settings-dialog","collection-delete-confirm","collection-cover-dialog"])if($(id).open)$(id).close();window.leaveCollectionPages();detailView=null;}
-window.catalogProfileChanged=()=>{if(catalogProfile!==collectionScope()){closeCatalogDialogs();if(typeof hidePlayer==="function")hidePlayer();catalogProfile=collectionScope();if(typeof shellSection!=="undefined")shellSection="catalog";}};
+window.catalogProfileChanged=()=>{if(catalogProfile!==collectionScope()){closeCatalogDialogs();if(typeof hidePlayer==="function")hidePlayer();catalogProfile=collectionScope();window.clearHomeContext?.();if(typeof shellSection!=="undefined")shellSection="home";}};
 function button(text,fn,cls="secondary"){const b=node("button",text,cls);b.type="button";b.onclick=fn;return b;}
 function options(select,values){select.replaceChildren();for(const [value,label] of values){const o=node("option",label);o.value=value;select.append(o);}}
 window.catalogEnhanceCard=(card,m)=>{
@@ -202,7 +202,7 @@ window.catalogConflictTarget=command=>{
  }
  return null;
 };
-async function openSeries(name){
+async function openSeries(name,preferredSeason=null){
   if(!await stopPlayerForNavigation())return;
   const previous=shellSection==="collection"&&collectionKind==="series"?seriesView:null,previousScroll=globalThis.scrollY||0,openSeasons=new Set(Array.from($("collection-members").querySelectorAll?.(".series-season[open]")||[],section=>section.dataset.season));
   const epoch=++collectionEpoch,context=collectionScope();
@@ -215,7 +215,7 @@ async function openSeries(name){
   const ordered=[...result.episodes].sort((a,b)=>(a.season===null?Infinity:a.season)-(b.season===null?Infinity:b.season)||(a.episode===null?Infinity:a.episode)-(b.episode===null?Infinity:b.episode)||a.title.localeCompare(b.title,"fr"));
   const same=previous?.episodes?.some(old=>result.episodes.some(item=>item.id===old.id));
   // Choose from the sorted per-profile episodes only on entry; refreshes preserve manual folds.
-  const firstSeason=(ordered.find(episode=>!episode.watched)||ordered[0])?.season;
+  const firstSeason=preferredSeason??(ordered.find(episode=>!episode.watched)||ordered[0])?.season;
   let season=undefined,section=null,episodeGrid=null;
   for(const m of ordered){
    if(m.season!==season){
