@@ -71,6 +71,7 @@ function main(){
  if(resolve(key).startsWith(project+"/"))throw Error("The private signing key must stay outside Git");
  const keyMeta=lstatSync(key);if(!keyMeta.isFile()||keyMeta.isSymbolicLink()||(keyMeta.mode&0o077)!==0)throw Error("Signing key must be a private regular file (0600)");
  if(execFileSync("git",["status","--porcelain","--untracked-files=normal"],{cwd:project,encoding:"utf8"}).trim())throw Error("Commit the exact source before packaging");
+ execFileSync(process.execPath,[join(project,"scripts/verify-source-manifest.mjs")],{cwd:project,stdio:["ignore","pipe","pipe"]});
  const source=execFileSync("git",["rev-parse","HEAD"],{cwd:project,encoding:"utf8"}).trim(),versions=JSON.parse(readFileSync(join(project,"versions.json"),"utf8")),version=versions[component];
  const publicKey=join(project,"updates/release.pub"),pub=readFileSync(publicKey,"utf8"),keyId=/public key ([A-F0-9]+)/.exec(pub)?.[1];if(!keyId)throw Error("Missing pinned public key identity");
  const reservation=JSON.parse(readFileSync(join(project,"updates/sequences.json"),"utf8"))[component];
