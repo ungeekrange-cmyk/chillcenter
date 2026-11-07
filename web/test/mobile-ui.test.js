@@ -10,7 +10,7 @@ test("mobile adapter forwards to shared navigation instead of duplicating shell 
   assert.match(source, /data-mobile-category=\"\$\{category\}\"/);
 });
 test("mobile virtualizer computes three columns from its live available width", () => {
-  assert.match(source, /\(width - 36\) \/ 3/);
+  assert.match(source, /width - \(columns - 1\) \* 18/);
   assert.match(source, /root\.innerWidth <= 360/);
   assert.match(source, /root\.catalogWindow = \(count, width, posterSize/);
 });
@@ -57,13 +57,14 @@ test("mobile catalogue posters are unobscured and the header keeps profile at ri
 test("collection member actions stay below posters with touch targets and matching row geometry", () => {
   const css = readFileSync(resolve(__dirname, "../../ui/connected/collections.css"), "utf8");
   assert.match(css, /#collection-members \.collection-media-card \.info\{height:168px/);
-  assert.match(css, /\.actions\{position:static;display:flex;gap:4px;flex-wrap:wrap/);
+  assert.match(css, /\.actions\{position:static;display:grid;grid-template-columns:repeat\(2,minmax\(44px,1fr\)\)/);
   assert.match(css, /min-width:44px;min-height:44px/);
   const {runInNewContext}=require("node:vm"),{catalogWindow}=require("../../ui/connected/catalog-window.js");
   const source=readFileSync(resolve(__dirname,"../src/mobile-ui.js"),"utf8"),install=source.slice(source.indexOf("function installVirtualizer()"),source.indexOf("\n  function install()"));
   const root={catalogWindow,innerWidth:375};runInNewContext(`(${install})()`,{root,isPhone:()=>true});
   const w=root.catalogWindow(100,343,200,0,812,false,168);
   assert.equal(w.columns,3);assert.equal(w.gridRowHeight,Math.ceil(((343-36)/3)*1.5)+168);assert.equal(w.gridRowHeight+18,w.rowHeight);
+  for(let width=160;width<=400;width++){const row=root.catalogWindow(100,width,200,0,812,false,168),card=(width-(row.columns-1)*18)/row.columns;assert.ok(card>=96,`collection controls require at least96px, got ${card}`);}
 });
 test("remaining mobile player and profile controls meet the 44px touch target", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");

@@ -467,11 +467,16 @@ impl Tmdb {
         .await
     }
 
-    pub async fn artwork_candidates(&self, query: &str) -> Result<Vec<ArtworkCandidate>, String> {
+    fn artwork_query(query: &str) -> Result<&str, String> {
         let query = query.trim();
-        if query.is_empty() || query.len() > 500 {
+        if query.is_empty() || query.chars().count() > 500 {
             return Err("Saisissez un thème de 500 caractères maximum.".into());
         }
+        Ok(query)
+    }
+
+    pub async fn artwork_candidates(&self, query: &str) -> Result<Vec<ArtworkCandidate>, String> {
+        let query = Self::artwork_query(query)?;
         let params = [("query", query), ("include_adult", "false")];
         let keyword_params = [("query", query)];
         let (collections, titles, keywords) = tokio::try_join!(
@@ -750,6 +755,14 @@ fn valid_bearer(value: &str) -> bool {
 #[cfg(test)]
 mod credential_tests {
     use super::*;
+    #[test]
+    fn artwork_query_limit_counts_characters_not_utf8_bytes() {
+        assert!(Tmdb::artwork_query(&"é".repeat(500)).is_ok());
+        assert!(Tmdb::artwork_query(&"é".repeat(501)).is_err());
+        assert!(Tmdb::artwork_query("  ").is_err());
+        assert_eq!(Tmdb::artwork_query("  Cinéma  ").unwrap(), "Cinéma");
+    }
+
     #[test]
     fn job_retry_classes_follow_http_status_without_retaining_response_details() {
         for status in [408, 429, 500, 503] {

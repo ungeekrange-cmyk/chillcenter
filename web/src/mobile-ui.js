@@ -143,7 +143,9 @@
       // 2.9999999999999996 before the shared floor(), especially with cutout
       // insets/subpixel resizing. Bias only that rounding error, not the layout.
       const epsilon = Math.max(1, width) * Number.EPSILON * 8;
-      const adapted = useMobile ? Math.max(1, (root.innerWidth <= 360 ? (width - 18) / 2 : (width - 36) / 3) - epsilon) : posterSize;
+      const preferredColumns = root.innerWidth <= 360 ? 2 : 3;
+      const columns = infoHeight === undefined ? preferredColumns : Math.min(preferredColumns, Math.max(1, Math.floor((width + 18) / 114)));
+      const adapted = useMobile ? Math.max(1, (width - (columns - 1) * 18) / columns - epsilon) : posterSize;
       return desktop(count, width, adapted, scrollTop, viewportHeight, list, infoHeight);
     };
   }
