@@ -109,6 +109,7 @@ Object.assign(chillEnglish,{
  "Vérification en cours": "Check in progress",
  "Demande enregistrée. Le service de mise à jour la traitera en moins d’une minute.": "Request recorded. The update service will process it in under one minute.",
  "Mise à jour détectée ; détails indisponibles. Réactualisez.": "Update detected; details are unavailable. Refresh."
+ ,"Accueil":"Home","Reprendre":"Continue watching","Ajouts récents":"Recently added","Pour vous":"For you","L’accueil nécessite une mise à jour du serveur. La recherche et les catégories restent disponibles.":"Home requires a server update. Search and categories remain available.","Saison ":"Season "
 });
 if(typeof module!=="undefined")module.exports=chillEnglish;
 if(typeof globalThis!=="undefined")globalThis.chillEnglish=chillEnglish;
