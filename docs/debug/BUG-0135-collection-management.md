@@ -14,7 +14,7 @@ l'index, confirmation nommée avec vidéos conservées, sélecteur commun à tro
 sources. Sélection explicite puis application CAS. Contrats et limites décrits
 dans ADR-0037 et OpenAPI ; mêmes contrôles pour web et Mac.
 
-Vérification locale : 241 tests Node de l'interface et des adaptateurs passent.
+Vérification locale : 385 tests Node (interface, adaptateurs et contrats documentaires) de l'interface et des adaptateurs passent.
 Rust chill-client : 54 passent, un test ignoré préexistant ; chill-updates :
 18 tests bibliothèque et 4 tests binaire passent. Contrat OpenAPI : 85 routes.
 La validation a révélé une déclaration de paramètre playback-progress au niveau
@@ -24,7 +24,7 @@ sans changement de route ou du DTO.
 Essais manuels dans le vrai navigateur sur données synthétiques (aucune donnée
 familiale modifiée) : copie d'une affiche de membre saga et playlist ; recherche,
 sélection et application TMDB simulées ; renommage ; annulation et suppression
-d'une playlist de test avec retour à l'index. Rendus 1440×900 et 375×812 contrôlés.
+d'une playlist de test avec retour à l'index. Rendus 1440×900, 375×812 et 361×812 contrôlés.
 Capture conservée hors Git dans l'espace de travail du lot.
 
 Limites : aucun téléchargement TMDB réel avec la clé familiale, aucun nouveau

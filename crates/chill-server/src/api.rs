@@ -550,11 +550,11 @@ mod tests {
         let before = store.media(&first.id, &media_id).unwrap();
         let source = store.artwork_path(&first.id, &media_id).unwrap();
         let cache = data.join("posters");
-        let source = std::path::PathBuf::from(source).canonicalize().unwrap();
+        let source = source.canonicalize().unwrap();
         let opened = crate::media_stream::open_indexed(&cache, &source);
         assert!(opened.is_ok(), "{:#?}", opened.err());
         let playlist = store
-            .create_playlist_with_members(&first.id, "Sélection", &[media_id.clone()])
+            .create_playlist_with_members(&first.id, "Sélection", std::slice::from_ref(&media_id))
             .unwrap();
         let excluded = store
             .create_playlist_with_members(&first.id, "Vide", &[])
