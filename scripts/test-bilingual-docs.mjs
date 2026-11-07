@@ -56,7 +56,10 @@ test('README distinguishes source versions from immutable published download pac
     for (const component of ['mac','server','web','themes']) {
       const label = {mac:'Mac',server:file==='README.md'?'serveur':'server',web:'web',themes:file==='README.md'?'thèmes':'themes'}[component];
       assert.ok(text.includes(`${label} ${versions[component]}`), `${file}: stale ${component} source version`);
-      if (versions[component]!==published[component]) assert.ok(!text.includes(`/releases/download/v${versions[component]}/`),`${file}: unpublished download link`);
+      if (versions[component]!==published[component]) {
+        const prefix=component==='mac'?`Chill-Center-${versions.mac}-`:`Chill-Center-${component}-${versions[component]}-`;
+        assert.ok(!downloads.some(match=>match[2].startsWith(prefix)),`${file}: unpublished ${component} download link`);
+      }
     }
   }
 });
@@ -73,7 +76,7 @@ test('source component versions agree with crates, lockfile, Tauri, plist and re
   }
   for (const component of ['mac','server','web','themes']) {
     assert.equal(reservations[component].version,versions[component]);
-    assert.equal(reservations[component].sequence,({mac:5,server:4,web:5,themes:2})[component]);
+    assert.equal(reservations[component].sequence,({mac:6,server:5,web:6,themes:2})[component]);
   }
 });
 
