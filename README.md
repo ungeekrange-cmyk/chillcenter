@@ -2,21 +2,21 @@
 
 **Français** | [English](README.en.md)
 
-**Sources en cours de livraison : Mac 0.7.6 ; serveur 0.7.4, web 0.7.5 et thèmes 0.7.1 inchangés.** Les liens ci-dessous visent les paquets publiés.
+**Sources en cours de livraison : Mac 0.7.6 ; serveur 0.7.5 en attente de publication, web 0.7.5 et thèmes 0.7.1.** Les liens ci-dessous visent les paquets publiés.
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
-**Versions publiées : Mac 0.7.5 · serveur 0.7.4 · web 0.7.5 · thèmes 0.7.1.**
-[Changements 0.7.5 FR/EN](docs/releases/REL-0.7.5.md) : Accueil en trois rangées,
+**Versions publiées : Mac 0.7.6 · serveur 0.7.4 · web 0.7.5 · thèmes 0.7.1.**
+[Changements 0.7.6 FR/EN](docs/releases/REL-0.7.6.md) : mise à jour Mac au clic ; Accueil en trois rangées,
 jaquettes depuis un film ou TMDB, gestion simplifiée et curseur masqué avec les
 commandes vidéo. Le serveur corrige aussi le résumé de disponibilité du helper ;
 un ancien helper nécessite un remplacement administrateur vérifié.
 
 ### Paquets actuellement publiés
 
-**[Télécharger l’application Mac Apple Silicon v0.7.5 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.5)
+**[Télécharger l’application Mac Apple Silicon v0.7.6 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.6/Chill-Center-0.7.6-macos-arm64.dmg)** · [Notes FR/EN et paquets](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.6)
 
-[Sources correspondantes et recettes de reconstruction du Mac](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-corresponding-sources.tar.gz) : les bibliothèques du lecteur incluent FFmpeg sous **GPL-3.0-or-later**. Licences, signatures et instructions accompagnent la release.
+[Sources correspondantes et recettes de reconstruction du Mac](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.6/Chill-Center-0.7.6-corresponding-sources.tar.gz) : les bibliothèques du lecteur incluent FFmpeg sous **GPL-3.0-or-later**. Licences, signatures et instructions accompagnent la release.
 
 Mac, serveur, web et thèmes sont versionnés séparément dans
 [versions.json](versions.json). Les versions installées et les réglages de mise
@@ -27,13 +27,13 @@ décrivent leur calendrier et priorité.
 
 | Composant et version publiée | Paquet et instructions |
 | --- | --- |
-| Mac Apple Silicon 0.7.5, build 15 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-0.7.5-macos-arm64.dmg), macOS 15+ |
+| Mac Apple Silicon 0.7.6, build 16 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.6/Chill-Center-0.7.6-macos-arm64.dmg), macOS 15+ |
 | Serveur Linux ARM64 0.7.4 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-server-0.7.4-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
 | Client web/PWA 0.7.5 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-web-0.7.5-install.zip), serveur 0.7.4 pour Accueil et les jaquettes TMDB |
 | Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
-et les [notes de version et limites](docs/releases/REL-0.7.5.md). Les manifestes
+et les [notes de version et limites](docs/releases/REL-0.7.6.md). Les manifestes
 signés sont dans les releases propres à chaque composant. Le serveur existant
 n’est pas modifié directement par cette publication ; sa politique de mise à
 jour peut la détecter. La v0.6 et les anciens paquets

@@ -27,6 +27,10 @@ use uuid::Uuid;
 
 const DEFAULT_CONFIG: &str = "/etc/chillcenter/updates.json";
 const CONFIRM_INTERRUPT: &str = "INTERRUPT_ACTIVE_WORK";
+// A Pi SD card may durably fsync only a few poster files per second. A healthy
+// 81 MiB / ~2000-file backup exceeded the old two-minute budget. Keep a finite
+// deadline and process-group/output limits, without weakening receipt checks.
+const OFFLINE_BACKUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 /// Serializes network/cache/install mutations across timer and administrator
 /// invocations. Recovery intentionally does not acquire this lock: it runs as
@@ -1942,7 +1946,7 @@ impl InstallHooks for LinuxHooks<'_> {
                     Ok(())
                 });
             }
-            let output = run_bounded_backup(&mut command, Duration::from_secs(120))?;
+            let output = run_bounded_backup(&mut command, OFFLINE_BACKUP_TIMEOUT)?;
             if output.len() > 4096 {
                 return Err(UpdateError::Invalid(
                     "offline server backup receipt is too large".into(),

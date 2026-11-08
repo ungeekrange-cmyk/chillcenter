@@ -4,8 +4,8 @@
     "sequence": 7
   },
   "server": {
-    "version": "0.7.4",
-    "sequence": 5
+    "version": "0.7.5",
+    "sequence": 6
   },
   "web": {
     "version": "0.7.5",

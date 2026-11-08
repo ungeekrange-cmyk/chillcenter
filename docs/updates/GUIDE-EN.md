@@ -2,13 +2,13 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-Release v0.7.5 provides Mac0.7.5/build15, web0.7.5 and server0.7.4. Themes0.7.1 remain unchanged. Publication performs no direct installation on an existing server.
+Mac release v0.7.6 provides Mac0.7.6/build16; web0.7.5 and server0.7.4 remain separately published. Themes0.7.1 remain unchanged. Publication performs no direct installation on an existing server.
 
 ## Four components
 
 | Component | Source version | Release tag | Installation |
 | --- | --- | --- | --- |
-| Apple Silicon Mac | `versions.json.mac` | `mac-vX.Y.Z` | Manual DMG; native “Install now” confirmation for subsequent updates |
+| Apple Silicon Mac | `versions.json.mac` | `mac-vX.Y.Z` | Manual DMG; launch check and click “Install now” |
 | Linux server | `versions.json.server` | `server-vX.Y.Z` | Local administrator installer, non-root service |
 | Web/PWA client | `versions.json.web` | `web-vX.Y.Z` | Static server files, without replacing its binary |
 | Themes | `versions.json.themes` | `themes-vX.Y.Z` | Data/image pack, without rebuilding the application |
@@ -32,8 +32,8 @@ server. An older server remains usable: only unsupported update controls are dis
 Server/web/themes default to automatic at **02:00 server local time**. The
 timezone is Linux's, not the browser's. One scheduled attempt per local date
 prevents duplicates during daylight-saving changes. Mac checks run while the
-application is open and always require native confirmation before installation
-and restart. No hidden Mac task runs while the application is closed.
+application is open; an explicit install installs and restarts without a second
+dialog. No hidden Mac task runs while the application is closed.
 
 The catalogue remains usable during checks/downloads. Playback and active jobs
 defer installation; no LAN button can forcibly interrupt them. Reload the page
@@ -62,7 +62,7 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives: v0.7.5 for Mac/web/server, with themes0.7.1 in v0.7.3, not GitHub's automatically
+Use the complete distribution archives: v0.7.6 for Mac, v0.7.5 for web/server, with themes0.7.1 in v0.7.3, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.
@@ -75,7 +75,7 @@ tar -xzf Chill-Center-server-0.7.4-linux-aarch64.tar.gz
 
 The same verification applies to the Mac DMG, web install ZIP and themes install
 ZIP using their respective filenames. The Mac distribution is Apple Silicon
-only and the 0.7.5 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
+only and the 0.7.6 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
 pinned Sequoia inputs, and all 51 Mach-O minima were verified. Physical macOS
 15/26 execution has not yet been tested; static checks do not replace it.
 Historical: the 0.7.2 DMG required macOS 27+, despite its Rust 13.0 floor.

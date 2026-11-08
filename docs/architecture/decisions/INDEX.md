@@ -1,5 +1,9 @@
 # Index des décisions techniques
 
+[ADR0040](ADR-0040-pi-durable-backup-budget.md), IMPLEMENTED_DETAIL,
+8 novembre 2026 : sauvegarde hors ligne bornée à 15 minutes et unité helper
+à 30 minutes, sans changement des contrôles de durabilité, confiance ou droits.
+
 [ADR0039](ADR-0039-mac-one-click-updates.md), ACCEPTED_BY_USER_CHANGE_REQUEST,
 8 novembre 2026 : contrôle Mac au lancement, version/vérifier/installer et icône
 d'installation au clic sans seconde confirmation ; remplace la partie Mac de

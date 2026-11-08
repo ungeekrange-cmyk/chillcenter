@@ -2,13 +2,13 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La release v0.7.5 fournit Mac0.7.5/build15, web0.7.5 et serveur0.7.4. Les thèmes0.7.1 restent inchangés. La publication ne réalise aucune installation directe sur un serveur existant.
+La release Mac v0.7.6 fournit Mac0.7.6/build16 ; web0.7.5 et serveur0.7.4 restent publiés séparément. Les thèmes0.7.1 restent inchangés. La publication ne réalise aucune installation directe sur un serveur existant.
 
 ## Quatre composants
 
 | Composant | Version source | Tag de release | Installation |
 | --- | --- | --- | --- |
-| Mac Apple Silicon | `versions.json.mac` | `mac-vX.Y.Z` | DMG manuel ; confirmation native « Installer maintenant » pour les mises à jour suivantes |
+| Mac Apple Silicon | `versions.json.mac` | `mac-vX.Y.Z` | DMG manuel ; vérification au lancement et « Installer maintenant » au clic |
 | Serveur Linux | `versions.json.server` | `server-vX.Y.Z` | Installateur administrateur local, service non-root |
 | Client web/PWA | `versions.json.web` | `web-vX.Y.Z` | Fichiers statiques sur le serveur, sans remplacer son binaire |
 | Ambiances | `versions.json.themes` | `themes-vX.Y.Z` | Pack de données et images, sans reconstruire l’application |
@@ -33,8 +33,8 @@ reste utilisable : seules les commandes de mise à jour non supportées sont dé
 Par défaut, serveur/web/ambiances sont automatiques à **02:00 locale du serveur**.
 Le fuseau est celui du système Linux, pas celui du navigateur. Une seule tentative
 planifiée par date locale évite les doublons lors du changement d’heure. Le Mac
-vérifie lorsque l’application est ouverte ; il demande toujours une confirmation
-native avant d’installer et de redémarrer. Il n’existe pas de tâche Mac cachée
+vérifie lorsque l’application est ouverte ; l’installation explicite installe et
+redémarre sans second dialogue. Il n’existe pas de tâche Mac cachée
 qui s’exécute application fermée.
 
 Le catalogue reste utilisable pendant les vérifications/téléchargements. Les
@@ -66,7 +66,7 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution : v0.7.5 pour Mac/web/serveur, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
+Utiliser les archives complètes de distribution : v0.7.6 pour Mac, v0.7.5 pour web/serveur, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
@@ -79,7 +79,7 @@ tar -xzf Chill-Center-server-0.7.4-linux-aarch64.tar.gz
 ```
 
 Même vérification pour le DMG Mac, le ZIP d'installation web et celui des thèmes
-en adaptant le nom. La distribution Mac 0.7.5 est réservée à Apple Silicon et
+en adaptant le nom. La distribution Mac 0.7.6 est réservée à Apple Silicon et
 **nécessite macOS 15 Sequoia minimum**. Les dépendances utilisent des entrées
 Sequoia figées, et les 51 minima Mach-O ont été vérifiés. Les essais physiques
 sur macOS 15/26 restent non réalisés ; les contrôles statiques ne les remplacent
