@@ -7,6 +7,37 @@ use std::{fs, path::Path, process::Command};
 use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
 
+fn previous_bundle(root: &Path) -> std::path::PathBuf {
+    std::env::var_os("CHILL_MAC_QA_BASE_APP")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root.join("release-0.7.4/Chill Center.app"))
+}
+fn previous_version(root: &Path) -> semver::Version {
+    let value = Command::new("/usr/bin/plutil")
+        .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
+        .arg(previous_bundle(root).join("Contents/Info.plist"))
+        .output()
+        .unwrap();
+    assert!(value.status.success());
+    semver::Version::parse(String::from_utf8(value.stdout).unwrap().trim()).unwrap()
+}
+
+fn release_fixture(root: &Path) -> (serde_json::Value, Vec<u8>) {
+    let release = std::env::var_os("CHILL_MAC_RELEASE_QA_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root.join("release-0.7.5-final"));
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(release.join("mac/mac-manifest.json")).unwrap()).unwrap();
+    let asset = manifest["assets"][0]["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap();
+    let bytes = fs::read(release.join("mac").join(asset)).unwrap();
+    (manifest, bytes)
+}
+
 fn wait_for_successful_exit(pid: u32) -> i32 {
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     // Only the isolated replacement PID just observed by this test. Darwin
@@ -106,8 +137,7 @@ fn published_package_rejects_tampering_replaces_isolated_app_and_launches() {
     let root = std::path::PathBuf::from(
         std::env::var_os("CHILL_MAC_UPDATE_QA_ROOT").expect("isolated QA parent required"),
     );
-    let old = root.join("release-0.7.4/Chill Center.app");
-    let release = root.join("release-0.7.5-final");
+    let old = previous_bundle(&root);
     assert!(old.join("Contents/MacOS/chillcenter-desktop").is_file());
     let work = tempfile::Builder::new()
         .prefix("mac-update-sdk.")
@@ -124,12 +154,10 @@ fn published_package_rejects_tampering_replaces_isolated_app_and_launches() {
             .success()
     );
     let before = tree_digest(&fake);
-    let bytes = fs::read(release.join("Chill-Center-0.7.5-macos-arm64.app.tar.gz")).unwrap();
-    let manifest: serde_json::Value =
-        serde_json::from_slice(&fs::read(release.join("mac/mac-manifest.json")).unwrap()).unwrap();
+    let (manifest, bytes) = release_fixture(&root);
     let signature = manifest["assets"][0]["tauri_signature"].as_str().unwrap();
     let mut context = tauri::test::mock_context(tauri::test::noop_assets());
-    context.package_info_mut().version = semver::Version::new(0, 7, 4);
+    context.package_info_mut().version = previous_version(&root);
     let configuration: serde_json::Value =
         serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
     context.config_mut().plugins.0.insert(
@@ -153,7 +181,7 @@ fn published_package_rejects_tampering_replaces_isolated_app_and_launches() {
         .unwrap()
         .build()
         .unwrap();
-    let update = updater.restore_update(serde_json::json!({"version":"0.7.5","platforms":{"darwin-aarch64":{"url":"https://example.invalid/unused-package","signature":signature}}})).unwrap().unwrap();
+    let update = updater.restore_update(serde_json::json!({"version":manifest["version"],"platforms":{"darwin-aarch64":{"url":"https://example.invalid/unused-package","signature":signature}}})).unwrap().unwrap();
     let mut corrupted = bytes.clone();
     corrupted[100] ^= 1;
     assert!(update.install(&corrupted).is_err());
@@ -209,12 +237,9 @@ fn restart_child() {
         executable,
         work.join("Chill Center.app/Contents/MacOS/chillcenter-desktop")
     );
-    let release = work.parent().unwrap().join("release-0.7.5-final");
-    let manifest: serde_json::Value =
-        serde_json::from_slice(&fs::read(release.join("mac/mac-manifest.json")).unwrap()).unwrap();
-    let bytes = fs::read(release.join("Chill-Center-0.7.5-macos-arm64.app.tar.gz")).unwrap();
+    let (manifest, bytes) = release_fixture(work.parent().unwrap());
     let mut context = tauri::test::mock_context(tauri::test::noop_assets());
-    context.package_info_mut().version = semver::Version::new(0, 7, 4);
+    context.package_info_mut().version = previous_version(work.parent().unwrap());
     let configuration: serde_json::Value =
         serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
     context.config_mut().plugins.0.insert(
@@ -248,7 +273,7 @@ fn restart_child() {
         .unwrap()
         .build()
         .unwrap();
-    let update = updater.restore_update(serde_json::json!({"version":"0.7.5","platforms":{"darwin-aarch64":{"url":"https://example.invalid/unused-package","signature":manifest["assets"][0]["tauri_signature"]}}})).unwrap().unwrap();
+    let update = updater.restore_update(serde_json::json!({"version":manifest["version"],"platforms":{"darwin-aarch64":{"url":"https://example.invalid/unused-package","signature":manifest["assets"][0]["tauri_signature"]}}})).unwrap().unwrap();
     update.install(&bytes).unwrap();
     fs::write(work.join("before-restart"), std::process::id().to_string()).unwrap();
     // This is the actual production restart API, now running from inside the
@@ -274,7 +299,7 @@ fn real_restart_api_executes_replaced_bundle() {
     let fake = work.join("Chill Center.app");
     assert!(
         Command::new("/usr/bin/ditto")
-            .arg(root.join("release-0.7.4/Chill Center.app"))
+            .arg(previous_bundle(&root))
             .arg(&fake)
             .status()
             .unwrap()

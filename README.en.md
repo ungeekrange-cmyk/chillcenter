@@ -2,6 +2,8 @@
 
 [Français](README.md) | **English**
 
+**Sources awaiting publication: Mac 0.7.6; server 0.7.4, web 0.7.5 and themes 0.7.1 unchanged.** Downloads below are the published packages.
+
 Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).

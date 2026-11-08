@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { assertPublicText } from './build-public-site.mjs';
 
+const published = {mac:'0.7.5',server:'0.7.4',web:'0.7.5',themes:'0.7.1'};
 const root = fileURLToPath(new URL('../', import.meta.url));
 const pairs = [
   ['README.md', 'README.en.md'],
@@ -34,7 +35,6 @@ test('README distinguishes source versions from immutable published download pac
   const versions = JSON.parse(await read('versions.json'));
   // Public receipts verified against GitHub Mac/web0.7.5; server0.7.4, themes0.7.1, not inferred from a bump.
   // Keep independent component versions; unchanged themes stay at 0.7.1.
-  const published = {mac:'0.7.5',server:'0.7.4',web:'0.7.5',themes:'0.7.1'};
   const packages = [
     `Chill-Center-${published.mac}-macos-arm64.dmg`,
     `Chill-Center-server-${published.server}-linux-aarch64.tar.gz`,
@@ -76,7 +76,7 @@ test('source component versions agree with crates, lockfile, Tauri, plist and re
   }
   for (const component of ['mac','server','web','themes']) {
     assert.equal(reservations[component].version,versions[component]);
-    assert.equal(reservations[component].sequence,({mac:6,server:5,web:6,themes:2})[component]);
+    assert.equal(reservations[component].sequence,({mac:7,server:5,web:6,themes:2})[component]);
   }
 });
 
@@ -185,7 +185,7 @@ test('both documentation indexes list every translated reference pair', async ()
 
 
 test('current FR/EN install commands and DMG labels match the published component versions', async () => {
- const versions=JSON.parse(await read('versions.json'));
+ const versions=published;
  for(const language of ['FR','EN']){
   const text=await read(`docs/updates/GUIDE-${language}.md`);
   assert.ok(text.includes(`--version ${versions.server} --library`));
