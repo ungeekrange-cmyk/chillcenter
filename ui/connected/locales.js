@@ -74,8 +74,11 @@ Object.assign(chillEnglish,{
  "Cette mise à jour nécessite une version compatible des autres composants.":"This update requires compatible versions of the other components.",
  "Vérification interrompue. Réessayez dans quelques minutes.":"Check interrupted. Try again in a few minutes.",
  "Installation différée pendant l’utilisation":"Installation deferred while in use","Mise à jour installée":"Update installed","En attente":"Pending","En cours":"In progress","Terminé":"Completed","Échec":"Failed",
- "Installer la mise à jour et redémarrer Chill Center maintenant ?":"Install the update and restart Chill Center now?",
- "Sur Mac, l’installation demande toujours votre validation. La vérification automatique fonctionne lorsque l’application est ouverte.":"Mac installation always requires your approval. Automatic checks run while the application is open."
+ "Installer la mise à jour Mac maintenant":"Install the Mac update now",
+ "Installation en cours…":"Installing…",
+ "Mise à jour en cours…":"Update in progress…",
+ "Téléchargement et installation en cours…":"Downloading and installing…",
+ "Échec de la mise à jour Mac. Réessayer.":"Mac update failed. Retry."
 });
 Object.assign(chillEnglish,{
  "Éléments précédents — {0}": "Previous items — {0}",

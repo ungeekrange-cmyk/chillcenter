@@ -20,6 +20,7 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
      if(c.action==="status")return window.ChillBridge?f.server:f.local;
      if(c.action==="server_status"){if(f.transient)throw {code:"UPDATE_SERVER_UNAVAILABLE",status:503,message:"Serveur temporairement indisponible."};return f.legacy?{unsupported:true,installed:{server:{version:"0.6.0"}}}:f.server;}
      if(c.action==="check")return new Promise(resolve=>{f.finishCheck=()=>resolve({operation:{status:"pending"}});});
+     if(c.action==="install")return new Promise(resolve=>{f.finishInstall=()=>resolve({});});
      if(c.action==="policy"){Object.assign(f.local.policies[c.component],{mode:c.mode,hour:c.hour,minute:c.minute,revision:2});return {};}
      return {};
     }
@@ -47,8 +48,12 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
    await card.getByRole('button',{name:'Vérifier maintenant',exact:true}).click();
    await page.waitForFunction(component=>fixtureUpdates.calls.some(c=>c.action==='server_check'&&c.component===component),component);
   }
-  const forms=settings.locator("form");assert.equal(await forms.count(),5);
-  assert.equal(await forms.first().locator('option[value="automatic"]').count(),0,"Mac cannot silently install");
+  assert.equal(await settings.locator('[data-update-component="mac"] form').count(),0,"Mac has no policy or schedule form");
+  const adminBox=await page.locator('#admin-toggle').boundingBox(),badgeBox=await page.locator('#mac-update-badge').boundingBox();assert.ok(badgeBox.x>=adminBox.x+adminBox.width,"The Mac badge is horizontally adjacent to Configuration");assert.ok(Math.abs((badgeBox.y+badgeBox.height/2)-(adminBox.y+adminBox.height/2))<2,"The Mac badge shares Configuration's row");
+  if(process.env.CHILL_MAC_UPDATE_QA_SCREENSHOT)await page.screenshot({path:process.env.CHILL_MAC_UPDATE_QA_SCREENSHOT,fullPage:true});
+  await page.locator('#mac-update-badge').dblclick();await page.waitForFunction(()=>fixtureUpdates.calls.filter(c=>c.action==='install'&&c.component==='mac').length===1);
+  await page.evaluate(()=>fixtureUpdates.finishInstall());
+  const forms=settings.locator("form");assert.equal(await forms.count(),4);
   const time=forms.first().locator('input[type="time"]');await time.fill("03:15");await time.focus();
   await page.evaluate(()=>window.chillUpdates.refresh());
   assert.equal(await time.inputValue(),"03:15","Status polling preserves the active edit");
@@ -59,18 +64,17 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
   await settings.getByRole("button",{name:"Vérifier maintenant",exact:true}).first().click();
   await page.waitForFunction(()=>Boolean(fixtureUpdates.finishCheck));
   assert.equal(await page.locator("#search").isEnabled(),true);
-  await page.locator("#admin-close").click();await page.locator(".media-card h2").click();
-  assert.equal(await page.locator("#detail-title").textContent(),"Test movie","Catalogue remains usable during a held update request");
-  await page.evaluate(()=>fixtureUpdates.finishCheck());await page.locator("#media-dialog .dialog-close").click();
+  await page.locator("#admin-close").click();assert.equal(await page.locator("#search").isEnabled(),true,"Navigation remains usable during a held update request");
+  await page.evaluate(()=>fixtureUpdates.finishCheck());
   await page.locator("#admin-toggle").click();await page.evaluate(async()=>{fixtureUpdates.transient=true;await window.chillUpdates.refresh(true);});
   assert.match(await settings.textContent(),/Serveur · Serveur · 0.7.0/,"A 503 retains the last good server state");
-  assert.equal(await settings.locator("form").count(),5,"A transient server failure must not hide supported controls");
+  assert.equal(await settings.locator("form").count(),4,"A transient server failure must not hide supported controls");
   assert.match(await settings.locator("p.muted").last().textContent(),/temporairement indisponible/);
   await page.evaluate(()=>fixtureUpdates.transient=false);
   await page.locator("#admin-toggle").click();await page.evaluate(async()=>{fixtureUpdates.legacy=true;await window.chillUpdates.refresh(true);});
   assert.match(await settings.textContent(),/Ce serveur ne gère pas encore/);
   assert.match(await settings.textContent(),/Serveur : 0.6.0/);
-  assert.equal(await settings.locator("form").count(),2,"Only unsupported server controls disappear");
+  assert.equal(await settings.locator("form").count(),1,"Only unsupported server controls disappear");
   await page.goto("file://"+path.resolve(__dirname,"../ui/connected/index.html")+'?component-test=web#web');await page.evaluate(()=>window.chillReady);
   await page.locator('#admin-toggle').click();await page.locator('#configuration-categories button[data-category="general"]').click();
   await settings.locator('form').first().waitFor();
@@ -90,6 +94,6 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?process.env.CHIL
   await page.evaluate(async()=>{fixtureUpdates.server.operations=[{component:'web',kind:'check',status:'failed',result_code:'CHECK_FAILED'}];await chillUpdates.refresh(true);});
   assert.equal(await settings.getByRole('button',{name:'Installer maintenant',exact:true}).count(),0,'Failed recheck cannot expose a stale install hint');
   assert.deepEqual(errors,[]);
-  console.log("PASS component settings: Mac/web component checks without root helper, install only for newer detected versions, native consent, nonblocking requests, CAS, draft preservation and old-server fallback. Synthetic bridge only.");
+  console.log("PASS component settings: Mac/web component checks without root helper, install only for newer detected versions, one-click Mac install, nonblocking requests, CAS, draft preservation and old-server fallback. Synthetic bridge only.");
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

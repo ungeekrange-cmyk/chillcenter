@@ -1,5 +1,19 @@
 # Contexte du projet
 
+## 8 novembre 2026 — correctif candidat de mise à jour Mac
+
+Branche `codex/mac-updater-one-click`, base `978a4e9`. Cause observée : vérification
+Mac Running plus ancienne que le processus redémarré, conservée sans worker.
+Récupération sous verrou OS, contrôle frais et détaché au lancement, état local
+indépendant du serveur ; formulaire de politique Mac et second dialogue retirés.
+Icône près de Configuration, un clic pour installer/relancer, erreurs persistantes.
+Tests unitaires et navigateur ainsi que remplacement SDK et lancement réels
+isolés ; aucune modification de l’application installée, du Pi ou du NAS.
+Les versions publiques demeurent Mac/web 0.7.5 et serveur 0.7.4 ; pas de nouvelle
+publication implicite. [Preuves et limites](implementation/MAC-UPDATER-ONE-CLICK.md),
+[BUG0138](debug/BUG-0138-mac-update-orphan-check.md),
+[ADR0039](architecture/decisions/ADR-0039-mac-one-click-updates.md).
+
 ## 7 novembre 2026 — publication Mac/web 0.7.5 et serveur 0.7.4
 
 Source immuable `52fc3999b312a472efa463c6eb6a286a1026694b`, main fusionnée/poussée.

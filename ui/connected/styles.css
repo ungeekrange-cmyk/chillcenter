@@ -1,4 +1,6 @@
 :root{color-scheme:dark;--bg:#10151c;--panel:#1c2530;--text:#f0f3f6;--muted:#aebbc9;--line:#354151;--accent:#e9b46b;--button:#10151c;font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.update-badge{margin-left:.5rem;width:32px;height:32px;padding:0;font-size:18px;line-height:1;white-space:nowrap}
+.mac-update-control{display:flex;align-items:center;gap:.5rem}.mac-update-control #admin-toggle{flex:1;width:auto}.mac-update-control .update-badge{flex:none;margin:0}
 :root{--poster-size:200px}.catalog-display{display:flex;gap:12px;align-items:end}.catalog-display label{margin:0}.media-grid{grid-template-columns:repeat(auto-fill,minmax(var(--poster-size),1fr))!important}.catalog-open{cursor:pointer}.media-card h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.series-season{margin:12px 0}.series-season summary{cursor:pointer;font-weight:600}
 :root[data-theme=light]{color-scheme:light;--bg:#f4f2ec;--panel:#fff;--text:#152031;--muted:#4f5e70;--line:#cbd2d8;--accent:#926025;--button:#fff}
 @media(prefers-color-scheme:light){:root:not([data-theme=dark]){color-scheme:light;--bg:#f4f2ec;--panel:#fff;--text:#152031;--muted:#4f5e70;--line:#cbd2d8;--accent:#926025;--button:#fff}}

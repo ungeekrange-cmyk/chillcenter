@@ -21,7 +21,6 @@ use std::{
     },
 };
 use tauri::Manager;
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_updater::UpdaterExt;
 const PUBLIC_KEY: &str = include_str!("../../../updates/release.pub");
 const KEY_ID: &str = "18FD790B48C202F8";
@@ -66,7 +65,7 @@ pub fn error(message: impl Into<String>, code: &str) -> UiError {
     }
 }
 
-fn macos_post_consent_rendering_guard(rendering: &AtomicBool) -> Result<(), UiError> {
+fn macos_install_rendering_guard(rendering: &AtomicBool) -> Result<(), UiError> {
     if rendering.load(Ordering::Acquire) {
         return Err(error(
             "Une lecture a commencé ; relancez l’installation après sa fin.",
@@ -76,24 +75,6 @@ fn macos_post_consent_rendering_guard(rendering: &AtomicBool) -> Result<(), UiEr
     Ok(())
 }
 
-/// Native confirmation is deliberately owned by the Rust orchestration path.
-/// The caller must still perform its pre-dialog guard before fetching any
-/// metadata; this helper preserves the second guard immediately after consent.
-pub(super) async fn confirm_macos_install(
-    app: &tauri::AppHandle,
-    version: &Version,
-    rendering: &AtomicBool,
-) -> Result<(), UiError> {
-    let (answer, receive) = tokio::sync::oneshot::channel();
-    app.dialog().message(format!("Installer Chill Center {version} et redémarrer maintenant ?\nInstall Chill Center {version} and restart now?"))
-        .title("Chill Center").kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom("Installer maintenant / Install now".into(),"Annuler / Cancel".into()))
-        .show(move |confirmed|{let _=answer.send(confirmed);});
-    if !receive.await.unwrap_or(false) {
-        return Err(error("Installation annulée.", "UPDATE_CANCELLED"));
-    }
-    macos_post_consent_rendering_guard(rendering)
-}
 pub struct UpdateHost {
     pub directory: PathBuf,
     active: AtomicBool,
@@ -463,6 +444,49 @@ impl Drop for InstallLease {
         }
     }
 }
+
+/// Caller owns the cross-process worker lease. Only abandoned read-only local
+/// checks are failed; installs, accepted receipts and rollback ledgers survive.
+fn recover_local_check(
+    store: &StateStore,
+    component: Component,
+    _lease: &InstallLease,
+    fresh_process: bool,
+) -> Result<(), UiError> {
+    store
+        .update_scheduler(|state| {
+            let mut recovered = false;
+            for operation in &mut state.operations {
+                if operation.component == component
+                    && operation.kind == IntentKind::Check
+                    && matches!(
+                        operation.status,
+                        OperationStatus::Pending | OperationStatus::Running
+                    )
+                {
+                    operation.status = OperationStatus::Failed;
+                    operation.result_code = Some("CHECK_INTERRUPTED".into());
+                    operation.updated_unix = time::OffsetDateTime::now_utc().unix_timestamp();
+                    recovered = true;
+                }
+            }
+            // Availability is kept in memory. The first check of a new Mac
+            // process must fetch its signed manifest again, even if a previous
+            // process checked within the persistent five-minute rate limit.
+            if (recovered || fresh_process)
+                && let Some(entry) = state.components.get_mut(&component)
+            {
+                entry.last_check_unix = None;
+            }
+            Ok(())
+        })
+        .map_err(|_| {
+            error(
+                "Reprise de vérification indisponible.",
+                "UPDATE_STATE_UNAVAILABLE",
+            )
+        })
+}
 impl Drop for DownloadedAsset {
     fn drop(&mut self) {
         // This is one exact generated cache file, never a recursive removal.
@@ -537,11 +561,9 @@ impl UpdateHost {
         minute: u8,
         revision: u64,
     ) -> Result<Value, UiError> {
-        if !matches!(component, Component::Mac | Component::Themes)
-            || (component == Component::Mac && mode == PolicyMode::Automatic)
-        {
+        if component != Component::Themes {
             return Err(error(
-                "Sur Mac, l’installation nécessite toujours votre confirmation.",
+                "La mise à jour Mac se vérifie au lancement et s’installe au clic.",
                 "UPDATE_POLICY_INVALID",
             ));
         }
@@ -556,6 +578,16 @@ impl UpdateHost {
             })
     }
     pub fn check(self: &Arc<Self>, component: Component) -> Result<Value, UiError> {
+        self.check_inner(component, false)
+    }
+    fn check_at_startup(self: &Arc<Self>) -> Result<Value, UiError> {
+        self.check_inner(Component::Mac, true)
+    }
+    fn check_inner(
+        self: &Arc<Self>,
+        component: Component,
+        fresh_process: bool,
+    ) -> Result<Value, UiError> {
         if !matches!(component, Component::Mac | Component::Themes) {
             return Err(error(
                 "Composant local invalide.",
@@ -563,9 +595,14 @@ impl UpdateHost {
             ));
         }
         let store = self.store()?;
-        if self.active.swap(true, Ordering::AcqRel) {
-            return self.snapshot();
-        }
+        // The OS releases this lease when a process exits. Holding it for the
+        // complete check makes an abandoned durable operation recoverable,
+        // without interrupting another live worker in this or another bundle.
+        let lease = InstallLease::acquire(&self.directory)?;
+        recover_local_check(&store, component, &lease, fresh_process)?;
+        // Lease ownership, rather than an in-memory flag left by an unwound
+        // worker, is the authority for whether another update can run.
+        self.active.store(true, Ordering::Release);
         let operation = match store.admit_intent(
             component,
             IntentKind::Check,
@@ -587,6 +624,7 @@ impl UpdateHost {
         let host = self.clone();
         let id = operation.id;
         tauri::async_runtime::spawn_blocking(move || {
+            let _lease = lease;
             let store = host.store();
             if let Ok(store) = &store {
                 let _ = store.transition(
@@ -632,6 +670,7 @@ impl UpdateHost {
     fn fetch(&self, component: Component) -> chill_updates::Result<Option<AvailableRelease>> {
         let client = GithubReleaseClient::new(TransportLimits {
             max_asset_bytes: 256 * 1024 * 1024,
+            timeout: std::time::Duration::from_secs(30),
             ..Default::default()
         })?;
         let Some(candidate) = client.find_latest(component)? else {
@@ -876,9 +915,7 @@ impl UpdateHost {
         // Cross-process serialization also protects bounded cache filenames
         // when two installed/dev bundles happen to share the device settings.
         let _lease = InstallLease::acquire(&self.directory)?;
-        if self.active.swap(true, Ordering::AcqRel) {
-            return Err(error("Une mise à jour est déjà en cours.", "UPDATE_BUSY"));
-        }
+        self.active.store(true, Ordering::Release);
         let result = self.install_inner(app.clone(), component, rendering).await;
         self.active.store(false, Ordering::Release);
         result
@@ -985,6 +1022,13 @@ impl UpdateHost {
             let guard = DownloadedAsset(destination.clone());
             GithubReleaseClient::new(TransportLimits {
                 max_asset_bytes: 256 * 1024 * 1024,
+                // Large native bundles on a slow connection need a different
+                // budget from the small release/manifest metadata requests.
+                timeout: std::time::Duration::from_secs(if component == Component::Mac {
+                    900
+                } else {
+                    60
+                }),
                 ..Default::default()
             })?
             .download_verified(
@@ -1030,7 +1074,7 @@ impl UpdateHost {
                 .restore_update(raw)
                 .map_err(|_| error("Métadonnées Mac invalides.", "UPDATE_SIGNATURE_INVALID"))?
                 .ok_or_else(|| error("Aucune version plus récente.", "UPDATE_NOT_NEWER"))?;
-            confirm_macos_install(&app, &verified.manifest.version, rendering.as_ref()).await?;
+            macos_install_rendering_guard(rendering.as_ref())?;
             let verified = self
                 .verify_install(component, &release.bytes, &release.signature)
                 .map_err(|_| {
@@ -1047,9 +1091,11 @@ impl UpdateHost {
                 &release.bytes,
                 &release.signature,
             )?;
+            let install_rendering = rendering.clone();
             tauri::async_runtime::spawn_blocking(move || {
                 let bytes = std::fs::read(&download.0)
                     .map_err(|_| error("Paquet indisponible.", "UPDATE_DOWNLOAD_FAILED"))?;
+                macos_install_rendering_guard(&install_rendering)?;
                 update.install(bytes).map_err(|_| {
                     error(
                         "Installation impossible. L’application actuelle est conservée.",
@@ -1140,6 +1186,9 @@ impl UpdateHost {
     pub fn start_schedule(self: &Arc<Self>, app: tauri::AppHandle, rendering: Arc<AtomicBool>) {
         let host = self.clone();
         tauri::async_runtime::spawn(async move {
+            // No startup/catalogue await: checking never installs the Mac app.
+            // Old persisted Mac scheduling preferences no longer gate checks.
+            let _ = host.check_at_startup();
             let mut timer = tokio::time::interval(std::time::Duration::from_secs(60));
             loop {
                 timer.tick().await;
@@ -1151,7 +1200,7 @@ impl UpdateHost {
                                 state,
                                 time::OffsetDateTime::now_utc(),
                                 local_offset(),
-                                &[Component::Mac, Component::Themes],
+                                &[Component::Themes],
                             )
                         })
                         .map_err(|_| {
@@ -1161,7 +1210,7 @@ impl UpdateHost {
                 .await;
                 if let Ok(Ok(due)) = due {
                     for attempt in due {
-                        if !matches!(attempt.component, Component::Mac | Component::Themes) {
+                        if attempt.component != Component::Themes {
                             continue;
                         }
                         for _ in 0..600 {
@@ -1264,6 +1313,185 @@ fn local_offset() -> time::UtcOffset {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "opt-in live public GitHub metadata; isolated local state only"]
+    async fn live_check_recovers_restart_and_returns_before_network_finishes() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = Arc::new(UpdateHost::new(directory.path().to_path_buf()));
+        let store = host.store().unwrap();
+        let now = time::OffsetDateTime::now_utc();
+        let abandoned = store
+            .admit_intent(Component::Mac, IntentKind::Check, now)
+            .unwrap();
+        store
+            .transition(
+                abandoned.id,
+                OperationStatus::Pending,
+                OperationStatus::Running,
+                None,
+                now,
+            )
+            .unwrap();
+        let start = std::time::Instant::now();
+        host.active.store(true, Ordering::Release); // stale flag after an unwound worker
+        let admitted = host.check_at_startup().unwrap();
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "check admission must not wait for GitHub"
+        );
+        let id: uuid::Uuid = serde_json::from_value(admitted["operation"]["id"].clone()).unwrap();
+        assert_ne!(id, abandoned.id);
+        loop {
+            let state = store.read().unwrap();
+            let operation = state.operations.iter().find(|op| op.id == id).unwrap();
+            if !matches!(
+                operation.status,
+                OperationStatus::Pending | OperationStatus::Running
+            ) {
+                assert_eq!(
+                    operation.status,
+                    OperationStatus::Succeeded,
+                    "{:?}",
+                    operation.result_code
+                );
+                assert!(matches!(
+                    operation.result_code.as_deref(),
+                    Some("NO_UPDATE" | "AVAILABLE")
+                ));
+                println!(
+                    "LIVE isolated check PASS: {:?}, elapsed {:?}",
+                    operation.result_code,
+                    start.elapsed()
+                );
+                break;
+            }
+            assert!(start.elapsed() < std::time::Duration::from_secs(150));
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+    }
+
+    #[test]
+    fn interrupted_check_is_retried_without_resetting_receipts_or_sequence() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = UpdateHost::new(directory.path().to_path_buf());
+        let store = host.store().unwrap();
+        let now = time::OffsetDateTime::now_utc();
+        store.record_sequence(Component::Mac, 5).unwrap();
+        let abandoned = store
+            .admit_intent(Component::Mac, IntentKind::Check, now)
+            .unwrap();
+        store
+            .transition(
+                abandoned.id,
+                OperationStatus::Pending,
+                OperationStatus::Running,
+                None,
+                now,
+            )
+            .unwrap();
+        // This was the regression: admission keeps returning the orphan forever.
+        assert_eq!(
+            store
+                .admit_intent(Component::Mac, IntentKind::Check, now)
+                .unwrap()
+                .id,
+            abandoned.id
+        );
+        let lease = InstallLease::acquire(directory.path()).unwrap();
+        assert!(InstallLease::acquire(directory.path()).is_err());
+        recover_local_check(&store, Component::Mac, &lease, false).unwrap();
+        let retry = store
+            .admit_intent(Component::Mac, IntentKind::Check, now)
+            .unwrap();
+        assert_ne!(retry.id, abandoned.id);
+        assert_eq!(retry.status, OperationStatus::Pending);
+        let state = store.read().unwrap();
+        assert_eq!(state.components[&Component::Mac].highest_sequence, 5);
+        let interrupted = state
+            .operations
+            .iter()
+            .find(|op| op.id == abandoned.id)
+            .unwrap();
+        assert_eq!(
+            interrupted.result_code.as_deref(),
+            Some("CHECK_INTERRUPTED")
+        );
+        // A second live worker cannot own recovery or install concurrently.
+        drop(lease);
+        assert!(InstallLease::acquire(directory.path()).is_ok());
+    }
+
+    #[test]
+    fn check_does_not_recover_a_worker_holding_the_process_lease() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = Arc::new(UpdateHost::new(directory.path().to_path_buf()));
+        let store = host.store().unwrap();
+        let now = time::OffsetDateTime::now_utc();
+        let operation = store
+            .admit_intent(Component::Mac, IntentKind::Check, now)
+            .unwrap();
+        store
+            .transition(
+                operation.id,
+                OperationStatus::Pending,
+                OperationStatus::Running,
+                None,
+                now,
+            )
+            .unwrap();
+        let _live_worker = InstallLease::acquire(directory.path()).unwrap();
+        let before = store.read().unwrap();
+        assert_eq!(host.check(Component::Mac).unwrap_err().code, "UPDATE_BUSY");
+        assert_eq!(
+            serde_json::to_value(store.read().unwrap()).unwrap(),
+            serde_json::to_value(before).unwrap()
+        );
+    }
+
+    #[test]
+    fn startup_rechecks_a_recent_completed_result_without_resetting_normal_rate_limit() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = UpdateHost::new(directory.path().to_path_buf());
+        let store = host.store().unwrap();
+        let now = time::OffsetDateTime::now_utc();
+        let previous = store
+            .admit_intent(Component::Mac, IntentKind::Check, now)
+            .unwrap();
+        store
+            .transition(
+                previous.id,
+                OperationStatus::Pending,
+                OperationStatus::Running,
+                None,
+                now,
+            )
+            .unwrap();
+        store
+            .transition(
+                previous.id,
+                OperationStatus::Running,
+                OperationStatus::Succeeded,
+                Some("AVAILABLE"),
+                now,
+            )
+            .unwrap();
+        let lease = InstallLease::acquire(directory.path()).unwrap();
+        recover_local_check(&store, Component::Mac, &lease, false).unwrap();
+        assert_eq!(
+            store
+                .admit_intent(Component::Mac, IntentKind::Check, now)
+                .unwrap()
+                .id,
+            previous.id
+        );
+        recover_local_check(&store, Component::Mac, &lease, true).unwrap();
+        let fresh = store
+            .admit_intent(Component::Mac, IntentKind::Check, now)
+            .unwrap();
+        assert_ne!(fresh.id, previous.id);
+        assert_eq!(fresh.status, OperationStatus::Pending);
+    }
 
     #[test]
     fn embedded_updater_configuration_deserializes_before_builder_overrides() {
@@ -1589,15 +1817,15 @@ mod tests {
     }
 
     #[test]
-    fn macos_post_consent_guard_keeps_the_existing_busy_code() {
+    fn macos_install_guard_keeps_the_existing_busy_code() {
         let rendering = AtomicBool::new(true);
-        let error = macos_post_consent_rendering_guard(&rendering).unwrap_err();
+        let error = macos_install_rendering_guard(&rendering).unwrap_err();
         assert_eq!(error.code, "UPDATE_BUSY");
         assert_eq!(
             error.message,
             "Une lecture a commencé ; relancez l’installation après sa fin."
         );
         rendering.store(false, Ordering::Release);
-        assert!(macos_post_consent_rendering_guard(&rendering).is_ok());
+        assert!(macos_install_rendering_guard(&rendering).is_ok());
     }
 }

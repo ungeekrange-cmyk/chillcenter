@@ -1,5 +1,10 @@
 # Index des décisions techniques
 
+[ADR0039](ADR-0039-mac-one-click-updates.md), ACCEPTED_BY_USER_CHANGE_REQUEST,
+8 novembre 2026 : contrôle Mac au lancement, version/vérifier/installer et icône
+d'installation au clic sans seconde confirmation ; remplace la partie Mac de
+l'ADR0029 et récupère les vérifications interrompues sous verrou OS.
+
 [ADR0034](ADR-0034-macos15-media-build.md), PROPOSED implementation,21octobre2026 :
 cible macOS15+ approuvée, entrées multimédias Sequoia isolées/épinglées, minimum
 contrôlé avant signature; exécution physique15/26 à distinguer du build.
