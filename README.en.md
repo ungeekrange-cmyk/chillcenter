@@ -2,13 +2,13 @@
 
 [Français](README.md) | **English**
 
-**Sources awaiting publication: Mac 0.7.6; server 0.7.5 pending publication, web 0.7.5 and themes 0.7.1.** Downloads below are the published packages.
+**Published sources: Mac 0.7.6, server 0.7.5, web 0.7.5 and themes 0.7.1.** Downloads below are the published packages.
 
 Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).
 
-**Published versions: Mac 0.7.6 · server 0.7.4 · web 0.7.5 · themes 0.7.1.**
+**Published versions: Mac 0.7.6 · server 0.7.5 · web 0.7.5 · themes 0.7.1.**
 [0.7.6 changes, FR/EN](docs/releases/REL-0.7.6.md): one-click Mac updates; three-shelf Home, artwork from
 a member or TMDB, simpler management and pointer hiding with playback controls.
 The server also fixes helper availability publication; an older helper requires
@@ -29,8 +29,8 @@ can update at 02:00 local time, outside playback and active jobs.
 | Component and published version | Package and instructions |
 | --- | --- |
 | Apple Silicon Mac 0.7.6, build 16 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.6/Chill-Center-0.7.6-macos-arm64.dmg), macOS 15+ |
-| ARM64 Linux server 0.7.4 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-server-0.7.4-linux-aarch64.tar.gz), 64-bit systemd host |
-| Web/PWA client 0.7.5 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-web-0.7.5-install.zip), server 0.7.4 for Home and TMDB collection artwork |
+| ARM64 Linux server 0.7.5 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.5/Chill-Center-server-0.7.5-linux-aarch64.tar.gz), 64-bit systemd host |
+| Web/PWA client 0.7.5 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-web-0.7.5-install.zip), server 0.7.5 for Home and TMDB collection artwork |
 | Independent themes 0.7.1 | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
 
 Read the [verification/installation guide](docs/updates/GUIDE-EN.md) and
@@ -65,7 +65,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 ### Mac client
 
 - **Apple Silicon (ARM64)** Mac; no Intel package is published.
-- The **0.7.5 DMG requires macOS 15 Sequoia or newer**, covering macOS
+- The **0.7.6 DMG requires macOS 15 Sequoia or newer**, covering macOS
   15, 26 and 27, with pinned Sequoia dependencies checked before signing.
   The 51 Mach-O minima, signature and DMG mount were verified.
   Physical macOS 15/26 execution has not yet been tested.
@@ -77,7 +77,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 
 ### Linux server
 
-- Published package **0.7.4 targets Linux ARM64/AArch64, a 64-bit system with
+- Published package **0.7.5 targets Linux ARM64/AArch64, a 64-bit system with
   glibc 2.28 or newer for the binaries**. Raspberry Pi 3 B/B+ running 64-bit Linux
   is the target; a 32-bit ARM OS or Alpine/musl cannot use this package.
   The verified real configuration is Debian 13; another compatible distribution

@@ -1,7 +1,7 @@
 # BUG0139 — Sauvegarde saine interrompue avant une mise à jour du Pi
 
 8 novembre 2026, observé pendant l'installation explicitement autorisée du
-serveur et du web sur le Pi. Serveur actuel 0.7.2, helper signé du serveur 0.7.4.
+serveur et du web sur le Pi. À l’observation : serveur0.7.2, helper signé0.7.4.
 
 Le premier apply a attendu la quiescence sans forcer ; le serveur était occupé.
 Après fermeture du Mac et expiration du bail restant, busy=false, mutations=0.
@@ -26,3 +26,10 @@ administrateur du helper et de l'unité est nécessaire sur cette installation ;
 ne pas réutiliser l'installateur réservé à une installation initiale.
 Retour arrière : ancien helper et unité sauvegardés, ancien slot serveur conservé.
 Les sauvegardes partielles sont préservées comme preuves, sans aucune purge.
+
+
+Résolu et vérifié sur le Pi le 8 novembre : serveur/helper0.7.5 publiés puis
+installés sans force ; sauvegarde complète1 926 fichiers/92 658 842 octets,
+environ231 secondes, manifeste final présent. Serveur sain, web0.7.5 installé
+ensuite depuis la GUI Mac, timer rétabli et configurations conservées.
+[Preuves de livraison et retour arrière](../releases/REL-SERVER-0.7.5.md).

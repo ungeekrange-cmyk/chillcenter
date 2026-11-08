@@ -10,8 +10,14 @@ déjà présent dans le cache npm. Pas de nouvel environnement ni de purge.
 Les copies QA générées `mac-update-sdk.*` sous le dossier de tâche servent
 uniquement au remplacement natif isolé et sont conservées comme preuves.
 
-La publication courante reste Mac/web 0.7.5 et serveur 0.7.4. Ce correctif n'est
-pas encore empaqueté/publié et n'est pas installé dans `/Applications`.
+Mac0.7.6/build16 est publié dans `mac-v0.7.6` (10 assets) et la release globale
+`v0.7.6` (13 assets) reste Latest. Les deux releases totalisent 23 assets
+(15 uniques) vérifiés publiquement.
+Le paquet signé a été installé dans `/Applications` après fermeture de l'app ;
+les sauvegardes privées de l'ancien bundle et des données d'application sont
+conservées. Le smoke GUI réel affiche la carte de version et « Vérifier
+maintenant », sans mode horaire ; un contrôle manuel atteint aussi l'état
+terminal « dernière version » sans bloquer l'interface.
 
 ## Contrôles
 
@@ -30,7 +36,7 @@ Contrôles exécutés :
 - Test opt-in réseau : vraie admission détachée après récupération, résultat
   GitHub NO_UPDATE en environ 3,7 secondes ; aucune donnée familiale utilisée.
 - Test opt-in SDK : paquet altéré refusé et arbre de bundle strictement conservé ;
-  installation réelle du paquet public signé 0.7.5 dans une copie de 0.7.4 ;
+  installation réelle du paquet public signé 0.7.6 dans une copie de 0.7.4 ;
   codesign profond strict et lancement du nouveau binaire/libmpv réussis.
   Preuve préservée : `mac-update-sdk.fVOySO/result.json` sous le dossier de tâche.
 - Test opt-in de relance : copie du harness dans le bundle jetable, remplacement
@@ -40,7 +46,7 @@ Contrôles exécutés :
   Preuve : `mac-update-restart.DnUwEv/result.json` sous le dossier de tâche.
 
 Le harness SDK opt-in `apps/desktop/tests/mac_updater_install.rs` utilise les API publiques
-du SDK et le paquet Mac 0.7.5 déjà publié. Il remplace une copie QA de 0.7.4,
+du SDK et le paquet Mac 0.7.6 déjà publié. Il remplace une copie QA de 0.7.4,
 vérifie la conservation du bundle après corruption du paquet, puis exécute le
 nouveau Mach-O avec `--verify-bundle`, qui sort avant l'ouverture des réglages.
 Le parcours de relance démarre le harness lui-même depuis la copie `.app` afin
@@ -68,3 +74,20 @@ charger la configuration publique exacte de l'application ; le parcours complet
 est ensuite passé. Cette observation d'outillage n'est pas la cause du bug installé.
 Les copies d'essai et le prélèvement de pile sont conservés sous le dossier de
 tâche ; aucune source, livraison, donnée personnelle ni ancien paquet supprimé.
+
+
+## Installation réelle et contrôle GUI — 8 novembre 2026
+
+Mac0.7.6/build16 installé dans `/Applications/Chill Center.app` après arrêt de
+l'ancien processus ; bundle0.7.4 et données d'application sauvegardés. GUI réelle :
+version0.7.6, aucune politique/horaire dans la carte Mac, contrôle de lancement
+achevé, puis clic Vérifier maintenant donnant Vous utilisez la dernière version.
+Le serveur peut être indisponible sans empêcher ce résultat local.
+
+Après maintenance du Pi, la même GUI affiche serveur0.7.5 et web0.7.5. Le clic
+Vérifier maintenant web a découvert0.7.5, puis Installer maintenant a abouti
+à Mise à jour installée. Rechargement du catalogue : Catalogue à jour.
+Contrôles TLS/SHA256 et reçus d'installation :
+[notes serveur](../releases/REL-SERVER-0.7.5.md).
+[Nettoyage des caches et copies QA](WORKSPACE-CLEANUP-2026-11-08.md) après
+conservation des preuves et paquets canoniques.

@@ -1,5 +1,31 @@
 # Contexte du projet
 
+## 8 novembre 2026 — publications Mac 0.7.6 et serveur 0.7.5
+
+Mac0.7.6/build16 (`mac-v0.7.6`) et serveur0.7.5/séquence6
+(`server-v0.7.5`) sont publics. `mac-v0.7.6` compte 10 assets et la release
+globale `v0.7.6` (Latest) 13, soit 23 assets dont 15 uniques vérifiés
+publiquement. La release serveur
+compte 16 assets signés, vérifiés contre la source
+`956e155ff32497493848e6b1477fa1f9e61d9a2f`; Linux ARM64 requiert glibc2.28.
+Web0.7.5 reste publié dans `web-v0.7.5` et thèmes0.7.1 dans `v0.7.3`.
+CI Security `42529956483` et CodeQL `42529956247` sont réussis. L'application
+Mac0.7.6 a été installée avec sauvegardes conservées ; le smoke GUI réel montre
+la carte de version, « Vérifier maintenant », aucun mode horaire et le résultat
+terminal « dernière version ». Serveur et client web0.7.5 sont installés sur le
+Pi, séquence6 chacun : santé TLS épinglée, fichiers HTTP conformes au paquet,
+service et timer actifs, configurations conservées. Vérification puis installation
+web déclenchées avec succès depuis cette GUI Mac ; catalogue reconnecté. Voir [notes Mac](releases/REL-0.7.6.md) et
+[notes serveur](releases/REL-SERVER-0.7.5.md).
+
+## 8 novembre 2026 — ménage autorisé des espaces Chill Center
+
+Nettoyage achevé : augmentation mesurée de l'espace libre de 21 327 872 000 octets
+(21,3 Go). Caches Cargo/cross et copies QA/téléchargements redondantes retirés,
+coquille vide `chillcenter-fixes-web-parity` supprimée. Sources, branches locales,
+quatre worktrees, livraisons canoniques et sauvegardes conservés. Aucun nettoyage
+Pi/NAS ni stockage partagé. [Périmètre et mesures](implementation/WORKSPACE-CLEANUP-2026-11-08.md).
+
 ## 8 novembre 2026 — correctif candidat de mise à jour Mac
 
 Branche `codex/mac-updater-one-click`, base `978a4e9`. Cause observée : vérification
@@ -9,8 +35,9 @@ indépendant du serveur ; formulaire de politique Mac et second dialogue retiré
 Icône près de Configuration, un clic pour installer/relancer, erreurs persistantes.
 Tests unitaires et navigateur ainsi que remplacement SDK et lancement réels
 isolés ; aucune modification de l’application installée, du Pi ou du NAS.
-Les versions publiques demeurent Mac/web 0.7.5 et serveur 0.7.4 ; pas de nouvelle
-publication implicite. [Preuves et limites](implementation/MAC-UPDATER-ONE-CLICK.md),
+Les versions publiques au moment de ce candidat demeuraient Mac/web 0.7.5 et
+serveur0.7.4 ; pas de nouvelle publication implicite à ce stade.
+[Preuves et limites](implementation/MAC-UPDATER-ONE-CLICK.md),
 [BUG0138](debug/BUG-0138-mac-update-orphan-check.md),
 [ADR0039](architecture/decisions/ADR-0039-mac-one-click-updates.md).
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { assertPublicText } from './build-public-site.mjs';
 
-const published = {mac:'0.7.6',server:'0.7.4',web:'0.7.5',themes:'0.7.1'};
+const published = {mac:'0.7.6',server:'0.7.5',web:'0.7.5',themes:'0.7.1'};
 const root = fileURLToPath(new URL('../', import.meta.url));
 const pairs = [
   ['README.md', 'README.en.md'],
@@ -33,7 +33,8 @@ const unique = values => [...new Set(values)].sort();
 
 test('README distinguishes source versions from immutable published download packages', async () => {
   const versions = JSON.parse(await read('versions.json'));
-  // Public receipts verified against GitHub Mac0.7.6/web0.7.5; server0.7.4, themes0.7.1, not inferred from a bump.
+  // Public receipts verified against GitHub Mac0.7.6/server0.7.5/web0.7.5;
+  // unchanged themes stay at 0.7.1, not inferred from a source bump.
   // Keep independent component versions; unchanged themes stay at 0.7.1.
   const packages = [
     `Chill-Center-${published.mac}-macos-arm64.dmg`,
@@ -48,7 +49,10 @@ test('README distinguishes source versions from immutable published download pac
     assert.ok(text.includes(`/releases/tag/v${published.mac})`), `${file}: stale release link`);
     const downloads = [...text.matchAll(/https:\/\/github\.com\/ungeekrange-cmyk\/chillcenter\/releases\/download\/([^/]+)\/([^\s)]+)/g)];
     for (const match of downloads) {
-      const expectedTag = /Chill-Center-themes-/.test(match[2]) ? 'v0.7.3' : /Chill-Center-0\.7\.6-/.test(match[2]) ? 'v0.7.6' : 'v0.7.5';
+      const expectedTag = /Chill-Center-themes-/.test(match[2]) ? 'v0.7.3'
+        : /Chill-Center-0\.7\.6-/.test(match[2]) ? 'v0.7.6'
+        : /Chill-Center-server-/.test(match[2]) ? 'server-v0.7.5'
+        : 'v0.7.5';
       assert.equal(match[1], expectedTag, `${file}: obsolete download release for ${match[2]}`);
     }
     assert.deepEqual([...new Set(downloads.map(match => match[2]))].sort(), [...packages].sort(), `${file}: unexpected package inventory`);

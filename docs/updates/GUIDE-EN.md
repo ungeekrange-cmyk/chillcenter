@@ -2,7 +2,7 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-Mac release v0.7.6 provides Mac0.7.6/build16; web0.7.5 and server0.7.4 remain separately published. Themes0.7.1 remain unchanged. Publication performs no direct installation on an existing server.
+Mac release `mac-v0.7.6` provides Mac0.7.6/build16; `server-v0.7.5` publishes server0.7.5 and `web-v0.7.5` publishes web0.7.5 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
 
 ## Four components
 
@@ -62,15 +62,15 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives: v0.7.6 for Mac, v0.7.5 for web/server, with themes0.7.1 in v0.7.3, not GitHub's automatically
+Use the complete distribution archives: v0.7.6 for Mac, server-v0.7.5 for the server, v0.7.5 for web, with themes0.7.1 in v0.7.3, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.
 
 ```sh
-minisign -Vm Chill-Center-server-0.7.4-linux-aarch64.tar.gz \
+minisign -Vm Chill-Center-server-0.7.5-linux-aarch64.tar.gz \
   -P 'RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
-tar -xzf Chill-Center-server-0.7.4-linux-aarch64.tar.gz
+tar -xzf Chill-Center-server-0.7.5-linux-aarch64.tar.gz
 ```
 
 The same verification applies to the Mac DMG, web install ZIP and themes install
@@ -93,7 +93,7 @@ keys, consent or update protocols.
 The server archive contains both ARM64 binaries, signed manifest/public key,
 `scripts/` and `deploy/updates/`. Keep that layout. A fresh Linux installation
 requires a 64-bit ARM64 OS using glibc, systemd, Python 3.10+, Minisign, curl,
-Bash, tar and standard Linux tools. The 0.7.4 binaries have a glibc 2.28 minimum
+Bash, tar and standard Linux tools. The 0.7.5 binaries have a glibc 2.28 minimum
 according to their provenance; this alone does not guarantee OS/systemd-unit
 compatibility. Debian 13 is the verified real configuration; ARM32 OSes and musl
 are not covered by this package. Allow administrator rights, a synchronized
@@ -107,7 +107,7 @@ sudo ./scripts/install-server.sh \
   --server "$PWD/chill-server" --updater "$PWD/chill-update" \
   --release-pub "$PWD/release.pub" --manifest "$PWD/server-manifest.json" \
   --manifest-signature "$PWD/server-manifest.json.minisig" \
-  --version 0.7.4 --library /absolute/read-only-library \
+  --version 0.7.5 --library /absolute/read-only-library \
   --listen LAN_ADDRESS:8443 --tls-name LAN_DNS_OR_IP
 ```
 

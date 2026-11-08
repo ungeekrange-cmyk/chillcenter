@@ -2,11 +2,11 @@
 
 **Français** | [English](README.en.md)
 
-**Sources en cours de livraison : Mac 0.7.6 ; serveur 0.7.5 en attente de publication, web 0.7.5 et thèmes 0.7.1.** Les liens ci-dessous visent les paquets publiés.
+**Sources publiées : Mac 0.7.6, serveur 0.7.5, web 0.7.5 et thèmes 0.7.1.** Les liens ci-dessous visent les paquets publiés.
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
-**Versions publiées : Mac 0.7.6 · serveur 0.7.4 · web 0.7.5 · thèmes 0.7.1.**
+**Versions publiées : Mac 0.7.6 · serveur 0.7.5 · web 0.7.5 · thèmes 0.7.1.**
 [Changements 0.7.6 FR/EN](docs/releases/REL-0.7.6.md) : mise à jour Mac au clic ; Accueil en trois rangées,
 jaquettes depuis un film ou TMDB, gestion simplifiée et curseur masqué avec les
 commandes vidéo. Le serveur corrige aussi le résumé de disponibilité du helper ;
@@ -28,8 +28,8 @@ décrivent leur calendrier et priorité.
 | Composant et version publiée | Paquet et instructions |
 | --- | --- |
 | Mac Apple Silicon 0.7.6, build 16 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.6/Chill-Center-0.7.6-macos-arm64.dmg), macOS 15+ |
-| Serveur Linux ARM64 0.7.4 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-server-0.7.4-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
-| Client web/PWA 0.7.5 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-web-0.7.5-install.zip), serveur 0.7.4 pour Accueil et les jaquettes TMDB |
+| Serveur Linux ARM64 0.7.5 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.5/Chill-Center-server-0.7.5-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
+| Client web/PWA 0.7.5 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-web-0.7.5-install.zip), serveur 0.7.5 pour Accueil et les jaquettes TMDB |
 | Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
@@ -62,7 +62,7 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 ### Client Mac
 
 - Mac **Apple Silicon (ARM64)** ; aucun paquet Intel n’est publié.
-- Le DMG **0.7.5 nécessite macOS 15 Sequoia minimum**, pour couvrir macOS
+- Le DMG **0.7.6 nécessite macOS 15 Sequoia minimum**, pour couvrir macOS
   15, 26 et 27, avec dépendances Sequoia figées et contrôlées avant signature.
   Les minima des 51 Mach-O, la signature et le montage du DMG ont été vérifiés.
   Les essais physiques sur macOS 15/26 restent non réalisés.
@@ -74,7 +74,7 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 
 ### Serveur Linux
 
-- Le paquet publié **0.7.4 cible Linux ARM64/AArch64, système 64 bits avec
+- Le paquet publié **0.7.5 cible Linux ARM64/AArch64, système 64 bits avec
   glibc 2.28 minimum pour les binaires**. Raspberry Pi 3 B/B+ avec Linux 64 bits
   est la cible ; un OS ARM 32 bits ou Alpine/musl ne convient pas à ce paquet.
   La configuration réelle vérifiée est Debian 13 ; une autre distribution
