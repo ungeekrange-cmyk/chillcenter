@@ -84,7 +84,7 @@ window.invalidateFacetBase=invalidateFacetBase;
 function discardCatalogCards(){for(const card of catalogCards.values())window.retireArtwork?.(card.querySelector(".poster-image"));catalogCards.clear();}
 function clearCatalogContext(){catalogGeneration++;catalogItems=[];catalogCounters={};catalogWindowKey="";invalidateFacetBase();window.catalogFacets?.clear();discardCatalogCards();$("media").replaceChildren();$("media").style.height="";window.resetArtwork?.();}
 function catalogCard(m){
- const groupedSeries=m.category==="serie"&&!window.isProgressView?.();
+ const groupedSeries=m.category==="serie";
  const card=node("article",undefined,"media-card catalog-open"),poster=node("div",m.title.slice(0,1).toUpperCase(),"poster"),info=node("div",undefined,"info");
  card.dataset.mediaId=m.id;card.tabIndex=0;const visual=node("div",m.title.slice(0,1).toUpperCase(),"poster-image");poster.replaceChildren(visual);
  info.append(node("h2",m.title),node("p",[m.year,(m.genres||[]).slice(0,2).join(", ")].filter(Boolean).join(" · ")));
@@ -157,7 +157,7 @@ async function loadPage(reuseFacetBase=false){
  if(typeof shellSection!=="undefined"&&shellSection==="home"){await window.refreshHome?.();return true;}
  const context=state.server_id+":"+state.profile_id;if(context!==catalogContext){clearCatalogContext();catalogContext=context;}const generation=++catalogGeneration;
  if(!state.profile_id){catalogItems=[];$("media").replaceChildren();return false;}
- const filters=catalogFilters(),baseFilters={...filters,genre:"",year:""},grouped=!window.isProgressView?.(),baseKey=context+"\u0000"+JSON.stringify({...baseFilters,grouped});
+ const filters=catalogFilters(),baseFilters={...filters,genre:"",year:""},grouped=true,baseKey=context+"\u0000"+JSON.stringify({...baseFilters,grouped});
  let staged,counters;
  if(reuseFacetBase&&facetBase?.key===baseKey){staged=facetBase.items;counters=facetBase.counters;}
  else{
@@ -176,7 +176,7 @@ async function loadPage(reuseFacetBase=false){
   facetBase={key:baseKey,items:staged,counters};
  }
  if(generation!==catalogGeneration||context!==state.server_id+":"+state.profile_id)return false;
- const eligible=window.filterProgressItems?.(staged)||staged;
+ const eligible=staged;
  discardCatalogCards();window.catalogFacets?.draw(eligible);catalogItems=window.catalogFacets?.filter(eligible)||eligible;catalogCounters=counters;catalogWindowKey="";$("catalog-count").textContent=catalogItems.length+uiText(" titres");
  if(catalogItems.length)renderCatalogWindow();else{$("media").style.height="";$("media").replaceChildren(node("p",uiText("Aucun titre ne correspond à ces filtres. Les fiches sans année ne sont pas incluses dans un filtre d’année."),"muted"));}
  return true;

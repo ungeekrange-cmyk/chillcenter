@@ -1,5 +1,28 @@
 # Contexte du projet
 
+## 8 novembre 2026 — correctif local Accueil et reprises héritées
+
+Demande utilisateur : retrait de la navigation En cours, redondante avec l’Accueil,
+et film commencé absent. Cause confirmée sur API Pi0.7.5 en lecture seule :
+position persistée3 025 917 ms, durée mesurée absente, film disponible et non vu.
+Le filtre Home exigeait inutilement cette durée pour afficher la reprise.
+La position suffit désormais ; `progress` reste null sans durée mesurée.
+Raccourci retiré du menu Mac/web et mobile, barres/pourcentages mesurés conservés.
+[BUG0140](debug/BUG-0140-home-legacy-resume.md),
+[ADR0041](architecture/decisions/ADR-0041-home-resume-without-duration.md).
+
+Régression rouge/verte,83 tests domaine, test HTTP Home,368 tests JS,
+27 tests documentaires, Clippy domaine/serveur strict et Chromium bureau/mobile
+PASS. Les fixtures navigateur suivent désormais la navigation Accueil avant les
+catégories ; aucune vidéo réelle lancée ni historique de production modifié.
+Le worktree propre existant est réutilisé sur `codex/home-resume-visibility`,
+base50cd1dc. Après le nettoyage précédent, aucun cache Rust compatible ne restait :
+cache ciblé sous `/private/tmp/chillcenter-playback-wake.BEMWYx/target` pour tests
+domaine/serveur uniquement, retiré après tests et revue en conservant les journaux.
+Revue indépendante APPROVED ; aucun point bloquant.
+Aucun nouveau clone/VM. Correctif non publié et non installé ; les versions
+publiées/installées ci-dessous restent inchangées.
+
 ## 8 novembre 2026 — publications Mac 0.7.6 et serveur 0.7.5
 
 Mac0.7.6/build16 (`mac-v0.7.6`) et serveur0.7.5/séquence6

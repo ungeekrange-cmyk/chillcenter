@@ -230,3 +230,5 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 - [BUG-0135](BUG-0135-collection-management.md) — gestion et choix des jaquettes de collections ; corrigé et vérifié localement, publication restante.
 - [BUG-0136](BUG-0136-idle-player-cursor.md) — curseur synchronisé avec les commandes vidéo masquées, source corrigée et revue ; non publié.
 - [BUG-0137](BUG-0137-stale-release-source-manifest.md) — manifeste racine périmé dans les sources de release ; publication bloquée puis reconstruction des artefacts depuis le manifeste corrigé.
+
+- [BUG0140](BUG-0140-home-legacy-resume.md) — film commencé exclu de l’Accueil faute de durée mesurée ; reprise héritée incluse et navigation En cours retirée, correctif local non publié.

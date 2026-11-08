@@ -2178,6 +2178,11 @@ mod tests {
         );
         media.poster = Some("/secret/poster.png".into());
         store.snapshot(vec![media]).unwrap();
+        let id = store.catalog(&profile).unwrap()[0].id.clone();
+        // Pre-measurement resumes must remain discoverable after an upgrade/import.
+        rusqlite::Connection::open(dir.path().join("catalog.sqlite")).unwrap()
+            .execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms) VALUES(?1,?2,3025917)",
+                rusqlite::params![profile, id]).unwrap();
         let (status, body) = json_call(
             &app,
             "GET",
@@ -2189,6 +2194,9 @@ mod tests {
         for shelf in ["continue_watching", "recently_added", "recommendations"] {
             assert!(body[shelf].as_array().unwrap().len() <= 20);
         }
+        assert_eq!(body["continue_watching"].as_array().unwrap().len(), 1);
+        assert_eq!(body["continue_watching"][0]["media"]["id"], id);
+        assert!(body["continue_watching"][0]["progress"].is_null());
         let item = &body["recently_added"][0];
         assert!(!item["media"]["path"].as_str().unwrap().starts_with('/'));
         assert!(

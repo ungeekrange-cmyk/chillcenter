@@ -38,6 +38,7 @@ async function routeFixture(page,root){
    if(p.endsWith('/catalog/revision'))return json({revision:'r1'});
    if(p.endsWith('/catalog/changes'))return json(req.postDataJSON().known_revision==='r1'?{revision:'r1',unchanged:true}:{revision:'r1',unchanged:false,reset:true,snapshot_id:'55555555-5555-4555-8555-555555555555',total:entries.length,items:entries.slice(0,100),deleted_ids:[],sagas:[saga],playlists:[playlist],series_revisions:{'tmdb:tv:123':1},season_metadata:{},has_more:true,next_offset:100});
    if(p.includes('/catalog/changes/'))return json({revision:'r1',items:entries.slice(Number(url.searchParams.get('offset'))),has_more:false,next_offset:null});
+   if(p.endsWith('/home'))return json({continue_watching:[{media:entries[0].media,series_key:null,season:null,progress:null,matches:[]}],recently_added:[],recommendations:[]});
    if(p.endsWith('/catalog')){const query=Object.fromEntries(url.searchParams);return json(Query.browse(Query.prepare(entries),{offset:Number(query.offset||0),limit:48,grouped:true,category:query.category||null,q:query.q||null,genre:query.genre||null,year:query.year==null?null:Number(query.year),watched:query.watched==null?null:query.watched==='true',available:query.available==null?null:query.available==='true',sort:query.sort||null}));}
    if(p.includes('/series/'))return json(Query.series(Query.prepare(entries),decodeURIComponent(p.split('/series/')[1]),1,url.searchParams.get('selector')||'title'));
    if(p.endsWith('/related'))return json({items:[]});
@@ -67,6 +68,9 @@ async function noOverflow(page,label){
   const page=await context.newPage();page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));
   await routeFixture(page,path.resolve(__dirname,'../web/dist'));
   await page.goto(origin);await page.evaluate(()=>window.chillReady);
+  await page.waitForSelector('#home-rails .recommendation-card');
+  assert.equal(await page.locator('#home-rails .home-badge').count(),0,'legacy resume has no invented percentage');
+  await page.locator('[data-mobile-category=film]').click();
   await page.waitForSelector('.media-card');await page.waitForFunction(()=>!document.getElementById('mobile-nav').hidden);
   assert((await page.locator('meta[name=viewport]').getAttribute('content')).includes('viewport-fit=cover'));
   assert.equal(await page.locator('#mobile-nav button').count(),5);
@@ -91,6 +95,7 @@ async function noOverflow(page,label){
    else assert(Math.abs(nav.y+nav.height-844)<=1);
   }
   await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.locator('#show-in-progress,[data-mobile-progress]').count(),0,'Continue watching is available from Home only');
   assert.equal(await page.locator('#media .media-card.catalog-open .poster-actions:visible').count(),0,'catalogue poster actions stay off the mobile posters');
   await page.waitForFunction(()=>typeof window.catalogOpenMedia==='function');
   await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(80);
@@ -107,10 +112,13 @@ async function noOverflow(page,label){
   await page.locator('#search').fill('Movie 000');
   await page.locator('[data-mobile-category=film]').click();
   await page.waitForTimeout(320);
-  for(const [selector,category,expected] of [['[data-mobile-category=film]','film',1],['[data-mobile-category=serie]','serie',0],['[data-mobile-category=documentaire]','documentaire',0],['#mobile-brand','',1]]){
+  for(const [selector,category,expected] of [['[data-mobile-category=film]','film',1],['[data-mobile-category=serie]','serie',0],['[data-mobile-category=documentaire]','documentaire',0]]){
    await page.locator(selector).click();
    await page.waitForFunction(([category,count])=>document.getElementById('category').value===category&&document.getElementById('search').value==='Movie 000'&&document.querySelectorAll('#media .media-card').length===count,[category,expected]);
   }
+  await page.locator('#mobile-brand').click();await page.waitForSelector('#home-panel:visible .recommendation-card');
+  assert.equal(await page.locator('#catalog-panel').isVisible(),false,'the mobile logo opens Home');
+  await page.locator('[data-mobile-category=film]').click();
   await page.locator('#mobile-search-toggle').click();await page.locator('#search').fill('');await page.waitForFunction(()=>document.getElementById('search').value===''&&document.querySelectorAll('#media .media-card').length>1);
   await page.locator('[data-mobile-category=film]').click();await page.waitForFunction(()=>document.getElementById('category').value==='film');
   await page.locator('#mobile-search-toggle').click();assert.equal(await page.locator('.global-search').isVisible(),true);
@@ -123,8 +131,8 @@ async function noOverflow(page,label){
   assert.equal(await page.locator('.facet-year[aria-pressed=true]').count(),2);
   assert.deepEqual(await page.evaluate(()=>window.catalogFacets.values().years),[2020,2024]);
   await page.screenshot({path:'/private/tmp/chillcenter-mobile-web-built-dark.png'});
-  // Return to the unfiltered full collection through the approved Plus sheet.
-  await page.locator('[data-mobile-more]').click();await page.locator('[data-mobile-all]').click();
+  // Return to the full film category before exercising virtual scroll.
+  await page.locator('[data-mobile-category=film]').click();
   await page.evaluate(()=>{window.catalogFacets?.clear();document.getElementById('genre').value='';document.getElementById('year').value='';return loadPage();});
   await page.evaluate(()=>scrollTo(0,1800));await page.waitForTimeout(120);
   const before=await page.evaluate(()=>scrollY);

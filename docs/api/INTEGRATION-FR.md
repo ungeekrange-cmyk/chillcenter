@@ -138,8 +138,9 @@ séparément en arrière-plan, au plus une fois toutes les30secondes en usage no
 Leur cache est distinct par serveur/profil ; une réponse tardive d'un ancien
 contexte ne doit jamais être publiée.
 
-La catégorie « En cours » retient les vidéos non vues dont la position est au
-moins5% de la durée mesurée. La barre des vignettes et le pourcentage sur fiche
+Le correctif source BUG0140 retire le raccourci « En cours » au profit de
+l’Accueil ; la catégorie historique utilisait un seuil5%. Ce correctif n’est pas
+encore publié. La barre des vignettes et le pourcentage sur fiche
 utilisent cette même durée ; aucun pourcentage approximatif. La mesure ne
 prouve pas qu'un seek a réellement regardé le contenu : la règle du marquage
 vu reste inchangée. Release0.7.2 : route absente404, désactiver seulement cette
@@ -280,6 +281,8 @@ une sélection tronquée. Un ancien serveur répond404 ; recherche et catégorie
 restent utilisables. Les clients rejettent les réponses d'un ancien profil.
 
 Comme décidé dans ADR-0035, les archives portables historiques ne transportent
-pas les durées mesurées. Après import, une reprise peut donc disparaître de
-l’Accueil jusqu’à une nouvelle mesure de lecture ; aucune durée n’est inventée.
+pas les durées mesurées. Jusqu’au serveur publié0.7.5, une reprise importée
+peut manquer dans l’Accueil. Le correctif source BUG0140 (non publié) inclut
+les vidéos disponibles non vues avec position>0, même sans durée ; `progress`
+reste null jusqu’à une nouvelle mesure. Aucun pourcentage n’est inventé.
 Une sauvegarde complète SQLite conserve cc_resume_measurement.

@@ -45,7 +45,7 @@ window.catalogEnhanceCard=(card,m)=>{
   if(m.poster)observeArtwork(card.querySelector(".poster-image"),m.id);
 };
 window.catalogOpenMedia=openMedia;window.catalogOpenSeries=openSeries;
-function detailPlaybackContext(mediaId){if(window.isProgressView?.()&&detailView?.media.id===mediaId&&detailView.media.category==="serie"){const m=detailView.media;return {kind:"series",id:m.tmdb_id?"tmdb:tv:"+m.tmdb_id:"media:"+m.id};}return shellSection==="collection"&&collectionView?.media_ids.includes(mediaId)?{kind:collectionKind,id:collectionView.id}:null;}
+function detailPlaybackContext(mediaId){return shellSection==="collection"&&collectionView?.media_ids.includes(mediaId)?{kind:collectionKind,id:collectionView.id}:null;}
 window.catalogReturnFromPlayback=async(playback,current)=>{
   if(!current())return;
   const context=playback.context;

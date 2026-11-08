@@ -14,18 +14,17 @@ window.renderShell=()=>{
  for(const [id,section] of [["collections-panel","collections"],["collection-panel","collection"],["picker-panel","picker"]])$(id).hidden=!active||shellSection!==section;
  for(const [id,kind] of [["show-sagas","saga"],["show-playlists","playlist"]])$(id).classList.toggle("active",active&&["collections","collection","picker"].includes(shellSection)&&collectionKind===kind);
  if(shellSection!=="admin")$("admin-panel").hidden=true;
- $("show-home").disabled=!active;$("show-home").classList.toggle("active",shellSection==="home");document.querySelectorAll("[data-category]").forEach(button=>button.classList.toggle("active",shellSection==="catalog"&&!window.isProgressView?.()&&button.dataset.category===$("category").value));
- $("show-in-progress").disabled=!active;$("show-in-progress").classList.toggle("active",shellSection==="catalog"&&Boolean(window.isProgressView?.()));
+ $("show-home").disabled=!active;$("show-home").classList.toggle("active",shellSection==="home");document.querySelectorAll("[data-category]").forEach(button=>button.classList.toggle("active",shellSection==="catalog"&&button.dataset.category===$("category").value));
  $("admin-toggle").classList.toggle("active",shellSection==="admin");$("advice-toggle").classList.toggle("active",shellSection==="advice");
- $("catalog-title").textContent=window.isProgressView?.()?uiText("En cours"):categoryNames[$("category").value]||uiText("Toute la collection");
+ $("catalog-title").textContent=categoryNames[$("category").value]||uiText("Toute la collection");
 };
 function shellShow(section){if(!["collections","collection","picker"].includes(section))window.leaveCollectionPages?.();shellSection=section;window.recoveryContextChanged?.();window.renderShell();}
 document.querySelectorAll("[data-category]").forEach(button=>button.onclick=async()=>{
  if(!state.profile_id)return;
  if(!await stopPlayerForNavigation())return;
- window.leaveProgressView?.();$("category").value=button.dataset.category;shellShow("catalog");scrollTo({top:0,behavior:"instant"});await loadPage();
+ $("category").value=button.dataset.category;shellShow("catalog");scrollTo({top:0,behavior:"instant"});await loadPage();
 });
-$("show-home").onclick=async()=>{if(!state.profile_id||!await stopPlayerForNavigation())return;window.leaveProgressView?.();shellShow("home");scrollTo({top:0,behavior:"instant"});await window.refreshHome?.();};
+$("show-home").onclick=async()=>{if(!state.profile_id||!await stopPlayerForNavigation())return;shellShow("home");scrollTo({top:0,behavior:"instant"});await window.refreshHome?.();};
 $("advice-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("advice");};
 $("admin-close").addEventListener("click",()=>shellShow("catalog"));
 $("search").oninput=()=>{clearTimeout(shellSearchTimer);shellSearchTimer=setTimeout(async()=>{if(state.profile_id&&await stopPlayerForNavigation()){if(shellSection!=="catalog")$("category").value="";shellShow("catalog");scrollTo({top:0,behavior:"instant"});loadPage();}},250);};

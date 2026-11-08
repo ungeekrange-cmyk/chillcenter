@@ -1,5 +1,10 @@
 # Index des décisions techniques
 
+[ADR0041](ADR-0041-home-resume-without-duration.md), IMPLEMENTED_LOCAL,
+8 novembre 2026 : reprises héritées sans durée visibles dans l’Accueil,
+progression mesurée facultative et retrait de la navigation En cours redondante.
+Remplace les seuls points concernés des ADR0035/0038 ; pas de déploiement implicite.
+
 [ADR0040](ADR-0040-pi-durable-backup-budget.md), IMPLEMENTED_DETAIL,
 8 novembre 2026 : sauvegarde hors ligne bornée à 15 minutes et unité helper
 à 30 minutes, sans changement des contrôles de durabilité, confiance ou droits.

@@ -273,8 +273,9 @@ change catalogue revisions; clients query this separate stream in the background
 at most once every30seconds during normal use. Cache it separately per
 server/profile and never publish a late response from an old context.
 
-“In progress” includes unwatched videos whose position is at least5% of their
-measured duration. Thumbnail bars and detail percentages use that same duration;
+Source fix BUG0140 removes the In progress shortcut in favor of Home; the
+historical category used a5% threshold. This fix is not published yet.
+Thumbnail bars and detail percentages use the measured duration;
 no approximate percentages. Position does not prove content was watched after a
 seek: the automatic watched rule is unchanged. Release0.7.2 lacks this route404;
 disable only this feature and keep the remaining client compatible. No implicit
@@ -498,6 +499,8 @@ an explicit error rather than a truncated selection. Older servers return404;
 search and categories remain usable. Clients discard stale-profile responses.
 
 As specified by ADR-0035, legacy portable archives do not carry measured
-durations. After import, a resume may disappear from Home until playback
-remeasures it; no duration is invented. Full SQLite backups preserve
+durations. Through published server0.7.5, an imported resume can be absent
+from Home. Source fix BUG0140 (not published) includes available unwatched
+videos with position>0 even without a duration; `progress` stays null until
+playback remeasures it. No percentage is invented. Full SQLite backups preserve
 cc_resume_measurement.

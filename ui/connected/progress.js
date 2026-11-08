@@ -6,7 +6,6 @@
   return Math.min(100,entry.position_ms/entry.duration_ms*100);
  }
  function started(entry,watched=false){const value=percent(entry);return !watched&&!entry?.watched&&value!==null&&value>0;}
- function inProgress(entry,watched=false){return started(entry,watched)&&percent(entry)>=5;}
  function parse(payload){
   if(!payload||typeof payload.revision!=="string"||payload.revision.length>255)throw Error("Invalid progress response");
   if(payload.unchanged===true)return null;
@@ -18,9 +17,9 @@
   }
   return result;
  }
- if(typeof module!=="undefined")module.exports={percent,started,inProgress,parse};
+ if(typeof module!=="undefined")module.exports={percent,started,parse};
  if(typeof document==="undefined")return;
- let scope="",revision=null,entries=new Map(),pending=null,only=false,unsupported=false,lastCheck=0;
+ let scope="",revision=null,entries=new Map(),pending=null,unsupported=false,lastCheck=0;
  const context=()=>typeof state!=="undefined"&&state.stage==="connected"&&state.server_id&&state.profile_id?state.server_id+":"+state.profile_id:"";
  const cacheKey=key=>"chillcenter-measured-progress:"+key;
  function activeContext(){
@@ -30,10 +29,7 @@
   return key;
  }
  function entryFor(media){activeContext();return entries.get(media.id);}
- root.isProgressView=()=>only;
- root.leaveProgressView=()=>{only=false;};
  root.dropProgressProfile=id=>{try{localStorage.removeItem(cacheKey(state.server_id+":"+id));}catch{}};
- root.filterProgressItems=items=>only?items.filter(media=>inProgress(entryFor(media),media.watched)):items;
  root.renderMediaProgress=(poster,media)=>{
   const previous=poster.querySelector?.(".media-progress");previous?.remove();
   poster.dataset.progressMediaId=media.id;poster.dataset.progressWatched=String(Boolean(media.watched));
@@ -73,14 +69,12 @@
     // have a compatible source. Do not keep showing stale progress indefinitely.
     unsupported=true;entries=new Map();revision=null;
     try{localStorage.removeItem(cacheKey(key));}catch{}
-    redraw();if(only)message(uiText("La progression mesurée nécessite une mise à jour du serveur."));
+    redraw();
    }}
    finally{if(pending===task)pending=null;}
   })();
   return task.promise;
  };
- const toggle=$("show-in-progress");
- toggle.onclick=async()=>{if(!state.profile_id||!await stopPlayerForNavigation())return;only=true;$("category").value="";shellShow("catalog");scrollTo({top:0,behavior:"instant"});await loadPage();void root.refreshProgress(true);};
  setInterval(()=>{if(document.visibilityState!=="hidden")void root.refreshProgress();},30000);
  document.addEventListener("visibilitychange",()=>{if(document.visibilityState!=="hidden")void root.refreshProgress(true);});
 })(globalThis);

@@ -1,11 +1,11 @@
 "use strict";
 const {test}=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
-const {percent,started,inProgress,parse}=require("./progress.js");
+const {percent,started,parse}=require("./progress.js");
 const id="11111111-1111-4111-8111-111111111111",row=(position=5000,duration=100000)=>({media_id:id,position_ms:position,duration_ms:duration,watched:false});
-test("In progress uses measured time, inclusive 5%, and excludes watched videos",()=>{
- assert.equal(percent(row(42900)),42.9);assert.equal(inProgress(row(4999)),false);assert.equal(inProgress(row(5000)),true);
- assert.equal(started(row(1)),true);assert.equal(inProgress({...row(),watched:true}),false);assert.equal(inProgress(row(),true),false);
- for(const duration of [null,undefined,0,-1,NaN,Infinity,"100000"]){const value={...row(),duration_ms:duration};assert.equal(percent(value),null);assert.equal(inProgress(value),false);}
+test("Progress badges require measured time and exclude watched videos",()=>{
+ assert.equal(percent(row(42900)),42.9);assert.equal(started(row(0)),false);
+ assert.equal(started(row(1)),true);assert.equal(started({...row(),watched:true}),false);assert.equal(started(row(),true),false);
+ for(const duration of [null,undefined,0,-1,NaN,Infinity,"100000"]){const value={...row(),duration_ms:duration};assert.equal(percent(value),null);assert.equal(started(value),false);}
  assert.equal(percent({runtime_minutes:120,position_ms:10000}),null,"TMDB is not a measured duration");
  assert.equal(percent(row(200000)),100);assert.equal(percent(row(-1)),null);
 });
@@ -47,14 +47,6 @@ test("unchanged replies retain the measured cache and 404 does not block the app
  await f.sandbox.refreshProgress();await f.sandbox.refreshProgress(true);assert.equal(f.calls[1].known_revision,"r");
  const poster=f.element();f.sandbox.renderMediaProgress(poster,{id,watched:false});assert.equal(poster.children.length,1);
  const older=fixture(async()=>{throw {status:404};});await older.sandbox.refreshProgress();await older.sandbox.refreshProgress();assert.equal(older.calls.length,1);await older.sandbox.refreshProgress(true);assert.equal(older.calls.length,2,"explicit action can detect a newly upgraded server");
-});
-
-test("In progress navigation keeps search text and can return to ordinary category browsing",async()=>{
- const f=fixture(async()=>({revision:"r",items:[]}));let loads=0;
- f.get("search").value="Doctor";f.get("category").value="film";
- f.sandbox.stopPlayerForNavigation=async()=>true;f.sandbox.shellShow=section=>assert.equal(section,"catalog");f.sandbox.scrollTo=()=>{};f.sandbox.loadPage=async()=>{loads++;};
- await f.get("show-in-progress").onclick();assert.equal(f.sandbox.isProgressView(),true);assert.equal(f.get("category").value,"");assert.equal(f.get("search").value,"Doctor");assert.ok(loads>=1);
- f.sandbox.leaveProgressView();assert.equal(f.sandbox.isProgressView(),false);
 });
 
 test("server rollback clears scoped progress but transient offline errors preserve it",async()=>{

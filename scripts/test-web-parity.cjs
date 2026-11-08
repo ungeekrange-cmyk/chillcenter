@@ -29,6 +29,7 @@ const Query=require('../web/src/catalog-query.js');
      const known=req.postDataJSON().known_revision;if(known==='r'+epoch)return json({revision:known,unchanged:true});
      return json({revision:'r'+epoch,unchanged:false,reset:true,snapshot_id:'55555555-5555-4555-8555-555555555555',total:entries.length,items:entries,deleted_ids:[],sagas:[],playlists:[],series_revisions:{'tmdb:tv:2005':1,'tmdb:tv:2023':1},season_metadata:{},has_more:false,next_offset:null});
     }
+    if(p.endsWith('/home'))return json({continue_watching:[{media:entries[0].media,series_key:null,season:null,progress:null,matches:[]}],recently_added:[],recommendations:[]});
     if(p.endsWith('/catalog'))return json(Query.browse(Query.prepare(entries),{offset:Number(url.searchParams.get('offset')||0),limit:48,grouped:url.searchParams.get('grouped')==='true',category:url.searchParams.get('category')||null}));
     if(p.includes('/series/')){const name=decodeURIComponent(p.split('/series/')[1]),series=Query.series(Query.prepare(entries),name,1,url.searchParams.get('selector')||'title');return json(series||{code:'NOT_FOUND'},series?200:404);}
     if(p.endsWith('/tmdb/candidates'))return json({candidates:[{id:123,title:'Matched fixture',year:2026,kind:'movie'}]});
@@ -43,7 +44,11 @@ const Query=require('../web/src/catalog-query.js');
    try{const body=await fs.readFile(file),ext=path.extname(file);return route.fulfill({body,contentType:({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.wasm':'application/wasm','.webmanifest':'application/manifest+json'})[ext]||'application/octet-stream'});}catch{return route.fulfill({status:404,body:''});}
   });
   await page.goto(origin);await page.evaluate(()=>window.chillReady);
-  try{await page.waitForFunction(()=>document.querySelectorAll('.media-card').length===3);}catch(error){console.error({boot:await page.evaluate(()=>({stage:state.stage,profile:state.profile_id,category:document.getElementById('category').value,message:document.getElementById('message').textContent,cards:document.querySelectorAll('.media-card').length})),calls,errors});throw error;}
+  await page.waitForSelector('#home-rails .recommendation-card');
+  assert.equal(await page.locator('#home-rails .home-badge').count(),0,'legacy resume has no invented percentage');
+  assert.equal(await page.locator('#show-in-progress').count(),0);
+  await page.locator('[data-category=film]').click();
+  try{await page.waitForFunction(()=>document.querySelectorAll('.media-card').length===1);}catch(error){console.error({boot:await page.evaluate(()=>({stage:state.stage,profile:state.profile_id,category:document.getElementById('category').value,message:document.getElementById('message').textContent,cards:document.querySelectorAll('.media-card').length})),calls,errors});throw error;}
   assert.equal(await page.locator('.search-icon').count(),1);assert.equal(await page.locator('#organize-ai').isVisible(),false);assert.equal(await page.locator('#advice-toggle').isVisible(),false);
   await page.evaluate(()=>window.catalogOpenSeries('tmdb:tv:2005'));await page.waitForFunction(()=>document.querySelectorAll('.series-episodes .media-card').length===1);
   assert.match(await page.locator('.series-episodes').textContent(),/Pilot A/);assert.doesNotMatch(await page.locator('.series-episodes').textContent(),/Pilot B/);

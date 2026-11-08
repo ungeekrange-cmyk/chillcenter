@@ -47,3 +47,10 @@ test('concurrent Home reads coalesce and a mutation during that read schedules a
 test('recent series opens with default season selection while unknown Continue opens null explicitly',async()=>{
  const series={...movie('show',{category:'serie',series:'Show'}),series_key:'show',season:null};const f=home(()=>payload([series],[series]));const calls=[];f.sandbox.window.catalogOpenSeries=(...args)=>calls.push(args);await f.sandbox.window.refreshHome();const result=cards(f.get('home-rails'));await result[0].onclick();await result[1].onclick();assert.deepEqual(calls,[['show',null],['show']]);
 });
+
+test('Continue renders an existing film resume without inventing a duration or percentage',async()=>{
+ const f=home(()=>payload([movie('legacy-resume')]));
+ await f.sandbox.window.refreshHome();const result=cards(f.get('home-rails'));
+ assert.equal(result.length,1);assert.equal(result[0].dataset.homeMediaId,'legacy-resume');
+ assert.equal(result[0].querySelectorAll('.home-badge').length,0);
+});

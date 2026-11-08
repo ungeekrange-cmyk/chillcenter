@@ -183,9 +183,11 @@ impl Store {
         let mut continuing = Vec::new();
         for (key, rows) in &entities {
             if rows[0].media.category != "serie" {
-                if let Some(row) = rows.iter().copied().find(|r| {
-                    r.media.available && !r.watched && r.position > 0 && r.duration.unwrap_or(0) > 0
-                }) {
+                if let Some(row) = rows
+                    .iter()
+                    .copied()
+                    .find(|r| r.media.available && !r.watched && r.position > 0)
+                {
                     continuing.push((
                         row.position,
                         self.home_item(
@@ -193,10 +195,14 @@ impl Store {
                             row,
                             None,
                             None,
-                            Some(HomeProgress {
-                                position_ms: row.position,
-                                duration_ms: row.duration.unwrap(),
-                            }),
+                            // Legacy/imported resumes still have a valid position.
+                            // Only a measured duration permits a percentage badge.
+                            row.duration
+                                .filter(|duration| *duration > 0)
+                                .map(|duration| HomeProgress {
+                                    position_ms: row.position,
+                                    duration_ms: duration,
+                                }),
                             vec![],
                         ),
                     ));
@@ -363,6 +369,86 @@ mod tests {
         m.added_at = added_at;
         m.genres = vec!["Drama".into()];
         m
+    }
+
+    #[test]
+    fn continue_keeps_legacy_resumes_without_inventing_measured_progress() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy-home.sqlite");
+        let mut store = Store::open(&path).unwrap();
+        let profile = store.create_profile("A").unwrap().id;
+        let other = store.create_profile("B").unwrap().id;
+        let mut unavailable = media("Unavailable.mkv");
+        unavailable.available = false;
+        store
+            .snapshot(vec![
+                media("Legacy.mkv"),
+                media("Measured.mkv"),
+                media("Unstarted.mkv"),
+                media("Completed.mkv"),
+                unavailable,
+            ])
+            .unwrap();
+        let ids: HashMap<_, _> = store
+            .catalog(&profile)
+            .unwrap()
+            .into_iter()
+            .map(|m| (m.title, m.id))
+            .collect();
+        for title in ["Legacy", "Measured", "Completed", "Unavailable"] {
+            store.personal.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms) VALUES(?1,?2,?3)",
+                rusqlite::params![profile, ids[title], if title == "Legacy" { 3_025_917 } else { 5_000 }]).unwrap();
+        }
+        store.personal.execute("INSERT INTO cc_resume_measurement(profile_id,stable_media_id,duration_ms) VALUES(?1,?2,100000)",
+            rusqlite::params![profile, ids["Measured"]]).unwrap();
+        store
+            .set_watched(&profile, &ids["Completed"], true)
+            .unwrap();
+        let home = store.home_catalog(&profile).unwrap();
+        assert_eq!(home.continue_watching.len(), 2);
+        let legacy = home
+            .continue_watching
+            .iter()
+            .find(|i| i.media.id == ids["Legacy"])
+            .unwrap();
+        assert!(
+            legacy.progress.is_none(),
+            "a resume does not supply a measured duration"
+        );
+        let measured = home
+            .continue_watching
+            .iter()
+            .find(|i| i.media.id == ids["Measured"])
+            .unwrap();
+        let progress = measured.progress.as_ref().unwrap();
+        assert_eq!(
+            (progress.position_ms, progress.duration_ms),
+            (5_000, 100_000)
+        );
+        assert!(
+            store
+                .home_catalog(&other)
+                .unwrap()
+                .continue_watching
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .personal_state(&profile, &ids["Legacy"])
+                .unwrap()
+                .position_ms,
+            3_025_917
+        );
+        drop(store);
+        let mut reopened = Store::open(&path).unwrap();
+        assert_eq!(
+            reopened
+                .home_catalog(&profile)
+                .unwrap()
+                .continue_watching
+                .len(),
+            2
+        );
     }
 
     #[test]
