@@ -78,3 +78,7 @@ chill-client --lib`, `cargo check --locked --offline -p chillcenter-desktop`,
 sandbox a d’abord échoué EPERM ; la même suite avec réseau local autorisé est
 PASS. Les durées réelles ont été vérifiées à partir d’en-têtes, pas d’une lecture
 simulée ou d’une durée TMDB. Sources/paquets publics et données NAS inchangés.
+
+### Revue de livraison — focus dans une rangée défilée
+
+La revue indépendante a trouvé un retour du focus au début de la rangée après un retrait au milieu. Le bouton désactivé perd aussi le focus pendant la sauvegarde. Le client conserve l’intention de focus, choisit le voisin suivant (ou précédent pour la dernière carte), le garde visible et restaure le focus et le défilement lors du rafraîchissement de révision. Le test navigateur couvre les retraits au milieu et en fin de rangée sur écran de 390 px, avec une nouvelle révision après chaque sauvegarde.

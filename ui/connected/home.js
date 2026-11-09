@@ -50,19 +50,21 @@
   }
   const activeMutation = () => [...mutations].some(m => m.key === context() && m.generation === generation);
   const railSignature = (key, field, list, revision) => JSON.stringify([key, field === "continue_watching" ? revision : null, list]);
-  async function removeAnimated(wrapper, current) {
-    const rail = wrapper.parentElement, next = [...rail.children].filter(c => c !== wrapper);
-    const focused = wrapper.contains(document.activeElement);
+  async function removeAnimated(wrapper, current, restoreFocus) {
+    const rail = wrapper.parentElement, original = [...rail.children], removedIndex = original.indexOf(wrapper), next = original.filter(c => c !== wrapper);
+    const focused = wrapper.contains(document.activeElement) || (restoreFocus && document.activeElement === document.body);
     const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (!reduce && wrapper.animate) await wrapper.animate([{opacity:1},{opacity:0}], {duration:180,easing:"ease-out",fill:"forwards"}).finished.catch(()=>{});
     if (!current()) return;
     const before = next.map(c => c.getBoundingClientRect().left);
     window.catalogRetireRecommendationRail?.(wrapper); wrapper.remove();
-    if (focused) next[0]?.querySelector(".home-watched")?.focus({preventScroll:true});
+    const focusTarget = focused ? next[Math.min(removedIndex,next.length-1)]?.querySelector(".home-watched") : null;
+    focusTarget?.focus({preventScroll:true});
     if (!reduce) await Promise.all(next.map((card,i) => {
       const dx = before[i] - card.getBoundingClientRect().left;
       return Number.isFinite(dx) && dx && card.animate ? card.animate([{transform:`translateX(${dx}px)`},{transform:"translateX(0)"}],{duration:300,easing:"cubic-bezier(.2,.8,.2,1)"}).finished.catch(()=>{}) : undefined;
     }));
+    if (document.activeElement === focusTarget) focusTarget?.scrollIntoView({block:"nearest",inline:"nearest",behavior:"instant"});
   }
   function resumeCard(card, item, key, revision) {
     const wrapper = node("article", undefined, "home-resume-card"), check = node("button", "○", "home-watched");
@@ -81,7 +83,7 @@
     if (item.series_key && (!Number.isSafeInteger(revision) || revision < 0)) check.disabled = true;
     check.onclick = async () => {
       if (check.disabled || !wrapper.isConnected || context() !== key || !visible()) return;
-      const action = {key, generation}; mutations.add(action); pending = null; check.disabled = true;
+      const action = {key, generation, restoreFocus:wrapper.contains(document.activeElement)}; mutations.add(action); pending = null; check.disabled = true;
       const current = () => action.generation === generation && context() === key && wrapper.isConnected;
       let saved = false;
       try {
@@ -91,7 +93,7 @@
         if (result?.saved !== true) throw Error(uiText("État vu non enregistré. Réessayez."));
         saved = true; check.setAttribute("aria-pressed", "true"); check.textContent = "✓";
         if (snapshot?.key === key) snapshot.data.continue_watching = snapshot.data.continue_watching.filter(i => i.media.id !== item.media.id);
-        await removeAnimated(wrapper, current);
+        await removeAnimated(wrapper, current, action.restoreFocus);
         const rail = rendered.get("continue_watching");
         if (rail && snapshot?.key === key) rail.signature = railSignature(key,"continue_watching",rows(snapshot.data.continue_watching),snapshot.data.watch_revision);
         if (context() === key && action.generation === generation) await syncAfterMutation();
@@ -105,6 +107,8 @@
     wrapper.append(card, check); return wrapper;
   }
   function render(data, key) {
+    const focusedId = document.activeElement.closest?.(".home-resume-card")?.dataset.homeMediaId;
+    const scrollPositions = new Map([...rendered].map(([field,value]) => [field,value.rail.querySelector(".recommendation-rail")?.scrollLeft || 0]));
     const nextRails = [], nextRendered = new Map();
     for (const [title, field] of [["Reprendre", "continue_watching"], ["Ajouts récents", "recently_added"], ["Pour vous", "recommendations"]]) {
       const list = rows(data[field]); if (!list.length) continue;
@@ -142,6 +146,14 @@
       for (let i=0;i<nextRails.length;i++) if (target.children[i]!==nextRails[i]) target.insertBefore(nextRails[i],target.children[i]||null);
       for (const child of [...target.children]) if (!nextRails.includes(child)) child.remove();
     } else target.replaceChildren(...nextRails);
+    for (const [field,value] of rendered) {
+      const viewport=value.rail.querySelector(".recommendation-rail");
+      if (viewport) viewport.scrollLeft=scrollPositions.get(field)||0;
+    }
+    if (focusedId) {
+      const card=[...target.querySelectorAll(".home-resume-card")].find(card=>card.dataset.homeMediaId===focusedId);
+      card?.querySelector(".home-watched")?.focus({preventScroll:true});
+    }
     $("home-empty").hidden = Boolean($("home-rails").children.length);
   }
   async function refresh(force = false) {

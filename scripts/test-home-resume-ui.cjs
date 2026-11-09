@@ -12,7 +12,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
    const errors=[],writes=[];page.on('pageerror',e=>errors.push(e.message));
    const ids=[2,3,4].map(n=>`${n}${'2'.repeat(7)}-2222-4222-8222-222222222222`);
    const entries=ids.map((id,i)=>({media:{id,title:['Reprise mesurée','Autre film commencé','Série en cours'][i],category:i===2?'serie':'film',series:i===2?'Série en cours':null,season:null,episode:null,year:2026,genres:[],cast:[],directors:[],path:'fixture.mp4',overview:'Synthetic fixture',poster:'/api/2026-10-14/artwork',watched:false,rating:null,available:true,tmdb_id:i===2?12:null},revision:1}));
-   let releaseWrite,failNext=false,epoch=1;
+   let releaseWrite,writeReady,failNext=false,epoch=1;
    await page.addInitScript(()=>{
     localStorage.setItem('chillcenter-interface-language','fr');localStorage.setItem('chill.settings',JSON.stringify({language:'fr',theme:'dark',appearance:{mode:'off'},last_profile:{fixture:'11111111-1111-4111-8111-111111111111'}}));
     window.homeAnimationEvidence=[];const original=Element.prototype.animate;
@@ -32,11 +32,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
      if(p.endsWith('/catalog/revision'))return json({revision:'r'+epoch});
      if(p.endsWith('/catalog/changes'))return json(req.postDataJSON().known_revision==='r'+epoch?{revision:'r'+epoch,unchanged:true}:{revision:'r'+epoch,unchanged:false,reset:true,snapshot_id:'55555555-5555-4555-8555-555555555555',total:entries.length,items:entries,deleted_ids:[],sagas:[],playlists:[],series_revisions:{},season_metadata:{},has_more:false,next_offset:null});
      if(p.endsWith('/playback-progress'))return json({revision:'p1',unchanged:false,items:[]});
-     if(p.endsWith('/home'))return json({watch_revision:1,continue_watching:entries.filter(e=>!e.media.watched).map((e,i)=>({media:e.media,series_key:e.media.category==='serie'?'tmdb:tv:12':null,season:e.media.category==='serie'?1:null,progress:{position_ms:300000,duration_ms:900000},resume_position_ms:300000,episode_counts:e.media.category==='serie'?{watched:4,total:150}:null,matches:[]})),recently_added:[],recommendations:[]});
+     if(p.endsWith('/home'))return json({watch_revision:epoch,continue_watching:entries.filter(e=>!e.media.watched).map((e,i)=>({media:e.media,series_key:e.media.category==='serie'?'tmdb:tv:12':null,season:e.media.category==='serie'?1:null,progress:{position_ms:300000,duration_ms:900000},resume_position_ms:300000,episode_counts:e.media.category==='serie'?{watched:4,total:150}:null,matches:[]})),recently_added:[],recommendations:[]});
      if(p.endsWith('/watched')&&req.method()==='PUT') {
       const body=req.postDataJSON();writes.push(body);
       if(failNext){failNext=false;return json({code:'FIXTURE_FAILURE'},503);}
-      await new Promise(resolve=>releaseWrite=resolve);
+      await new Promise(resolve=>{releaseWrite=resolve;writeReady?.();writeReady=null;});
       entries.find(e=>e.media.id===p.split('/').at(-2)).media.watched=body.watched;epoch++;
       return json({saved:true});
      }
@@ -72,9 +72,29 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
    if(reducedMotion==='reduce')assert.equal(evidence.length,0);
    else {assert(evidence.some(e=>e.frames[1]?.opacity===0));assert(evidence.some(e=>e.frames[0]?.transform?.startsWith('translateX(')));}
    failNext=true;await second.locator('.home-watched').click();await page.waitForFunction(()=>document.getElementById('home-status').textContent.length>0);assert.equal(await cards.count(),2);assert.equal(await second.locator('.home-watched').isEnabled(),true);
-   const show=page.locator(`.home-resume-card:has([data-home-media-id="${ids[2]}"])`);await show.locator('.home-watched').click();
-   await page.waitForFunction(()=>document.querySelector('.home-resume-card:last-child .home-watched').disabled);assert.deepEqual(writes.at(-1),{watched:true,scope:'season',expected_revision:1});releaseWrite();
+   const seasonRevision=epoch;const show=page.locator(`.home-resume-card:has([data-home-media-id="${ids[2]}"])`);await show.locator('.home-watched').click();
+   await page.waitForFunction(()=>document.querySelector('.home-resume-card:last-child .home-watched').disabled);assert.deepEqual(writes.at(-1),{watched:true,scope:'season',expected_revision:seasonRevision});releaseWrite();
    await page.waitForFunction(()=>document.querySelectorAll('.home-resume-card').length===1);
+   if(width===390) {
+    await page.waitForFunction(async()=>await window.refreshHome(true));
+    for(const e of entries)e.media.watched=false;
+    for(let i=0;i<6;i++)entries.push({media:{...entries[1].media,id:`77777777-7777-4777-8777-${String(10+i).padStart(12,'0')}`,title:'Reprise '+i,watched:false},revision:1});
+    epoch++;await page.evaluate(()=>window.refreshHome(true));
+    await page.waitForFunction(()=>document.querySelectorAll('.home-resume-card').length===9);
+    for(const pick of [4,'last']) {
+     const count=await cards.count(),index=pick==='last'?count-1:pick;
+     const expected=await cards.nth(index<count-1?index+1:index-1).getAttribute('data-home-media-id');
+     const control=cards.nth(index).locator('.home-watched');await control.scrollIntoViewIfNeeded();await control.focus();
+     assert(await page.locator('.recommendation-rail').evaluate(e=>e.scrollLeft)>0);
+     const arrived=new Promise(resolve=>writeReady=resolve);await control.click();await arrived;releaseWrite();
+     await page.waitForFunction(n=>document.querySelectorAll('.home-resume-card').length===n,count-1);
+     await page.waitForFunction(()=>[...document.querySelectorAll('.home-resume-card')].every(c=>c.getAnimations().every(a=>a.playState!=='running')));
+     await page.waitForFunction(async()=>await window.refreshHome(true));
+     const focus=await page.evaluate(()=>{const control=document.activeElement,rail=document.querySelector('.recommendation-rail'),c=control.getBoundingClientRect(),r=rail.getBoundingClientRect();return {id:control.closest('.home-resume-card')?.dataset.homeMediaId,visible:c.left>=r.left&&c.right<=r.right};});
+     assert.equal(focus.id,expected,'keyboard focus follows the removed card position');assert.equal(focus.visible,true,'focus remains visible in the scrolled rail');
+    }
+    console.log('PASS scrolled middle/last removal: adjacent visible keyboard focus preserved');
+   }
    assert.deepEqual(errors,[]);
    if(process.env.CHILL_HOME_QA_DIR)await page.screenshot({path:path.join(process.env.CHILL_HOME_QA_DIR,`home-${width}-${reducedMotion}.png`),fullPage:true});
    console.log(`PASS Home ${width}px/${reducedMotion}: percentages, episode counts, pending/error safety, fade then real leftward reflow, atomic season command`);
