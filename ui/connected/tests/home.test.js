@@ -54,3 +54,58 @@ test('Continue renders an existing film resume without inventing a duration or p
  assert.equal(result.length,1);assert.equal(result[0].dataset.homeMediaId,'legacy-resume');
  assert.equal(result[0].querySelectorAll('.home-badge').length,0);
 });
+
+test('season progress reports completed episodes out of the whole season, not one episode percentage',async()=>{
+ const show={...movie('show',{category:'serie',series:'Show'}),series_key:'show',season:null,episode_counts:{watched:4,total:150},progress:{position_ms:17000,duration_ms:45000}};
+ const f=home(()=>({...payload([show]),watch_revision:7}));await f.sandbox.window.refreshHome();
+ assert.equal(cards(f.get('home-rails'))[0].querySelectorAll('.home-badge')[0].textContent,'Saison inconnue · 4 / 150 épisodes vus · 3 %');
+ assert.equal(f.get('home-rails').querySelectorAll('.home-progress')[0].getAttribute('aria-valuenow'),'3');
+});
+
+test('watched action retains the card while saving, coalesces clicks and removes only after success',async()=>{
+ let resolve,seen=false;const f=home(command=>{
+  if(command.action==='set_watched')return new Promise(r=>resolve=()=>{seen=true;r({saved:true});});
+  return payload(seen?[]:[movie('film')]);
+ });await f.sandbox.window.refreshHome();const check=f.get('home-rails').querySelectorAll('.home-watched')[0];
+ const saving=check.onclick();assert.equal(cards(f.get('home-rails')).length,1);assert.equal(check.disabled,true);
+ await check.onclick();await f.sandbox.window.refreshHome(true);assert.equal(f.calls.filter(c=>c.action==='set_watched').length,1);assert.equal(cards(f.get('home-rails')).length,1);
+ resolve();await saving;await new Promise(r=>setImmediate(r));assert.equal(cards(f.get('home-rails')).length,0);
+});
+
+test('failed or late profile watched writes never remove a current card or alter the new profile',async()=>{
+ let mode='fail',resolve;const f=home(command=>{
+  if(command.action==='set_watched') {if(mode==='fail')throw Error('not saved');return new Promise(r=>resolve=r);}
+  return payload([movie(f.sandbox.state.profile_id)]);
+ });await f.sandbox.window.refreshHome();let check=f.get('home-rails').querySelectorAll('.home-watched')[0];
+ await check.onclick();assert.equal(cards(f.get('home-rails')).length,1);assert.equal(check.disabled,false);assert.match(f.get('home-status').textContent,/not saved/);
+ mode='pending';const saving=check.onclick();f.sandbox.state.profile_id='B';f.sandbox.window.clearHomeContext();await f.sandbox.window.refreshHome();resolve({saved:true});await saving;
+ assert.equal(cards(f.get('home-rails'))[0].dataset.homeMediaId,'B');
+});
+
+test('season checkbox sends the explicit atomic season scope and captured catalogue revision',async()=>{
+ const show={...movie('show',{category:'serie'}),series_key:'show',season:1,episode_counts:{watched:1,total:2}};
+ let seen=false;const f=home(command=>{if(command.action==='group_watched'){seen=true;return {saved:true};}return {...payload(seen?[]:[show]),watch_revision:17};});
+ await f.sandbox.window.refreshHome();const check=f.get('home-rails').querySelectorAll('.home-watched')[0];assert.match(check.getAttribute('aria-label'),/saison/);await check.onclick();
+ const command=f.calls.find(c=>c.action==='group_watched');assert.deepEqual(JSON.parse(JSON.stringify(command)),{action:'group_watched',media_id:'show',watched:true,scope:'season',expected_revision:17});
+});
+test('unchanged Home refresh keeps card identity and container progress never escapes its profile',async()=>{
+ const item={...movie('film'),progress:{position_ms:3025917,duration_ms:9382421}};
+ const f=home(()=>payload([item]));await f.sandbox.window.refreshHome();const card=cards(f.get('home-rails'))[0];
+ await f.sandbox.window.refreshHome(true);assert.equal(cards(f.get('home-rails'))[0],card);
+ assert.equal(f.sandbox.window.homeProgressFor('film').duration_ms,9382421);
+ f.sandbox.state.profile_id='B';assert.equal(f.sandbox.window.homeProgressFor('film'),null);
+});
+test('refilling the twentieth slot keeps remaining card identities instead of flashing their artwork',async()=>{
+ const seen=new Set(),items=Array.from({length:21},(_,i)=>movie('m'+i));
+ const f=home(command=>{if(command.action==='set_watched'){seen.add(command.media_id);return {saved:true};}return payload(items.filter(i=>!seen.has(i.media.id)).slice(0,20));});
+ await f.sandbox.window.refreshHome();const retained=cards(f.get('home-rails'))[1];
+ await f.get('home-rails').querySelectorAll('.home-watched')[0].onclick();await new Promise(r=>setImmediate(r));
+ const result=cards(f.get('home-rails'));assert.equal(result.length,20);assert.equal(result[0],retained);assert.equal(result.at(-1).dataset.homeMediaId,'m20');
+});
+test('asynchronous poster loading preserves the real Home progress overlay',async()=>{
+ const item={...movie('film',{poster:'artwork'}),progress:{position_ms:3025917,duration_ms:9382421}};
+ const f=home(c=>c.action==='home'?payload([item]):{src:'blob:fixture'});await f.sandbox.window.refreshHome();
+ const poster=f.get('home-rails').querySelectorAll('.recommendation-poster')[0],bar=poster.querySelectorAll('.home-progress')[0];
+ f.emitArtwork([{target:poster,isIntersecting:true}]);await new Promise(r=>setImmediate(r));
+ assert.equal(poster.querySelectorAll('img').length,1);assert.equal(poster.querySelectorAll('.home-progress')[0],bar);assert.equal(bar.getAttribute('aria-valuenow'),'32');
+});

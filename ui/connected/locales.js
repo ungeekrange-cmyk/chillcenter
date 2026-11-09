@@ -2,6 +2,11 @@
 // Only interface literals are translated. Media titles, synopses, paths, user
 // input and API identifiers never pass through this catalogue.
 const chillEnglish={
+ "{0} / {1} épisodes vus":"{0} / {1} episodes watched",
+ "Reprise à {0} · durée indisponible":"Resume at {0} · duration unavailable",
+ "Marquer la saison comme vue : {0}":"Mark season as watched: {0}",
+ "Marquer vu : {0}":"Mark watched: {0}",
+ "État vu non enregistré. Réessayez.":"Watched state was not saved. Try again.",
  "En cours":"In progress","Progression de lecture":"Playback progress","Lecture en cours · {0} %":"In progress · {0}%","La progression mesurée nécessite une mise à jour du serveur.":"Measured progress requires a server update.",
  "Tout":"All","Général":"General","Serveur":"Server","Bibliothèque":"Library","Profils":"Profiles","Lecture":"Playback","Apparence":"Appearance","Fiches et matching":"Metadata and matching","Intelligence artificielle":"Artificial intelligence","Archives":"Archives",
  "Films":"Movies","Film":"Movie","Séries":"TV shows","Série":"TV show","Documentaires":"Documentaries","Documentaire":"Documentary","Spectacles":"Shows","Spectacle":"Show","Sagas":"Sagas","Listes de lecture":"Playlists","Liste de lecture":"Playlist","Toute la collection":"Entire library","Demande de conseil":"Get recommendations","Configuration":"Settings","Rechercher":"Search","Recherche":"Search","Rechercher dans votre bibliothèque":"Search your library","Rechercher dans la collection":"Search the library","Votre bibliothèque":"Your library","Votre profil":"Your profile","Choisir un profil":"Choose a profile","Choisir un profil…":"Choose a profile…","Créer un profil":"Create profile","Créer un nouveau profil":"Create a new profile","Changer de profil":"Switch profile","Nouveau profil":"New profile","Nom du profil":"Profile name","Renommer":"Rename","Renommer ":"Rename ","Supprimer":"Delete","Créer":"Create","Annuler":"Cancel","Fermer":"Close","Retour":"Back","Enregistrer":"Save","Modifier":"Edit","Retirer":"Remove","Ajouter":"Add","Confirmer":"Confirm","Continuer":"Continue","Réessayer":"Try again","Précédent":"Previous","Suivant":"Next","Aucun":"None","Tous":"All","Oui":"Yes","Non":"No","Appliquer":"Apply","Actualiser":"Refresh","Recharger":"Reload","Charger":"Load",

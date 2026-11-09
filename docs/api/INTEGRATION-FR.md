@@ -270,7 +270,8 @@ fois par rangée ; leur média est une fiche de série, tandis que `season` indi
 la saison à poursuivre. Les tableaux vides sont masqués. Une saison terminée
 suivie d'une saison jamais commencée ne suffit pas pour « Reprendre ».
 
-Cette lecture locale n'appelle ni TMDB, ni IA, ni NAS. Les suggestions utilisent
+La sélection locale n'appelle ni TMDB ni IA. Le candidat BUG0141 peut lire les
+en-têtes vidéo pour les durées manquantes, selon les limites ci-dessous. Les suggestions utilisent
 les genres, acteurs et réalisateurs des cinq dernières entités vues datées du
 profil. Les anciennes lectures sans date ne reçoivent aucune date inventée.
 Le nouvel horodatage personnel nullable est conservé par les exports/imports
@@ -282,7 +283,31 @@ restent utilisables. Les clients rejettent les réponses d'un ancien profil.
 
 Comme décidé dans ADR-0035, les archives portables historiques ne transportent
 pas les durées mesurées. Jusqu’au serveur publié0.7.5, une reprise importée
-peut manquer dans l’Accueil. Depuis le serveur0.7.6, BUG0140
+peut manquer dans l’Accueil. Le serveur0.7.6 (BUG0140)
 inclut les vidéos disponibles non vues avec position>0, même sans durée ;
 `progress` reste null jusqu’à une nouvelle mesure. Aucun pourcentage n’est inventé.
 Une sauvegarde complète SQLite conserve cc_resume_measurement.
+
+### Candidat BUG0141 — progression réelle et coche de saison
+
+Ajouts compatibles, non encore publiés/installés : `watch_revision` à la racine ;
+`resume_position_ms` et `episode_counts:{watched,total}` sur les cartes. Les
+compteurs décrivent la saison affichée, y compris la saison inconnue ; leur
+pourcentage compte les épisodes terminés. Les vidéos avec durée connue entrent
+dans Reprendre à partir de5 %, avant la fin, sans effacer les essais plus courts.
+
+Pour une durée manquante, le serveur peut lire les seuls en-têtes MP4/MKV/AVI :
+20 fichiers maximum,64Kio et2048 lectures par fichier,200ms de parcours par
+fichier/2s par lot, un lot simultané et cache512 versions de fichiers. Aucun
+décodage, transcodage, fournisseur ou outil externe. Les chemins indexés sont
+ouverts sous les racines configurées sans suivre les symlinks. Échec/budget/NAS
+indisponible : position conservée, durée nulle, aucun pourcentage supposé. Ces
+durées ne deviennent pas des observations de lecture dans `playback-progress`.
+
+`PUT /profiles/{profile}/media/{media}/watched` accepte en plus `scope:season|series`
+et `expected_revision` obligatoire, égal au `watch_revision` lu dans Home.
+L’épisode référencé identifie la saison (null reste la saison inconnue), avec
+1000 épisodes maximum et transaction atomique. Révision périmée :409 sans
+marquage partiel. Le corps historique `{watched}` reste compatible. L’interface
+utilise uniquement `season` pour la coche des séries ; positions et notes restent
+conservées. [ADR0042](../architecture/decisions/ADR-0042-home-progress-controls.md).

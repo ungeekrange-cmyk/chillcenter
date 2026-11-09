@@ -28,7 +28,7 @@
   if(key)try{const payload=JSON.parse(localStorage.getItem(cacheKey(key))||"null"),saved=parse(payload);if(saved){entries=saved;revision=payload.revision;}}catch{};
   return key;
  }
- function entryFor(media){activeContext();return entries.get(media.id);}
+ function entryFor(media){activeContext();return entries.get(media.id)||root.homeProgressFor?.(media.id);}
  root.dropProgressProfile=id=>{try{localStorage.removeItem(cacheKey(state.server_id+":"+id));}catch{}};
  root.renderMediaProgress=(poster,media)=>{
   const previous=poster.querySelector?.(".media-progress");previous?.remove();

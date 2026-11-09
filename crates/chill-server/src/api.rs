@@ -2217,6 +2217,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn home_reads_container_duration_and_filters_trials_without_playback_or_history_writes() {
+        let (dir,app)=setup();let root=dir.path().canonicalize().unwrap().join("videos");std::fs::create_dir(&root).unwrap();
+        let atom=|kind:&[u8;4],body:&[u8]|[(body.len() as u32+8).to_be_bytes().as_slice(),kind,body].concat();
+        let mut header=vec![0;20];header[12..16].copy_from_slice(&1000u32.to_be_bytes());header[16..20].copy_from_slice(&9_000_000u32.to_be_bytes());
+        let bytes=atom(b"moov",&atom(b"mvhd",&header));
+        for name in ["Resume.mp4","Trial.mp4"] {std::fs::write(root.join(name),&bytes).unwrap();}
+        let (_,lib)=json_call(&app,"GET","/api/2026-10-14/admin/library",Value::Null).await;
+        let (status,_)=json_call(&app,"PUT","/api/2026-10-14/admin/library",json!({"video_root":root,"additional_video_roots":[],"expected_revision":lib["revision"]})).await;
+        assert_eq!(status,StatusCode::OK);
+        let mut s=Store::open(&dir.path().join("catalog.sqlite")).unwrap();let p=s.create_profile("A").unwrap().id;let b=s.create_profile("B").unwrap().id;
+        s.snapshot(["Resume.mp4","Trial.mp4"].iter().map(|name|chill_catalog::scanner::parse_file(&root,&root.join(name))).collect()).unwrap();
+        let items=s.catalog(&p).unwrap();let conn=rusqlite::Connection::open(dir.path().join("catalog.sqlite")).unwrap();
+        for m in &items {conn.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms) VALUES(?1,?2,?3)",rusqlite::params![p,m.id,if m.title=="Resume" {3025917}else{13000}]).unwrap();}
+        let (status,h)=json_call(&app,"GET",&format!("/api/2026-10-14/profiles/{p}/home"),Value::Null).await;
+        assert_eq!(status,StatusCode::OK);assert_eq!(h["continue_watching"].as_array().unwrap().len(),1);
+        assert_eq!(h["continue_watching"][0]["progress"],json!({"position_ms":3025917,"duration_ms":9000000}));
+        assert!(!h.to_string().contains(root.to_str().unwrap()));
+        assert!(s.playback_progress(&p,None).unwrap()["items"].as_array().unwrap().is_empty());
+        let (_,other)=json_call(&app,"GET",&format!("/api/2026-10-14/profiles/{b}/home"),Value::Null).await;assert!(other["continue_watching"].as_array().unwrap().is_empty());
+        assert!(items.iter().all(|m|!s.personal_state(&p,&m.id).unwrap().watched));
+    }
+
+    #[tokio::test]
+    async fn season_watched_http_requires_revision_and_keeps_other_seasons_and_profiles() {
+        let (dir,app)=setup();let mut s=Store::open(&dir.path().join("catalog.sqlite")).unwrap();
+        let p=s.create_profile("A").unwrap().id;let other=s.create_profile("B").unwrap().id;
+        s.snapshot(["Show.S01E01.mkv","Show.S01E02.mkv","Show.S02E01.mkv"].iter().map(|name|chill_catalog::scanner::parse_file(std::path::Path::new("/fixture"),&std::path::Path::new("/fixture").join(name))).collect()).unwrap();
+        let items=s.catalog(&p).unwrap();let first=items.iter().find(|m|m.season==Some(1)&&m.episode==Some(1)).unwrap().id.clone();
+        s.set_watched(&p,&first,true).unwrap();let revision=s.sync_revision(&p).unwrap().0;
+        let endpoint=format!("/api/2026-10-14/profiles/{p}/media/{first}/watched");
+        let (status,_)=json_call(&app,"PUT",&endpoint,json!({"watched":true,"scope":"season"})).await;assert_eq!(status,StatusCode::UNPROCESSABLE_ENTITY);
+        let (status,_)=json_call(&app,"PUT",&endpoint,json!({"watched":true,"scope":"season","expected_revision":revision+1})).await;assert_eq!(status,StatusCode::CONFLICT);
+        let (status,_)=json_call(&app,"PUT",&endpoint,json!({"watched":true,"scope":"season","expected_revision":revision})).await;assert_eq!(status,StatusCode::OK);
+        for item in &items {assert_eq!(s.personal_state(&p,&item.id).unwrap().watched,item.season==Some(1));assert!(!s.personal_state(&other,&item.id).unwrap().watched);}
+        let (status,_)=json_call(&app,"PUT",&endpoint,json!({"watched":false})).await;assert_eq!(status,StatusCode::OK,"old single-video clients keep their route/body");
+    }
+
+    #[tokio::test]
     async fn http_catalog_queries_are_paged_and_personal_state_is_isolated() {
         let dir = tempfile::tempdir().unwrap();
         let config = ServerConfig {

@@ -1,5 +1,10 @@
 # Index des décisions techniques
 
+[ADR0042](ADR-0042-home-progress-controls.md), IMPLEMENTED_LOCAL,9 novembre2026 :
+durées de conteneur bornées et en lecture seule, seuil5 %, compteurs de saison,
+coche atomique de la saison affichée et retrait animé ; complète ADR0038 et
+remplace la seule sélection position>0 de l’ADR0041 si la durée est connue.
+
 [ADR0041](ADR-0041-home-resume-without-duration.md), IMPLEMENTED_LOCAL,
 8 novembre 2026 : reprises héritées sans durée visibles dans l’Accueil,
 progression mesurée facultative et retrait de la navigation En cours redondante.

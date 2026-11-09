@@ -489,7 +489,8 @@ its media is a show-level card while `season` identifies the season to resume.
 Empty shelves are hidden. A completed season followed by an untouched next
 season does not qualify for Continue watching.
 
-This local read calls neither TMDB, AI nor the NAS. Suggestions use genres,
+The local selection calls neither TMDB nor AI. Candidate BUG0141 can read video
+headers for missing durations under the limits below. Suggestions use genres,
 cast and directors from the profile's five latest dated watched entities.
 Historical views without dates never receive invented timestamps. The new
 nullable personal timestamp survives new exports/imports; old archives remain
@@ -500,7 +501,30 @@ search and categories remain usable. Clients discard stale-profile responses.
 
 As specified by ADR-0035, legacy portable archives do not carry measured
 durations. Through published server0.7.5, an imported resume can be absent
-from Home. Server0.7.6 and later include available
+from Home. Server0.7.6 includes available
 unwatched videos with position>0 even without a duration; `progress` stays null
 until playback remeasures it. No percentage is invented. Full SQLite backups preserve
 cc_resume_measurement.
+
+### Candidate BUG0141 — real progress and season checkbox
+
+Compatible additions, not yet published/installed: root `watch_revision` and card
+`resume_position_ms` plus `episode_counts:{watched,total}`. Counts describe the
+displayed season, including unknown season; its percentage counts completed
+episodes. With a known duration, videos qualify for Continue watching from5 %
+until the end; shorter trials retain their saved positions.
+
+For missing durations, the server can read only MP4/MKV/AVI headers: at most20
+files,64KiB and2048 reads per file,200ms traversal per file/2s per batch, one
+concurrent batch and512 cached file versions. No decoding, transcoding, provider
+or external tool. Indexed paths open under configured roots without symlinks.
+Failure/budget/unavailable NAS: keep the position, null duration and no invented
+percentage. Container durations do not become `playback-progress` observations.
+
+`PUT /profiles/{profile}/media/{media}/watched` additionally accepts `scope:season|series`
+and required `expected_revision`, matching Home's `watch_revision`. The referenced
+episode identifies the season (null remains unknown season), with at most1000
+episodes and one atomic transaction. Stale revision:409 without partial writes.
+The historical `{watched}` body stays compatible. The UI uses only `season` for
+series checkboxes; saved positions and ratings survive.
+[ADR0042](../architecture/decisions/ADR-0042-home-progress-controls.md).

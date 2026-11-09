@@ -35,6 +35,13 @@ test("one lightweight background request populates bars, details and local profi
  await f.sandbox.refreshProgress();assert.equal(f.calls.length,1,"no per-card or per-detail HTTP calls");assert.equal(f.storage.size,1);
  f.sandbox.renderMediaProgress(poster,{id,watched:true});assert.equal(poster.children.length,0);
 });
+test("real container progress from Home fills legacy details without inventing playback measurements",async()=>{
+ const f=fixture(async()=>({revision:'r',items:[]}));
+ f.sandbox.homeProgressFor=media=>media===id?{position_ms:3025917,duration_ms:9382421}:null;
+ f.sandbox.renderDetailProgress({id,watched:false});assert.equal(f.get('detail-progress').textContent,'Lecture en cours · 32 %');
+ assert.equal(f.storage.size,0,'a container observation is not persisted as a playback event');
+ f.sandbox.renderDetailProgress({id,watched:true});assert.equal(f.get('detail-progress').hidden,true);
+});
 test("late reply from an old profile never paints or persists over the current profile",async()=>{
  const pending=[];const f=fixture(()=>new Promise(resolve=>pending.push(resolve)));
  const old=f.sandbox.refreshProgress();f.sandbox.state.profile_id="B";const current=f.sandbox.refreshProgress();

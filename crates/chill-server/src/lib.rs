@@ -11,6 +11,7 @@ pub mod fingerprint;
 pub mod identity_api;
 pub mod legacy_export;
 mod media_stream;
+mod media_duration;
 pub mod operations;
 pub mod playback;
 #[cfg(test)]

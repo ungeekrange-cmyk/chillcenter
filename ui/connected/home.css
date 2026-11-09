@@ -4,6 +4,15 @@
 #home-rails .recommendation-rail-wrap>h3{align-self:center;margin:0;font-size:20px}
 #home-rails .recommendation-controls{grid-column:2;margin:0}
 #home-rails .recommendation-controls button{width:44px;height:44px}
-#home-rails .recommendation-rail{grid-column:1/-1}
+#home-rails .recommendation-rail{grid-column:1/-1;scroll-padding-inline:3px}
 .home-badge{display:block;margin-top:5px;color:var(--accent);font-size:12px}
+.home-resume-card{position:relative;flex:0 0 176px;width:176px;min-width:0;scroll-snap-align:start}
+.home-resume-card>.recommendation-card{width:100%}
+.home-watched{position:absolute;right:10px;top:10px;width:36px;height:36px;padding:0;border-radius:50%;border:1px solid #ffffff90;background:#171717c9;color:#fff;font-size:19px;box-shadow:0 2px 10px #0006;transition:background .15s,transform .15s}
+.home-watched:hover,.home-watched:focus-visible{background:var(--accent);color:var(--accent-text,#171717);transform:scale(1.08)}
+.home-watched[aria-pressed=true]{background:var(--accent);color:var(--accent-text,#171717)}
+.home-progress{position:absolute;bottom:0;left:0;right:0;height:5px;background:#0008;overflow:hidden}
+.home-progress>span{display:block;height:100%;background:var(--accent)}
+@media(max-width:650px){.home-resume-card{flex-basis:145px;width:145px}.home-watched{width:44px;height:44px}}
+@media(prefers-reduced-motion:reduce){.home-watched{transition:none}}
 @media(max-width:760px){#home-rails{gap:28px}#home-rails .recommendation-rail-wrap>h3{font-size:18px}}

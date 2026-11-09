@@ -1,5 +1,25 @@
 # Contexte du projet
 
+## 9 novembre2026 — candidat Reprendre : taux, compteurs et coche
+
+BUG0141 : reprise réelle sans durée, essais courts visibles et actions absentes.
+Lecture TLS du profil et des en-têtes du Pi :10 fichiers/942 octets, durées
+reproduites par le parseur Rust ; aucun décodage ou transcodage. Seul le film
+explicitement déclaré terminé par l’utilisateur est corrigé vu=true sur le Pi,
+position conservée. Les autres historiques restent intacts.
+
+Candidat `codex/home-progress-controls`, base d5e0a91 : durées réelles bornées,
+seuil5 %, compteur de la saison, coche atomique de la saison affichée (choix
+utilisateur confirmé), fondu puis glissement et garde des réponses tardives.
+Sources/contrats Mac et web partagés ; schéma et dépendances inchangés.
+302 tests Rust,377 JavaScript,27 docs, Clippy strict, compilation Mac et
+parcours Chromium bureau/mobile/mouvements réduits PASS ; dix durées réelles
+reproduites par le parseur Rust. Cache temporaire recréé pour ces contrôles,
+retiré à leur fin ; petites preuves privées conservées.
+Aucune nouvelle publication/installation : Mac0.7.7 et serveur/web0.7.6 restent
+les versions publiques. [BUG0141](debug/BUG-0141-home-progress-and-watched-controls.md),
+[ADR0042](architecture/decisions/ADR-0042-home-progress-controls.md).
+
 ## 9 novembre 2026 — publication et installation 0.7.7
 
 Source immuable5d0aa974dc7b626991fc3f177b7e3ff03b66f77f fusionnée/poussée

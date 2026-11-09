@@ -267,6 +267,8 @@ async fn ui_command(
     if matches!(
         &command,
         UiCommand::Home {}
+            | UiCommand::SetWatched { .. }
+            | UiCommand::GroupWatched { .. }
             | UiCommand::TmdbCandidates { .. }
             | UiCommand::CollectionArtworkCandidates { .. }
             | UiCommand::CollectionArtworkPreview { .. }

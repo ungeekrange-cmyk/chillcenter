@@ -173,7 +173,7 @@
       if (touched) { mirror.entries = entries; mirror.index = Query.prepare(entries); }
     }
     const localQuery = c => ({ offset: c.offset || 0, limit: 48, category: c.category || null, q: c.q || null, genre: c.genre || null, year: c.year, watched: c.watched, sort: c.sort || null, grouped: Boolean(c.grouped), available: c.available });
-    const WRITES = new Set(["set_watched", "set_rating", "group_rating", "edit_media", "edit_series", "create_saga", "rename_saga", "add_saga", "remove_saga_member", "reorder_saga", "delete_saga", "create_playlist", "add_playlist", "remove_playlist_member", "reorder_playlist", "delete_playlist", "rename_playlist", "save_library", "saga_member_artwork", "playlist_member_artwork", "collection_tmdb_artwork", "tmdb_select", "tmdb_refresh", "tmdb_restore_poster", "confirm_reassociation", "forget_unavailable"]);
+    const WRITES = new Set(["group_watched", "set_watched", "set_rating", "group_rating", "edit_media", "edit_series", "create_saga", "rename_saga", "add_saga", "remove_saga_member", "reorder_saga", "delete_saga", "create_playlist", "add_playlist", "remove_playlist_member", "reorder_playlist", "delete_playlist", "rename_playlist", "save_library", "saga_member_artwork", "playlist_member_artwork", "collection_tmdb_artwork", "tmdb_select", "tmdb_refresh", "tmdb_restore_poster", "confirm_reassociation", "forget_unavailable"]);
 
     async function request(method, path, { body, query, headers, signal } = {}) {
       let url = BASE + path;
@@ -388,6 +388,11 @@
           const remote = catalogQuery(c);                     // validates the command exactly like before
           if (await localReady()) { try { return Query.browse(mirror.index, localQuery(c)); } catch (e) { throw invalid(e.message); } }
           return get(personal("/catalog"), remote);
+        }
+        case "group_watched": {
+          validId(c.media_id);
+          if (!["season", "series"].includes(c.scope) || !Number.isSafeInteger(c.expected_revision) || c.expected_revision < 0 || typeof c.watched !== "boolean") throw invalid("Portée invalide.");
+          return request("PUT", personal(`/media/${c.media_id}/watched`), { body: { watched: c.watched, scope: c.scope, expected_revision: c.expected_revision } });
         }
         case "set_watched": validId(c.media_id); return request("PUT", personal(`/media/${c.media_id}/watched`), { body: { watched: c.watched } });
         case "set_rating": validId(c.media_id); return request("PUT", personal(`/media/${c.media_id}/rating`), { body: { rating: c.rating ?? null } });

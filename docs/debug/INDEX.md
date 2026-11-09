@@ -1,5 +1,9 @@
 # Journal des bugs, observations et risques
 
+[BUG0141](BUG-0141-home-progress-and-watched-controls.md) : Reprendre sans taux,
+compteurs ni coche ; durées réelles bornées, seuil5 %, saison atomique et retrait
+animé, candidat local. Correction personnelle explicite du film terminé vérifiée.
+
 [BUG0133](BUG-0133-release-zip-advisory.md) : alerte ZIP qualifiée à la publication,
 pin9.0.5 pour le nouveau Mac ; serveur public inchangé, chemin ZIP Windows
 transitif non compilé sur Mac. Aucune clôture implicite des autres alertes.

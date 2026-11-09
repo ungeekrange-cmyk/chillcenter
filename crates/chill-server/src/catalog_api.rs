@@ -1170,17 +1170,85 @@ async fn home(
     State(state): State<AppState>,
     Path(profile): Path<String>,
 ) -> Result<Json<chill_domain::home::HomeCatalog>, ApiError> {
+    let p = profile.clone();
+    let (home, paths) = state
+        .database
+        .call(move |store| {
+            let home = store.home_catalog(&p)?;
+            let paths = home
+                .continue_watching
+                .iter()
+                .filter(|i| i.progress.is_none() && i.resume_position_ms > 0)
+                .map(|i| {
+                    store
+                        .media_path(&i.media.id)
+                        .map(|path| (i.media.id.clone(), path))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok((home, paths))
+        })
+        .await?;
+    if paths.is_empty() {
+        return Ok(Json(home));
+    }
+    let settings = state
+        .library
+        .lock()
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "MEDIA_BUSY"))?
+        .clone();
+    let candidates = paths
+        .iter()
+        .filter_map(|(id, path)| {
+            settings
+                .root_for_path(path)
+                .map(|root| (id.clone(), root, path.clone()))
+        })
+        .collect();
+    // One bounded I/O job; a stalled NAS retains its existing worker permit.
+    // Failure keeps the fast catalogue projection usable, without fake data.
+    let Ok(permit) = state.playback.duration_io.clone().try_acquire_owned() else {
+        return Ok(Json(home));
+    };
+    let Ok(mut durations) = crate::media_stream::io_job(&state.playback, move || {
+        let _permit = permit;
+        Ok(crate::media_duration::probe_many(candidates))
+    })
+    .await
+    else {
+        return Ok(Json(home));
+    };
+    if durations.is_empty()
+        || state
+            .library
+            .lock()
+            .map(|s| s.revision != settings.revision)
+            .unwrap_or(true)
+    {
+        return Ok(Json(home));
+    }
     Ok(Json(
         state
             .database
-            .call(move |store| store.home_catalog(&profile))
+            .call(move |store| {
+                durations.retain(|id, _| {
+                    paths.iter().any(|(expected, path)| {
+                        expected == id && store.media_path(id).ok().as_ref() == Some(path)
+                    })
+                });
+                store.home_catalog_with_durations(&profile, &durations)
+            })
             .await?,
     ))
 }
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Watched {
     watched: bool,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    expected_revision: Option<u64>,
 }
 async fn watched(
     State(state): State<AppState>,
@@ -1191,6 +1259,12 @@ async fn watched(
     state
         .database
         .call(move |store| {
+            if let Some(scope)=body.scope.as_deref().filter(|s|*s!="video") {
+                let expected=body.expected_revision.ok_or("Révision requise.".to_string())?;
+                let ids=store.set_group_watched(&profile,&media,body.watched,scope,expected)?;
+                if !body.watched {for id in ids {playback.reset_final(&profile,&id);}}
+                return Ok(());
+            }
             store.set_watched(&profile, &media, body.watched)?;
             if !body.watched {
                 playback.reset_final(&profile, &media);

@@ -18,9 +18,17 @@ pub struct HomeItem {
     pub season: Option<i32>,
     pub progress: Option<HomeProgress>,
     pub matches: Vec<String>,
+    pub resume_position_ms: u64,
+    pub episode_counts: Option<HomeEpisodeCounts>,
+}
+#[derive(Clone, Serialize)]
+pub struct HomeEpisodeCounts {
+    pub watched: usize,
+    pub total: usize,
 }
 #[derive(Serialize)]
 pub struct HomeCatalog {
+    pub watch_revision: u64,
     pub continue_watching: Vec<HomeItem>,
     pub recently_added: Vec<HomeItem>,
     pub recommendations: Vec<HomeItem>,
@@ -133,9 +141,20 @@ impl Store {
             season,
             progress,
             matches,
+            resume_position_ms: row.position,
+            episode_counts: None,
         }
     }
     pub fn home_catalog(&mut self, profile: &str) -> Result<HomeCatalog, String> {
+        self.home_catalog_with_durations(profile, &HashMap::new())
+    }
+    /// Container durations are read by the server, never inferred from TMDB.
+    /// This read-only overlay does not rewrite playback history or measurements.
+    pub fn home_catalog_with_durations(
+        &mut self,
+        profile: &str,
+        durations: &HashMap<String, u64>,
+    ) -> Result<HomeCatalog, String> {
         self.require_profile(profile)?;
         self.refresh_series_groups()?;
         // One bounded projection: never call profile_view (several SQL reads) for each raw row.
@@ -159,6 +178,10 @@ impl Store {
         for value in values {
             let (data, stable, relative_path, watched, rating, position, duration, last, key) =
                 value.map_err(|_| "Accueil indisponible.".to_string())?;
+            let duration = duration
+                .map(|v| v.max(0) as u64)
+                .filter(|v| *v > 0)
+                .or_else(|| durations.get(&stable).copied().filter(|v| *v > 0));
             all.push(Row {
                 media: serde_json::from_str(&data)
                     .map_err(|_| "Accueil indisponible.".to_string())?,
@@ -167,7 +190,7 @@ impl Store {
                 watched,
                 rating,
                 position: position.max(0) as u64,
-                duration: duration.map(|v| v.max(0) as u64),
+                duration,
                 last,
                 key,
             });
@@ -186,7 +209,7 @@ impl Store {
                 if let Some(row) = rows
                     .iter()
                     .copied()
-                    .find(|r| r.media.available && !r.watched && r.position > 0)
+                    .find(|r| r.media.available && !r.watched && meaningful_resume(r))
                 {
                     continuing.push((
                         row.position,
@@ -217,7 +240,7 @@ impl Store {
                     .push(*row);
             }
             for (season, members) in seasons {
-                let started = members.iter().any(|r| r.watched || r.position > 0);
+                let started = members.iter().any(|r| r.watched || meaningful_resume(r));
                 let unfinished = members.iter().any(|r| !r.watched);
                 if !started || !unfinished {
                     continue;
@@ -235,17 +258,19 @@ impl Store {
                                 duration_ms: proxy.duration.unwrap(),
                             }
                         });
-                    continuing.push((
-                        proxy.position,
-                        self.home_item(
-                            profile,
-                            proxy,
-                            Some(key.clone()),
-                            (season >= 0).then_some(season),
-                            progress,
-                            vec![],
-                        ),
-                    ));
+                    let mut item = self.home_item(
+                        profile,
+                        proxy,
+                        Some(key.clone()),
+                        (season >= 0).then_some(season),
+                        progress,
+                        vec![],
+                    );
+                    item.episode_counts = Some(HomeEpisodeCounts {
+                        watched: members.iter().filter(|r| r.watched).count(),
+                        total: members.len(),
+                    });
+                    continuing.push((proxy.position, item));
                     break;
                 }
             }
@@ -343,11 +368,21 @@ impl Store {
             .map(|(_, v)| v)
             .collect();
         Ok(HomeCatalog {
+            watch_revision: self.sync_revision(profile)?.0,
             continue_watching,
             recently_added,
             recommendations,
         })
     }
+}
+
+fn meaningful_resume(row: &Row) -> bool {
+    row.position > 0
+        && row.duration.is_none_or(|duration| {
+            // A brief trial is not an ongoing film. Do not mark it watched or erase
+            // its saved position; it remains resumable from its detail page.
+            row.position >= duration.div_ceil(20) && row.position < duration
+        })
 }
 
 #[cfg(test)]
@@ -448,6 +483,140 @@ mod tests {
                 .continue_watching
                 .len(),
             2
+        );
+    }
+
+    #[test]
+    fn actual_container_duration_excludes_trials_without_changing_saved_positions() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("home.sqlite")).unwrap();
+        let p = store.create_profile("A").unwrap().id;
+        store
+            .snapshot(vec![media("Trial.mkv"), media("Resume.mkv")])
+            .unwrap();
+        let items = store.catalog(&p).unwrap();
+        let trial = items
+            .iter()
+            .find(|m| m.title == "Trial")
+            .unwrap()
+            .id
+            .clone();
+        let resume = items
+            .iter()
+            .find(|m| m.title == "Resume")
+            .unwrap()
+            .id
+            .clone();
+        for (id, pos) in [(&trial, 13000), (&resume, 3025917)] {
+            store.personal.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms) VALUES(?1,?2,?3)",rusqlite::params![p,id,pos]).unwrap();
+        }
+        assert_eq!(store.home_catalog(&p).unwrap().continue_watching.len(), 2);
+        let h = store
+            .home_catalog_with_durations(
+                &p,
+                &HashMap::from([(trial.clone(), 6000000), (resume.clone(), 9000000)]),
+            )
+            .unwrap();
+        assert_eq!(h.continue_watching.len(), 1);
+        assert_eq!(h.continue_watching[0].media.id, resume);
+        assert_eq!(
+            h.continue_watching[0]
+                .progress
+                .as_ref()
+                .unwrap()
+                .duration_ms,
+            9000000
+        );
+        assert_eq!(store.personal_state(&p, &trial).unwrap().position_ms, 13000);
+        assert!(!store.personal_state(&p, &trial).unwrap().watched);
+        assert!(
+            store.playback_progress(&p, None).unwrap()["items"]
+                .as_array()
+                .unwrap()
+                .is_empty(),
+            "read-only metadata does not fabricate playback events"
+        );
+    }
+
+    #[test]
+    fn season_counts_and_atomic_watched_action_preserve_other_seasons_profiles_and_positions() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(&dir.path().join("counts.sqlite")).unwrap();
+        let a = s.create_profile("A").unwrap().id;
+        let b = s.create_profile("B").unwrap().id;
+        s.snapshot(vec![
+            episode("Show.S01E01.mkv", 1, 1, 1),
+            episode("Show.S01E02.mkv", 1, 2, 1),
+            episode("Show.S02E01.mkv", 2, 1, 1),
+        ])
+        .unwrap();
+        let items = s.catalog(&a).unwrap();
+        let first = items
+            .iter()
+            .find(|m| m.season == Some(1) && m.episode == Some(1))
+            .unwrap()
+            .id
+            .clone();
+        let second = items
+            .iter()
+            .find(|m| m.season == Some(1) && m.episode == Some(2))
+            .unwrap()
+            .id
+            .clone();
+        let later = items
+            .iter()
+            .find(|m| m.season == Some(2))
+            .unwrap()
+            .id
+            .clone();
+        s.set_watched(&a, &first, true).unwrap();
+        s.personal.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms,rating) VALUES(?1,?2,123000,4)",rusqlite::params![a,second]).unwrap();
+        let h = s.home_catalog(&a).unwrap();
+        let c = h.continue_watching[0].episode_counts.as_ref().unwrap();
+        assert_eq!((c.watched, c.total), (1, 2));
+        assert!(
+            s.set_group_watched(&a, &second, true, "season", h.watch_revision + 1)
+                .is_err()
+        );
+        assert!(!s.personal_state(&a, &second).unwrap().watched);
+        let ids = s
+            .set_group_watched(&a, &second, true, "season", h.watch_revision)
+            .unwrap();
+        assert_eq!(ids.len(), 2);
+        assert!(s.home_catalog(&a).unwrap().continue_watching.is_empty());
+        assert!(!s.personal_state(&a, &later).unwrap().watched);
+        assert!(!s.personal_state(&b, &second).unwrap().watched);
+        let state = s.personal_state(&a, &second).unwrap();
+        assert_eq!((state.position_ms, state.rating), (123000, Some(4)));
+        let revision = s.sync_revision(&a).unwrap().0;
+        s.set_group_watched(&a, &second, false, "season", revision)
+            .unwrap();
+        assert!(!s.personal_state(&a, &first).unwrap().watched);
+        assert_eq!(s.personal_state(&a, &second).unwrap().position_ms, 123000);
+    }
+
+    #[test]
+    fn failed_group_write_rolls_back_every_episode() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(&dir.path().join("atomic.sqlite")).unwrap();
+        let p = s.create_profile("A").unwrap().id;
+        s.snapshot(vec![
+            episode("Show.S01E01.mkv", 1, 1, 1),
+            episode("Show.S01E02.mkv", 1, 2, 1),
+        ])
+        .unwrap();
+        let items = s.catalog(&p).unwrap();
+        let second = &items.iter().find(|m| m.episode == Some(2)).unwrap().id;
+        s.personal.execute_batch(&format!("CREATE TRIGGER refuse_second BEFORE INSERT ON cc_profile_state WHEN NEW.stable_media_id='{second}' BEGIN SELECT RAISE(ABORT,'fixture failure'); END;")).unwrap();
+        let rev = s.sync_revision(&p).unwrap().0;
+        assert!(
+            s.set_group_watched(&p, &items[0].id, true, "season", rev)
+                .is_err()
+        );
+        assert!(
+            items
+                .iter()
+                .all(|m| !s.personal_state(&p, &m.id).unwrap().watched)
         );
     }
 

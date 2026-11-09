@@ -95,6 +95,12 @@ pub enum UiCommand {
         media_id: String,
         watched: bool,
     },
+    GroupWatched {
+        media_id: String,
+        watched: bool,
+        scope: String,
+        expected_revision: u64,
+    },
     SetRating {
         media_id: String,
         rating: Option<u8>,
@@ -694,6 +700,17 @@ impl UiClient {
                 None,
                 false,
             ),
+            UiCommand::GroupWatched {media_id,watched,scope,expected_revision} => {
+                valid_id(&media_id)?;
+                if !["season","series"].contains(&scope.as_str()) {return Err(invalid("Portée invalide."));}
+                (HttpMethod::PUT,format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"),
+                 Some(json!({"watched":watched,"scope":scope,"expected_revision":expected_revision})),None,true)
+            }
+            UiCommand::SetWatched {media_id,watched} => {
+                valid_id(&media_id)?;
+                (HttpMethod::PUT,format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"),
+                 Some(json!({"watched":watched})),None,true)
+            }
             UiCommand::CollectionArtworkCandidates { kind, id, query } => {
                 valid_artwork_collection(&kind, &id)?;
                 valid_tmdb_query(&query)?;
@@ -1683,6 +1700,8 @@ impl UiClient {
         }
         match command {
             command @ (UiCommand::Home {}
+            | UiCommand::SetWatched { .. }
+            | UiCommand::GroupWatched { .. }
             | UiCommand::CollectionArtworkCandidates { .. }
             | UiCommand::CollectionArtworkPreview { .. }
             | UiCommand::CollectionTmdbArtwork { .. }) => {
@@ -2512,17 +2531,6 @@ impl UiClient {
                     &[],
                 )
             }
-            UiCommand::SetWatched { media_id, watched } => {
-                valid_id(&media_id)?;
-                let profile = self.profile()?;
-                self.request(
-                    HttpMethod::PUT,
-                    &format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"),
-                    Some(&json!({"watched":watched})),
-                    &[],
-                    &[],
-                )
-            }
             UiCommand::SetRating { media_id, rating } => {
                 valid_id(&media_id)?;
                 let profile = self.profile()?;
@@ -3209,7 +3217,14 @@ mod tests {
         assert_eq!(task.method, HttpMethod::GET);
         assert!(task.body.is_none());
         assert!(!task.mutation);
+        let media_id=uuid::Uuid::new_v4().to_string();
+        let group=client.prepare_provider_task(UiCommand::GroupWatched{media_id:media_id.clone(),watched:true,scope:"season".into(),expected_revision:17}).unwrap();
+        assert_eq!(group.path,format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"));
+        assert_eq!(group.method,HttpMethod::PUT);assert!(group.mutation);
+        assert_eq!(group.body,Some(json!({"watched":true,"scope":"season","expected_revision":17})));
+        assert!(client.prepare_provider_task(UiCommand::GroupWatched{media_id,watched:true,scope:"all".into(),expected_revision:17}).is_err());
         client.connected.as_mut().unwrap().active = Some(uuid::Uuid::new_v4().to_string());
+        assert_eq!(client.commit_provider_task(group,json!({"saved":true})).unwrap(),json!({"discarded":true}));
         let result = client
             .commit_provider_task(
                 task,

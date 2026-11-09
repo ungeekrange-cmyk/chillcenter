@@ -22,6 +22,14 @@ function client() {
 }
 async function ready(c) { await c.ui({ action: "boot" }); await c.ui({ action: "select_profile", id: P }); c.calls.length = 0; }
 
+test("group watched keeps the explicit season and revision and rejects invalid scopes before any write",async()=>{
+ const c=client();await ready(c);
+ await c.ui({action:'group_watched',media_id:M,watched:true,scope:'season',expected_revision:9});
+ assert.deepEqual(c.calls.find(x=>x.method==='PUT'),{method:'PUT',path:`/profiles/${P}/media/${M}/watched`,body:{watched:true,scope:'season',expected_revision:9}});
+ const before=c.calls.length;
+ await assert.rejects(c.ui({action:'group_watched',media_id:M,watched:true,scope:'all',expected_revision:9}));assert.equal(c.calls.length,before);
+});
+
 test("local language, initial preferences, and multi-library bodies preserve current UI contracts", async () => {
   const c = client(); await ready(c);
   assert.deepEqual(await c.ui({ action: "save_language", language: "auto" }), { language: "auto" });

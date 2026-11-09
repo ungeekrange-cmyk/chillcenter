@@ -74,6 +74,7 @@ async fn persist_verified_missing(
 pub struct PlaybackService {
     book: Arc<Mutex<LeaseBook>>,
     pub(crate) io: Arc<Semaphore>,
+    pub(crate) duration_io: Arc<Semaphore>,
     pub(crate) streams: Arc<Semaphore>,
     events: broadcast::Sender<PauseEvent>,
     event_subscribers: Arc<Semaphore>,
@@ -92,6 +93,7 @@ impl Default for PlaybackService {
         Self {
             book: Arc::new(Mutex::new(LeaseBook::new())),
             io: Arc::new(Semaphore::new(4)),
+            duration_io: Arc::new(Semaphore::new(1)),
             streams: Arc::new(Semaphore::new(8)),
             events,
             event_subscribers: Arc::new(Semaphore::new(MAX_TRANSFER_TOKENS)),

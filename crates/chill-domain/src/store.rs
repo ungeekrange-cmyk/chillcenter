@@ -1259,6 +1259,59 @@ impl Store {
         tx.commit().map_err(db_error)
     }
 
+    /// One explicit season/series action is atomic, profile-scoped and guarded
+    /// against a changed membership. Saved positions and ratings are retained.
+    pub fn set_group_watched(
+        &mut self,
+        profile: &str,
+        stable: &str,
+        watched: bool,
+        scope: &str,
+        expected: u64,
+    ) -> Result<Vec<String>, String> {
+        self.require_profile(profile)?;
+        if !["season", "series"].contains(&scope) {
+            return Err("Portée invalide.".into());
+        }
+        if self.sync_revision(profile)?.0 != expected {
+            return Err("La fiche a changé entre-temps.".into());
+        }
+        let target = self.media(profile, stable)?;
+        if target.category != "serie" {
+            return Err("Cette portée est réservée aux séries.".into());
+        }
+        let ids: Vec<_> = self
+            .series(profile, &format!("media:{stable}"))?
+            .into_iter()
+            .filter(|m| scope == "series" || m.season == target.season)
+            .map(|m| m.id)
+            .collect();
+        if ids.is_empty() || ids.len() > 1000 {
+            return Err("Trop d’épisodes pour cette opération.".into());
+        }
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        if self.sync_revision(profile)?.0 != expected {
+            return Err("La fiche a changé entre-temps.".into());
+        }
+        for id in &ids {
+            let old = state_in(&tx, profile, id)?;
+            upsert_state(
+                &tx,
+                profile,
+                id,
+                None,
+                Some(if watched { None } else { Some(0) }),
+                Some(watched),
+                None,
+            )?;
+            if watched && !old.watched {
+                tx.execute("UPDATE cc_profile_state SET last_watched_at=?1 WHERE profile_id=?2 AND stable_media_id=?3",params![chill_catalog::model::now(),profile,id]).map_err(db_error)?;
+            }
+        }
+        tx.commit().map_err(db_error)?;
+        Ok(ids)
+    }
+
     pub fn save_progress(
         &self,
         profile_id: &str,
