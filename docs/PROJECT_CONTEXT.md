@@ -1,18 +1,24 @@
 # Contexte du projet
 
-## 9 novembre 2026 — candidat 0.7.7, reprises héritées Accueil
+## 9 novembre 2026 — publication et installation 0.7.7
 
-Préparation de release explicitement autorisée, sans publication ni installation.
-Mac0.7.7/build17/séquence8, serveur0.7.6/séquence7 et web0.7.6/séquence7 sont
-réservés ; thèmes0.7.1/séquence2 ne changent pas. BUG0140 rend visible dans
-« Reprendre » une vidéo disponible, non vue, avec position positive même sans
-durée mesurée ; `progress` reste nul, sans donnée inventée. Le raccourci « En
-cours » disparaît des clients Mac/web/mobile, tandis que les pourcentages et
-barres réellement mesurés restent disponibles. 83 tests domaine,1 HTTP,368 JS,
-27 docs, Clippy strict, Chromium bureau/mobile et revue indépendante du candidat
-`f38be58` sont PASS/APPROVED. Les paquets publics/installés restent Mac0.7.6,
-serveur/web0.7.5 et thèmes0.7.1. Voir [notes candidat](releases/REL-0.7.7.md)
-et [BUG0140](debug/BUG-0140-home-legacy-resume.md).
+Source immuable5d0aa974dc7b626991fc3f177b7e3ff03b66f77f fusionnée/poussée
+sur main : Mac0.7.7/build17/séquence8, serveur/web0.7.6/séquence7 publiés.
+Thèmes0.7.1 inchangés. `v0.7.7` Latest,51 assets/35 fichiers publics uniques
+retéléchargés et vérifiés, signatures et sources correspondantes complètes.
+283 tests Rust,3 SDK natifs,368 JS,27 docs, Chromium bureau/mobile, revues
+source/artefacts indépendantes et CI CodeQL/dépendances livrées PASS.
+
+Installés sur le Pi et le Mac : helper normal et sauvegarde complète du Pi,
+installation Mac depuis l’icône du client0.7.6 puis relance automatique.
+Santé TLS épinglée, identité serveur, versions/slots/séquences, fichiers HTTP
+web, configurations/helper/unités conservés, service et timer actifs vérifiés.
+La GUI Mac0.7.7 affiche serveur/web0.7.6, catalogue à jour et le film hérité
+vérifié dans Reprendre ; position3 025 917 ms inchangée, `progress:null`.
+Le raccourci En cours est absent, aucune vidéo lancée ni donnée NAS modifiée.
+Voir [notes de livraison](releases/REL-0.7.7.md),
+[BUG0140](debug/BUG-0140-home-legacy-resume.md) et
+[nettoyage](implementation/WORKSPACE-CLEANUP-2026-11-09-RELEASE.md).
 
 ## 8 novembre 2026 — correctif local Accueil et reprises héritées
 

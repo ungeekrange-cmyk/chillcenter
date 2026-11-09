@@ -138,9 +138,9 @@ séparément en arrière-plan, au plus une fois toutes les30secondes en usage no
 Leur cache est distinct par serveur/profil ; une réponse tardive d'un ancien
 contexte ne doit jamais être publiée.
 
-Le correctif source BUG0140 retire le raccourci « En cours » au profit de
-l’Accueil ; la catégorie historique utilisait un seuil5%. Ce correctif n’est pas
-encore publié. La barre des vignettes et le pourcentage sur fiche
+Depuis Mac0.7.7 et web0.7.6, BUG0140 retire le raccourci « En cours » au profit de
+l’Accueil ; la catégorie historique utilisait un seuil5%.
+La barre des vignettes et le pourcentage sur fiche
 utilisent cette même durée ; aucun pourcentage approximatif. La mesure ne
 prouve pas qu'un seek a réellement regardé le contenu : la règle du marquage
 vu reste inchangée. Release0.7.2 : route absente404, désactiver seulement cette
@@ -282,7 +282,7 @@ restent utilisables. Les clients rejettent les réponses d'un ancien profil.
 
 Comme décidé dans ADR-0035, les archives portables historiques ne transportent
 pas les durées mesurées. Jusqu’au serveur publié0.7.5, une reprise importée
-peut manquer dans l’Accueil. Le candidat serveur0.7.6 (BUG0140, non publié)
+peut manquer dans l’Accueil. Depuis le serveur0.7.6, BUG0140
 inclut les vidéos disponibles non vues avec position>0, même sans durée ;
 `progress` reste null jusqu’à une nouvelle mesure. Aucun pourcentage n’est inventé.
 Une sauvegarde complète SQLite conserve cc_resume_measurement.

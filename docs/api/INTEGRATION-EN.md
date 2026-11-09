@@ -273,8 +273,8 @@ change catalogue revisions; clients query this separate stream in the background
 at most once every30seconds during normal use. Cache it separately per
 server/profile and never publish a late response from an old context.
 
-Source fix BUG0140 removes the In progress shortcut in favor of Home; the
-historical category used a5% threshold. This fix is not published yet.
+Mac0.7.7 and web0.7.6 remove the In progress shortcut in favor of Home
+(BUG0140); the historical category used a5% threshold.
 Thumbnail bars and detail percentages use the measured duration;
 no approximate percentages. Position does not prove content was watched after a
 seek: the automatic watched rule is unchanged. Release0.7.2 lacks this route404;
@@ -500,7 +500,7 @@ search and categories remain usable. Clients discard stale-profile responses.
 
 As specified by ADR-0035, legacy portable archives do not carry measured
 durations. Through published server0.7.5, an imported resume can be absent
-from Home. Server0.7.6 candidate BUG0140 (not published) includes available
+from Home. Server0.7.6 and later include available
 unwatched videos with position>0 even without a duration; `progress` stays null
 until playback remeasures it. No percentage is invented. Full SQLite backups preserve
 cc_resume_measurement.

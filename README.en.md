@@ -2,23 +2,21 @@
 
 [Français](README.md) | **English**
 
-**Sources being delivered: Mac 0.7.7, server 0.7.6, web 0.7.6 and themes 0.7.1.** Downloads below remain the currently published packages.
-
 Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client installable on the Home Screen (PWA).
 
-**Published versions: Mac 0.7.6 · server 0.7.5 · web 0.7.5 · themes 0.7.1.**
-[0.7.6 changes, FR/EN](docs/releases/REL-0.7.6.md): one-click Mac updates; three-shelf Home, artwork from
-a member or TMDB, simpler management and pointer hiding with playback controls.
-The server also fixes helper availability publication; an older helper requires
-verified administrator replacement.
+**Published versions: Mac 0.7.7 · server 0.7.6 · web 0.7.6 · themes 0.7.1.**
+[0.7.7 changes, FR/EN](docs/releases/REL-0.7.7.md): existing resumes appear on
+Home even without a measured duration. The redundant In progress shortcut is
+removed. Mac0.7.7 and server/web0.7.6 were installed and verified on the
+household Mac and Pi.
 
 ### Currently published packages
 
-**[Download the Apple Silicon Mac app v0.7.6 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.6/Chill-Center-0.7.6-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.6)
+**[Download the Apple Silicon Mac app v0.7.7 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.7/Chill-Center-0.7.7-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.7)
 
-[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.6/Chill-Center-0.7.6-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
+[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.7/Chill-Center-0.7.7-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
 
 Mac, server, web and themes are independently versioned in
 [versions.json](versions.json). Installed versions and update policies appear
@@ -28,13 +26,13 @@ can update at 02:00 local time, outside playback and active jobs.
 
 | Component and published version | Package and instructions |
 | --- | --- |
-| Apple Silicon Mac 0.7.6, build 16 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.6/Chill-Center-0.7.6-macos-arm64.dmg), macOS 15+ |
-| ARM64 Linux server 0.7.5 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.5/Chill-Center-server-0.7.5-linux-aarch64.tar.gz), 64-bit systemd host |
-| Web/PWA client 0.7.5 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.5/Chill-Center-web-0.7.5-install.zip), server 0.7.5 for Home and TMDB collection artwork |
+| Apple Silicon Mac 0.7.7, build 17 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.7/Chill-Center-0.7.7-macos-arm64.dmg), macOS 15+ |
+| ARM64 Linux server 0.7.6 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.7/Chill-Center-server-0.7.6-linux-aarch64.tar.gz), 64-bit systemd host |
+| Web/PWA client 0.7.6 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.7/Chill-Center-web-0.7.6-install.zip), server 0.7.6 for Home and TMDB collection artwork |
 | Independent themes 0.7.1 | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
 
 Read the [verification/installation guide](docs/updates/GUIDE-EN.md) and
-[release notes and limits](docs/releases/REL-0.7.6.md). Signed manifests are
+[release notes and limits](docs/releases/REL-0.7.7.md). Signed manifests are
 published in each component's release. Publication does not update an existing
 server directly; its update policy may detect it. v0.6 and previous packages
 remain available. Do not run the initial installer on an existing installation:
@@ -47,8 +45,7 @@ it deliberately refuses to overwrite it.
 - Films, series, seasons, sagas and playlists.
 - Mac server discovery with Bonjour, with manual entry as a fallback.
 - Profiles with synchronized resume positions, history, watched status and personal ratings.
-- Since version 0.7.3: In progress, poster bars and detail percentages
-  with exact measured duration; this feature requires server 0.7.3.
+- Continue watching on Home, including legacy resumes; percentages require a measured duration.
 - Native libmpv/FFmpeg player: audio, subtitles, playback speed and next episode.
 - TMDB metadata using your own key, manual corrections and artwork imports.
 - Genre and year filters, light/dark themes and seasonal ambiences.
@@ -65,7 +62,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 ### Mac client
 
 - **Apple Silicon (ARM64)** Mac; no Intel package is published.
-- The **0.7.6 DMG requires macOS 15 Sequoia or newer**, covering macOS
+- The **0.7.7 DMG requires macOS 15 Sequoia or newer**, covering macOS
   15, 26 and 27, with pinned Sequoia dependencies checked before signing.
   The 51 Mach-O minima, signature and DMG mount were verified.
   Physical macOS 15/26 execution has not yet been tested.
@@ -77,7 +74,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 
 ### Linux server
 
-- Published package **0.7.5 targets Linux ARM64/AArch64, a 64-bit system with
+- Published package **0.7.6 targets Linux ARM64/AArch64, a 64-bit system with
   glibc 2.28 or newer for the binaries**. Raspberry Pi 3 B/B+ running 64-bit Linux
   is the target; a 32-bit ARM OS or Alpine/musl cannot use this package.
   The verified real configuration is Debian 13; another compatible distribution

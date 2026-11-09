@@ -2,8 +2,9 @@
 
 8 novembre 2026. Demande utilisateur : retirer le raccourci « En cours », déjà
 présent dans l’Accueil, et corriger un film commencé qui n’apparaît pas.
-Statut : corrigé et testé localement ; candidat serveur0.7.6/web0.7.6 et
-Mac0.7.7/build17 préparé, publication et installation non réalisées.
+Statut : corrigé, publié et installé le9novembre2026 : serveur/web0.7.6,
+Mac0.7.7/build17, source5d0aa974dc7b626991fc3f177b7e3ff03b66f77f.
+
 
 ## Cause confirmée
 
@@ -45,7 +46,12 @@ restent disponibles dans les fiches et vignettes. Voir [ADR0041](../architecture
 Revue indépendante du candidat figé APPROVED, aucun point bloquant.
 Cache de compilation temporaire retiré après les contrôles, journaux conservés.
 
-Aucune donnée de production changée. Le candidat préparé est décrit dans
-[REL-0.7.7](../releases/REL-0.7.7.md), mais aucune nouvelle version n'est
-publiée ou installée. Rollback logiciel : revenir au commit précédent ; aucune
-migration inverse ni suppression de données nécessaire.
+Aucune donnée personnelle de production changée. Publication et installation
+réelles vérifiées dans [REL-0.7.7](../releases/REL-0.7.7.md) : le film hérité
+vérifié apparaît dans Reprendre via l’API Pi et la GUI Mac, position3 025 917 ms
+conservée, `progress:null`. En cours absent du menu Mac/web/mobile. Les fichiers
+web HTTP correspondent au paquet signé et service/timer sont actifs. Le helper,
+les configurations et les unités du Pi restent inchangés. La sauvegarde complète
+préinstallation et les anciens slots du Pi sont conservés ; une récupération
+administrateur doit respecter les reçus et signatures. Aucune migration inverse
+ni suppression de données n’est nécessaire pour revenir au comportement précédent.
