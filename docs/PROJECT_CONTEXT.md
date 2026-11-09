@@ -4,7 +4,7 @@
 
 Fusion/publication/installation et nettoyage explicitement demandés. Versions
 réservées : Mac0.7.8/build18/séquence9, serveur/web0.7.7/séquence8 ; thèmes0.7.1
-inchangés. Source fonctionnelle fe28a77 : taux réels, essais sous5 % écartés,
+inchangés. Base fonctionnelle initiale fe28a77 : taux réels, essais sous5 % écartés,
 compteurs de saison et coche de la saison affichée avec retrait animé.
 Les paquets publics/installés restent Mac0.7.7 et serveur/web0.7.6 pendant la
 préparation. [Notes candidat](releases/REL-0.7.8.md).
@@ -28,6 +28,11 @@ retiré à leur fin ; petites preuves privées conservées.
 Aucune nouvelle publication/installation : Mac0.7.7 et serveur/web0.7.6 restent
 les versions publiques. [BUG0141](debug/BUG-0141-home-progress-and-watched-controls.md),
 [ADR0042](architecture/decisions/ADR-0042-home-progress-controls.md).
+
+Correction de focus fonctionnelle1dc912a6856bb3975b51219329598e8e3dd43df2 :
+régression Chromium mobile milieu/fin de rangée et nouvelles révisions PASS,
+377 tests JS et27 docs rejoués. Le SHA exact des paquets finaux sera consigné
+dans PROVENANCE.json signé et dans les manifestes de composants.
 
 ## 9 novembre 2026 — publication et installation 0.7.7
 

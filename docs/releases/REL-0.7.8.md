@@ -26,10 +26,15 @@ save, the card fades and its neighbors slide left. Failed saves keep the card.
 Progress bars survive poster loading. Profiles, positions, ratings and other
 seasons are preserved, with no schema migration or NAS changes.
 
-Functional candidate fe28a777bfd5229347f9228ef91796ba92112585 passed302 Rust,377
-JavaScript and27 documentation tests, strict Clippy, Mac compilation, real-file
-header verification and desktop/mobile/reduced-motion Chromium journeys.
-Independent release review and exact-version build validation are separate.
+Initial functional base fe28a777bfd5229347f9228ef91796ba92112585 passed302 Rust,
+377 JavaScript and27 documentation tests, strict Clippy, Mac compilation and
+real-file header verification. The unchanged core evidence is retained.
+Focus correction 1dc912a6856bb3975b51219329598e8e3dd43df2 passed377 JavaScript,
+27 documentation tests and Chromium desktop/mobile/reduced-motion journeys,
+including scrolled middle/last removal and revision-driven focus restoration.
+The final clean build commit is recorded in the signed PROVENANCE.json and
+component manifests; this release record is completed after publication.
+Independent release review and exact-version native validation are separate.
 
 [BUG0141](../debug/BUG-0141-home-progress-and-watched-controls.md) ·
 [ADR0042](../architecture/decisions/ADR-0042-home-progress-controls.md)
