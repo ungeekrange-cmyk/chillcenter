@@ -2,7 +2,7 @@
 
 [Français](README.md) | **English**
 
-**Published sources: Mac 0.7.6, server 0.7.5, web 0.7.5 and themes 0.7.1.** Downloads below are the published packages.
+**Sources being delivered: Mac 0.7.7, server 0.7.6, web 0.7.6 and themes 0.7.1.** Downloads below remain the currently published packages.
 
 Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,

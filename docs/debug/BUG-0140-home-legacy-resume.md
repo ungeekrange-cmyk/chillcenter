@@ -2,7 +2,8 @@
 
 8 novembre 2026. Demande utilisateur : retirer le raccourci « En cours », déjà
 présent dans l’Accueil, et corriger un film commencé qui n’apparaît pas.
-Statut : corrigé et testé localement, publication et installation non réalisées.
+Statut : corrigé et testé localement ; candidat serveur0.7.6/web0.7.6 et
+Mac0.7.7/build17 préparé, publication et installation non réalisées.
 
 ## Cause confirmée
 
@@ -44,6 +45,7 @@ restent disponibles dans les fiches et vignettes. Voir [ADR0041](../architecture
 Revue indépendante du candidat figé APPROVED, aucun point bloquant.
 Cache de compilation temporaire retiré après les contrôles, journaux conservés.
 
-Aucune donnée de production changée. Pas de nouvelle version publiée ou
-installée. Rollback logiciel : revenir au commit précédent ; aucune migration
-inverse ni suppression de données nécessaire.
+Aucune donnée de production changée. Le candidat préparé est décrit dans
+[REL-0.7.7](../releases/REL-0.7.7.md), mais aucune nouvelle version n'est
+publiée ou installée. Rollback logiciel : revenir au commit précédent ; aucune
+migration inverse ni suppression de données nécessaire.

@@ -282,7 +282,7 @@ restent utilisables. Les clients rejettent les réponses d'un ancien profil.
 
 Comme décidé dans ADR-0035, les archives portables historiques ne transportent
 pas les durées mesurées. Jusqu’au serveur publié0.7.5, une reprise importée
-peut manquer dans l’Accueil. Le correctif source BUG0140 (non publié) inclut
-les vidéos disponibles non vues avec position>0, même sans durée ; `progress`
-reste null jusqu’à une nouvelle mesure. Aucun pourcentage n’est inventé.
+peut manquer dans l’Accueil. Le candidat serveur0.7.6 (BUG0140, non publié)
+inclut les vidéos disponibles non vues avec position>0, même sans durée ;
+`progress` reste null jusqu’à une nouvelle mesure. Aucun pourcentage n’est inventé.
 Une sauvegarde complète SQLite conserve cc_resume_measurement.

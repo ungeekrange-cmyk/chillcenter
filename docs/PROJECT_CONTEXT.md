@@ -1,5 +1,19 @@
 # Contexte du projet
 
+## 9 novembre 2026 — candidat 0.7.7, reprises héritées Accueil
+
+Préparation de release explicitement autorisée, sans publication ni installation.
+Mac0.7.7/build17/séquence8, serveur0.7.6/séquence7 et web0.7.6/séquence7 sont
+réservés ; thèmes0.7.1/séquence2 ne changent pas. BUG0140 rend visible dans
+« Reprendre » une vidéo disponible, non vue, avec position positive même sans
+durée mesurée ; `progress` reste nul, sans donnée inventée. Le raccourci « En
+cours » disparaît des clients Mac/web/mobile, tandis que les pourcentages et
+barres réellement mesurés restent disponibles. 83 tests domaine,1 HTTP,368 JS,
+27 docs, Clippy strict, Chromium bureau/mobile et revue indépendante du candidat
+`f38be58` sont PASS/APPROVED. Les paquets publics/installés restent Mac0.7.6,
+serveur/web0.7.5 et thèmes0.7.1. Voir [notes candidat](releases/REL-0.7.7.md)
+et [BUG0140](debug/BUG-0140-home-legacy-resume.md).
+
 ## 8 novembre 2026 — correctif local Accueil et reprises héritées
 
 Demande utilisateur : retrait de la navigation En cours, redondante avec l’Accueil,

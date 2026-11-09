@@ -500,7 +500,7 @@ search and categories remain usable. Clients discard stale-profile responses.
 
 As specified by ADR-0035, legacy portable archives do not carry measured
 durations. Through published server0.7.5, an imported resume can be absent
-from Home. Source fix BUG0140 (not published) includes available unwatched
-videos with position>0 even without a duration; `progress` stays null until
-playback remeasures it. No percentage is invented. Full SQLite backups preserve
+from Home. Server0.7.6 candidate BUG0140 (not published) includes available
+unwatched videos with position>0 even without a duration; `progress` stays null
+until playback remeasures it. No percentage is invented. Full SQLite backups preserve
 cc_resume_measurement.
