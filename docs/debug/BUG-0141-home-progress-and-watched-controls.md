@@ -1,8 +1,8 @@
 # BUG0141 — Reprendre sans pourcentage, compteurs ni coche
 
 9 novembre 2026. Correction explicitement demandée après installation de
-Mac0.7.7 et serveur/web0.7.6. Candidat sur `codex/home-progress-controls`,
-base `d5e0a91` ; aucune nouvelle publication ou installation implicite.
+Mac0.7.7 et serveur/web0.7.6. Corrigé, publié et installé : Mac0.7.8/build18, serveur/web0.7.7,
+source `70c8292adeea820155fe47fc92e8ba5a69e8ec70`. Voir [REL-0.7.8](../releases/REL-0.7.8.md).
 
 ## Causes et données vérifiées
 
@@ -61,7 +61,7 @@ Format non reconnu/en-tête absent, NAS lent ou occupé : aucune durée supposé
 la position reste consultable. Les essais physiques Safari/iPhone ne sont pas
 attestés par les fixtures Chromium. Voir [ADR0042](../architecture/decisions/ADR-0042-home-progress-controls.md).
 
-Résultat final :302 tests Rust réussis (55 client,86 domaine,161 serveur ; deux
+Validation fonctionnelle initiale :302 tests Rust réussis (55 client,86 domaine,161 serveur ; deux
 opt-in ignorés),377 tests JavaScript,27 documentaires, Clippy strict domaine/
 serveur/client et compilation `cargo check -p chillcenter-desktop` PASS.
 Parcours Home Chromium1280/390px et mouvements réduits PASS, ainsi que les
@@ -77,8 +77,12 @@ chill-client --lib`, `cargo check --locked --offline -p chillcenter-desktop`,
 `scripts/test-web-parity.cjs` et `scripts/test-web-mobile.cjs`. Le bind TCP du
 sandbox a d’abord échoué EPERM ; la même suite avec réseau local autorisé est
 PASS. Les durées réelles ont été vérifiées à partir d’en-têtes, pas d’une lecture
-simulée ou d’une durée TMDB. Sources/paquets publics et données NAS inchangés.
+simulée ou d’une durée TMDB. Lors de cette validation initiale, les paquets publics et données NAS étaient inchangés.
 
 ### Revue de livraison — focus dans une rangée défilée
 
 La revue indépendante a trouvé un retour du focus au début de la rangée après un retrait au milieu. Le bouton désactivé perd aussi le focus pendant la sauvegarde. Le client conserve l’intention de focus, choisit le voisin suivant (ou précédent pour la dernière carte), le garde visible et restaure le focus et le défilement lors du rafraîchissement de révision. Le test navigateur couvre les retraits au milieu et en fin de rangée sur écran de 390 px, avec une nouvelle révision après chaque sauvegarde.
+
+### Vérification après installation
+
+Les manifestes signés et les fichiers HTTP correspondent aux paquets publics. La lecture Home sur le Pi et la GUI Mac confirme les pourcentages et le compteur de saison ; positions, notes et états vu sont inchangés par la livraison. Les essais sous5 % sont exclus, le film déjà terminé reste vu et absent. Les commandes de coche et animations sont vérifiées sur des fixtures isolées ; aucun autre film ou saison réel n’est marqué pour un test.

@@ -270,7 +270,7 @@ fois par rangée ; leur média est une fiche de série, tandis que `season` indi
 la saison à poursuivre. Les tableaux vides sont masqués. Une saison terminée
 suivie d'une saison jamais commencée ne suffit pas pour « Reprendre ».
 
-La sélection locale n'appelle ni TMDB ni IA. Le candidat BUG0141 peut lire les
+La sélection locale n'appelle ni TMDB ni IA. Depuis le serveur0.7.7, BUG0141 peut lire les
 en-têtes vidéo pour les durées manquantes, selon les limites ci-dessous. Les suggestions utilisent
 les genres, acteurs et réalisateurs des cinq dernières entités vues datées du
 profil. Les anciennes lectures sans date ne reçoivent aucune date inventée.
@@ -288,9 +288,9 @@ inclut les vidéos disponibles non vues avec position>0, même sans durée ;
 `progress` reste null jusqu’à une nouvelle mesure. Aucun pourcentage n’est inventé.
 Une sauvegarde complète SQLite conserve cc_resume_measurement.
 
-### Candidat BUG0141 — progression réelle et coche de saison
+### BUG0141 — progression réelle et coche de saison
 
-Ajouts compatibles, non encore publiés/installés : `watch_revision` à la racine ;
+Depuis serveur/web0.7.7 et Mac0.7.8, publiés et installés : `watch_revision` à la racine ;
 `resume_position_ms` et `episode_counts:{watched,total}` sur les cartes. Les
 compteurs décrivent la saison affichée, y compris la saison inconnue ; leur
 pourcentage compte les épisodes terminés. Les vidéos avec durée connue entrent

@@ -489,7 +489,7 @@ its media is a show-level card while `season` identifies the season to resume.
 Empty shelves are hidden. A completed season followed by an untouched next
 season does not qualify for Continue watching.
 
-The local selection calls neither TMDB nor AI. Candidate BUG0141 can read video
+The local selection calls neither TMDB nor AI. Since server0.7.7, BUG0141 can read video
 headers for missing durations under the limits below. Suggestions use genres,
 cast and directors from the profile's five latest dated watched entities.
 Historical views without dates never receive invented timestamps. The new
@@ -506,9 +506,9 @@ unwatched videos with position>0 even without a duration; `progress` stays null
 until playback remeasures it. No percentage is invented. Full SQLite backups preserve
 cc_resume_measurement.
 
-### Candidate BUG0141 — real progress and season checkbox
+### BUG0141 — real progress and season checkbox
 
-Compatible additions, not yet published/installed: root `watch_revision` and card
+Since server/web0.7.7 and Mac0.7.8, published and installed: root `watch_revision` and card
 `resume_position_ms` plus `episode_counts:{watched,total}`. Counts describe the
 displayed season, including unknown season; its percentage counts completed
 episodes. With a known duration, videos qualify for Continue watching from5 %

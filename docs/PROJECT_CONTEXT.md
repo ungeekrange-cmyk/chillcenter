@@ -1,38 +1,18 @@
 # Contexte du projet
 
-## 9 novembre2026 — préparation de livraison Reprendre
+## 9 novembre 2026 — Reprendre livré et installé (0.7.8)
 
-Fusion/publication/installation et nettoyage explicitement demandés. Versions
-réservées : Mac0.7.8/build18/séquence9, serveur/web0.7.7/séquence8 ; thèmes0.7.1
-inchangés. Base fonctionnelle initiale fe28a77 : taux réels, essais sous5 % écartés,
-compteurs de saison et coche de la saison affichée avec retrait animé.
-Les paquets publics/installés restent Mac0.7.7 et serveur/web0.7.6 pendant la
-préparation. [Notes candidat](releases/REL-0.7.8.md).
-
-## 9 novembre2026 — candidat Reprendre : taux, compteurs et coche
-
-BUG0141 : reprise réelle sans durée, essais courts visibles et actions absentes.
-Lecture TLS du profil et des en-têtes du Pi :10 fichiers/942 octets, durées
-reproduites par le parseur Rust ; aucun décodage ou transcodage. Seul le film
-explicitement déclaré terminé par l’utilisateur est corrigé vu=true sur le Pi,
-position conservée. Les autres historiques restent intacts.
-
-Candidat `codex/home-progress-controls`, base d5e0a91 : durées réelles bornées,
-seuil5 %, compteur de la saison, coche atomique de la saison affichée (choix
-utilisateur confirmé), fondu puis glissement et garde des réponses tardives.
-Sources/contrats Mac et web partagés ; schéma et dépendances inchangés.
-302 tests Rust,377 JavaScript,27 docs, Clippy strict, compilation Mac et
-parcours Chromium bureau/mobile/mouvements réduits PASS ; dix durées réelles
-reproduites par le parseur Rust. Cache temporaire recréé pour ces contrôles,
-retiré à leur fin ; petites preuves privées conservées.
-Aucune nouvelle publication/installation : Mac0.7.7 et serveur/web0.7.6 restent
-les versions publiques. [BUG0141](debug/BUG-0141-home-progress-and-watched-controls.md),
-[ADR0042](architecture/decisions/ADR-0042-home-progress-controls.md).
-
-Correction de focus fonctionnelle1dc912a6856bb3975b51219329598e8e3dd43df2 :
-régression Chromium mobile milieu/fin de rangée et nouvelles révisions PASS,
-377 tests JS et27 docs rejoués. Le SHA exact des paquets finaux sera consigné
-dans PROVENANCE.json signé et dans les manifestes de composants.
+Source immuable `70c8292adeea820155fe47fc92e8ba5a69e8ec70` sur main. Mac0.7.8/build18/séquence9,
+serveur/web0.7.7/séquence8 publiés et installés sur le Mac et le Pi.
+`v0.7.8` Latest,51 assets/35 fichiers uniques vérifiés publiquement, signatures
+et sources correspondantes complètes. Revues et CI exactes réussies.
+Pourcentages réels, épisodes vus/total de la saison, coche film/saison affichée,
+fondu et glissement, focus voisin visible. Positions/notes/profils/NAS conservés.
+Helper Pi normal avec sauvegarde complète, santé TLS et fichiers web vérifiés ;
+Mac mis à jour puis relancé, version/build/GUI vérifiés. Service/timer Pi actifs.
+Nettoyage autorisé après installations : 9721892864 octets d’espace libre gagnés,
+caches/intermédiaires et anciennes copies locales retirés, données et sources gardées.
+Voir [REL-0.7.8](releases/REL-0.7.8.md) et [BUG0141](debug/BUG-0141-home-progress-and-watched-controls.md).
 
 ## 9 novembre 2026 — publication et installation 0.7.7
 

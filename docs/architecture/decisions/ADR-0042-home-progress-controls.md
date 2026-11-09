@@ -1,6 +1,6 @@
 # ADR0042 — Durées réelles et marquage de la saison dans Reprendre
 
-9 novembre2026, demande utilisateur explicite ; implémentation candidate locale.
+9 novembre2026, demande utilisateur explicite ; implémentation livrée dans Mac0.7.8 et serveur/web0.7.7.
 Remplace le critère position>0 seul de l’ADR0041 lorsque la durée réelle est
 disponible. Complète ADR0038 sans changer ses trois rangées de20 ni leur portée
 par profil. Le choix utilisateur pour la coche d’une série est la saison affichée.
@@ -58,5 +58,6 @@ par identité et les réponses d’anciens contextes rejetées. Focus sans défi
 marge de snap cohérente et mouvements réduits sans animation.
 
 Rollback logiciel possible sans réécriture des données ; le marquage manuel reste
-un état utilisateur réversible depuis les fiches. Publication, installations et
-éventuelle mesure de déploiement restent des opérations distinctes du candidat.
+un état utilisateur réversible depuis les fiches. Publication, installations et mesure du déploiement restent des opérations distinctes de la validation technique.
+
+Livraison et installations vérifiées : [REL-0.7.8](../../releases/REL-0.7.8.md). Le SHA des exécutables, les signatures et les preuves sont liés à la source immuable ; les documents de livraison sont un commit ultérieur, sans déplacement des tags.
