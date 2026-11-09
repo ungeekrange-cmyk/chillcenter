@@ -2,6 +2,8 @@
 
 **Français** | [English](README.en.md)
 
+**Sources en livraison : Mac 0.7.8, serveur 0.7.7, web 0.7.7 et thèmes 0.7.1.** Les liens ci-dessous restent les paquets actuellement publics.
+
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
 
 **Versions publiées : Mac 0.7.7 · serveur 0.7.6 · web 0.7.6 · thèmes 0.7.1.**

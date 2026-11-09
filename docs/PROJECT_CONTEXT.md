@@ -1,5 +1,14 @@
 # Contexte du projet
 
+## 9 novembre2026 — préparation de livraison Reprendre
+
+Fusion/publication/installation et nettoyage explicitement demandés. Versions
+réservées : Mac0.7.8/build18/séquence9, serveur/web0.7.7/séquence8 ; thèmes0.7.1
+inchangés. Source fonctionnelle fe28a77 : taux réels, essais sous5 % écartés,
+compteurs de saison et coche de la saison affichée avec retrait animé.
+Les paquets publics/installés restent Mac0.7.7 et serveur/web0.7.6 pendant la
+préparation. [Notes candidat](releases/REL-0.7.8.md).
+
 ## 9 novembre2026 — candidat Reprendre : taux, compteurs et coche
 
 BUG0141 : reprise réelle sans durée, essais courts visibles et actions absentes.
