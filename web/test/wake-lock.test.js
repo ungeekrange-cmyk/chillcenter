@@ -14,16 +14,17 @@ function api() {
 }
 function harness() {
   const wakeLock = api(), doc = new EventTarget(), page = new EventTarget();
+  let time = 0;
   doc.visibilityState = "visible";
   const state = { loaded: true, paused: false, buffering: false, ended: false, error: null, duration: 1000, position: 12, speed: 1 };
   const player = new WebPlayer({ wakeLock, document: doc, page,
-    request: async () => ({}), now: () => 0, clearInterval() {},
+    request: async () => ({}), now: () => time, clearInterval() {},
   });
   player.engine = { snapshot: () => ({ ...state }), pause() { state.paused = true; }, close() {} };
   player.lease = { session_id: "s", generation: 1, media_id: "m", media_revision: 1 };
   player.ctx = { profile: "p" }; player.info = { media: { title: "Film" } };
   player.context = { kind: "standalone" };
-  return { player, state, wakeLock, doc, page };
+  return { player, state, wakeLock, doc, page, advance(ms) { time += ms; } };
 }
 test("opening the application creates no wake lock; effective playback acquires one", async () => {
   const h = harness(); await flush(); assert.equal(h.wakeLock.grants.length, 0);
@@ -72,7 +73,7 @@ test("late permission grants are released after pause, including rapid pause/res
   assert.equal(wake.lock, current); wake.setActive(false); await flush();
   assert.equal(current.releases, 1);
 });
-test("unsupported, denied and system-released locks leave playback functional without retry loops", async () => {
+test("unsupported, denied and system-released locks never retry immediately", async () => {
   for (const wakeLock of [undefined, { request: async () => { throw new Error("NotAllowedError"); } }]) {
     const wake = new ScreenWakeLock(wakeLock); wake.setActive(true); await flush();
     assert.equal(wake.lock, null); wake.setActive(false);
@@ -87,4 +88,69 @@ test("native media pause events release immediately without waiting for a UI pol
   h.player.syncWakeLock(); await flush(); h.state.paused = true;
   h.doc.dispatchEvent(new Event("pause"));
   assert.equal(h.wakeLock.grants[0].releases, 1);
+});
+
+// Regressions reported after the original playback-only implementation.
+test("system revocation during continuous playback is reacquired with backoff", async () => {
+  const h = harness(); await h.player.status(); await flush();
+  await h.wakeLock.grants[0].release(); await flush();
+  await h.player.status(); await flush();
+  assert.equal(h.wakeLock.grants.length, 1, "no immediate request loop");
+  h.advance(1000); await h.player.status(); await flush();
+  assert.equal(h.wakeLock.grants.length, 2, "continuous playback recovers its revoked lock");
+  h.state.paused = true; await h.player.status(); await flush();
+  assert.equal(h.wakeLock.grants[1].releases, 1);
+});
+test("denials are retried a bounded number of times and reported only while playing", async () => {
+  const h = harness(); let requests = 0;
+  h.player.wake.api = { async request() { requests++; throw Error("NotAllowedError"); } };
+  await h.player.status(); await flush();
+  h.advance(1000); await h.player.status(); await flush();
+  h.advance(5000); await h.player.status(); await flush();
+  assert.equal(requests, 3);
+  for (let i=0;i<20;i++) { h.advance(30000); await h.player.status(); await flush(); }
+  assert.equal(requests, 3, "a persistent denial does not cause an endless retry loop");
+  assert.match(h.player.view().note, /éveillé/);
+  h.state.paused=true; await h.player.status();
+  assert.doesNotMatch(h.player.view().note || "", /éveillé/);
+});
+test("a released sentinel returned by the browser is not mistaken for protection", async () => {
+  const h=harness();
+  h.player.wake.api={async request(){const sentinel=await h.wakeLock.request("screen"); sentinel.released=true; return sentinel;}};
+  await h.player.status(); await flush();
+  assert.equal(h.player.wake.lock,null);
+});
+
+test("immediate browser revocations share the bounded retry budget", async () => {
+  const h=harness();
+  for (const delay of [0,1000,5000]) {
+    h.advance(delay); await h.player.status(); await flush();
+    await h.wakeLock.grants.at(-1).release(); await flush();
+  }
+  h.advance(60000); await h.player.status(); await flush();
+  assert.equal(h.wakeLock.grants.length,3);
+  assert.match(h.player.view().note,/éveillé/);
+});
+test("a stable grant permits recovery again later in a long video", async () => {
+  const h=harness();
+  for(let i=0;i<5;i++) {
+    await h.player.status(); await flush();
+    h.advance(30000); await h.wakeLock.grants.at(-1).release(); await flush();
+    h.advance(1000);
+  }
+  await h.player.status(); await flush();
+  assert.equal(h.wakeLock.grants.length,6);
+});
+test("pause cancels a scheduled recovery and resume starts a fresh budget", async () => {
+  const h=harness();await h.player.status();await flush();
+  await h.wakeLock.grants[0].release(); await flush();
+  h.state.paused=true;await h.player.status();h.advance(10000);await h.player.status();await flush();
+  assert.equal(h.wakeLock.grants.length,1);
+  h.state.paused=false;await h.player.status();await flush();assert.equal(h.wakeLock.grants.length,2);
+});
+test("a page without the API reports the limitation only during playback", async () => {
+  const h=harness();h.player.wake.api=undefined;
+  assert.equal(h.player.wake.notice(),null);
+  await h.player.status();assert.match(h.player.view().note,/HTTPS/);
+  h.state.ended=true;await h.player.status();assert.equal(h.player.wake.notice(),null);
 });

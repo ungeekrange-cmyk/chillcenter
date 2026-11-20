@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR0043](ADR-0043-web-wake-lock-recovery.md) : récupération bornée du maintien éveillé web en lecture continue, complète ADR0036.
+
 [ADR0042](ADR-0042-home-progress-controls.md), IMPLEMENTED_LOCAL,9 novembre2026 :
 durées de conteneur bornées et en lecture seule, seuil5 %, compteurs de saison,
 coche atomique de la saison affichée et retrait animé ; complète ADR0038 et

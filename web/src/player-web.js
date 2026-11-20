@@ -11,23 +11,54 @@
   // Requests may settle after Pause/Stop or after a different video starts.
   // Keep ownership until settlement and release obsolete grants immediately.
   class ScreenWakeLock {
-    constructor(wakeLock) { this.api = wakeLock; this.active = false; this.epoch = 0; this.lock = null; this.pending = null; }
+    constructor(wakeLock, now = () => performance.now()) {
+      this.api = wakeLock; this.now = now; this.active = false; this.epoch = 0;
+      this.lock = null; this.pending = null; this.attempts = 0; this.retryAt = 0;
+    }
     setActive(active) {
-      if (active === this.active) return;
-      this.active = active; ++this.epoch;
-      if (!active) {
-        const lock = this.lock; this.lock = null;
-        if (lock) Promise.resolve(lock.release()).catch(() => {});
-      } else this.acquire();
+      if (active !== this.active) {
+        this.active = active; ++this.epoch;
+        if (!active) {
+          const lock = this.lock; this.lock = null;
+          if (lock) Promise.resolve(lock.release()).catch(() => {});
+        } else { this.attempts = 0; this.retryAt = 0; }
+      }
+      // Status polling also repairs a lock revoked while playback stays active.
+      if (active) this.acquire();
+    }
+    deferRetry() {
+      this.retryAt = this.attempts >= 3 ? Infinity : this.now() + (this.attempts <= 1 ? 1000 : 5000);
+    }
+    notice() {
+      return this.active && !this.lock && !this.pending && (!this.api?.request || this.attempts >= 3)
+        ? (root.chillI18n?.t("Le navigateur ne permet pas de maintenir l’écran éveillé. Vérifiez l’accès HTTPS et le mode économie d’énergie.") || "Le navigateur ne permet pas de maintenir l’écran éveillé. Vérifiez l’accès HTTPS et le mode économie d’énergie.")
+        : null;
     }
     acquire() {
-      if (!this.active || this.lock || this.pending || !this.api?.request) return;
-      const epoch = this.epoch;
-      this.pending = Promise.resolve().then(() => this.api.request("screen")).then(async lock => {
+      if (!this.active || this.lock || this.pending || !this.api?.request || this.now() < this.retryAt) return;
+      const epoch = this.epoch; ++this.attempts;
+      this.pending = Promise.resolve().then(() => {
+        if (this.active && epoch === this.epoch) return this.api.request("screen");
+        return null;
+      }).then(async lock => {
+        if (!lock) return;
         if (!this.active || epoch !== this.epoch) { await lock.release(); return; }
+        if (lock.released) throw Error("Wake lock already released");
         this.lock = lock;
-        lock.addEventListener("release", () => { if (this.lock === lock) this.lock = null; }, { once: true });
-      }).catch(() => { /* Unsupported/refused: playback remains available. */ }).finally(() => {
+        const heldAt = this.now();
+        const released = () => {
+          if (this.lock !== lock) return;
+          this.lock = null;
+          // A stable grant starts a new recovery budget. Immediate revocations
+          // and persistent refusals share a bounded burst instead of looping.
+          if (this.now() - heldAt >= 30000) this.attempts = 0;
+          this.deferRetry();
+        };
+        lock.addEventListener("release", released, { once: true });
+        if (lock.released) released();
+      }).catch(() => {
+        if (this.active && epoch === this.epoch) this.deferRetry();
+      }).finally(() => {
         this.pending = null;
         if (this.active && epoch !== this.epoch) this.acquire();
       });
@@ -51,7 +82,7 @@
     constructor(deps) {
       this.d = deps; this.state = null; this.timers = []; this.events = null;
       this.clock = new Clock.WatchClock(); this.busy = false;
-      this.wake = new ScreenWakeLock(deps.wakeLock);
+      this.wake = new ScreenWakeLock(deps.wakeLock, deps.now);
       const doc = deps.document, page = deps.page;
       doc?.addEventListener("visibilitychange", () => this.syncWakeLock());
       for (const name of ["playing", "pause", "waiting", "seeking", "seeked", "ended", "error", "emptied"]) {
@@ -296,7 +327,7 @@
       if (!this.engine) return this.closed();
       const s = this.engine.snapshot();
       return {
-        stage: "player", media_id: this.mediaId, title: this.info.media.title, note: this.note,
+        stage: "player", media_id: this.mediaId, title: this.info.media.title, note: [this.note, this.wake.notice()].filter(Boolean).join(" "),
         position: s.position || 0, duration: s.duration || 0, active: Boolean(this.lease), context: this.context,
         next: this.nextResolved, autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null,
         external_subtitles: this.engine.externalSubtitles?.() || [],

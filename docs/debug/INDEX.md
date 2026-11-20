@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+[BUG0142](BUG-0142-web-wake-lock-recovery.md) : récupération bornée du maintien éveillé web après révocation ; tests de régression et vraie API Chromium vérifiés, livraison en préparation.
+
 [BUG0141](BUG-0141-home-progress-and-watched-controls.md) : Reprendre sans taux,
 compteurs ni coche ; durées réelles bornées, seuil5 %, saison atomique et retrait
 animé, candidat local. Correction personnelle explicite du film terminé vérifiée.

@@ -1,5 +1,16 @@
 # Contexte du projet
 
+## 20 novembre 2026 — correction web du maintien éveillé
+
+Branche `codex/web-wake-recovery`, base1244292. Trois régressions confirmées,
+20 tests Wake Lock et384 JS PASS ; vraie API Chromium et vidéo synthétique PASS.
+Web0.7.8/séquence9 réservé, publication et installation non encore réalisées.
+[BUG0142](debug/BUG-0142-web-wake-lock-recovery.md),
+[ADR0043](architecture/decisions/ADR-0043-web-wake-lock-recovery.md).
+Ancien worktree temporaire disparu ; espace isolé sous `/private/tmp/chillcenter-web-wake.yBYp2S`,
+sans environnement/deps ou cache Rust ; conserver sources et reçus de livraison.
+Branches Surprise et web-pwa existantes préservées.
+
 ## 9 novembre 2026 — Reprendre livré et installé (0.7.8)
 
 Source immuable `70c8292adeea820155fe47fc92e8ba5a69e8ec70` sur main. Mac0.7.8/build18/séquence9,
