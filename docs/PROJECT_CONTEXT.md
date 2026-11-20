@@ -1,15 +1,19 @@
 # Contexte du projet
 
-## 20 novembre 2026 — correction web du maintien éveillé
+## 20 novembre 2026 — client web0.7.8 installé
 
-Branche `codex/web-wake-recovery`, base1244292. Trois régressions confirmées,
-20 tests Wake Lock et384 JS PASS ; vraie API Chromium et vidéo synthétique PASS.
-Web0.7.8/séquence9 réservé, publication et installation non encore réalisées.
-[BUG0142](debug/BUG-0142-web-wake-lock-recovery.md),
-[ADR0043](architecture/decisions/ADR-0043-web-wake-lock-recovery.md).
-Ancien worktree temporaire disparu ; espace isolé sous `/private/tmp/chillcenter-web-wake.yBYp2S`,
-sans environnement/deps ou cache Rust ; conserver sources et reçus de livraison.
-Branches Surprise et web-pwa existantes préservées.
+Source `bb4b6179e8210fad65166425fb9da4106a1ae8d9` fusionnée sur main, web0.7.8/séquence9
+publié dans `web-v0.7.8` et installé sur le Pi via l’API officielle. Six assets
+publics retéléchargés et vérifiés ;106 fichiers installés et85 ressources web
+HTTP correspondent au payload signé. Confiance TLS/SPKI existante conservée, aucune modification
+personnelle ou lecture de test. Révocation/reprise du maintien éveillé corrigées ;
+20 tests Wake Lock,384 JS,27 docs et vraie API Chromium PASS, revue indépendante
+APPROVED_SCOPED. [Notes](releases/REL-WEB-0.7.8.md).
+Mac0.7.8/build18, serveur0.7.7 et thèmes0.7.1 restent inchangés ; `v0.7.8` globale
+historique non réécrite. Contexte utilisateur confirmé Chrome/Vivaldi macOS par IP HTTP : HTTPS reconnu nécessaire pour Wake Lock. Ouverture Chrome HTTPS en attente de validation manuelle du certificat local ; aucune exception de sécurité contournée.
+Ancien worktree temporaire disparu ; nouveau `/private/tmp/chillcenter-web-wake.yBYp2S`
+conservé pour sources et reçus, sans dépendance ou cache Rust. Branches Surprise
+et web-pwa préservées. Progrès personnel non modifié par cette livraison.
 
 ## 9 novembre 2026 — Reprendre livré et installé (0.7.8)
 

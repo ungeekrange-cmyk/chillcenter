@@ -43,6 +43,12 @@ d'activité, vidéo cachée, modification de TLS, permissions ou réglages syst�
   reprise et arrêt PASS. Aucun profil familial ou média NAS utilisé.
 - Pas de mesure d'extinction physique ni de test Safari/iPhone revendiqués.
 
-Publication/installation : à consigner après livraison. Retour arrière logiciel
+Publié et installé sur le Pi via l’API officielle de mise à jour, le20novembre2026 : web0.7.8/séquence9, source `bb4b6179e8210fad65166425fb9da4106a1ae8d9`. Six assets publics retéléchargés et signés vérifiés ; fichiers web HTTP comparés au payload. Certificat et SPKI déjà approuvés par le Mac conservés. Installation par API ; contrôle SSH complémentaire des fichiers et du service/timer. Aucune lecture de test familiale ou écriture personnelle. Retour arrière logiciel
 possible sans migration ou changement d'état personnel ; garder les reçus signés.
 Voir [ADR0043](../architecture/decisions/ADR-0043-web-wake-lock-recovery.md).
+
+## Contexte utilisateur confirmé
+
+Chrome ou Vivaldi sur macOS, accès par IP locale en HTTP. Cet accès n’est pas un contexte sécurisé : l’API Wake Lock n’y est pas exposée. Le correctif traite la récupération en contexte compatible et signale cette limitation ; il ne peut pas rendre HTTP apte à forcer la veille. Le listener HTTPS existant est vérifié avec certificat et SPKI épinglés. Le navigateur peut encore demander une validation manuelle du certificat local. Aucune exception de sécurité navigateur ou autorité de confiance système ajoutée par l’agent.
+
+Les106 fichiers installés correspondent au ZIP signé. Les85 ressources web exposées ont été vérifiées en HTTP ; les thèmes de secours du ZIP sont volontairement exclus, car le serveur les remplace par le pack indépendant dont le manifeste est inchangé. Les notices Markdown du paquet restent vérifiées sur disque et ne sont pas des ressources servies par le serveur.

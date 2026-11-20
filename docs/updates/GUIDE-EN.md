@@ -2,7 +2,7 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-Mac release `mac-v0.7.8` provides Mac0.7.8/build18; `server-v0.7.7` publishes server0.7.7 and `web-v0.7.7` publishes web0.7.7 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
+Mac release `mac-v0.7.8` provides Mac0.7.8/build18; `server-v0.7.7` publishes server0.7.7 and `web-v0.7.8` publishes web0.7.8 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
 
 ## Four components
 
@@ -62,7 +62,7 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives: v0.7.8 for Mac, server and web, with themes0.7.1 in v0.7.3, not GitHub's automatically
+Use the complete distribution archives: v0.7.8 for Mac and server, web-v0.7.8 for web, with themes0.7.1 in v0.7.3, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.
@@ -168,3 +168,8 @@ Continue watching: file-based percentages, trials below5 % excluded, watched/tot
 
 
 Installation on the Mac and Pi verified on9November2026: Mac0.7.8/build18, server/web0.7.7, positions and ratings preserved. See [REL-0.7.8](../releases/REL-0.7.8.md).
+
+
+## Web client0.7.8 — 20November2026
+
+Published and installed through the Pi normal signed updater. A revoked screen wake lock is recovered during playback with bounded retries. Pause/stop/hidden pages release it. A recognized secure context and browser support are required; power policies remain authoritative. Reload an existing tab or reopen the PWA after updating. [Notes](../releases/REL-WEB-0.7.8.md).

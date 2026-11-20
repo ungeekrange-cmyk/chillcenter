@@ -2,7 +2,7 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La release Mac `mac-v0.7.8` fournit Mac0.7.8/build18 ; `server-v0.7.7` publie serveur0.7.7 et `web-v0.7.7` publie web0.7.7 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
+La release Mac `mac-v0.7.8` fournit Mac0.7.8/build18 ; `server-v0.7.7` publie serveur0.7.7 et `web-v0.7.8` publie web0.7.8 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
 
 ## Quatre composants
 
@@ -66,7 +66,7 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution : v0.7.8 pour Mac, le serveur et le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
+Utiliser les archives complètes de distribution : v0.7.8 pour Mac et le serveur, web-v0.7.8 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
@@ -180,3 +180,8 @@ Reprendre : pourcentages issus du fichier, essais sous5 % écartés, épisodes v
 
 
 Installation sur le Mac et le Pi vérifiée le9novembre2026 : Mac0.7.8/build18, serveur/web0.7.7, positions et notes conservées. Voir [REL-0.7.8](../releases/REL-0.7.8.md).
+
+
+## Client web0.7.8 — 20novembre2026
+
+Publié et installé via le mécanisme signé normal du Pi. Le verrou d’écran est récupéré après révocation pendant la lecture, avec essais bornés. Pause/arrêt/page cachée libèrent le verrou. HTTPS reconnu et support navigateur nécessaires ; les restrictions d’énergie restent prioritaires. Recharger un onglet ou rouvrir la PWA après mise à jour. [Notes](../releases/REL-WEB-0.7.8.md).
