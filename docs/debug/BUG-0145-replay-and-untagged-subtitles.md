@@ -38,3 +38,8 @@ non lancée pour préserver le profil. Contrat commun testé sur fixtures isolé
 Retour arrière : anciens slots et sauvegardes du helper conservés ; aucune
 migration de schéma ni modification NAS/certificat/identité. Utiliser le mécanisme
 de récupération officiel, sans abaisser les séquences manuellement.
+
+Revue de capacité : la décision de continuation est renvoyée atomiquement avec
+le bail/statut, sans second lookup dans le cache borné. Sa purge conserve le token
+courant pour le polling du nouveau client. Régression à six tokens et activation
+après timeout ajoutée ; aucun champ public ni limite de sécurité élargi.

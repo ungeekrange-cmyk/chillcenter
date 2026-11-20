@@ -512,7 +512,7 @@ impl LeaseBook {
         Ok(())
     }
 
-    fn activate(&mut self, token: &str, now: Instant) -> Result<Lease, Failure> {
+    fn activate(&mut self, token: &str, now: Instant) -> Result<(Lease, bool), Failure> {
         let profile = self
             .entries
             .iter()
@@ -556,10 +556,15 @@ impl LeaseBook {
             },
         );
         while self.completed.len() > MAX_TRANSFER_TOKENS {
-            let first = self.completed.keys().next().cloned().expect("nonempty");
+            let first = self
+                .completed
+                .keys()
+                .find(|key| key.as_str() != token)
+                .cloned()
+                .expect("capacity overflow includes an older token");
             self.completed.remove(&first);
         }
-        Ok(lease)
+        Ok((lease, continues_same_media))
     }
 
     fn status(
@@ -567,7 +572,7 @@ impl LeaseBook {
         profile: &str,
         token: &str,
         now: Instant,
-    ) -> Result<TransferStatus, Failure> {
+    ) -> Result<(TransferStatus, Option<bool>), Failure> {
         if let Some(completed) = self.completed.get(token) {
             if completed
                 .status
@@ -577,7 +582,10 @@ impl LeaseBook {
             {
                 return Err("TRANSFER_INVALID");
             }
-            return Ok(completed.status.clone());
+            return Ok((
+                completed.status.clone(),
+                Some(completed.continues_same_media),
+            ));
         }
         let pending = self
             .entries
@@ -585,33 +593,28 @@ impl LeaseBook {
             .and_then(|entry| entry.pending.as_ref().filter(|p| p.token == token).cloned())
             .ok_or("TRANSFER_INVALID")?;
         if now >= pending.deadline {
-            self.activate(token, now)?;
-            return self
-                .completed
-                .get(token)
-                .map(|completed| completed.status.clone())
-                .ok_or("TRANSFER_INVALID");
+            let (lease, continues_same_media) = self.activate(token, now)?;
+            return Ok((
+                TransferStatus {
+                    token: token.into(),
+                    phase: TransferPhase::Activated,
+                    remaining_ms: lease.remaining_ms,
+                    lease: Some(lease),
+                    personal: None,
+                },
+                Some(continues_same_media),
+            ));
         }
-        Ok(TransferStatus {
-            token: token.into(),
-            phase: TransferPhase::AwaitingAck,
-            remaining_ms: pending.deadline.saturating_duration_since(now).as_millis() as u64,
-            lease: None,
-            personal: None,
-        })
-    }
-
-    fn continues_same_media(&self, profile: &str, token: &str) -> Result<bool, Failure> {
-        let completed = self.completed.get(token).ok_or("TRANSFER_INVALID")?;
-        if completed
-            .status
-            .lease
-            .as_ref()
-            .is_none_or(|lease| lease.profile_id != profile)
-        {
-            return Err("TRANSFER_INVALID");
-        }
-        Ok(completed.continues_same_media)
+        Ok((
+            TransferStatus {
+                token: token.into(),
+                phase: TransferPhase::AwaitingAck,
+                remaining_ms: pending.deadline.saturating_duration_since(now).as_millis() as u64,
+                lease: None,
+                personal: None,
+            },
+            None,
+        ))
     }
 }
 fn control(event: &Progress) -> PlaybackControl {
@@ -752,7 +755,7 @@ impl PlaybackService {
         &self,
         profile: &str,
         token: &str,
-    ) -> Result<TransferStatus, ApiError> {
+    ) -> Result<(TransferStatus, Option<bool>), ApiError> {
         self.book
             .lock()
             .map_err(|_| failure("MEDIA_BUSY"))?
@@ -784,22 +787,11 @@ impl PlaybackService {
             .map_err(failure)
     }
     #[allow(dead_code)]
-    pub(crate) fn activate_transfer(&self, token: &str) -> Result<Lease, ApiError> {
+    pub(crate) fn activate_transfer(&self, token: &str) -> Result<(Lease, bool), ApiError> {
         self.book
             .lock()
             .map_err(|_| failure("MEDIA_BUSY"))?
             .activate(token, Instant::now())
-            .map_err(failure)
-    }
-    pub(crate) fn transfer_continues_same_media(
-        &self,
-        profile: &str,
-        token: &str,
-    ) -> Result<bool, ApiError> {
-        self.book
-            .lock()
-            .map_err(|_| failure("MEDIA_BUSY"))?
-            .continues_same_media(profile, token)
             .map_err(failure)
     }
     fn event_receiver(
@@ -1015,11 +1007,9 @@ async fn transfer_status(
     Path(profile): Path<String>,
     Query(query): Query<TokenQuery>,
 ) -> Result<Json<TransferStatus>, ApiError> {
-    let mut status = s.playback.transfer_status(&profile, &query.token)?;
+    let (mut status, continues_same_media) = s.playback.transfer_status(&profile, &query.token)?;
     if let Some(lease) = &status.lease {
-        let continues_same_media = s
-            .playback
-            .transfer_continues_same_media(&profile, &query.token)?;
+        let continues_same_media = continues_same_media.expect("activated transfer has a decision");
         status.personal = Some(
             s.database
                 .call({
@@ -1058,13 +1048,10 @@ async fn transfer_ack(
                 let _ = service.abort_transfer_ack(&token);
                 return Err(error);
             }
-            let lease = service
+            let (lease, continues_same_media) = service
                 .activate_transfer(&token)
                 .map_err(|e| e.1.to_string())?;
-            let personal = if service
-                .transfer_continues_same_media(&p, &token)
-                .map_err(|e| e.1.to_string())?
-            {
+            let personal = if continues_same_media {
                 store.personal_state(&p, &lease.media_id)?
             } else {
                 store.playback_start_state(&p, &lease.media_id)?
@@ -1820,7 +1807,7 @@ mod tests {
                 .unwrap_err(),
             "TRANSFER_PENDING"
         );
-        let status = b
+        let (status, _) = b
             .status("p", &offer.token, t + Duration::from_secs(59))
             .unwrap();
         let successor = status
@@ -1835,6 +1822,7 @@ mod tests {
         assert_eq!(
             b.status("p", &offer.token, t + Duration::from_secs(60))
                 .unwrap()
+                .0
                 .lease
                 .unwrap()
                 .generation,
@@ -1865,11 +1853,75 @@ mod tests {
             b.ack("p", &ack, t + Duration::from_secs(1)).unwrap_err(),
             "TRANSFER_INVALID"
         );
-        let successor = b
+        let (successor, _) = b
             .activate(&offer.token, t + Duration::from_secs(1))
             .unwrap();
         assert!(successor.generation > old.generation);
         assert!(b.ack("p", &ack, t + Duration::from_secs(2)).is_err());
+    }
+
+    #[test]
+    fn transfer_activation_atomically_keeps_its_current_token_at_capacity() {
+        fn fill_completed(book: &mut LeaseBook) {
+            for n in 0..MAX_TRANSFER_TOKENS {
+                let token = format!("z{n}");
+                book.completed.insert(
+                    token.clone(),
+                    CompletedTransfer {
+                        status: TransferStatus {
+                            token,
+                            phase: TransferPhase::Activated,
+                            remaining_ms: 0,
+                            lease: None,
+                            personal: None,
+                        },
+                        continues_same_media: true,
+                    },
+                );
+            }
+        }
+
+        let (mut book, now, request, stream) = prepared();
+        let old = book
+            .acquire("p".into(), request.clone(), stream.clone(), now)
+            .unwrap();
+        let offer = book.offer("p", request, stream, now).unwrap();
+        book.confirm("p", &offer.token, now).unwrap();
+        let ack = TransferAck {
+            token: offer.token.clone(),
+            lease: ctrl(&old),
+            progress: event(&old, 1, 12_345, 0),
+        };
+        book.ack("p", &ack, now).unwrap();
+        fill_completed(&mut book);
+        let (lease, continues_same_media) = book.activate(&offer.token, now).unwrap();
+        assert_eq!(lease.media_id, old.media_id);
+        assert!(continues_same_media);
+        assert!(book.completed.contains_key(&offer.token));
+        let (status, decision) = book.status("p", &offer.token, now).unwrap();
+        assert_eq!(status.lease.unwrap().generation, lease.generation);
+        assert_eq!(decision, Some(true));
+
+        let (mut timed_out, now, request, stream) = prepared();
+        let old = timed_out
+            .acquire("p".into(), request.clone(), stream.clone(), now)
+            .unwrap();
+        let offer = timed_out.offer("p", request, stream, now).unwrap();
+        timed_out.confirm("p", &offer.token, now).unwrap();
+        timed_out
+            .entries
+            .get_mut("p")
+            .unwrap()
+            .pending
+            .as_mut()
+            .unwrap()
+            .deadline = now;
+        fill_completed(&mut timed_out);
+        let (status, decision) = timed_out.status("p", &offer.token, now).unwrap();
+        assert_eq!(status.phase, TransferPhase::Activated);
+        assert_eq!(status.lease.unwrap().media_id, old.media_id);
+        assert_eq!(decision, Some(true));
+        assert!(timed_out.completed.contains_key(&offer.token));
     }
 
     #[test]
