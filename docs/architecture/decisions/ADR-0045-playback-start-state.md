@@ -1,6 +1,6 @@
 # ADR0045 — Position d’une nouvelle lecture
 
-20 novembre 2026. État : IMPLEMENTED_LOCAL, revue finale en cours.
+20 novembre 2026. État : IMPLEMENTED_REVIEWED, source/artefacts APPROVED_SCOPED.
 Complète ADR0042/0044 ; aucun changement API ni schéma.
 
 La position durable conserve l’historique de visionnage. Une action Lecture

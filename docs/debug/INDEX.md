@@ -1,6 +1,8 @@
 # Journal des bugs, observations et risques
 
-[BUG0145](BUG-0145-replay-and-untagged-subtitles.md) : nouvelle lecture vue/EOF et unique piste sans langue, correctif local en cours de vérification.
+[BUG0146](BUG-0146-updater-offline-backup-sandbox.md) : sauvegarde serveur bloquée dans le sandbox ; récupération root officielle réussie, correction durable restante.
+
+[BUG0145](BUG-0145-replay-and-untagged-subtitles.md) : nouvelle lecture vue/EOF et unique piste sans langue, VERIFIED, serveur0.7.8/web0.7.11 publiés et installés.
 
 
 [BUG0142](BUG-0142-web-wake-lock-recovery.md) : récupération bornée du maintien éveillé web après révocation ; tests de régression et vraie API Chromium vérifiés, web0.7.8 publié/installé sur le Pi.

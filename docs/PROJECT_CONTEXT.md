@@ -1,17 +1,19 @@
 # Contexte du projet
 
-## 20 novembre 2026 — candidat relance et Avatar
+## 20 novembre 2026 — relance et Avatar livrés
 
-Serveur0.7.8/séquence9 et web0.7.11/séquence12 réservés, non publiés.
-Lecture fraîche vue/EOF repart0 sans mutation durable ; reprise partielle et
-continuation transférée conservées, cible différente normalisée. Sous-titre
-unique sans langue actif avec préférence ; Off et ambiguïtés respectés.
-250 tests Rust,341 JS,28 docs et Clippy strict PASS. Vrais fichiers Avatar et
-Projet dernière chance vérifiés via Chrome isolé/plages SSH bornées, aucun bail
-ni progression du foyer modifiés. Revue finale en cours ; Mac0.7.8 compatible.
-[BUG0145](debug/BUG-0145-replay-and-untagged-subtitles.md),
-[ADR0045](architecture/decisions/ADR-0045-playback-start-state.md).
-
+Source `c0b01291b3bf1ca6bb8f97ffdb60be401f9315ba` fusionnée main. Serveur0.7.8/séquence9 et web0.7.11/séquence12
+publiés et installés sur le Pi via helper signé (récupération root pour serveur,
+API normale pour web) ;22 assets signés vérifiés,
+90 ressources web HTTP identiques au payload. Source/artefacts APPROVED_SCOPED.
+251 Rust,341 JS,28 docs,Clippy strict et vrais fichiers Chrome PASS. Nouvelle
+lecture vue/EOF à zéro sans mutation de l’historique ; reprises partielles et
+transferts en cours préservés, décisions atomiques. Unique piste sans langue
+active si souhaitée ; Off respecté. Aucun bail de test du foyer, progression
+personnelle inchangée, identité/thèmes/TLS/NAS conservés. Mac0.7.8 compatible,
+aucun nouveau binaire Mac. Appareils mobiles physiques non testés.
+[Serveur](releases/REL-SERVER-0.7.8.md), [web](releases/REL-WEB-0.7.11.md),
+[BUG0145](debug/BUG-0145-replay-and-untagged-subtitles.md).
 
 ## 20 novembre 2026 — web0.7.10 sous-titres livré
 

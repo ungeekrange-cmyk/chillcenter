@@ -2,7 +2,7 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La release Mac `mac-v0.7.8` fournit Mac0.7.8/build18 ; `server-v0.7.7` publie serveur0.7.7 et `web-v0.7.10` publie web0.7.10 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
+La release Mac `mac-v0.7.8` fournit Mac0.7.8/build18 ; `server-v0.7.8` publie serveur0.7.8 et `web-v0.7.11` publie web0.7.11 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
 
 ## Quatre composants
 
@@ -66,16 +66,16 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution : v0.7.8 pour Mac et le serveur, web-v0.7.10 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
+Utiliser les archives complètes de distribution : v0.7.8 pour Mac, server-v0.7.8 pour le serveur, web-v0.7.11 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
 suffit pas, à elle seule, à établir la confiance.
 
 ```sh
-minisign -Vm Chill-Center-server-0.7.7-linux-aarch64.tar.gz \
+minisign -Vm Chill-Center-server-0.7.8-linux-aarch64.tar.gz \
   -P 'RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
-tar -xzf Chill-Center-server-0.7.7-linux-aarch64.tar.gz
+tar -xzf Chill-Center-server-0.7.8-linux-aarch64.tar.gz
 ```
 
 Même vérification pour le DMG Mac, le ZIP d'installation web et celui des thèmes
@@ -100,7 +100,7 @@ L'archive serveur contient les deux binaires ARM64, le manifeste signé/la clé
 publique, `scripts/` et `deploy/updates/`. Conserver cette arborescence. Une
 installation Linux neuve requiert un OS ARM64 64 bits utilisant glibc, systemd,
 Python 3.10+, Minisign, curl, Bash, tar et les outils Linux standards.
-Les binaires 0.7.7 ont un minimum glibc 2.28 selon leur provenance ; ce seul
+Les binaires 0.7.8 ont un minimum glibc 2.28 selon leur provenance ; ce seul
 minimum ne garantit pas la compatibilité de l’OS et de ses unités systemd.
 Debian 13 est la configuration réelle vérifiée ; OS ARM32 et musl ne sont pas
 couverts par ce paquet. Prévoir les droits administrateur, une horloge synchronisée,
@@ -115,7 +115,7 @@ sudo ./scripts/install-server.sh \
   --server "$PWD/chill-server" --updater "$PWD/chill-update" \
   --release-pub "$PWD/release.pub" --manifest "$PWD/server-manifest.json" \
   --manifest-signature "$PWD/server-manifest.json.minisig" \
-  --version 0.7.7 --library /absolute/read-only-library \
+  --version 0.7.8 --library /absolute/read-only-library \
   --listen LAN_ADDRESS:8443 --tls-name LAN_DNS_OR_IP
 ```
 
@@ -194,3 +194,9 @@ Publié et installé sur le Pi le20novembre2026. Reprises MP4/MKV et purge des i
 ## Client web0.7.10 — sous-titres natifs
 
 Publié et installé sur le Pi le20novembre2026. Pistes texte MKV et fichiers SRT/VTT/ASS/SSA externes sous bail ; langue/Off et sauts contrôlés. Bouton Installer retiré. Aucune modification HTTPS/DNS ou confiance système. Recharger le client. [Notes](../releases/REL-WEB-0.7.10.md).
+
+## Server 0.7.8 / web 0.7.11
+
+Serveur 0.7.8/séquence9 et web 0.7.11/séquence12 publiés et installés sur le Pi le 20 novembre 2026. Lecture fraîche vue/terminée à zéro ; reprise partielle et transfert en cours conservés. Sous-titre unique sans langue sélectionné si souhaité, Off respecté. Mac 0.7.8 compatible sans nouveau paquet Mac. Recharger les onglets. Identité, historique, notes et NAS conservés.
+
+[Serveur / Server](../releases/REL-SERVER-0.7.8.md) · [Web](../releases/REL-WEB-0.7.11.md).

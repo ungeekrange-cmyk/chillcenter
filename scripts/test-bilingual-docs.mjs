@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { assertPublicText } from './build-public-site.mjs';
 
-const published = {mac:'0.7.8',server:'0.7.7',web:'0.7.10',themes:'0.7.1'};
+const published = {mac:'0.7.8',server:'0.7.8',web:'0.7.11',themes:'0.7.1'};
 const root = fileURLToPath(new URL('../', import.meta.url));
 const pairs = [
   ['README.md', 'README.en.md'],
@@ -34,7 +34,7 @@ const unique = values => [...new Set(values)].sort();
 
 test('README distinguishes source versions from immutable published download packages', async () => {
   const versions = JSON.parse(await read('versions.json'));
-  // Public receipts verified against GitHub Mac0.7.8/server0.7.7/web0.7.10;
+  // Public receipts verified against GitHub Mac0.7.8/server0.7.8/web0.7.11;
   // unchanged themes stay at 0.7.1, not inferred from a source bump.
   // Keep independent component versions; unchanged themes stay at 0.7.1.
   const packages = [
@@ -50,7 +50,7 @@ test('README distinguishes source versions from immutable published download pac
     assert.ok(text.includes(`/releases/tag/v${published.mac})`), `${file}: stale release link`);
     const downloads = [...text.matchAll(/https:\/\/github\.com\/ungeekrange-cmyk\/chillcenter\/releases\/download\/([^/]+)\/([^\s)]+)/g)];
     for (const match of downloads) {
-      const expectedTag = /Chill-Center-themes-/.test(match[2]) ? 'v0.7.3' : /Chill-Center-web-/.test(match[2]) ? 'web-v0.7.10' : 'v0.7.8';
+      const expectedTag = /Chill-Center-themes-/.test(match[2]) ? 'v0.7.3' : /Chill-Center-web-/.test(match[2]) ? 'web-v0.7.11' : /Chill-Center-server-/.test(match[2]) ? 'server-v0.7.8' : 'v0.7.8';
       assert.equal(match[1], expectedTag, `${file}: obsolete download release for ${match[2]}`);
     }
     assert.deepEqual([...new Set(downloads.map(match => match[2]))].sort(), [...packages].sort(), `${file}: unexpected package inventory`);

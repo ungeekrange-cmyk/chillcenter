@@ -1,7 +1,6 @@
 # BUG0145 — Relancer une vidéo vue/terminée et sous-titres sans langue
 
-20 novembre 2026, correctif sur `codex/playback-restart`. Sources candidates,
-non encore publiées : serveur0.7.8 et web0.7.11 ; Mac0.7.8 reste compatible.
+20 novembre 2026, correctif sur `codex/playback-restart`. Publiés et installés sur le Pi : serveur0.7.8 et web0.7.11 ; Mac0.7.8 reste compatible.
 
 Symptômes : Lecture reprend une ancienne position d’un film marqué vu ; à EOF,
 le lecteur web ne peut pas amorcer le buffer. Avatar Seven Havens S01E01 ne
@@ -29,9 +28,8 @@ Preuves privées sous `/private/tmp/chillcenter-web-wake.yBYp2S/` :
 (piste native showing, cue active56.39–59.227s, vidéo avance),
 `project-restart-browser.jsonl` (position initiale9382.421s ramenée au début,
 lecture2.58s sans erreur). Aucun dialogue conservé dans ces preuves.
-87 tests domaine et163 serveur réussis (1 ignoré préexistant),341 JS et28 docs
-réussis ; Clippy strict et formatage des fichiers Rust modifiés PASS. Revue finale
-indépendante en cours après correction de ses deux findings sur les transferts.
+87 tests domaine et164 serveur réussis (1 ignoré préexistant),341 JS et28 docs
+réussis ; Clippy strict et formatage des fichiers Rust modifiés PASS. Revues source et artefacts APPROVED_SCOPED après correction des findings sur les transferts.
 Tests physiques iPhone/Pixel non réalisés ; lecture réelle dans l’application Mac
 non lancée pour préserver le profil. Contrat commun testé sur fixtures isolées.
 
@@ -43,3 +41,5 @@ Revue de capacité : la décision de continuation est renvoyée atomiquement ave
 le bail/statut, sans second lookup dans le cache borné. Sa purge conserve le token
 courant pour le polling du nouveau client. Régression à six tokens et activation
 après timeout ajoutée ; aucun champ public ni limite de sécurité élargi.
+
+Livré : source `c0b01291b3bf1ca6bb8f97ffdb60be401f9315ba`, tags server-v0.7.8/web-v0.7.11.

@@ -4,13 +4,13 @@
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive.
 
-**Versions publiées : Mac 0.7.8 · serveur 0.7.7 · web 0.7.10 · thèmes 0.7.1.**
-Le **client web0.7.10** affiche les sous-titres texte intégrés MKV et externes SRT/VTT/ASS/SSA, avec choix de langue, Désactivés et sauts corrigés. Bouton Installer retiré. Publié et installé sur le Pi le20novembre2026 ; recharger les onglets. [Notes web FR/EN](docs/releases/REL-WEB-0.7.10.md).
+**Versions publiées : Mac 0.7.8 · serveur 0.7.8 · web 0.7.11 · thèmes 0.7.1.**
+Les mises à jour **serveur 0.7.8 et web 0.7.11** relancent les vidéos vues/terminées depuis le début et sélectionnent la piste de sous-titres unique sans langue. Reprises partielles, transferts et historique conservés. Publiées et installées sur le Pi le 20 novembre 2026 ; Mac 0.7.8 compatible, recharger les onglets web. [Notes serveur FR/EN](docs/releases/REL-SERVER-0.7.8.md) · [Notes web FR/EN](docs/releases/REL-WEB-0.7.11.md).
 
 [Changements 0.7.8 FR/EN](docs/releases/REL-0.7.8.md) : Reprendre affiche la
 progression réelle et les épisodes vus sur le total de la saison. La coche
 retire le film ou la saison affichée après sauvegarde, avec fondu et glissement.
-Ces fonctions restent disponibles dans le client web 0.7.10.
+Ces fonctions restent disponibles dans le client web 0.7.11.
 
 ### Paquets actuellement publiés
 
@@ -28,8 +28,8 @@ décrivent leur calendrier et priorité.
 | Composant et version publiée | Paquet et instructions |
 | --- | --- |
 | Mac Apple Silicon 0.7.8, build 18 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.8/Chill-Center-0.7.8-macos-arm64.dmg), macOS 15+ |
-| Serveur Linux ARM64 0.7.7 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.8/Chill-Center-server-0.7.7-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
-| Client web 0.7.10 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.10/Chill-Center-web-0.7.10-install.zip), serveur 0.7.7 pour Accueil et les jaquettes TMDB |
+| Serveur Linux ARM64 0.7.8 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.8/Chill-Center-server-0.7.8-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
+| Client web 0.7.11 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.11/Chill-Center-web-0.7.11-install.zip), serveur 0.7.8 pour Accueil et les jaquettes TMDB |
 | Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
@@ -73,7 +73,7 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 
 ### Serveur Linux
 
-- Le paquet publié **0.7.7 cible Linux ARM64/AArch64, système 64 bits avec
+- Le paquet publié **0.7.8 cible Linux ARM64/AArch64, système 64 bits avec
   glibc 2.28 minimum pour les binaires**. Raspberry Pi 3 B/B+ avec Linux 64 bits
   est la cible ; un OS ARM 32 bits ou Alpine/musl ne convient pas à ce paquet.
   La configuration réelle vérifiée est Debian 13 ; une autre distribution
