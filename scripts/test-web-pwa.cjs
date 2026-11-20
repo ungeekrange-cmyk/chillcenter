@@ -1,4 +1,4 @@
-// Chromium proof for the built, installable web shell.  It only serves files
+// Chromium proof for the built web shell.  It only serves files
 // from web/dist on loopback and never contacts a household server or profile.
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), fsp = require("node:fs/promises"), http = require("node:http"), path = require("node:path");
@@ -27,7 +27,7 @@ async function until(check, message) {
   assert([...icons.values()].some(icon => String(icon.purpose || "").includes("maskable")), "manifest lacks a maskable icon");
   const index = await fsp.readFile(path.join(root, "index.html"), "utf8");
   assert.match(index, /apple-touch-icon/); assert.match(index, /apple-mobile-web-app-capable/);
-  assert.match(index, /pwa-install\.js\?v=/); assert.match(index, /pwa-install\.css\?v=/);
+  assert.doesNotMatch(index, /pwa-install\.(?:js|css)/); assert(!fs.existsSync(path.join(root, "pwa-install.js"))); assert(!fs.existsSync(path.join(root, "pwa-install.css")));
   const worker = await fsp.readFile(path.join(root, "sw.js"), "utf8");
   assert.match(worker, /navigate/); assert.doesNotMatch(worker, /"themes\//); assert.doesNotMatch(worker, /"vendor\//);
   assert.match(index, /register-sw\.js\?v=/);
@@ -39,10 +39,6 @@ async function until(check, message) {
     if (url.pathname === "/" || url.pathname === "/index.html") {
       res.setHeader("content-type", "text/html");
       return res.end((await fsp.readFile(path.join(root, "index.html"), "utf8")).replace("</body>", `<p id="fixture-marker">${marker}</p></body>`));
-    }
-    if (url.pathname === "/pwa-fixture.html") {
-      res.setHeader("content-type", "text/html");
-      return res.end("<!doctype html><html lang=\"en\"><head><link rel=\"stylesheet\" href=\"/pwa-install.css\"></head><body><header class=\"app-topbar\"></header><script src=\"/pwa-install.js\"></script></body></html>");
     }
     const file = path.resolve(root, decodeURIComponent(url.pathname.slice(1)));
     if (!file.startsWith(root + path.sep)) { res.statusCode = 404; return res.end(); }
@@ -79,27 +75,7 @@ async function until(check, message) {
     await page.goto(origin + "/", { waitUntil: "domcontentloaded" });
     assert.equal(await page.locator("#fixture-marker").textContent(), "second", "controlled navigation served cached old HTML");
 
-    await page.goto(origin + "/pwa-fixture.html");
-    await page.evaluate(() => {
-      const prompt = new Event("beforeinstallprompt", { cancelable: true }); let calls = 0;
-      Object.defineProperties(prompt, { prompt: { value: () => { calls++; return Promise.resolve(); } }, userChoice: { value: Promise.resolve({ outcome: "dismissed" }) } });
-      window.__pwaPromptCalls = () => calls; window.dispatchEvent(prompt);
-    });
-    await page.getByRole("button", { name: "Install app" }).click();
-    assert.equal(await page.evaluate(() => window.__pwaPromptCalls()), 1, "install prompt was not trusted-button initiated");
-    await page.evaluate(() => { const prompt = new Event("beforeinstallprompt", { cancelable: true }); Object.defineProperties(prompt, { prompt: { value: () => Promise.reject(new Error("fixture rejection")) }, userChoice: { value: Promise.resolve({ outcome: "dismissed" }) } }); window.dispatchEvent(prompt); });
-    await page.getByRole("button", { name: "Install app" }).click();
-    await page.getByRole("dialog").waitFor();
-    await page.keyboard.press("Escape");
-    await until(() => page.evaluate(() => document.activeElement?.id === "pwa-install"), "dialog did not return focus");
-    await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
-    assert.equal(await page.locator("#pwa-install").isHidden(), true, "installed app control remains visible");
-
-    const ios = await browser.newContext({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1" });
-    const iosPage = await ios.newPage(); await iosPage.goto(origin + "/pwa-fixture.html");
-    await iosPage.getByRole("button", { name: "Install app" }).click();
-    await assert.doesNotReject(() => iosPage.getByText("Share, then Add to Home Screen").waitFor());
-    await ios.close();
-    console.log("PASS PWA: manifest PNG/maskable icons, Apple metadata, secure-loopback service worker and installability, shell-only cache, network-fresh controlled navigation, trusted prompt/retry/error dialog, keyboard focus, installed hide, iOS instructions.");
+    assert.equal(await page.locator("#pwa-install").count(), 0, "web shell exposes no install control");
+    console.log("PASS web shell: manifest PNG/maskable icons, Apple metadata, secure-loopback service worker and installability, shell-only cache, network-fresh controlled navigation, no install control.");
   } finally { await browser?.close(); await close(server); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -13,7 +13,7 @@ const ui = join(root, "ui/connected");
 const themes = join(root, "themes/default");
 const src = join(root, "web/src");
 const out = resolve(process.argv[2] || join(root, "web/dist"));
-const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "audio-core.js", "audio-register.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "catalog-query.js", "catalog-store.js", "catalog-sync.js", "artwork-cache.js", "bridge.js", "register-sw.js"];
+const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "audio-core.js", "audio-register.js", "subtitles.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "catalog-query.js", "catalog-store.js", "catalog-sync.js", "artwork-cache.js", "bridge.js", "register-sw.js"];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -22,7 +22,7 @@ cpSync(ui, out, {
   filter: path => !/(\/qa\.js|-qa\.js|\.test\.js)$/.test(path) && !path.endsWith("/tests"),
 });
 cpSync(themes, join(out, "themes"), { recursive: true });
-for (const name of [...webScripts, "pwa-install.js", "pwa-install.css", "pwa-icons", "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name), { recursive: true });
+for (const name of [...webScripts, "pwa-icons", "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name), { recursive: true });
 // MPEG-4 (Xvid/DivX) WebAssembly decoder: built by web/decoder/mpeg4, loaded by a Worker only when needed.
 mkdirSync(join(out, "vendor/mpeg4"), { recursive: true });
 const vendor = join(root, "web/vendor/mpeg4");
@@ -50,7 +50,7 @@ patch("updates.js", "__WEB_VERSION__", versions.web);
 
 let html = readFileSync(join(out, "index.html"), "utf8");
 const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css">`
-  + `<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Chill Center"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="pwa-icons/apple-touch-icon.png"><link rel="stylesheet" href="pwa-install.css"><script src="pwa-install.js" defer></script>`
+  + `<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Chill Center"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="pwa-icons/apple-touch-icon.png">`
   + webScripts.map(name => `<script src="${name}"></script>`).join("");
 if (!html.includes("<title>")) throw new Error("index.html sans <title>");
 // These adapters run after the shared desktop scripts. Responsive behavior is

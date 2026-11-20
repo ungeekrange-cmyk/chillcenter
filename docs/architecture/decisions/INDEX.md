@@ -127,3 +127,7 @@ actions de gestion visibles et confirmation de suppression.
 [ADR-0038](ADR-0038-home-shelves.md), implémenté localement,7 novembre2026 :
 Accueil personnel, trois rangées horizontales de20, reprise par saison,
 suggestions locales depuis les derniers visionnages datés.
+
+[ADR0044](ADR-0044-web-native-subtitles.md), candidat implémenté,20novembre2026 :
+sous-titres texte MKV et fichiers externes sous bail, pistes vidéo natives,
+seek/choix de langue sûrs ; retrait du bouton Installer du client web.

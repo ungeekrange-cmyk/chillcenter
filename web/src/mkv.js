@@ -53,7 +53,8 @@
   }
   const uint = (b, el) => { let v = 0; for (let i = el.start; i < el.end; i++) v = v * 256 + b[i]; return v; };
   const float = (b, el) => { const dv = new DataView(b.buffer, b.byteOffset + el.start, el.end - el.start); return el.end - el.start === 4 ? dv.getFloat32(0) : dv.getFloat64(0); };
-  const str = (b, el) => String.fromCharCode(...b.subarray(el.start, el.end)).replace(/\0+$/, "");
+  const str = (b, el) => new TextDecoder().decode(b.subarray(el.start, el.end)).replace(/\0+$/, "");
+  const trackLanguage = t => t.bcp47 ? t.bcp47.replace(/_/g, "-").toLowerCase() : LANG2[t.language] || t.language || null;
 
   // ---- sample entries --------------------------------------------------------------------
   function desc(tag, ...parts) {
@@ -102,13 +103,19 @@
   }
 
   function buildTrack(t) {
-    const kind = t.type === 1 ? "video" : t.type === 2 ? "audio" : "other";
+    const kind = t.type === 1 ? "video" : t.type === 2 ? "audio" : t.type === 17 ? "subtitle" : "other";
     if (kind === "other") return null;
+    if (kind === "subtitle") return {
+      id: t.number, kind, codecId: t.codecId, name: t.name,
+      language: trackLanguage(t),
+      textSupported: !t.encoded && ["S_TEXT/UTF8", "S_TEXT/ASS", "S_TEXT/SSA", "S_TEXT/WEBVTT"].includes(t.codecId),
+      flagDefault: t.flagDefault, defaultDuration: t.defaultDuration,
+    };
     const timescale = kind === "video" ? 90000 : Math.round(t.sampleRate) || 48000;
     const entry = sampleEntryFor(t);
     const lang = (t.language || "und").padEnd(3, "d").slice(0, 3);
     const packed = ((lang.charCodeAt(0) - 96) << 10) | ((lang.charCodeAt(1) - 96) << 5) | (lang.charCodeAt(2) - 96);
-    const base = { id: t.number, kind, timescale, shift: 0, transcode: t.transcode || null, sourceLabel: t.sourceLabel || null, language: LANG2[t.language] || (t.bcp47 ? t.bcp47.slice(0, 2) : t.language) || null, name: t.name, width: t.width, height: t.height, codecId: t.codecId, defaultDuration: t.defaultDuration, flagDefault: t.flagDefault };
+    const base = { id: t.number, kind, timescale, shift: 0, transcode: t.transcode || null, sourceLabel: t.sourceLabel || null, language: trackLanguage(t), name: t.name, width: t.width, height: t.height, codecId: t.codecId, defaultDuration: t.defaultDuration, flagDefault: t.flagDefault };
     if (!entry) return { ...base, codec: null, mime: null, type: t.codecId };
     const stsdBox = box("stsd", full(0, 0), u32b(1), entry);
     const parsed = Mp4.sampleEntry(stsdBox, Mp4.boxes(stsdBox, 16)[0], kind);
@@ -240,7 +247,7 @@
 
   class MkvSource {
     // options.audio: factory of audio transcoders ({ create({codec, rate, channels, kbps}) }), see audio-register.js.
-    constructor(reader, options = {}) { this.reader = reader; this.queues = new Map(); this.cursor = 0; this.gen = 0; this.pipes = new Map(); this.seq = 0; this.active = null; this.audio = options.audio || null; this.transcoders = new Map(); }
+    constructor(reader, options = {}) { this.reader = reader; this.queues = new Map(); this.cursor = 0; this.gen = 0; this.pipes = new Map(); this.seq = 0; this.active = null; this.audio = options.audio || null; this.transcoders = new Map(); this.subtitleId = null; this.subtitlePackets = []; }
     close() { for (const st of this.transcoders.values()) { try { st.tc.close(); } catch { /* already gone */ } } this.transcoders.clear(); }
 
     /**
@@ -269,6 +276,11 @@
       return entries;
     }
     setActive(ids) { this.active = new Set(ids); for (const id of this.queues.keys()) if (!this.active.has(id)) this.queues.set(id, []); }
+    setSubtitle(id) {
+      this.subtitleId = this.tracks.some(t => t.kind === "subtitle" && t.textSupported && t.id === id) ? id : null;
+      this.subtitlePackets = [];
+    }
+    drainSubtitles() { const packets = this.subtitlePackets; this.subtitlePackets = []; return packets; }
 
     async read(a, b) { return this.reader.read(a, Math.min(b, this.reader.size - 1)); }
     async header(p) {
@@ -329,8 +341,11 @@
     parseCues(b) {
       const points = [];
       const videoId = this.tracks.find(t => t.kind === "video")?.id;
+      const subtitleIds = new Set(this.tracks.filter(t => t.kind === "subtitle" && t.textSupported).map(t => t.id));
+      this.subtitleCues = new Map();
       for (const cp of children(b).filter(c => c.id === ID.CuePoint)) {
         let time = 0, pos = null;
+        const subtitles = [];
         for (const c of children(b, cp.start, cp.end)) {
           if (c.id === ID.CueTime) time = uint(b, c);
           if (c.id === ID.CueTrackPositions) {
@@ -342,10 +357,16 @@
             // Subtitle/audio cues are not video random-access points. Using
             // one after the last video keyframe can strand a seek in a gap.
             if (pos === null && (videoId === undefined || track === videoId)) pos = cluster;
+            if (cluster !== null && subtitleIds.has(track)) subtitles.push({ track, cluster });
           }
         }
         if (pos !== null) points.push({ ms: time * this.scaleMs, pos: this.segStart + pos });
+        for (const s of subtitles) {
+          if (!this.subtitleCues.has(s.track)) this.subtitleCues.set(s.track, []);
+          this.subtitleCues.get(s.track).push({ ms: time * this.scaleMs, pos: this.segStart + s.cluster });
+        }
       }
+      for (const list of this.subtitleCues.values()) list.sort((a, c) => a.ms - c.ms);
       return points.sort((a, c) => a.ms - c.ms);
     }
 
@@ -374,9 +395,26 @@
     seek(seconds) { this.pendingSeek = seconds; return this.doSeek(seconds); }
     async doSeek(seconds) {
       this.gen++;
+      this.subtitlePackets = [];
       for (const id of this.queues.keys()) this.queues.set(id, []);
       this.pipes.clear();
       this.cursor = await this.clusterFor(seconds);
+      // A caption can begin before the video's random-access point and still
+      // cover resume. Read its one indexed cluster without rewinding VIDEO to
+      // that subtitle cue: after a long silent passage it can be minutes old.
+      const cues = this.subtitleCues?.get(this.subtitleId) || [];
+      let subtitleCue = null;
+      for (const c of cues) { if (c.ms <= seconds * 1000) subtitleCue = c; else break; }
+      if (subtitleCue && subtitleCue.pos < this.cursor) {
+        const h = await this.header(subtitleCue.pos);
+        if (h.id === ID.Cluster && h.size > 0 && h.size <= 128 * 1024 * 1024) {
+          const bytes = await this.read(h.dataStart, h.dataStart + h.size - 1);
+          for (const s of parseCluster(bytes, 0, bytes.length, this.scaleMs, this.defaults)) {
+            const duration = s.durationMs || 5000;
+            if (s.track === this.subtitleId && s.ms <= seconds * 1000 && s.ms + duration > seconds * 1000 && s.data.length <= 65536 && this.subtitlePackets.length < 2048) this.subtitlePackets.push({ ...s, data: s.data.slice() });
+          }
+        }
+      }
       for (const st of this.transcoders.values()) { st.anchor = null; st.count = 0; await st.tc.reset(); }
       this.needKey = new Set(this.tracks.filter(t => t.kind === "video").map(t => t.id));
       this.eof = false;
@@ -395,7 +433,16 @@
         this.cursor = end;
         const samples = parseCluster(bytes, 0, bytes.length, this.scaleMs, this.defaults);
         const byTrack = new Map();
-        for (const s of samples) { if (!this.queues.has(s.track) || (this.active && !this.active.has(s.track))) continue; (byTrack.get(s.track) || byTrack.set(s.track, []).get(s.track)).push(s); }
+        for (const s of samples) {
+          if (s.track === this.subtitleId) {
+            // Copy just the selected text, never retain an entire movie
+            // cluster for a short caption or queue all 35 language tracks.
+            if (s.data.length <= 65536 && this.subtitlePackets.length < 2048) this.subtitlePackets.push({ ...s, data: s.data.slice() });
+            continue;
+          }
+          if (!this.queues.has(s.track) || (this.active && !this.active.has(s.track))) continue;
+          (byTrack.get(s.track) || byTrack.set(s.track, []).get(s.track)).push(s);
+        }
         for (const [id, list] of byTrack) {
           const track = this.tracks.find(t => t.id === id);
           if (!track.mime) continue;

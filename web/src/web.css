@@ -9,3 +9,5 @@ body.player-open #native-video { background: #000; }
 #native-video audio { display: none; }
 #web-play-retry{position:absolute;z-index:1003;left:50%;top:50%;transform:translate(-50%,-50%);max-width:calc(100% - 40px);min-height:52px;padding:14px 20px;border-radius:14px;background:var(--accent);color:var(--button);box-shadow:0 4px 28px #0008;font-size:16px;white-space:normal}
 #web-play-retry[hidden]{display:none}
+.chill-caption-overlay{position:absolute;z-index:2;left:5%;right:5%;bottom:8%;padding:8px;text-align:center;white-space:pre-line;pointer-events:none;color:#fff;background:#0008;text-shadow:0 1px 3px #000;font:clamp(16px,2.5vw,28px)/1.35 sans-serif;border-radius:6px}
+.chill-caption-overlay[hidden]{display:none}

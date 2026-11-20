@@ -6,6 +6,7 @@
   const Mkv = typeof module !== "undefined" ? require("./mkv.js") : root.ChillMkv;
   const Avi = typeof module !== "undefined" ? require("./avi.js") : root.ChillAvi;
   const Soft = typeof module !== "undefined" ? require("./soft-video.js") : root.ChillSoft;
+  const Text = typeof module !== "undefined" ? require("./subtitles.js") : root.ChillSubtitles;
   const { RangeReader } = typeof module !== "undefined" ? require("./range-reader.js") : root.ChillRangeReader;
   const fail = message => Object.assign(new Error(message), { code: "PLAYER_ERROR" });
   const LABELS = { "ac-3": "AC-3", "ec-3": "E-AC-3", flac: "FLAC", opus: "Opus", xvid: "Xvid (MPEG-4)", dx50: "DivX (MPEG-4)", divx: "DivX (MPEG-4)", mp4v: "MPEG-4" };
@@ -33,7 +34,7 @@
   }
 
   class MseEngine {
-    constructor(host, deps) { this.host = host; this.d = deps; this.streams = []; this.epoch = 0; this.closed = false; this.errorText = null; this.notice = null; this.rate = 1; this.hardware = "no"; }
+    constructor(host, deps) { this.host = host; this.d = deps; this.streams = []; this.epoch = 0; this.closed = false; this.errorText = null; this.notice = null; this.rate = 1; this.hardware = "no"; this.captionEpoch = 0; this.external = []; this.handlesSubtitlePreference = true; }
 
     cacheSeconds() {
       let forward = 128, back = 64;
@@ -42,7 +43,7 @@
       return { forward: Math.min(90, Math.max(8, forward * 1048576 / bps)), back: Math.min(60, back * 1048576 / bps) };
     }
 
-    async open({ mediaId, lease, startAt, speed }) {
+    async open({ mediaId, lease, startAt, speed, subtitleLanguage, profileId }) {
       const MS = this.d.MediaSource;
       if (!MS) throw fail("Ce navigateur ne sait pas lire de vidéo par MediaSource.");
       // The player can leave (stop, another video) while this runs: after every await, check that this engine is still wanted, so that a
@@ -63,6 +64,10 @@
         : kind === "mkv" ? new Mkv.MkvSource(this.reader, { audio: root.ChillAudio || null })
           : new Avi.AviSource(this.reader, { audio: root.ChillAudio || null, transcodeMp3: !nativeMp3 });
       this.movie = await this.src.open(); alive();
+      this.subtitleTracks = this.movie.tracks.filter(t => t.kind === "subtitle" && t.textSupported);
+      this.captionLanguage = String(subtitleLanguage || "").toLowerCase();
+      this.activeSubtitle = this.subtitleTracks.find(t => this.captionLanguage && (t.language || "").toLowerCase().startsWith(this.captionLanguage.slice(0, 2))) || null;
+      this.src.setSubtitle?.(this.activeSubtitle?.id ?? null);
       // MP3 is not accepted inside audio/mp4 everywhere (Chromium builds): fall back to a bare MPEG audio stream.
       for (const t of this.movie.tracks) {
         if (t.kind === "audio" && t.codec === "mp4a.6B" && !MS.isTypeSupported(t.mime) && MS.isTypeSupported("audio/mpeg")) { t.mime = "audio/mpeg"; t.rawStream = true; }
@@ -96,6 +101,7 @@
         this.canvas = this.d.document.createElement("canvas");
         this.host.replaceChildren(this.canvas, this.video);
       } else this.host.replaceChildren(this.video);
+      if (Text) { this.captions = new Text.Captions({ video: this.video, document: this.d.document, VTTCue: this.d.VTTCue }); this.captions.select(this.activeSubtitle); }
       this.bind();
       this.attachMediaSource(MS);
       await new Promise((res, rej) => { this.ms.addEventListener("sourceopen", res, { once: true }); setTimeout(() => rej(fail("MediaSource indisponible.")), 5000); }); alive();
@@ -120,6 +126,12 @@
       // user cache here delayed Play by up to 90 seconds of downloads.
       await this.pump(3);
       this.started = true;
+      // Sidecar discovery is lease-scoped and must not delay first playback.
+      if (profileId) {
+        this.subtitleBase = `/api/2026-10-14/profiles/${encodeURIComponent(profileId)}/media/${encodeURIComponent(mediaId)}/subtitles`;
+        this.subtitleQuery = new URLSearchParams({ session: lease.session_id, generation: String(lease.generation) }).toString();
+        this.loadExternalSubtitles();
+      }
     }
 
     // Safari on iPhone exposes ManagedMediaSource rather than the older
@@ -154,12 +166,17 @@
     bind() {
       const v = this.video;
       v.addEventListener("error", () => { this.errorText = "Le navigateur n'a pas pu décoder cette vidéo."; });
-      v.addEventListener("timeupdate", () => this.pump());
+      v.addEventListener("timeupdate", () => { this.pump(); if (this.activeSubtitle) this.captions?.prune(Math.max(0, v.currentTime - Math.max(30, this.cache?.back || 0) - 30)); });
       v.addEventListener("seeking", () => {
         if (!this.started) return;
-        if (!this.isBuffered(v.currentTime)) this.reposition(v.currentTime);
+        this.captions?.suspend(true);
+        // Removing one old buffer can make the browser correct its time to
+        // another old range. That is not a new user request. Explicit seek()
+        // commands below still replace the target while reset is in flight.
+        if (!this.repositioning && !this.isBuffered(v.currentTime)) this.reposition(v.currentTime).catch(e => { if (!this.closed) this.errorText = e.message; });
         this.soft?.reset(v.currentTime); // the decoder always restarts from the keyframe before the target
       });
+      v.addEventListener("seeked", () => this.captions?.suspend(false));
       v.addEventListener("waiting", () => this.pump());
     }
     async probeHardware(t) {
@@ -217,12 +234,28 @@
     isBuffered(t) { return this.streams.every(s => this.bufferedEnd(s.sb, t) > t + 0.05); }
     async rewind(t) { await this.src.seek(t); for (const s of this.streams) { s.done = false; s.needOffset = true; s.keyframes = []; } }
     async reposition(t) {
-      this.epoch++;
-      await this.waitIdle();
-      for (const s of this.streams) { if (s.sb.updating) { try { s.sb.abort(); } catch { /* ignore */ } } await this.removeRange(s.sb, 0, Infinity); }
-      await this.rewind(t);
-      this.pumping = false;
-      await this.pump();
+      const epoch = ++this.epoch;
+      this.repositionTarget = t; this.repositioning = true;
+      if (this.activeSubtitle) this.captions?.clear();
+      const run = async () => {
+        await this.waitIdle();
+        if (this.closed || epoch !== this.epoch) return;
+        for (const s of this.streams) {
+          if (s.sb.updating) { try { s.sb.abort(); } catch { /* ignore */ } }
+          await this.removeRange(s.sb, 0, Infinity);
+          if (this.closed || epoch !== this.epoch) return;
+        }
+        await this.rewind(t);
+        if (this.closed || epoch !== this.epoch) return;
+        // Removing the old A/V ranges can resolve the browser's original seek
+        // against one still-present old buffer. Anchor again AFTER the reset.
+        this.video.currentTime = t;
+        await this.pump(3);
+      };
+      // Rapid language changes/seeks share a single demux cursor. Old work
+      // settles before the newest request rewinds it.
+      this.repositionJob = (this.repositionJob || Promise.resolve()).then(run, run).finally(() => { if (epoch === this.epoch) this.repositioning = false; });
+      return this.repositionJob;
     }
     waitIdle() { return this.pumping ? new Promise(r => setTimeout(r, 30)).then(() => this.waitIdle()) : Promise.resolve(); }
 
@@ -250,6 +283,7 @@
       await this.evict(s.sb, this.cache.back);
       const fragment = await this.src.next(s.track.id);
       if (epoch !== this.epoch || this.closed) return false;
+      this.receiveSubtitles();
       if (!fragment) { s.done = true; return false; }
       let bytes = fragment.data;
       if (s.track.rawStream && s.needOffset && fragment.startTime !== undefined) { s.sb.timestampOffset = fragment.startTime; s.needOffset = false; bytes = Mp4.mp3Resync(bytes); }
@@ -293,15 +327,68 @@
       }
     }
     pause() { this.playAttempt = (this.playAttempt || 0) + 1; this.video?.pause(); }
-    seek(seconds) { if (this.video) this.video.currentTime = Math.min(seconds, this.movie.duration); }
+    seek(seconds) {
+      if (!this.video) return;
+      const target = Math.max(0, Math.min(seconds, this.movie.duration));
+      if (this.started && (this.repositioning || !this.isBuffered(target))) this.reposition(target).catch(e => { if (!this.closed) this.errorText = e.message; });
+      this.video.currentTime = target;
+    }
     setSpeed(x) { this.rate = x; if (this.video) this.video.playbackRate = x; }
     setVolume(v) { if (this.video) this.video.volume = Math.min(1, Math.max(0, v / 100)); }
-    selectSubtitle() {}
-    externalSubtitles() { return []; }
+    receiveSubtitles() {
+      const packets = this.src.drainSubtitles?.() || [];
+      if (!this.activeSubtitle || !this.captions) return;
+      try { for (const p of packets) this.captions.add(Text.packet(this.activeSubtitle, p)); }
+      catch { this.captionNotice = language(this.d.document) === "fr" ? "Cette piste de sous-titres contient un texte invalide." : "This subtitle track contains invalid text."; }
+    }
+    async selectSubtitle(id) {
+      this.subtitleManual = true; ++this.captionEpoch; this.subtitleFetch?.abort();
+      const next = this.subtitleTracks?.find(t => t.id === id) || null;
+      if (next === (this.activeSubtitle || null) && !this.activeExternal) return;
+      this.activeSubtitle = next; this.activeExternal = null; this.captionNotice = null;
+      this.captions?.select(next); this.src.setSubtitle?.(next?.id ?? null);
+      if (next && this.started) await this.reposition(this.video.currentTime);
+    }
+    externalSubtitles() { return this.external; }
+    async loadExternalSubtitles() {
+      this.externalFetch = new AbortController();
+      try {
+        const response = await this.d.fetch(`${this.subtitleBase}?${this.subtitleQuery}`, { credentials: "same-origin", cache: "no-store", signal: this.externalFetch.signal });
+        if (!response.ok) throw fail("Sous-titres externes indisponibles.");
+        const data = await response.json();
+        if (this.closed) return;
+        this.external = (data.items || []).slice(0, 64).filter(t => /^sub-[a-f0-9]+$/.test(t.id) && /\.(srt|vtt|ass|ssa)$/i.test(t.title || ""));
+        const preferred = this.external.filter(t => !t.unavailable && !t.ambiguous && this.captionLanguage && (t.language || "").toLowerCase().startsWith(this.captionLanguage.slice(0, 2)));
+        if (!this.subtitleManual && !this.activeSubtitle && preferred.length === 1) await this.selectExternalSubtitle(preferred[0].id);
+      } catch (e) {
+        if (!this.closed && e.name !== "AbortError") this.captionNotice = language(this.d.document) === "fr" ? "La recherche de sous-titres externes a échoué." : "External subtitle discovery failed.";
+      }
+    }
+    async selectExternalSubtitle(id) {
+      const track = this.external.find(t => t.id === id && !t.unavailable);
+      if (!track || !Text || !this.captions) return;
+      const epoch = ++this.captionEpoch; this.subtitleManual = true;
+      this.subtitleFetch?.abort(); this.subtitleFetch = new AbortController();
+      this.activeSubtitle = null; this.activeExternal = track; this.captionNotice = null;
+      this.src.setSubtitle?.(null); this.captions.select(null);
+      try {
+        const response = await this.d.fetch(`${this.subtitleBase}/${encodeURIComponent(id)}?${this.subtitleQuery}`, { credentials: "same-origin", cache: "no-store", signal: this.subtitleFetch.signal });
+        if (!response.ok) throw fail("Sous-titres externes indisponibles.");
+        if (Number(response.headers.get("content-length")) > 16 * 1024 * 1024) throw fail("Sous-titres trop volumineux.");
+        const text = await response.text();
+        if (this.closed || epoch !== this.captionEpoch) return;
+        const records = Text.parseFile(text, track.title.split(".").at(-1));
+        if (!records.length) throw fail("Ce fichier ne contient aucun sous-titre lisible.");
+        this.captions.select(track); this.captions.add(records);
+      } catch (e) {
+        if (!this.closed && epoch === this.captionEpoch && e.name !== "AbortError") this.captionNotice = language(this.d.document) === "fr" ? "Impossible de charger ce fichier de sous-titres." : "This subtitle file could not be loaded.";
+      }
+    }
     async selectAudio(id) {
       const next = this.audio?.find(t => t.id === id), s = this.streams.find(x => x.track.kind === "audio");
       if (!next || !s || s.track === next) return;
       this.epoch++; await this.waitIdle();
+      await this.repositionJob;
       await this.removeRange(s.sb, 0, Infinity);
       if (s.track.mime !== next.mime) s.sb.changeType(next.mime);
       s.track = next; if (!next.rawStream) s.sb.timestampOffset = next.shift; this.activeAudio = next; s.needOffset = true;
@@ -315,14 +402,19 @@
       return {
         loaded: v.readyState >= 1, paused: v.paused, buffering: !v.paused && !v.ended && v.readyState < 3, seeking: Boolean(v.seeking), ended: v.ended,
         error: this.errorText || this.soft?.errorText || null,
-        notice: [this.notice, this.playBlocked ? playbackNotice(this.d.document, this.playBlockReason) : null].filter(Boolean).join(" ") || null,
+        notice: [this.notice, this.captionNotice, this.playBlocked ? playbackNotice(this.d.document, this.playBlockReason) : null].filter(Boolean).join(" ") || null,
         play_blocked: Boolean(this.playBlocked), position: v.currentTime || 0, duration: this.movie.duration, speed: v.playbackRate, volume: Math.round(v.volume * 100),
-        tracks: (this.audio || []).map((t, i) => ({ id: t.id, kind: "Audio", language: t.language, title: t.sourceLabel ? `${t.sourceLabel} (converti en AAC)` : codecLabel(t.codec), selected: t === this.activeAudio, original: i === 0 })),
+        tracks: [
+          ...(this.audio || []).map((t, i) => ({ id: t.id, kind: "Audio", language: t.language, title: t.sourceLabel ? `${t.sourceLabel} (converti en AAC)` : codecLabel(t.codec), selected: t === this.activeAudio, original: i === 0 })),
+          ...(this.subtitleTracks || []).map(t => ({ id: t.id, kind: "Subtitle", language: t.language, title: t.name || t.language || "Sous-titres", selected: t === this.activeSubtitle })),
+          ...(this.activeExternal ? [{ ...this.activeExternal, kind: "Subtitle", selected: true }] : []),
+        ],
         hardware_decoder: this.soft ? "no" : this.hardware, decoder: this.soft ? this.softLabel : "Décodeur du navigateur",
       };
     }
     close() {
       this.closed = true; this.epoch++; this.playAttempt = (this.playAttempt || 0) + 1;
+      ++this.captionEpoch; this.externalFetch?.abort(); this.subtitleFetch?.abort(); this.captions?.close();
       try { this.src?.close?.(); } catch { /* ignore */ }
       try { this.soft?.close(); } catch { /* ignore */ }
       try { this.video?.pause(); this.video?.removeAttribute("src"); this.video?.load(); } catch { /* ignore */ }

@@ -12,7 +12,7 @@ const { spawnSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const origin = "https://playback.fixture";
-const scripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "audio-core.js", "audio-register.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "mobile-playback.js"];
+const scripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "audio-core.js", "audio-register.js", "subtitles.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "mobile-playback.js"];
 const profile = "11111111-1111-4111-8111-111111111111";
 
 function makeFixtures(dir) {
@@ -48,6 +48,7 @@ async function routeFixture(page, build, clips) {
     if (url.pathname === "/" || url.pathname === "/harness.html") {
       return route.fulfill({ contentType: "text/html", body: "<!doctype html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Playback fixture</title></head><body><section id=\"player-panel\"><div id=\"player-stage\"><div id=\"native-video\"></div></div></section></body></html>" });
     }
+    if (url.pathname.endsWith("/subtitles")) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [] }) });
     const file = path.resolve(build, decodeURIComponent(url.pathname.slice(1)));
     if (!file.startsWith(`${build}${path.sep}`)) return route.abort();
     try { return route.fulfill({ contentType: contentType(file), body: await fsp.readFile(file) }); }

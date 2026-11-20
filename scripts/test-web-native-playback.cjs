@@ -11,7 +11,7 @@ const { spawnSync } = require("node:child_process");
 const root = path.resolve(__dirname, "..");
 const origin = "https://native-playback.fixture";
 const chrome = process.env.CHILL_CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const scripts = ["mp4.js", "audio-core.js", "audio-register.js", "mkv.js", "range-reader.js", "mse-engine.js"];
+const scripts = ["mp4.js", "audio-core.js", "audio-register.js", "subtitles.js", "mkv.js", "range-reader.js", "mse-engine.js"];
 const trace = (milestone, detail = {}) => {
   if (process.env.CHILL_NATIVE_PLAYBACK_TRACE === "1") console.error(JSON.stringify({ test: "native-playback", milestone, ...detail }));
 };

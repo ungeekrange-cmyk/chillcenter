@@ -10,10 +10,9 @@ certificat du serveur. Une simple exception de page peut ne pas suffire pour
 le service worker ; vérifier le certificat et établir sa confiance sur l’appareil.
 Ne pas désactiver la vérification TLS du navigateur.
 
-- Chrome Android : **Installer l’app** dans Chill Center, puis l’invite native.
-  Si l’invite n’est pas encore proposée, menu ⋮ → **Installer l’application**.
+- Chrome Android : menu du navigateur ⋮ → **Installer l’application**, lorsque proposé.
 - Safari iPhone/iPad : **Partager → Ajouter à l’écran d’accueil**.
-- Chrome/Vivaldi Mac : bouton **Installer l’app** ou menu d’installation du site.
+- Chrome/Vivaldi Mac : menu d’installation du site dans le navigateur.
 - Safari Mac : **Fichier → Ajouter au Dock**.
 
 L’application s’ouvre dans sa propre fenêtre. Le Pi et les vidéos restent
@@ -24,8 +23,8 @@ des stockages de navigateur distincts ; choisir son profil sur la nouvelle origi
 Après une mise à jour, rouvrir/recharger l’application pour charger le nouveau
 client. Aucune relance automatique n’interrompt une vidéo en cours. Une PWA
 utilise les codecs et le lecteur du navigateur/OS : l’installation ne remplace
-pas un codec vidéo manquant. Le bouton affiche une aide si l’installation ou
-le certificat ne sont pas disponibles.
+pas un codec vidéo manquant. Le client web ne propose plus de bouton « Installer l’app » à partir de 0.7.10 ;
+les éventuelles actions d’installation appartiennent au navigateur.
 
 Les tests actuels couvrent Chromium macOS et des fixtures mobiles synthétiques.
 Une validation physique Safari iPhone et Chrome Pixel reste nécessaire.

@@ -118,8 +118,8 @@
         case "seek": return this.seek(c.position);
         case "jump": return this.seek((this.engine?.snapshot().position || 0) + c.seconds);
         case "speed": return this.setSpeed(c.speed);
-        case "audio": this.engine?.selectAudio(c.track_id); return this.view();
-        case "subtitle": this.engine?.selectSubtitle(c.track_id); return this.view();
+        case "audio": await this.engine?.selectAudio(c.track_id); return this.view();
+        case "subtitle": await this.engine?.selectSubtitle(c.track_id); return this.view();
         case "external_subtitle": await this.engine?.selectExternalSubtitle?.(c.id); return this.view();
         case "fullscreen": { const want = c.enabled ?? !this.fullscreen; const actual = await this.d.setFullscreen?.(want); this.fullscreen = typeof actual === "boolean" ? actual : want; return this.view(); }
         case "volume": this.engine?.setVolume(c.volume); return this.view();
@@ -179,7 +179,7 @@
       const engine = opening.engine;
       this.t0 = this.d.now();
       try {
-        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1 });
+        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1, subtitleLanguage: this.info.preferences?.subtitle_language, profileId: this.ctx.profile });
       } catch (e) {
         if (opening.cancelled) return;
         this.openError = e.message || "Lecture impossible.";
@@ -192,8 +192,8 @@
         const prefs = this.info.preferences || {};
         const tracks = engine.snapshot().tracks || [];
         const audio = pickTrack(tracks, prefs.audio_language, "Audio"), sub = pickTrack(tracks, prefs.subtitle_language, "Subtitle");
-        if (audio.id !== null) engine.selectAudio(audio.id);
-        engine.selectSubtitle(sub.id);
+        if (audio.id !== null) await engine.selectAudio(audio.id);
+        if (!engine.handlesSubtitlePreference) await engine.selectSubtitle(sub.id);
         if (audio.fallback) this.note = FALLBACK_NOTE;
         this.resume();
         this.timers.push(this.d.setInterval(() => this.heartbeat(), HEARTBEAT_MS));

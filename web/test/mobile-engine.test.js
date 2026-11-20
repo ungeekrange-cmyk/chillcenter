@@ -223,3 +223,62 @@ test("Safari's managed buffer can stop bulk fetching without starving the first 
   await engine.pump();
   assert.equal(end, 90);
 });
+
+test("a late sidecar response cannot restore subtitles after Off, even when fetch ignores abort", async () => {
+  const engine = engineWith({});
+  const external = { id: "sub-aa", title: "sample.srt", language: "fr" };
+  engine.external = [external]; engine.src = { setSubtitle() {} };
+  engine.subtitleBase = "/subtitles"; engine.subtitleQuery = "session=fixture&generation=7";
+  let resolve;
+  engine.d.fetch = () => new Promise(r => { resolve = r; });
+  let selected = null, added = 0;
+  engine.captions = { select: t => { selected = t; }, add: rows => { added += rows.length; } };
+  const pending = engine.selectExternalSubtitle(external.id);
+  await engine.selectSubtitle(null);
+  resolve({ ok: true, headers: { get: () => null }, text: async () => "1\n00:00:01,000 --> 00:00:02,000\nTardif" });
+  await pending;
+  assert.equal(selected, null); assert.equal(added, 0); assert.equal(engine.activeExternal, null);
+});
+
+test("an out-of-buffer seek reanchors the native clock after clearing old ranges and retains external cues", async () => {
+  const engine = engineWith({});
+  engine.video = { currentTime: 1 }; engine.src = {};
+  engine.activeExternal = { id: "sub-aa" };
+  engine.streams = [{ sb: {} }]; engine.cache = { forward: 90 };
+  let cleared = 0, pumpedAt;
+  engine.captions = { clear: () => { cleared++; } };
+  engine.removeRange = async () => { engine.video.currentTime = 8.7; };
+  engine.rewind = async () => {};
+  engine.pump = async () => { pumpedAt = engine.video.currentTime; };
+  await engine.reposition(1);
+  assert.equal(pumpedAt, 1); assert.equal(cleared, 0);
+  assert.equal(engine.repositioning, false);
+});
+
+test("native seek corrections during a buffer reset cannot replace the user's requested target", async () => {
+  const engine = engineWith({}), events = new Map();
+  engine.video = { currentTime: 1, addEventListener: (name, fn) => events.set(name, fn) };
+  engine.started = true; engine.streams = [{ sb: {} }];
+  engine.cache = { forward: 90 }; engine.isBuffered = () => false;
+  engine.bind();
+  let adjusted = false, pumpedAt;
+  engine.removeRange = async () => {
+    if (!adjusted) { adjusted = true; engine.video.currentTime = 8.7; events.get("seeking")(); }
+  };
+  engine.rewind = async () => {};
+  engine.pump = async () => { pumpedAt = engine.video.currentTime; };
+  await engine.reposition(1); await engine.repositionJob;
+  assert.equal(pumpedAt, 1);
+});
+
+test("a newer explicit user seek still replaces a reset already queued", async () => {
+  const engine = engineWith({});
+  engine.video = { currentTime: 0 }; engine.movie = { duration: 100 };
+  engine.started = true; engine.streams = [{ sb: {} }]; engine.isBuffered = () => false;
+  engine.removeRange = async () => {}; engine.rewind = async () => {};
+  let pumpedAt;
+  engine.pump = async () => { pumpedAt = engine.video.currentTime; };
+  engine.seek(1); engine.seek(12);
+  await engine.repositionJob;
+  assert.equal(pumpedAt, 12); assert.equal(engine.repositioning, false);
+});

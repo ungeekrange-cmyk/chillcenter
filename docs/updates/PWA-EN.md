@@ -9,10 +9,9 @@ For an installable PWA and screen wake lock, use the existing HTTPS endpoint:
 A page-only certificate exception may not allow service workers; verify the
 certificate and establish trust on the device. Do not disable TLS verification.
 
-- Android Chrome: **Install app** in Chill Center, then the native prompt.
-  If the prompt is not available yet, use ⋮ → **Install app**.
+- Android Chrome: browser menu ⋮ → **Install app**, when available.
 - iPhone/iPad Safari: **Share → Add to Home Screen**.
-- Mac Chrome/Vivaldi: **Install app** or the browser’s site installation menu.
+- Mac Chrome/Vivaldi: the browser’s site installation menu.
 - Mac Safari: **File → Add to Dock**.
 
 The app opens in its own window. The Pi and videos remain required: movies,
@@ -21,8 +20,8 @@ HTTP and HTTPS have separate browser storage; select your profile on the new ori
 
 After an update, reopen/reload the app to load the new client. An update never
 automatically reloads an ongoing video. A PWA uses the browser/OS codecs and
-native player; installation does not provide a missing video codec. The install
-button shows guidance if installation or certificate trust is unavailable.
+native player; installation does not provide a missing video codec. The web client no longer has an in-app Install button starting with 0.7.10;
+any installation action belongs to the browser.
 
 Current tests cover macOS Chromium and synthetic mobile fixtures. Physical
 Safari iPhone and Chrome Pixel validation is still required.

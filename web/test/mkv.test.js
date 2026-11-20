@@ -7,7 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const Mp4 = require("../src/mp4.js");
-const { MkvSource, blockFrames } = require("../src/mkv.js");
+const { MkvSource, blockFrames, buildTrack } = require("../src/mkv.js");
 
 const have = spawnSync("ffmpeg", ["-version"]).status === 0;
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chill-mkv-"));
@@ -99,6 +99,12 @@ test("truncated MKV is a plain error", async () => {
   await assert.rejects(new MkvSource({ size: 10, read: async (a, b) => new Uint8Array(b - a + 1) }).open(), /MKV/);
 });
 
+test("BCP-47 language takes precedence over a contradictory legacy subtitle language", () => {
+  const track = buildTrack({ number: 3, type: 17, codecId: "S_TEXT/UTF8", language: "eng", bcp47: "fr-CA" });
+  assert.equal(track.language, "fr-ca");
+  assert.equal(track.textSupported, true);
+});
+
 test("seeking uses video cues rather than later audio or subtitle cues", () => {
   const element = (id, data) => {
     const hex = id.toString(16).padStart(Math.ceil(id.toString(16).length / 2) * 2, "0");
@@ -117,4 +123,24 @@ test("seeking uses video cues rather than later audio or subtitle cues", () => {
     point(2000, position(1, 50)),
   ]);
   assert.deepEqual(src.parseCues(cues), [{ ms: 1000, pos: 110 }, { ms: 2000, pos: 150 }]);
+});
+
+test("MKV exposes UTF-8 subtitle languages and drains only the selected track, including a cue spanning resume", { skip: !have }, async () => {
+  const fr = path.join(dir, "captions-fr.srt"), en = path.join(dir, "captions-en.srt");
+  fs.writeFileSync(fr, "1\n00:00:01,000 --> 00:00:07,000\nUne légende française\n");
+  fs.writeFileSync(en, "1\n00:00:01,000 --> 00:00:07,000\nAn English caption\n");
+  const file = make("captions.mkv", ["-i", fr, "-i", en, "-map", "0:v", "-map", "1:a", "-map", "2:s", "-map", "3:s", "-c:v", "libx264", "-g", "48", "-pix_fmt", "yuv420p", "-c:a", "aac", "-c:s", "srt", "-metadata:s:s:0", "language=fre", "-metadata:s:s:0", "title=Français", "-metadata:s:s:1", "language=eng", "-cluster_time_limit", "1000"]);
+  const src = new MkvSource(reader(file));
+  const movie = await src.open(), subtitles = movie.tracks.filter(t => t.kind === "subtitle");
+  assert.equal(subtitles.length, 2); assert.equal(subtitles[0].language, "fr");
+  assert.equal(subtitles[0].name, "Français"); assert.equal(subtitles[0].textSupported, true);
+  src.setActive(movie.tracks.filter(t => t.kind !== "subtitle").map(t => t.id));
+  src.setSubtitle(subtitles[0].id); await src.seek(5);
+  const packets = [];
+  for (let i = 0; i < 10 && !packets.length && !src.eof; i++) { await src.ingest(); packets.push(...src.drainSubtitles()); }
+  assert(packets.some(p => p.ms <= 5000 && p.ms + p.durationMs > 5000));
+  assert(packets.every(p => p.track === subtitles[0].id));
+  assert.match(new TextDecoder().decode(packets[0].data), /légende française/);
+  src.setSubtitle(null); await src.seek(5); await src.ingest();
+  assert.deepEqual(src.drainSubtitles(), []);
 });
