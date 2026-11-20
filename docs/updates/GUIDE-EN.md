@@ -2,7 +2,7 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-Mac release `mac-v0.7.8` provides Mac0.7.8/build18; `server-v0.7.7` publishes server0.7.7 and `web-v0.7.9` publishes web0.7.9 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
+Mac release `mac-v0.7.8` provides Mac0.7.8/build18; `server-v0.7.7` publishes server0.7.7 and `web-v0.7.10` publishes web0.7.10 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
 
 ## Four components
 
@@ -62,7 +62,7 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives: v0.7.8 for Mac and server, web-v0.7.9 for web, with themes0.7.1 in v0.7.3, not GitHub's automatically
+Use the complete distribution archives: v0.7.8 for Mac and server, web-v0.7.10 for web, with themes0.7.1 in v0.7.3, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.

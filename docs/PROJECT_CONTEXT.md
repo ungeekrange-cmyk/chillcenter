@@ -1,6 +1,6 @@
 # Contexte du projet
 
-## 20 novembre 2026 — candidat web0.7.10 sous-titres
+## 20 novembre 2026 — web0.7.10 publié, installation en attente
 
 35 pistes texte de Projet dernière chance auparavant ignorées ; deux françaises
 identifiées. TextTrack/VTTCue natifs, UTF8/ASS/SSA/WebVTT, fichiers externes
@@ -10,7 +10,10 @@ Bouton Installer retiré ; aucune modification HTTPS/DNS/confiance système.
 400 JS,28 docs et parcours Chrome complet sous-titres/natif/mobile/coque PASS.
 Revue indépendante APPROVED_SCOPED. Vrai MKV testé par plages SSH isolées,
 sans bail du foyer ni écriture de profil. Téléphones physiques non vérifiés.
-Candidat non publié ; versions installées restent celles ci-dessous.
+Source `0cf614adaedce867aabdff40990223b50b6bea64` fusionnée main ; tag
+`web-v0.7.10`/séquence11 public, six assets signés vérifiés et CodeQL JS réussi.
+Installation bloquée par busy=true du Pi ; fermeture des lecteurs demandée.
+Versions installées restent celles ci-dessous, dont web0.7.9.
 [BUG0144](debug/BUG-0144-web-subtitles.md), [ADR0044](architecture/decisions/ADR-0044-web-native-subtitles.md).
 
 ## 20 novembre 2026 — web0.7.9 natif/PWA publié et installé

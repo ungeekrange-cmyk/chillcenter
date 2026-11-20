@@ -2,15 +2,15 @@
 
 **Français** | [English](README.en.md)
 
-Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive installable sur l’écran d’accueil (PWA).
+Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive.
 
-**Versions publiées : Mac 0.7.8 · serveur 0.7.7 · web 0.7.9 · thèmes 0.7.1.**
-Le **client web0.7.9** corrige les reprises MP4/MKV et le démarrage du lecteur natif, et ajoute l’installation PWA avec aide Android/iPhone/Mac. Publié et installé sur le Pi le20novembre2026. Recharger les onglets ; HTTPS de confiance requis pour installer. [Notes web FR/EN](docs/releases/REL-WEB-0.7.9.md) · [Installer la PWA](docs/updates/PWA-FR.md).
+**Versions publiées : Mac 0.7.8 · serveur 0.7.7 · web 0.7.10 · thèmes 0.7.1.**
+Le **client web0.7.10** affiche les sous-titres texte intégrés MKV et externes SRT/VTT/ASS/SSA, avec choix de langue, Désactivés et sauts corrigés. Bouton Installer retiré. Publié le20novembre2026 ; installation sur le Pi en attente de fin d’activité. [Notes web FR/EN](docs/releases/REL-WEB-0.7.10.md).
 
 [Changements 0.7.8 FR/EN](docs/releases/REL-0.7.8.md) : Reprendre affiche la
 progression réelle et les épisodes vus sur le total de la saison. La coche
 retire le film ou la saison affichée après sauvegarde, avec fondu et glissement.
-Ces fonctions restent disponibles dans le client web 0.7.9.
+Ces fonctions restent disponibles dans le client web 0.7.10.
 
 ### Paquets actuellement publiés
 
@@ -29,7 +29,7 @@ décrivent leur calendrier et priorité.
 | --- | --- |
 | Mac Apple Silicon 0.7.8, build 18 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.8/Chill-Center-0.7.8-macos-arm64.dmg), macOS 15+ |
 | Serveur Linux ARM64 0.7.7 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.8/Chill-Center-server-0.7.7-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
-| Client web/PWA 0.7.9 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.9/Chill-Center-web-0.7.9-install.zip), serveur 0.7.7 pour Accueil et les jaquettes TMDB |
+| Client web 0.7.10 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.10/Chill-Center-web-0.7.10-install.zip), serveur 0.7.7 pour Accueil et les jaquettes TMDB |
 | Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)

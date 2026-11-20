@@ -2,7 +2,7 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La release Mac `mac-v0.7.8` fournit Mac0.7.8/build18 ; `server-v0.7.7` publie serveur0.7.7 et `web-v0.7.9` publie web0.7.9 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
+La release Mac `mac-v0.7.8` fournit Mac0.7.8/build18 ; `server-v0.7.7` publie serveur0.7.7 et `web-v0.7.10` publie web0.7.10 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
 
 ## Quatre composants
 
@@ -66,7 +66,7 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution : v0.7.8 pour Mac et le serveur, web-v0.7.9 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
+Utiliser les archives complètes de distribution : v0.7.8 pour Mac et le serveur, web-v0.7.10 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
