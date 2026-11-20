@@ -142,7 +142,7 @@
       } catch (e) {
         if (e.status === 409 && e.code === "PLAYBACK_ACTIVE") {
           const offer = await this.d.request("POST", this.api("/playback/transfer/propose"), { body: { target } });
-          this.transfer = { token: offer.token, confirmed: false, remaining_ms: offer.expires_in_ms };
+          this.transfer = { token: offer.token, confirmed: false, remaining_ms: offer.expires_in_ms, continuation: offer.active?.media_id === target.media_id };
           return this.view();
         }
         throw e;
@@ -167,10 +167,10 @@
     // The lease is held and the title is known: answer at once with a "loading" view and open the file (container
     // index, first fragments) in the background. A slow open used to keep the PREVIOUS video's title on screen and
     // froze the player controls until it finished (BUG-0070). Failures reach the UI through the next `status` poll.
-    async begin(grant) {
+    async begin(grant, transfer = null) {
       this.clearTransfer(); this.transfer = null;
       this.lease = grant.lease; this.serverPaused = false; this.clock = new Clock.WatchClock(); this.lastSeek = false;
-      const opening = { engine: this.d.engineFactory(), cancelled: false, promise: null };
+      const opening = { engine: this.d.engineFactory(), cancelled: false, promise: null, continuation: Boolean(transfer?.continuation) };
       this.opening = opening; this.openError = null;
       opening.promise = this.lastOpen = this.finishOpening(opening, grant);   // lastOpen: settled-state hook for tests
       return this.view();
@@ -179,7 +179,7 @@
       const engine = opening.engine;
       this.t0 = this.d.now();
       try {
-        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1, subtitleLanguage: this.info.preferences?.subtitle_language, profileId: this.ctx.profile });
+        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: grant.personal?.watched && !opening.continuation ? 0 : (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1, subtitleLanguage: this.info.preferences?.subtitle_language, profileId: this.ctx.profile });
       } catch (e) {
         if (opening.cancelled) return;
         this.openError = e.message || "Lecture impossible.";

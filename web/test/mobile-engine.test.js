@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const { MseEngine } = require("../src/mse-engine.js");
+const { MseEngine, initialSubtitle } = require("../src/mse-engine.js");
 
 function browserRoot({ mediaSource, managedMediaSource } = {}) {
   const root = {
@@ -281,4 +281,18 @@ test("a newer explicit user seek still replaces a reset already queued", async (
   engine.seek(1); engine.seek(12);
   await engine.repositionJob;
   assert.equal(pumpedAt, 12); assert.equal(engine.repositioning, false);
+});
+
+
+test("initial captions retain a lone untagged track without guessing its language", () => {
+  const unknown = { id: 3, language: "und", flagDefault: 1 };
+  const english = { id: 4, language: "en", flagDefault: 1 };
+  const french = { id: 5, language: "fr-FR", flagDefault: 0 };
+  assert.equal(initialSubtitle([unknown], "fr"), unknown);
+  assert.equal(initialSubtitle([unknown], ""), null, "Off stays off");
+  assert.equal(initialSubtitle([unknown], "off"), null);
+  assert.equal(initialSubtitle([english], "fr"), null, "known mismatch stays off");
+  assert.equal(initialSubtitle([{ ...unknown, flagDefault: 0 }], "fr").id, 3, "container default does not erase the profile subtitle preference");
+  assert.equal(initialSubtitle([unknown, { ...unknown, id: 8 }], "fr"), null, "ambiguous tracks stay off");
+  assert.equal(initialSubtitle([unknown, french], "fr"), french, "exact language wins");
 });

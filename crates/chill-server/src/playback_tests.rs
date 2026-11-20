@@ -632,13 +632,21 @@ async fn two_profiles_range_and_active_conflict() {
 async fn transfer_endpoints_require_confirmation_then_ack_once() {
     let f = fixture().await;
     let old = grant(&f, 0, 0).await;
+    f.database
+        .call({
+            let profile = f.profiles[0].clone();
+            let media = f.media[0].clone();
+            move |store| store.set_watched(&profile, &media, true)
+        })
+        .await
+        .unwrap();
     let base = format!(
         "/api/2026-10-14/profiles/{}/playback/transfer",
         f.profiles[0]
     );
     let proposal = TransferProposal {
         target: AcquirePlayback {
-            media_id: f.media[1].clone(),
+            media_id: f.media[0].clone(),
             device_id: uuid::Uuid::new_v4().to_string(),
             context: Default::default(),
         },
@@ -753,6 +761,22 @@ async fn transfer_endpoints_require_confirmation_then_ack_once() {
     assert_eq!(activated["phase"], "activated");
     assert!(activated["personal"].is_object());
     assert_eq!(
+        activated["personal"]["position_ms"], 12_345,
+        "a transfer continues an explicit rewatch"
+    );
+    let (status, status_view) = json_reply(
+        &f.app,
+        "GET",
+        &format!("{base}/status?token={token}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{status_view}");
+    assert_eq!(
+        status_view["personal"]["position_ms"], 12_345,
+        "a reconnect continues the transferred rewatch"
+    );
+    assert_eq!(
         json_reply(
             &f.app,
             "POST",
@@ -762,6 +786,269 @@ async fn transfer_endpoints_require_confirmation_then_ack_once() {
         .await
         .0,
         StatusCode::CONFLICT
+    );
+}
+
+#[tokio::test]
+async fn transfer_to_a_different_watched_media_restarts_but_same_media_continues() {
+    let f = fixture().await;
+    let profile = f.profiles[0].clone();
+    let progress_path = format!("/api/2026-10-14/profiles/{profile}/playback/progress");
+    let release_path = format!("/api/2026-10-14/profiles/{profile}/playback/release");
+
+    // Preserve a real partial position while making B watched, as the UI does.
+    let prior = grant(&f, 0, 1).await;
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &progress_path,
+            serde_json::to_value(event(&prior, 1, 42_000)).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &release_path,
+            serde_json::to_value(ReleasePlayback {
+                lease: ctrl(&prior),
+                progress: None
+            })
+            .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    f.database
+        .call({
+            let profile = profile.clone();
+            let media = f.media[1].clone();
+            move |store| store.set_watched(&profile, &media, true)
+        })
+        .await
+        .unwrap();
+
+    let old = grant(&f, 0, 0).await;
+    let base = format!("/api/2026-10-14/profiles/{profile}/playback/transfer");
+    let (status, offer) = json_reply(
+        &f.app,
+        "POST",
+        &format!("{base}/propose"),
+        serde_json::to_value(TransferProposal {
+            target: AcquirePlayback {
+                media_id: f.media[1].clone(),
+                device_id: uuid::Uuid::new_v4().to_string(),
+                context: Default::default(),
+            },
+        })
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{offer}");
+    let token = offer["token"].as_str().unwrap().to_owned();
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("{base}/confirm"),
+            serde_json::to_value(TransferConfirmation {
+                token: token.clone()
+            })
+            .unwrap(),
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, activated) = json_reply(
+        &f.app,
+        "POST",
+        &format!("{base}/ack"),
+        serde_json::to_value(TransferAck {
+            token: token.clone(),
+            lease: ctrl(&old),
+            progress: event(&old, 1, 12_345),
+        })
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{activated}");
+    assert_eq!(
+        activated["personal"]["position_ms"], 0,
+        "a new watched target must begin from zero"
+    );
+    let (status, view) = json_reply(
+        &f.app,
+        "GET",
+        &format!("{base}/status?token={token}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(
+        view["personal"]["position_ms"], 0,
+        "the reconnect snapshot has the same new-target semantics"
+    );
+}
+
+#[tokio::test]
+async fn playback_grants_restart_watched_or_measured_finished_without_erasing_history() {
+    let f = fixture().await;
+    let profile = f.profiles[0].clone();
+
+    let watched = grant(&f, 0, 0).await;
+    let progress_path = format!("/api/2026-10-14/profiles/{profile}/playback/progress");
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &progress_path,
+            serde_json::to_value(event(&watched, 1, 42_000)).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("/api/2026-10-14/profiles/{profile}/playback/release"),
+            serde_json::to_value(ReleasePlayback {
+                lease: ctrl(&watched),
+                progress: None
+            })
+            .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    f.database
+        .call({
+            let profile = profile.clone();
+            let media = f.media[0].clone();
+            move |store| store.set_watched(&profile, &media, true)
+        })
+        .await
+        .unwrap();
+    let restarted = grant(&f, 0, 0).await;
+    assert_eq!(restarted.personal.position_ms, 0);
+    let durable = f
+        .database
+        .call({
+            let profile = profile.clone();
+            let media = f.media[0].clone();
+            move |store| store.personal_state(&profile, &media)
+        })
+        .await
+        .unwrap();
+    assert!(durable.watched);
+    assert_eq!(durable.position_ms, 42_000, "grant must not erase history");
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("/api/2026-10-14/profiles/{profile}/playback/release"),
+            serde_json::to_value(ReleasePlayback {
+                lease: ctrl(&restarted),
+                progress: None
+            })
+            .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+
+    let partial = grant(&f, 0, 1).await;
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &progress_path,
+            serde_json::to_value(event(&partial, 1, 42_000)).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("/api/2026-10-14/profiles/{profile}/playback/release"),
+            serde_json::to_value(ReleasePlayback {
+                lease: ctrl(&partial),
+                progress: None
+            })
+            .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let resumed_partial = grant(&f, 0, 1).await;
+    assert_eq!(
+        resumed_partial.personal.position_ms, 42_000,
+        "partial unwatched resume remains"
+    );
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("/api/2026-10-14/profiles/{profile}/playback/release"),
+            serde_json::to_value(ReleasePlayback {
+                lease: ctrl(&resumed_partial),
+                progress: None
+            })
+            .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+
+    let finished = grant(&f, 0, 1).await;
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &progress_path,
+            serde_json::to_value(event(&finished, 1, 100_000)).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &format!("/api/2026-10-14/profiles/{profile}/playback/release"),
+            serde_json::to_value(ReleasePlayback {
+                lease: ctrl(&finished),
+                progress: None
+            })
+            .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let replay = grant(&f, 0, 1).await;
+    assert!(
+        !replay.personal.watched,
+        "the exact-end rule is independent of watch credit"
+    );
+    assert_eq!(
+        replay.personal.position_ms, 0,
+        "measured exact end restarts"
     );
 }
 

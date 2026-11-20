@@ -1,5 +1,18 @@
 # Contexte du projet
 
+## 20 novembre 2026 — candidat relance et Avatar
+
+Serveur0.7.8/séquence9 et web0.7.11/séquence12 réservés, non publiés.
+Lecture fraîche vue/EOF repart0 sans mutation durable ; reprise partielle et
+continuation transférée conservées, cible différente normalisée. Sous-titre
+unique sans langue actif avec préférence ; Off et ambiguïtés respectés.
+250 tests Rust,341 JS,28 docs et Clippy strict PASS. Vrais fichiers Avatar et
+Projet dernière chance vérifiés via Chrome isolé/plages SSH bornées, aucun bail
+ni progression du foyer modifiés. Revue finale en cours ; Mac0.7.8 compatible.
+[BUG0145](debug/BUG-0145-replay-and-untagged-subtitles.md),
+[ADR0045](architecture/decisions/ADR-0045-playback-start-state.md).
+
+
 ## 20 novembre 2026 — web0.7.10 sous-titres livré
 
 Source `0cf614adaedce867aabdff40990223b50b6bea64` fusionnée main, web0.7.10/séquence11

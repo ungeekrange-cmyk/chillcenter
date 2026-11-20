@@ -1,5 +1,8 @@
 # Index des décisions techniques
 
+[ADR0045](ADR-0045-playback-start-state.md) : état initial de lecture distinct de l’historique durable et de la continuation transférée.
+
+
 [ADR0043](ADR-0043-web-wake-lock-recovery.md) : récupération bornée du maintien éveillé web en lecture continue, complète ADR0036.
 
 [ADR0042](ADR-0042-home-progress-controls.md), IMPLEMENTED_LOCAL,9 novembre2026 :

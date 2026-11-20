@@ -1,5 +1,8 @@
 # Journal des bugs, observations et risques
 
+[BUG0145](BUG-0145-replay-and-untagged-subtitles.md) : nouvelle lecture vue/EOF et unique piste sans langue, correctif local en cours de vérification.
+
+
 [BUG0142](BUG-0142-web-wake-lock-recovery.md) : récupération bornée du maintien éveillé web après révocation ; tests de régression et vraie API Chromium vérifiés, web0.7.8 publié/installé sur le Pi.
 
 [BUG0141](BUG-0141-home-progress-and-watched-controls.md) : Reprendre sans taux,

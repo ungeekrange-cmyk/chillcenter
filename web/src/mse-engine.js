@@ -33,6 +33,17 @@
     return "unknown";
   }
 
+  // Respect Off and known languages. A lone text track without a language
+  // is still useful (common in subtitled releases); do not invent its language.
+  function initialSubtitle(tracks, preferred) {
+    const wanted = String(preferred || "").toLowerCase();
+    if (!wanted || wanted === "off") return null;
+    const match = tracks.find(t => (t.language || "").toLowerCase().startsWith(wanted.slice(0, 2)));
+    if (match) return match;
+    const only = tracks.length === 1 ? tracks[0] : null;
+    return only && (!only.language || only.language.toLowerCase() === "und") ? only : null;
+  }
+
   class MseEngine {
     constructor(host, deps) { this.host = host; this.d = deps; this.streams = []; this.epoch = 0; this.closed = false; this.errorText = null; this.notice = null; this.rate = 1; this.hardware = "no"; this.captionEpoch = 0; this.external = []; this.handlesSubtitlePreference = true; }
 
@@ -64,9 +75,12 @@
         : kind === "mkv" ? new Mkv.MkvSource(this.reader, { audio: root.ChillAudio || null })
           : new Avi.AviSource(this.reader, { audio: root.ChillAudio || null, transcodeMp3: !nativeMp3 });
       this.movie = await this.src.open(); alive();
+      // A legacy saved position at EOF cannot prime a playable buffer.
+      // Match the native player: only the last 250 ms count as the end.
+      if (this.movie.duration > 0 && startAt >= this.movie.duration - 0.25) startAt = 0;
       this.subtitleTracks = this.movie.tracks.filter(t => t.kind === "subtitle" && t.textSupported);
       this.captionLanguage = String(subtitleLanguage || "").toLowerCase();
-      this.activeSubtitle = this.subtitleTracks.find(t => this.captionLanguage && (t.language || "").toLowerCase().startsWith(this.captionLanguage.slice(0, 2))) || null;
+      this.activeSubtitle = initialSubtitle(this.subtitleTracks, this.captionLanguage);
       this.src.setSubtitle?.(this.activeSubtitle?.id ?? null);
       // MP3 is not accepted inside audio/mp4 everywhere (Chromium builds): fall back to a bare MPEG audio stream.
       for (const t of this.movie.tracks) {
@@ -423,7 +437,7 @@
     }
   }
 
-  const api = { MseEngine, sniffContainer };
+  const api = { MseEngine, sniffContainer, initialSubtitle };
   if (typeof module !== "undefined") module.exports = api;
   else {
     // Prefer the established MSE implementation where both exist. iPhone

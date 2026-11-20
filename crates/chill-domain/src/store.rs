@@ -843,6 +843,28 @@ impl Store {
         state(&self.personal, profile_id, stable_id)
     }
 
+    /// Start a completed/watched video again without erasing its saved history.
+    /// This is grant-only state; partial, unwatched resumes remain unchanged.
+    pub fn playback_start_state(
+        &self,
+        profile_id: &str,
+        stable_id: &str,
+    ) -> Result<PersonalState, String> {
+        let mut personal = self.personal_state(profile_id, stable_id)?;
+        let duration: Option<i64> = self.personal.query_row(
+            "SELECT duration_ms FROM cc_resume_measurement WHERE profile_id=?1 AND stable_media_id=?2",
+            params![profile_id, stable_id],
+            |row| row.get(0),
+        ).optional().map_err(db_error)?;
+        if personal.watched
+            || duration
+                .is_some_and(|ms| ms > 0 && personal.position_ms >= (ms as u64).saturating_sub(250))
+        {
+            personal.position_ms = 0;
+        }
+        Ok(personal)
+    }
+
     /// Compact profile-only read, independent of catalogue delta revisions.
     /// Legacy resumes without a measured duration are intentionally omitted.
     pub fn playback_progress(
@@ -3650,6 +3672,52 @@ mod tests {
                 .is_err()
         );
     }
+    #[test]
+    fn playback_start_state_restarts_only_watched_or_measured_end_without_writes() {
+        let mut s = store();
+        let p = s.create_profile("Restart").unwrap();
+        let other = s.create_profile("Other").unwrap();
+        let id = s.catalog(&p.id).unwrap()[0].id.clone();
+        s.personal.execute("INSERT INTO cc_profile_state(profile_id,stable_media_id,position_ms,final_watched_ms,watched,rating) VALUES(?1,?2,95000,3000,0,4)", params![p.id,id]).unwrap();
+        let saved = s.personal_state(&p.id, &id).unwrap();
+        assert_eq!(
+            s.playback_start_state(&p.id, &id).unwrap().position_ms,
+            95000
+        );
+        s.personal.execute("INSERT INTO cc_resume_measurement(profile_id,stable_media_id,duration_ms) VALUES(?1,?2,100000)", params![p.id,id]).unwrap();
+        assert_eq!(
+            s.playback_start_state(&p.id, &id).unwrap().position_ms,
+            95000,
+            "95 percent is not the end"
+        );
+        for (position, expected) in [(99749, 99749), (99750, 0), (100000, 0), (100100, 0)] {
+            s.personal.execute("UPDATE cc_profile_state SET position_ms=?3 WHERE profile_id=?1 AND stable_media_id=?2", params![p.id,id,position]).unwrap();
+            let before = s.personal_state(&p.id, &id).unwrap();
+            let grant = s.playback_start_state(&p.id, &id).unwrap();
+            assert_eq!(grant.position_ms, expected);
+            assert_eq!(grant.final_watched_ms, saved.final_watched_ms);
+            assert_eq!(grant.rating, saved.rating);
+            assert!(!grant.watched);
+            assert_eq!(
+                s.personal_state(&p.id, &id).unwrap(),
+                before,
+                "grant does not mutate history"
+            );
+        }
+        s.personal.execute("UPDATE cc_profile_state SET position_ms=12000,watched=1 WHERE profile_id=?1 AND stable_media_id=?2", params![p.id,id]).unwrap();
+        let before = s.personal_state(&p.id, &id).unwrap();
+        let grant = s.playback_start_state(&p.id, &id).unwrap();
+        assert_eq!(grant.position_ms, 0);
+        assert!(grant.watched);
+        assert_eq!(s.personal_state(&p.id, &id).unwrap(), before);
+        assert_eq!(
+            s.playback_start_state(&other.id, &id).unwrap().position_ms,
+            0
+        );
+        assert!(s.playback_start_state("missing", &id).is_err());
+        assert!(s.playback_start_state(&p.id, "missing").is_err());
+    }
+
     #[test]
     fn measured_progress_is_exact_profile_scoped_and_independent_of_catalogue_sync() {
         let mut s = store();

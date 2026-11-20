@@ -167,3 +167,25 @@ test("leaving the player (or starting another video) during the open cancels it"
   third.release(); await Promise.resolve();
   assert.equal(h.player.engine, null, "a late open never resurrects a stopped player");
 });
+
+
+test("fresh Play restarts a watched partial position returned by an older server", async () => {
+  const h = harness({ acquire: () => ({ lease: lease(), personal: { position_ms: 12000, watched: true } }) });
+  await h.cmd({ action: "start", media_id: M, context: { kind: "standalone", id: null } });
+  assert.deepEqual(h.engine.log[0], ["open", 0]);
+});
+
+for (const sameMedia of [true, false]) test(`watched transfer ${sameMedia ? "continues the same media" : "restarts a different target"} with an older server`, async () => {
+  const h = harness({ acquire: () => { throw Object.assign(new Error("active"), { status: 409, code: "PLAYBACK_ACTIVE" }); } });
+  const request = h.player.d.request;
+  h.player.d.request = async (method, path, options) => {
+    if (path.endsWith("/transfer/propose")) return { token: "transfer", expires_in_ms: 20000, active: lease({ media_id: sameMedia ? M : N }) };
+    if (path.endsWith("/transfer/status")) return { phase: "activated", lease: lease(), personal: { watched: true, position_ms: 12000 } };
+    return request(method, path, options);
+  };
+  await h.cmd({ action: "start", media_id: M, context: { kind: "standalone", id: null } });
+  await h.cmd({ action: "confirm_transfer" });
+  await h.intervals[0]();
+  await h.player.lastOpen;
+  assert.deepEqual(h.engine.log[0], ["open", sameMedia ? 12 : 0]);
+});

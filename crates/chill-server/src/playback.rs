@@ -211,13 +211,18 @@ struct Offer {
     stream: StreamLease,
     expires: Instant,
 }
+#[derive(Clone)]
+struct CompletedTransfer {
+    status: TransferStatus,
+    continues_same_media: bool,
+}
 struct LeaseBook {
     epoch: String,
     generation: u64,
     entries: BTreeMap<String, Entry>,
     offers: BTreeMap<String, Offer>,
     #[allow(dead_code)]
-    completed: BTreeMap<String, TransferStatus>,
+    completed: BTreeMap<String, CompletedTransfer>,
 }
 #[allow(dead_code)]
 impl LeaseBook {
@@ -524,6 +529,7 @@ impl LeaseBook {
             .get(&profile)
             .expect("located pending transfer");
         let pending = entry.pending.as_ref().expect("located pending transfer");
+        let continues_same_media = entry.lease.media_id == pending.target.media_id;
         if !pending.acknowledged && now < pending.deadline {
             return Err("TRANSFER_PENDING");
         }
@@ -538,12 +544,15 @@ impl LeaseBook {
         let lease = self.acquire(profile, pending.target, pending.stream, now)?;
         self.completed.insert(
             token.into(),
-            TransferStatus {
-                token: token.into(),
-                phase,
-                remaining_ms: lease.remaining_ms,
-                lease: Some(lease.clone()),
-                personal: None,
+            CompletedTransfer {
+                status: TransferStatus {
+                    token: token.into(),
+                    phase,
+                    remaining_ms: lease.remaining_ms,
+                    lease: Some(lease.clone()),
+                    personal: None,
+                },
+                continues_same_media,
             },
         );
         while self.completed.len() > MAX_TRANSFER_TOKENS {
@@ -559,15 +568,16 @@ impl LeaseBook {
         token: &str,
         now: Instant,
     ) -> Result<TransferStatus, Failure> {
-        if let Some(status) = self.completed.get(token) {
-            if status
+        if let Some(completed) = self.completed.get(token) {
+            if completed
+                .status
                 .lease
                 .as_ref()
                 .is_none_or(|lease| lease.profile_id != profile)
             {
                 return Err("TRANSFER_INVALID");
             }
-            return Ok(status.clone());
+            return Ok(completed.status.clone());
         }
         let pending = self
             .entries
@@ -576,7 +586,11 @@ impl LeaseBook {
             .ok_or("TRANSFER_INVALID")?;
         if now >= pending.deadline {
             self.activate(token, now)?;
-            return self.completed.get(token).cloned().ok_or("TRANSFER_INVALID");
+            return self
+                .completed
+                .get(token)
+                .map(|completed| completed.status.clone())
+                .ok_or("TRANSFER_INVALID");
         }
         Ok(TransferStatus {
             token: token.into(),
@@ -585,6 +599,19 @@ impl LeaseBook {
             lease: None,
             personal: None,
         })
+    }
+
+    fn continues_same_media(&self, profile: &str, token: &str) -> Result<bool, Failure> {
+        let completed = self.completed.get(token).ok_or("TRANSFER_INVALID")?;
+        if completed
+            .status
+            .lease
+            .as_ref()
+            .is_none_or(|lease| lease.profile_id != profile)
+        {
+            return Err("TRANSFER_INVALID");
+        }
+        Ok(completed.continues_same_media)
     }
 }
 fn control(event: &Progress) -> PlaybackControl {
@@ -762,6 +789,17 @@ impl PlaybackService {
             .lock()
             .map_err(|_| failure("MEDIA_BUSY"))?
             .activate(token, Instant::now())
+            .map_err(failure)
+    }
+    pub(crate) fn transfer_continues_same_media(
+        &self,
+        profile: &str,
+        token: &str,
+    ) -> Result<bool, ApiError> {
+        self.book
+            .lock()
+            .map_err(|_| failure("MEDIA_BUSY"))?
+            .continues_same_media(profile, token)
             .map_err(failure)
     }
     fn event_receiver(
@@ -979,12 +1017,21 @@ async fn transfer_status(
 ) -> Result<Json<TransferStatus>, ApiError> {
     let mut status = s.playback.transfer_status(&profile, &query.token)?;
     if let Some(lease) = &status.lease {
+        let continues_same_media = s
+            .playback
+            .transfer_continues_same_media(&profile, &query.token)?;
         status.personal = Some(
             s.database
                 .call({
                     let p = profile.clone();
                     let m = lease.media_id.clone();
-                    move |store| store.personal_state(&p, &m)
+                    move |store| {
+                        if continues_same_media {
+                            store.personal_state(&p, &m)
+                        } else {
+                            store.playback_start_state(&p, &m)
+                        }
+                    }
                 })
                 .await?,
         );
@@ -1014,7 +1061,14 @@ async fn transfer_ack(
             let lease = service
                 .activate_transfer(&token)
                 .map_err(|e| e.1.to_string())?;
-            let personal = store.personal_state(&p, &lease.media_id)?;
+            let personal = if service
+                .transfer_continues_same_media(&p, &token)
+                .map_err(|e| e.1.to_string())?
+            {
+                store.personal_state(&p, &lease.media_id)?
+            } else {
+                store.playback_start_state(&p, &lease.media_id)?
+            };
             Ok(Ok(TransferStatus {
                 token,
                 phase: TransferPhase::Activated,
@@ -1209,7 +1263,7 @@ async fn acquire(
             if current_settings.revision != settings.revision {
                 return Ok(Err("MEDIA_CHANGED"));
             }
-            let personal = store.personal_state(&profile, &body.media_id)?;
+            let personal = store.playback_start_state(&profile, &body.media_id)?;
             let mut book = service.book.lock().map_err(|_| "INVALID_OPERATION")?;
             let lease = book.acquire(
                 profile,
