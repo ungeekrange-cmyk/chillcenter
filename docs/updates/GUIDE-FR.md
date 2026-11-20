@@ -190,3 +190,7 @@ Publié et installé via le mécanisme signé normal du Pi. Le verrou d’écran
 ## Client web0.7.9 — lecture native et PWA
 
 Publié et installé sur le Pi le20novembre2026. Reprises MP4/MKV et purge des images clés corrigées ; démarrage court puis cache en arrière-plan. PWA avec bouton Installer, icônes et aide adaptée ; HTTPS de confiance requis. Chrome et Vivaldi macOS vérifiés ; appareils physiques iPhone/Pixel à retester. [Guide PWA](PWA-FR.md) · [Notes](../releases/REL-WEB-0.7.9.md).
+
+## Client web0.7.10 — sous-titres natifs
+
+Publié et installé sur le Pi le20novembre2026. Pistes texte MKV et fichiers SRT/VTT/ASS/SSA externes sous bail ; langue/Off et sauts contrôlés. Bouton Installer retiré. Aucune modification HTTPS/DNS ou confiance système. Recharger le client. [Notes](../releases/REL-WEB-0.7.10.md).

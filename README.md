@@ -5,7 +5,7 @@
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive.
 
 **Versions publiées : Mac 0.7.8 · serveur 0.7.7 · web 0.7.10 · thèmes 0.7.1.**
-Le **client web0.7.10** affiche les sous-titres texte intégrés MKV et externes SRT/VTT/ASS/SSA, avec choix de langue, Désactivés et sauts corrigés. Bouton Installer retiré. Publié le20novembre2026 ; installation sur le Pi en attente de fin d’activité. [Notes web FR/EN](docs/releases/REL-WEB-0.7.10.md).
+Le **client web0.7.10** affiche les sous-titres texte intégrés MKV et externes SRT/VTT/ASS/SSA, avec choix de langue, Désactivés et sauts corrigés. Bouton Installer retiré. Publié et installé sur le Pi le20novembre2026 ; recharger les onglets. [Notes web FR/EN](docs/releases/REL-WEB-0.7.10.md).
 
 [Changements 0.7.8 FR/EN](docs/releases/REL-0.7.8.md) : Reprendre affiche la
 progression réelle et les épisodes vus sur le total de la saison. La coche

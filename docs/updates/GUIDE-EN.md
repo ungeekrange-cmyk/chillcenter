@@ -178,3 +178,7 @@ Published and installed through the Pi normal signed updater. A revoked screen w
 ## Web client0.7.9 — native playback and PWA
 
 Published and installed on the Pi on20November2026. Fixed MP4/MKV resume and keyframe eviction; short startup prime with background buffering. PWA install action, icons and device guidance; trusted HTTPS required. Chrome and Vivaldi macOS verified; physical iPhone/Pixel retesting remains pending. [PWA guide](PWA-EN.md) · [Notes](../releases/REL-WEB-0.7.9.md).
+
+## Web client0.7.10 — native subtitles
+
+Published and installed on the Pi on20November2026. Native MKV text and lease-bound external SRT/VTT/ASS/SSA captions, language/Off and safe seeks. Install button removed; no HTTPS/DNS/OS-trust changes. Reload the client. [Notes](../releases/REL-WEB-0.7.10.md).

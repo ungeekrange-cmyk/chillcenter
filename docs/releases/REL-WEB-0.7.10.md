@@ -5,7 +5,7 @@
 Publié le20novembre2026 : web0.7.10/séquence11, tag `web-v0.7.10`.
 Source immuable `0cf614adaedce867aabdff40990223b50b6bea64`. Six assets publics
 vérifiés, revues source/artefacts APPROVED_SCOPED et CodeQL JS exact réussi.
-Installation sur le Pi en attente de fin d’activité ; web0.7.9 y reste installé.
+Installation sur le Pi vérifiée le20novembre2026 : web0.7.10.
 Compatible avec Mac0.7.8, serveur0.7.7 et thèmes0.7.1.
 
 Le lecteur web affiche les pistes texte MKV UTF8/ASS/SSA/WebVTT et les fichiers
@@ -35,7 +35,7 @@ requis par l’anti-rollback. Aucun changement de schéma ou de fichiers NAS.
 Published on20November2026: web0.7.10/sequence11, tag `web-v0.7.10`,
 source `0cf614adaedce867aabdff40990223b50b6bea64`. All six public assets
 verified; independent source/artifact reviews and exact JS CodeQL passed.
-Pi installation is pending until activity ends; installed web remains0.7.9. Compatible with
+Pi installation verified on20November2026: web0.7.10. Compatible with
 Mac0.7.8, server0.7.7 and themes0.7.1.
 
 Native browser captions for MKV UTF8/ASS/SSA/WebVTT text and lease-bound external
@@ -54,3 +54,14 @@ validation remains pending; bitmap subtitles, MP4 tx3g and advanced ASS effects
 are not provided. Existing signed rollback packages/slots retained, no migration.
 
 [BUG0144](../debug/BUG-0144-web-subtitles.md) · [ADR0044](../architecture/decisions/ADR-0044-web-native-subtitles.md).
+
+## Vérification installée / Installed verification
+
+API normale du helper signé, identité/TLS/SPKI existants conservés. 90 ressources
+servies correspondent au ZIP publié ; thèmes indépendants inchangés.
+État de lecture personnel inchangé pendant l’installation : True.
+Aucune écriture QA/bail personnel, migration ou modification NAS.
+
+Installed through the normal signed helper, existing TLS/SPKI/identity retained.
+90 served files match the public payload. Themes and personal progress preserved.
+No QA household lease/write or migration.

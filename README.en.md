@@ -7,7 +7,7 @@ Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client.
 
 **Published versions: Mac 0.7.8 · server 0.7.7 · web 0.7.10 · themes 0.7.1.**
-**Web client0.7.10** adds native MKV text and external SRT/VTT/ASS/SSA subtitles, language/Off controls and safe seeks. The in-app Install button is removed. Published on20November2026; Pi installation is pending until activity ends. [Web notes FR/EN](docs/releases/REL-WEB-0.7.10.md).
+**Web client0.7.10** adds native MKV text and external SRT/VTT/ASS/SSA subtitles, language/Off controls and safe seeks. The in-app Install button is removed. Published and installed on the Pi on20November2026; reload existing tabs. [Web notes FR/EN](docs/releases/REL-WEB-0.7.10.md).
 
 [0.7.8 changes, FR/EN](docs/releases/REL-0.7.8.md): Continue watching shows real
 progress and watched/total season episodes. The checkbox removes the film or

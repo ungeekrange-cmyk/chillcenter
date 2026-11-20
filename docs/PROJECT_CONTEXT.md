@@ -1,20 +1,18 @@
 # Contexte du projet
 
-## 20 novembre 2026 — web0.7.10 publié, installation en attente
+## 20 novembre 2026 — web0.7.10 sous-titres livré
 
-35 pistes texte de Projet dernière chance auparavant ignorées ; deux françaises
-identifiées. TextTrack/VTTCue natifs, UTF8/ASS/SSA/WebVTT, fichiers externes
-SRT/VTT/ASS/SSA sous bail. Préférence de langue, changement/Off, sauts et réponses
-tardives protégés. Ré-ancrage et priorité du seek utilisateur corrigés.
-Bouton Installer retiré ; aucune modification HTTPS/DNS/confiance système.
-400 JS,28 docs et parcours Chrome complet sous-titres/natif/mobile/coque PASS.
-Revue indépendante APPROVED_SCOPED. Vrai MKV testé par plages SSH isolées,
-sans bail du foyer ni écriture de profil. Téléphones physiques non vérifiés.
-Source `0cf614adaedce867aabdff40990223b50b6bea64` fusionnée main ; tag
-`web-v0.7.10`/séquence11 public, six assets signés vérifiés et CodeQL JS réussi.
-Installation bloquée par busy=true du Pi ; fermeture des lecteurs demandée.
-Versions installées restent celles ci-dessous, dont web0.7.9.
-[BUG0144](debug/BUG-0144-web-subtitles.md), [ADR0044](architecture/decisions/ADR-0044-web-native-subtitles.md).
+Source `0cf614adaedce867aabdff40990223b50b6bea64` fusionnée main, web0.7.10/séquence11
+publié dans `web-v0.7.10` et installé via le helper normal du Pi. Six assets publics
+signés vérifiés ; revues source/artefacts APPROVED_SCOPED, CodeQL JS exact réussi.
+400 JS,28 docs et parcours Chrome sous-titres/natif/mobile/coque PASS.
+TextTrack natif réutilisé,35 pistes texte du film signalé dont deux françaises,
+langue/Off/sauts, fichiers externes sous bail et réponses tardives protégés.
+Vrai MKV vérifié par plages SSH isolées : piste française active, vidéo avançant,
+aucun bail du foyer ni état personnel modifié par les tests. Bouton Installer
+retiré. Aucun changement DNS/certificat/confiance système ; appareils physiques
+iPhone/Pixel non testés. Mac0.7.8/serveur0.7.7/thèmes0.7.1 conservés.
+[Notes](releases/REL-WEB-0.7.10.md), [BUG0144](debug/BUG-0144-web-subtitles.md).
 
 ## 20 novembre 2026 — web0.7.9 natif/PWA publié et installé
 

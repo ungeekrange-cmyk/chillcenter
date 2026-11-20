@@ -1,6 +1,6 @@
 # ADR0044 — Sous-titres texte natifs dans le client web
 
-20 novembre 2026. État : IMPLEMENTED_CANDIDATE, revue source indépendante APPROVED_SCOPED.
+20 novembre 2026. État : IMPLEMENTED_REVIEWED, revue source indépendante APPROVED_SCOPED.
 Complète ADR0015/0020 et remplace les stubs de sous-titres du lecteur web.
 
 Les sous-titres intégrés MKV sont démultiplexés chez le client et rendus par
