@@ -328,11 +328,21 @@
 
     parseCues(b) {
       const points = [];
+      const videoId = this.tracks.find(t => t.kind === "video")?.id;
       for (const cp of children(b).filter(c => c.id === ID.CuePoint)) {
         let time = 0, pos = null;
         for (const c of children(b, cp.start, cp.end)) {
           if (c.id === ID.CueTime) time = uint(b, c);
-          if (c.id === ID.CueTrackPositions) for (const q of children(b, c.start, c.end)) if (q.id === ID.CueClusterPosition && pos === null) pos = uint(b, q);
+          if (c.id === ID.CueTrackPositions) {
+            let track = null, cluster = null;
+            for (const q of children(b, c.start, c.end)) {
+              if (q.id === ID.CueTrack) track = uint(b, q);
+              if (q.id === ID.CueClusterPosition) cluster = uint(b, q);
+            }
+            // Subtitle/audio cues are not video random-access points. Using
+            // one after the last video keyframe can strand a seek in a gap.
+            if (pos === null && (videoId === undefined || track === videoId)) pos = cluster;
+          }
         }
         if (pos !== null) points.push({ ms: time * this.scaleMs, pos: this.segStart + pos });
       }
@@ -428,7 +438,8 @@
       const batch = q.shift();
       if (track.rawStream) return { data: concat(batch.samples.map(s => s.data)), startTime: batch.dts[0] / track.timescale };
       const data = (off, size) => batch.samples[off].data;
-      return { data: Mp4.buildFragment({ ...batch, id: track.id }, 0, batch.count, ++this.seq, data) };
+      const keyframes = track.kind === "video" ? batch.samples.filter(s => s.key).map(s => s.ms / 1000) : [];
+      return { data: Mp4.buildFragment({ ...batch, id: track.id }, 0, batch.count, ++this.seq, data), keyframes };
     }
   }
 

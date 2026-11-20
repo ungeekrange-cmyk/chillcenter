@@ -1,5 +1,19 @@
 # Contexte du projet
 
+## 20 novembre 2026 — candidat web0.7.9 lecture native/PWA
+
+Reprise HEVC bloquée reproduite : purge MSE dans le GOP courant avec petit cache
+arrière. Points RAP transmis par MP4/MKV et purge sûre, cues vidéo seuls, amorce
+3s puis cache en arrière-plan, budget ManagedMediaSource. PWA installable : PNG,
+Apple, bouton et aide, coque versionnée sans médias/thèmes indépendants ; HTML
+réseau pour les mises à jour. 389 JS,28 docs, Chrome HEVC natif, PWA et lecteur
+mobile synthétique PASS ; revue indépendante APPROVED_SCOPED. Vrais fichiers
+analysés/lus par SSH borné sans bail/profil écrit. Safari/iPhone et Pixel physiques
+non vérifiés. Vivaldi vérifié dans sa vraie fenêtre via CUA : reprise et sauts
+H.264/HEVC, nouvelles images décodées, sans erreur, fixtures loopback isolées.
+Son lanceur Playwright se déconnecte ; ce code0 ne valait pas une preuve. Candidat non publié.
+[Notes](releases/REL-WEB-0.7.9.md), [BUG0143](debug/BUG-0143-web-native-resume-and-pwa.md).
+
 ## 20 novembre 2026 — client web0.7.8 installé
 
 Source `bb4b6179e8210fad65166425fb9da4106a1ae8d9` fusionnée sur main, web0.7.8/séquence9

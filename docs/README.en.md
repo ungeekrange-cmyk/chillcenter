@@ -10,6 +10,7 @@ does not imply a new bundle or deployment.
 
 | Topic | Français | English |
 | --- | --- | --- |
+| Install the PWA on phones and computers | [Guide](updates/PWA-FR.md) | [Guide](updates/PWA-EN.md) |
 | Overview and building | [README](../README.md) | [README](../README.en.md) |
 | Current architecture summary | [Architecture](architecture/OVERVIEW.md) | [Architecture](architecture/OVERVIEW.en.md) |
 | Third-party API integration | [Guide API](api/INTEGRATION-FR.md) | [API guide](api/INTEGRATION-EN.md) |

@@ -15,6 +15,7 @@ const pairs = [
   ['docs/architecture/OVERVIEW.md', 'docs/architecture/OVERVIEW.en.md'],
   ['docs/api/INTEGRATION-FR.md', 'docs/api/INTEGRATION-EN.md'],
   ['docs/updates/GUIDE-FR.md', 'docs/updates/GUIDE-EN.md'],
+  ['docs/updates/PWA-FR.md', 'docs/updates/PWA-EN.md'],
   ['docs/implementation/COMPONENT-UPDATES-20261019.md', 'docs/implementation/COMPONENT-UPDATES-20261019.en.md'],
   ['themes/README.md', 'themes/README.en.md'],
   ['docs/releases/REL-V0.6.md', 'docs/releases/REL-V0.6.en.md'],
@@ -78,7 +79,7 @@ test('source component versions agree with crates, lockfile, Tauri, plist and re
   }
   for (const component of ['mac','server','web','themes']) {
     assert.equal(reservations[component].version,versions[component]);
-    assert.equal(reservations[component].sequence,({mac:9,server:8,web:9,themes:2})[component]);
+    assert.equal(reservations[component].sequence,({mac:9,server:8,web:10,themes:2})[component]);
   }
 });
 

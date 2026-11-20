@@ -10,6 +10,7 @@ langue. Un changement documentaire n'implique ni nouveau bundle ni déploiement.
 
 | Sujet | Français | English |
 | --- | --- | --- |
+| Installation PWA sur téléphone et ordinateur | [Guide](updates/PWA-FR.md) | [Guide](updates/PWA-EN.md) |
 | Présentation et compilation | [README](../README.md) | [README](../README.en.md) |
 | Architecture actuelle, synthèse | [Architecture](architecture/OVERVIEW.md) | [Architecture](architecture/OVERVIEW.en.md) |
 | Intégration API tierce | [Guide API](api/INTEGRATION-FR.md) | [API guide](api/INTEGRATION-EN.md) |

@@ -39,7 +39,7 @@ test("registers the established MediaSource first and uses ManagedMediaSource on
 
 test("ManagedMediaSource disables remote playback before attaching its object URL", () => {
   const order = [];
-  function Managed() { order.push("source"); }
+  function Managed() { order.push("source"); this.addEventListener = () => {}; }
   const video = { set disableRemotePlayback(value) { order.push(`remote:${value}`); }, set src(value) { order.push(`src:${value}`); } };
   const engine = engineWith(video);
   engine.video = video;
@@ -154,4 +154,72 @@ test("a late rejected play after close is contained and does not revive an error
   reject(Object.assign(new Error("late"), { name: "NotAllowedError" }));
   assert.equal(await attempt, false);
   assert.equal(engine.playBlocked, undefined);
+});
+
+
+test("startup primes a short buffer rather than awaiting the full cache", async () => {
+  const engine = engineWith({});
+  engine.video = { currentTime: 0 };
+  engine.ms = { readyState: "open", endOfStream() {} };
+  engine.cache = { forward: 90, back: 60 };
+  let end = 0, reads = 0;
+  const sb = { buffered: { get length() { return end > 0 ? 1 : 0; }, start: () => 0, end: () => end } };
+  engine.streams = [{ track: {}, sb, done: false }];
+  engine.src = { next: async () => { reads++; return { data: new Uint8Array() }; } };
+  engine.append = async () => { end += 2; };
+  engine.evict = async () => {};
+  await engine.pump(3);
+  assert.equal(reads, 2, "first picture needs only a few seconds, not 45 network round trips");
+  assert.equal(end, 4);
+  await engine.pump();
+  assert.equal(end, 90, "background buffering can still fill the configured cache");
+});
+
+test("eviction retains the current video GOP even with zero back cache", async () => {
+  const engine = engineWith({});
+  engine.video = { currentTime: 5000 };
+  const video = { buffered: { length: 1, start: () => 4995.542 } };
+  const audio = { buffered: { length: 1, start: () => 4995.5 } };
+  engine.streams = [
+    { track: { kind: "video" }, sb: video, keyframes: [4995.542] },
+    { track: { kind: "audio" }, sb: audio },
+  ];
+  const removed = [];
+  engine.removeRange = async (sb, start, end) => removed.push({ sb, start, end });
+  await engine.evict(video, 0);
+  assert.deepEqual(removed, [], "removing to 5000 also discards dependent pictures up to the next keyframe");
+  await engine.evict(audio, 0);
+  assert.equal(removed[0].end, 5000, "audio has independent samples");
+  engine.streams[0].keyframes.push(5001.042);
+  engine.video.currentTime = 5003;
+  await engine.evict(video, 0);
+  assert.equal(removed[1].end, 5001.042, "remove only before a known random-access point");
+  assert.deepEqual(engine.streams[0].keyframes, [5001.042]);
+});
+
+test("a seek clears random-access points from the old timeline", async () => {
+  const engine = engineWith({});
+  engine.src = { seek: async () => {} };
+  engine.streams = [{ keyframes: [10, 20], done: true }];
+  await engine.rewind(100);
+  assert.deepEqual(engine.streams[0].keyframes, []);
+  assert.equal(engine.streams[0].done, false);
+});
+
+test("Safari's managed buffer can stop bulk fetching without starving the first picture", async () => {
+  const engine = engineWith({});
+  engine.video = { currentTime: 0 };
+  engine.ms = { readyState: "open", streaming: false, endOfStream() {} };
+  engine.d.managedMediaSource = true;
+  engine.cache = { forward: 90, back: 60 };
+  let end = 0;
+  engine.streams = [{ track: {}, sb: { buffered: { get length() { return end ? 1 : 0; }, start: () => 0, end: () => end } } }];
+  engine.src = { next: async () => ({ data: new Uint8Array() }) };
+  engine.append = async () => { end += 2; };
+  engine.evict = async () => {};
+  await engine.pump();
+  assert.equal(end, 4);
+  engine.ms.streaming = true;
+  await engine.pump();
+  assert.equal(end, 90);
 });

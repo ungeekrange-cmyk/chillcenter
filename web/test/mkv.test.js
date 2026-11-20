@@ -98,3 +98,23 @@ test("lacing: fixed, Xiph and EBML frames are split exactly", () => {
 test("truncated MKV is a plain error", async () => {
   await assert.rejects(new MkvSource({ size: 10, read: async (a, b) => new Uint8Array(b - a + 1) }).open(), /MKV/);
 });
+
+test("seeking uses video cues rather than later audio or subtitle cues", () => {
+  const element = (id, data) => {
+    const hex = id.toString(16).padStart(Math.ceil(id.toString(16).length / 2) * 2, "0");
+    return Mp4.concat([Uint8Array.from(Buffer.from(hex, "hex")), Uint8Array.of(0x80 | data.length), data]);
+  };
+  const number = (id, n) => element(id, Mp4.u32b(n));
+  const position = (track, cluster) => element(0xb7, Mp4.concat([number(0xf7, track), number(0xf1, cluster)]));
+  const point = (time, ...positions) => element(0xbb, Mp4.concat([number(0xb3, time), ...positions]));
+  const src = new MkvSource({});
+  src.segStart = 100; src.scaleMs = 1;
+  src.tracks = [{ id: 1, kind: "video" }, { id: 2, kind: "audio" }];
+  const cues = Mp4.concat([
+    point(1000, position(2, 20), position(1, 10)),
+    point(1500, position(2, 30)),
+    point(1800, position(3, 40)),
+    point(2000, position(1, 50)),
+  ]);
+  assert.deepEqual(src.parseCues(cues), [{ ms: 1000, pos: 110 }, { ms: 2000, pos: 150 }]);
+});

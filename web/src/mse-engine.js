@@ -102,6 +102,9 @@
       if (this.movie.duration) this.ms.duration = this.movie.duration;
       for (const t of [video, this.activeAudio].filter(Boolean)) {
         const sb = this.ms.addSourceBuffer(t.mime);
+        if (this.d.managedMediaSource) sb.addEventListener("bufferedchange", () => {
+          if (this.started && !this.video.paused) this.pump();
+        });
         if (!t.rawStream) { sb.mode = "segments"; sb.timestampOffset = t.shift; }
         this.streams.push({ track: t, sb, done: false, needOffset: true });
       }
@@ -113,7 +116,9 @@
       this.video.currentTime = startAt || 0;
       if (softTrack) { await this.initSoft(softTrack, softEntry, startAt || 0); alive(); }
       else this.probeHardware(video);
-      await this.pump();
+      // Show the first picture after a few seconds of media. Filling the whole
+      // user cache here delayed Play by up to 90 seconds of downloads.
+      await this.pump(3);
       this.started = true;
     }
 
@@ -124,6 +129,9 @@
     attachMediaSource(MS) {
       if (this.d.managedMediaSource) this.video.disableRemotePlayback = true;
       this.ms = new MS();
+      if (this.d.managedMediaSource) this.ms.addEventListener("startstreaming", () => {
+        if (this.started) this.pump();
+      });
       this.url = this.d.URL.createObjectURL(this.ms);
       this.video.src = this.url;
     }
@@ -186,8 +194,20 @@
     }
     async evict(sb, keepBack) {
       const b = sb.buffered; if (!b.length) return;
-      const limit = this.video.currentTime - keepBack;
-      if (b.start(0) < limit) await this.removeRange(sb, 0, limit);
+      let limit = this.video.currentTime - keepBack;
+      const stream = this.streams.find(s => s.sb === sb);
+      if (stream?.track.kind === "video") {
+        // MSE also removes dependent pictures up to the NEXT random access
+        // point. Cutting inside the current GOP therefore deletes the very
+        // picture we are trying to show (especially with a zero back cache).
+        const safe = (stream.keyframes || []).filter(t => t <= limit);
+        if (!safe.length) return;
+        limit = Math.max(...safe);
+      }
+      if (b.start(0) < limit) {
+        await this.removeRange(sb, 0, limit);
+        if (stream?.keyframes) stream.keyframes = stream.keyframes.filter(t => t >= limit);
+      }
     }
     bufferedEnd(sb, t) {
       const b = sb.buffered;
@@ -195,7 +215,7 @@
       return t;
     }
     isBuffered(t) { return this.streams.every(s => this.bufferedEnd(s.sb, t) > t + 0.05); }
-    async rewind(t) { await this.src.seek(t); for (const s of this.streams) { s.done = false; s.needOffset = true; } }
+    async rewind(t) { await this.src.seek(t); for (const s of this.streams) { s.done = false; s.needOffset = true; s.keyframes = []; } }
     async reposition(t) {
       this.epoch++;
       await this.waitIdle();
@@ -206,22 +226,27 @@
     }
     waitIdle() { return this.pumping ? new Promise(r => setTimeout(r, 30)).then(() => this.waitIdle()) : Promise.resolve(); }
 
-    async pump() {
+    async pump(targetSeconds = this.cache?.forward) {
       if (this.pumping || this.closed || !this.ms || this.ms.readyState === "closed") return;
       this.pumping = true;
       const epoch = this.epoch;
       try {
         for (let again = true; again && !this.closed && epoch === this.epoch;) {
           again = false;
-          for (const s of this.streams) if (await this.feed(s, epoch)) again = true;
+          for (const s of this.streams) if (!s.done && await this.feed(s, epoch, targetSeconds)) again = true;
         }
         if (!this.closed && epoch === this.epoch && this.streams.every(s => s.done) && this.ms.readyState === "open" && !this.streams.some(s => s.sb.updating)) this.ms.endOfStream();
       } catch (e) { this.errorText = e.message || "Lecture impossible."; }
       finally { this.pumping = false; }
     }
-    async feed(s, epoch) {
+    async feed(s, epoch, targetSeconds = this.cache.forward) {
       const t = this.video.currentTime;
-      if (this.bufferedEnd(s.sb, t) - t >= this.cache.forward) return false;
+      // Safari owns the managed buffer budget. Keep just a short safety prime
+      // when it says it has enough, and restart on startstreaming/eviction.
+      // The safety prime also covers WebKit versions that miss that event
+      // after an out-of-buffer seek.
+      if (this.d.managedMediaSource && this.ms.streaming === false) targetSeconds = Math.min(3, targetSeconds);
+      if (this.bufferedEnd(s.sb, t) - t >= targetSeconds) return false;
       await this.evict(s.sb, this.cache.back);
       const fragment = await this.src.next(s.track.id);
       if (epoch !== this.epoch || this.closed) return false;
@@ -229,12 +254,16 @@
       let bytes = fragment.data;
       if (s.track.rawStream && s.needOffset && fragment.startTime !== undefined) { s.sb.timestampOffset = fragment.startTime; s.needOffset = false; bytes = Mp4.mp3Resync(bytes); }
       await this.append(s.sb, bytes);
+      if (fragment.keyframes?.length) s.keyframes = [...(s.keyframes || []), ...fragment.keyframes];
       return epoch === this.epoch;
     }
 
     // ---- Engine interface --------------------------------------------------------------
     async play() {
       if (!this.video) return false;
+      // Continue filling in the background; this must never gate the user's
+      // play gesture or the native media element's play() call.
+      this.pump();
       const attempt = (this.playAttempt || 0) + 1;
       this.playAttempt = attempt;
       try {

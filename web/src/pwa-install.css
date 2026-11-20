@@ -1,0 +1,8 @@
+.pwa-install{margin-left:auto;white-space:nowrap}
+.pwa-install[hidden]{display:none!important}
+.pwa-install-dialog{max-width:min(420px,calc(100vw - 32px));border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--text);padding:24px;box-shadow:0 16px 48px #0008}
+.pwa-install-dialog::backdrop{background:#0009}
+.pwa-install-dialog h2{margin:0 0 12px}
+.pwa-install-dialog p{margin:0 0 20px;line-height:1.5}
+.pwa-install-dialog button{min-height:44px}
+@media (max-width:760px){.pwa-install{grid-column:2;grid-row:1;justify-self:end;font-size:0;min-width:44px;min-height:44px;padding:0;border-radius:50%}.pwa-install::after{content:"⇩";font-size:22px}.pwa-install-dialog{width:calc(100vw - 32px);box-sizing:border-box}}

@@ -318,7 +318,9 @@
         const parts = []; for (let i = plan.from; i < plan.to; i++) parts.push(data(track.offsets[i], track.sizes[i]));
         return { data: concat(parts), startTime: track.dts[plan.from] / track.timescale + (track.shift || 0) };
       }
-      return { data: buildFragment(track, plan.from, plan.to, (this.seq = (this.seq || 0) + 1), data) };
+      const keyframes = [];
+      if (track.kind === "video") for (let i = plan.from; i < plan.to; i++) if (track.sync[i]) keyframes.push((track.dts[i] + track.cts[i]) / track.timescale + track.shift);
+      return { data: buildFragment(track, plan.from, plan.to, (this.seq = (this.seq || 0) + 1), data), keyframes };
     }
   }
 

@@ -22,7 +22,7 @@ cpSync(ui, out, {
   filter: path => !/(\/qa\.js|-qa\.js|\.test\.js)$/.test(path) && !path.endsWith("/tests"),
 });
 cpSync(themes, join(out, "themes"), { recursive: true });
-for (const name of [...webScripts, "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name));
+for (const name of [...webScripts, "pwa-install.js", "pwa-install.css", "pwa-icons", "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name), { recursive: true });
 // MPEG-4 (Xvid/DivX) WebAssembly decoder: built by web/decoder/mpeg4, loaded by a Worker only when needed.
 mkdirSync(join(out, "vendor/mpeg4"), { recursive: true });
 const vendor = join(root, "web/vendor/mpeg4");
@@ -50,6 +50,7 @@ patch("updates.js", "__WEB_VERSION__", versions.web);
 
 let html = readFileSync(join(out, "index.html"), "utf8");
 const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css">`
+  + `<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Chill Center"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="pwa-icons/apple-touch-icon.png"><link rel="stylesheet" href="pwa-install.css"><script src="pwa-install.js" defer></script>`
   + webScripts.map(name => `<script src="${name}"></script>`).join("");
 if (!html.includes("<title>")) throw new Error("index.html sans <title>");
 // These adapters run after the shared desktop scripts. Responsive behavior is
@@ -74,7 +75,10 @@ const id = build.digest("hex").slice(0, 12);
 // an hour; the id makes a new build a new URL, so a browser never mixes old and new files after an update (no Service Worker over plain HTTP).
 const stamped = readFileSync(join(out, "index.html"), "utf8").replace(/(src|href)="([^":?#]+\.(?:js|css|webmanifest))"/g, (_, attr, url) => `${attr}="${url}?v=${id}"`);
 writeFileSync(join(out, "index.html"), stamped);
-const shell = ["./", ...files.filter(f => f !== "sw.js" && !f.endsWith(".md"))];
+// Independent themes can omit bundled fallback decorations, and large codec
+// workers are lazy. Neither belongs to the atomic app-shell installation.
+// Match the versioned URLs requested by index.html, never cache media or API.
+const shell = ["./", ...files.filter(f => !f.startsWith("themes/") && !f.startsWith("vendor/") && /\.(?:js|css|svg|png|webmanifest)$/.test(f)).map(f => `${f}?v=${id}`)];
 writeFileSync(join(out, "sw.js"), readFileSync(join(src, "sw.js"), "utf8").replace("__BUILD__", id).replace("__SHELL__", JSON.stringify(shell)));
 writeFileSync(join(out, "build.json"), JSON.stringify({ version: versions.web, build: id, source: "ui/connected + web/src + themes/default", files: files.length + 1 }, null, 2) + "\n");
 console.log(`web: ${files.length + 1} fichiers, build ${id} -> ${out}`);
