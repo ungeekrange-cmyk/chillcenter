@@ -63,3 +63,5 @@ recognized HTTPS/browser support and OS power policies still apply.
 Le cas utilisateur confirmé est un accès HTTP par IP locale depuis Chrome/Vivaldi sur macOS. L’API est absente dans ce contexte : utiliser l’accès HTTPS existant, reconnu par le navigateur. Son certificat local peut demander une validation manuelle par l’utilisateur. Aucune validation de certificat navigateur n’a été contournée.
 
 The reported setup uses a LAN IP over HTTP in Chrome/Vivaldi on macOS. Screen Wake Lock is unavailable in that context. Use the existing HTTPS endpoint trusted by the browser; its local certificate may require manual user approval. No browser certificate warning was bypassed.
+
+Vérification finale dans le Chrome utilisateur après sa validation manuelle du certificat : client chargé en HTTPS, contexte sécurisé et API Wake Lock disponibles. Lecture seule des capacités via DevTools, aucune vidéo familiale lancée. La vérification de récupération/acquisition réelle reste celle du parcours Chromium synthétique décrit ci-dessus ; aucune extinction physique testée.

@@ -10,7 +10,7 @@ personnelle ou lecture de test. Révocation/reprise du maintien éveillé corrig
 20 tests Wake Lock,384 JS,27 docs et vraie API Chromium PASS, revue indépendante
 APPROVED_SCOPED. [Notes](releases/REL-WEB-0.7.8.md).
 Mac0.7.8/build18, serveur0.7.7 et thèmes0.7.1 restent inchangés ; `v0.7.8` globale
-historique non réécrite. Contexte utilisateur confirmé Chrome/Vivaldi macOS par IP HTTP : HTTPS reconnu nécessaire pour Wake Lock. Ouverture Chrome HTTPS en attente de validation manuelle du certificat local ; aucune exception de sécurité contournée.
+historique non réécrite. Contexte utilisateur confirmé Chrome/Vivaldi macOS par IP HTTP : HTTPS reconnu nécessaire pour Wake Lock. Après validation manuelle du certificat par l’utilisateur, Chrome affiche le client HTTPS ; contexte sécurisé et API Wake Lock disponibles, vérifiés sans lancer de vidéo familiale. Aucune exception de sécurité contournée par l’agent.
 Ancien worktree temporaire disparu ; nouveau `/private/tmp/chillcenter-web-wake.yBYp2S`
 conservé pour sources et reçus, sans dépendance ou cache Rust. Branches Surprise
 et web-pwa préservées. Progrès personnel non modifié par cette livraison.
