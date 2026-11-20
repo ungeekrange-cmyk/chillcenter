@@ -1,18 +1,18 @@
 # Contexte du projet
 
-## 20 novembre 2026 — candidat web0.7.9 lecture native/PWA
+## 20 novembre 2026 — web0.7.9 natif/PWA publié et installé
 
-Reprise HEVC bloquée reproduite : purge MSE dans le GOP courant avec petit cache
-arrière. Points RAP transmis par MP4/MKV et purge sûre, cues vidéo seuls, amorce
-3s puis cache en arrière-plan, budget ManagedMediaSource. PWA installable : PNG,
-Apple, bouton et aide, coque versionnée sans médias/thèmes indépendants ; HTML
-réseau pour les mises à jour. 389 JS,28 docs, Chrome HEVC natif, PWA et lecteur
-mobile synthétique PASS ; revue indépendante APPROVED_SCOPED. Vrais fichiers
-analysés/lus par SSH borné sans bail/profil écrit. Safari/iPhone et Pixel physiques
-non vérifiés. Vivaldi vérifié dans sa vraie fenêtre via CUA : reprise et sauts
-H.264/HEVC, nouvelles images décodées, sans erreur, fixtures loopback isolées.
-Son lanceur Playwright se déconnecte ; ce code0 ne valait pas une preuve. Candidat non publié.
-[Notes](releases/REL-WEB-0.7.9.md), [BUG0143](debug/BUG-0143-web-native-resume-and-pwa.md).
+Source `6470bbd0ee77983596d9a6f1827288da1646d68e` fusionnée main, web0.7.9/séquence10
+publié dans `web-v0.7.9` puis installé via l’API normale du Pi. Six assets publics
+signés vérifiés ; revue source et artefacts APPROVED_SCOPED, CodeQL JavaScript
+exact réussi. 389 JS et28 docs PASS, Chrome natif H.264/HEVC/reprises/sauts,
+PWA/worker, régression mobile et vrai Vivaldi via CUA PASS. Deux films signalés
+vérifiés par plages SSH bornées sans bail ni modification personnelle.
+Purge RAP sûre, cues vidéo, amorce3s/cache arrière-plan, budget ManagedMediaSource.
+PWA : PNG/Apple/maskable, Installer et aide, coque seule versionnée, HTML réseau.
+Mac0.7.8/serveur0.7.7/thèmes0.7.1 inchangés. Téléphones physiques à retester et
+certificat HTTPS de confiance nécessaire par appareil ; aucune confiance système
+modifiée. [Notes](releases/REL-WEB-0.7.9.md), [BUG0143](debug/BUG-0143-web-native-resume-and-pwa.md).
 
 ## 20 novembre 2026 — client web0.7.8 installé
 

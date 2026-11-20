@@ -2,7 +2,10 @@
 
 ## Français
 
-Candidat web0.7.9/séquence10. Publication et installation pas encore effectuées.
+Publié et installé sur le Pi le20novembre2026 : web0.7.9/séquence10.
+Source immuable `6470bbd0ee77983596d9a6f1827288da1646d68e`, tag `web-v0.7.9`.
+Six assets publics, tailles/SHA-256/signatures et tag vérifiés ; revue artefacts
+ARTIFACT_APPROVED_SCOPED. CodeQL JavaScript exact réussi.
 Mac0.7.8, serveur0.7.7 et thèmes0.7.1 restent compatibles.
 
 Démarrage après une courte amorce puis chargement en arrière-plan. La purge
@@ -32,7 +35,10 @@ anti-rollback exigent le parcours administrateur prévu. Aucune migration.
 
 ## English
 
-Web0.7.9/sequence10 candidate, not yet published or installed. Compatible with
+Published and installed on the Pi on20November2026: web0.7.9/sequence10,
+immutable source `6470bbd0ee77983596d9a6f1827288da1646d68e`, tag `web-v0.7.9`.
+All six public assets, hashes/signatures/tag verified; artifact review approved,
+exact JavaScript CodeQL passed. Compatible with
 Mac0.7.8, server0.7.7 and themes0.7.1.
 
 Playback starts after a short prime and continues buffering in the background.
@@ -58,3 +64,17 @@ tests do not establish trust in the household TLS certificate. Existing rollback
 slots/backups retained; no data migration or NAS modification.
 
 [BUG0143](../debug/BUG-0143-web-native-resume-and-pwa.md).
+
+## Vérification installée / Installed verification
+
+Installation par l’API normale du helper signé, TLS et SPKI existants épinglés.
+91 ressources servies correspondent au ZIP publié ; pack de thèmes indépendant
+conservé. État personnel de lecture inchangé pendant l’installation : True.
+Aucun bail/écriture QA sur le foyer. Le paquet contient112 fichiers physiques
+(111 déclarés plus build.json). La confiance du certificat pour une installation
+PWA sur chaque appareil reste à établir ; aucun réglage TLS système modifié.
+
+Installed through the normal signed helper API using the existing TLS/SPKI trust.
+91 served resources match the public ZIP. Independent themes retained. No QA
+household lease/write. Physical mobile browser and certificate trust validation
+remain device-specific; no OS trust changes were made.
