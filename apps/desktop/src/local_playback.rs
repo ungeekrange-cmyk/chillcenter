@@ -502,9 +502,7 @@ impl Evidence {
                     .saturating_sub(last.position_ms.max(start)) as f64;
                 self.credit_ms += elapsed.min(tail / current.speed);
                 if self.before_tail {
-                    // A bounded observation measures actual playhead movement.
-                    // Per-sample clock rounding must not accumulate as lost coverage.
-                    self.tail_motion_ms += tail;
+                    self.tail_motion_ms += tail.min(elapsed * current.speed);
                 }
             } else if !(0. ..=300.).contains(&distance) || elapsed > 2500. {
                 *self = Self::default();
