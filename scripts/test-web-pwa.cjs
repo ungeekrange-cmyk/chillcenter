@@ -31,6 +31,10 @@ async function until(check, message) {
   const worker = await fsp.readFile(path.join(root, "sw.js"), "utf8");
   assert.match(worker, /navigate/); assert.doesNotMatch(worker, /"themes\//); assert.doesNotMatch(worker, /"vendor\//);
   assert.match(index, /register-sw\.js\?v=/);
+  const build = JSON.parse(await fsp.readFile(path.join(root, "build.json"), "utf8"));
+  const favicon = `pwa-icons/icon-192.png?v=${build.build}`;
+  assert(index.includes(`<link rel="icon" type="image/png" sizes="192x192" href="${favicon}">`));
+  assert(worker.includes(JSON.stringify(favicon)), "the shell caches the declared favicon URL");
 
   let marker = "first";
   const server = http.createServer(async (req, res) => {
@@ -57,6 +61,13 @@ async function until(check, message) {
     await until(() => page.evaluate(async () => (await navigator.serviceWorker.ready).active && true), "service worker was not ready in 20s");
     await page.reload({ waitUntil: "domcontentloaded" });
     await until(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), "service worker did not control page");
+    const iconSize = await page.locator('link[rel="icon"]').evaluate(link => new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve([image.naturalWidth, image.naturalHeight]);
+      image.onerror = () => reject(new Error("The declared favicon could not be loaded"));
+      image.src = link.href;
+    }));
+    assert.deepEqual(iconSize, [192, 192]);
     const appManifest = await cdp.send("Page.getAppManifest");
     assert(appManifest.manifest || appManifest.url, "CDP did not expose app manifest");
     const installability = await cdp.send("Page.getInstallabilityErrors");
@@ -76,6 +87,6 @@ async function until(check, message) {
     assert.equal(await page.locator("#fixture-marker").textContent(), "second", "controlled navigation served cached old HTML");
 
     assert.equal(await page.locator("#pwa-install").count(), 0, "web shell exposes no install control");
-    console.log("PASS web shell: manifest PNG/maskable icons, Apple metadata, secure-loopback service worker and installability, shell-only cache, network-fresh controlled navigation, no install control.");
+    console.log("PASS web shell: favicon, manifest PNG/maskable icons, Apple metadata, secure-loopback service worker and installability, shell-only cache, network-fresh controlled navigation, no install control.");
   } finally { await browser?.close(); await close(server); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

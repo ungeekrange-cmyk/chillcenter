@@ -49,7 +49,7 @@ patch("appearance.js", "sur ce Mac uniquement", "sur cet appareil uniquement");
 patch("updates.js", "__WEB_VERSION__", versions.web);
 
 let html = readFileSync(join(out, "index.html"), "utf8");
-const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css">`
+const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css"><link rel="icon" type="image/png" sizes="192x192" href="pwa-icons/icon-192.png">`
   + `<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Chill Center"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="pwa-icons/apple-touch-icon.png">`
   + webScripts.map(name => `<script src="${name}"></script>`).join("");
 if (!html.includes("<title>")) throw new Error("index.html sans <title>");
@@ -71,9 +71,9 @@ files.sort();
 const build = createHash("sha256");
 for (const f of files) build.update(f).update(readFileSync(join(out, f)));
 const id = build.digest("hex").slice(0, 12);
-// Every local script, stylesheet and manifest URL carries ?v=<build id>. The server resolves retained release slots by that build id and caches static files for
+// Every local script, stylesheet, manifest and favicon URL carries ?v=<build id>. The server resolves retained release slots by that build id and caches static files for
 // an hour; the id makes a new build a new URL, so a browser never mixes old and new files after an update (no Service Worker over plain HTTP).
-const stamped = readFileSync(join(out, "index.html"), "utf8").replace(/(src|href)="([^":?#]+\.(?:js|css|webmanifest))"/g, (_, attr, url) => `${attr}="${url}?v=${id}"`);
+const stamped = readFileSync(join(out, "index.html"), "utf8").replace(/(src|href)="(pwa-icons\/icon-192\.png|[^":?#]+\.(?:js|css|webmanifest))"/g, (_, attr, url) => `${attr}="${url}?v=${id}"`);
 writeFileSync(join(out, "index.html"), stamped);
 // Independent themes can omit bundled fallback decorations, and large codec
 // workers are lazy. Neither belongs to the atomic app-shell installation.

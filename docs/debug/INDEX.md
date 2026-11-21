@@ -1,5 +1,7 @@
 # Journal des bugs, observations et risques
 
+[BUG0147](BUG-0147-web-tab-icon.md) — favicon déclarée et vérifiée dans le build web local.
+
 [BUG0146](BUG-0146-updater-offline-backup-sandbox.md) : sauvegarde serveur bloquée dans le sandbox ; récupération root officielle réussie, correction durable restante.
 
 [BUG0145](BUG-0145-replay-and-untagged-subtitles.md) : nouvelle lecture vue/EOF et unique piste sans langue, VERIFIED, serveur0.7.8/web0.7.11 publiés et installés.
