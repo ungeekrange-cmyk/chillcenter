@@ -29,7 +29,6 @@
 .series-overview-copy{min-width:0}
 .series-overview-copy>p{line-height:1.7;margin:0 0 16px}
 .series-summary-counts{color:var(--muted)}
-.series-tools{margin-top:32px;padding-top:24px;border-top:1px solid var(--line)}
 @media(max-width:1000px){.series-overview{grid-template-columns:160px minmax(0,1fr);gap:20px}}
 @media(max-width:600px){.series-overview{grid-template-columns:110px minmax(0,1fr);gap:16px}}
 #picker-form input{flex:1;max-width:none}#picker-form select{max-width:190px}

@@ -144,6 +144,14 @@ Object.assign(chillEnglish,{
  ,"Accueil":"Home","Reprendre":"Continue watching","Ajouts récents":"Recently added","Pour vous":"For you","L’accueil nécessite une mise à jour du serveur. La recherche et les catégories restent disponibles.":"Home requires a server update. Search and categories remain available.","Saison ":"Season ","Le navigateur ne permet pas de maintenir l’écran éveillé. Vérifiez l’accès HTTPS et le mode économie d’énergie.":"Your browser cannot keep the screen awake. Check HTTPS access and power-saving mode."
 });
 Object.assign(chillEnglish,{
+ "Ajouter à une liste":"Add to a list",
+ "Fichier":"File",
+ "Modifier la fiche":"Edit details",
+ "Masquer les options":"Hide options",
+ "Fichier indisponible.":"File unavailable.",
+ "Enregistrement non effectué. Votre saisie est conservée.":"Changes could not be saved. Your draft is still here.",
+ "Ouvre Chill Center en HTTPS pour télécharger.":"Open Chill Center over HTTPS to download.",
+ "Ouvrir la page HTTPS":"Open the HTTPS page",
  "Téléchargements":"Downloads",
  "Télécharger":"Download",
  "Télécharger la saison":"Download season",

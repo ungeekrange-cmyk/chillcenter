@@ -16,3 +16,23 @@ dialog{width:min(850px,90vw);max-height:85vh;overflow:auto;background:var(--pane
 .workspace #advice-results{max-width:none}
 #advice-results .recommendation-card{margin:0}
 @media(max-width:650px){.recommendation-card{flex-basis:145px;width:145px}.recommendation-rail{gap:12px}}
+
+.detail-actions { gap: 8px; }
+.detail-actions button { white-space: nowrap; }
+.detail-editor {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 18px;
+}
+.detail-editor .section-head { gap: 12px; }
+.detail-editor .section-head h3 { margin: 0; }
+.detail-editor > * + * { margin-top: 16px; }
+#detail-path-label { color: var(--muted); font-size: 13px; }
+#detail-path { margin-top: 5px; }
+#detail-download-notice:empty { display: none; }
+
+@media (max-width: 640px) {
+  #media-dialog .detail-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  #media-dialog .detail-copy { order: -1; }
+  #media-dialog .detail-layout > .poster { width: min(135px, 45%); }
+}

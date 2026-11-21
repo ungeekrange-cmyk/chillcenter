@@ -1,6 +1,6 @@
 // Synthetic bridge + disposable browser. No Pi, NAS, personal profile or video.
 const {chromium}=require('playwright'),assert=require('node:assert/strict'),path=require('node:path');
-(async()=>{const browser=await chromium.launch({headless:true});try{
+(async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.CHILL_CHROME_PATH});try{
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
   const items=Array.from({length:160},(_,i)=>({id:'video-'+i,path:'Films/Film '+i+'.mkv',title:'Film '+i,category:'film',year:2025,genres:[],cast:[],directors:[],overview:i===1?'':'Résumé '+i,poster:i!==1?'poster':null,available:true,watched:false,rating:null,tmdb_id:null}));window.fixtureItems=items;
@@ -31,15 +31,17 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),path
    throw Error('Unexpected fixture command '+c.action);
   }}};
  });
- await page.goto('file://'+path.resolve(__dirname,'../ui/connected/index.html'));await page.evaluate(()=>window.chillReady);await page.waitForFunction(()=>catalogItems.length===160&&!syncPromise);
+ await page.goto('file://'+path.resolve(__dirname,'../ui/connected/index.html'));await page.evaluate(async()=>{await window.chillReady;shellShow("catalog");await loadPage();});await page.waitForFunction(()=>catalogItems.length===160&&!syncPromise);
  await page.evaluate(async()=>{$('organize-ai').disabled=true;await run({action:'refresh'});});assert.equal(await page.locator('#organize-ai').isEnabled(),true);
  await page.locator('#admin-toggle').click();await page.locator('#organize-ai').click();await page.locator('#ai-dialog').waitFor({state:'visible'});assert.deepEqual(await page.evaluate(()=>window.fixtureAiCalls),['settings']);await page.locator('#ai-dialog').getByRole('button',{name:'Fermer',exact:true}).click();await page.locator('#admin-close').click();
  await page.locator('.media-card').first().hover();assert.equal(await page.locator('.media-card select').count(),0);assert.equal(await page.locator('.media-card .poster-actions .play-video').first().isVisible(),true);
  await page.evaluate(()=>openMedia('video-0'));await page.locator('#detail-poster img').waitFor();
- await page.evaluate(()=>openMedia('video-1'));assert.equal(await page.locator('#detail-title').textContent(),'Film 1');assert.equal(await page.locator('#detail-poster img').count(),0);assert.equal(await page.locator('#detail-overview').textContent(),'Informations à compléter');
+ await page.evaluate(()=>openMedia('video-1'));assert.equal(await page.locator('#detail-title').textContent(),'Film 1');assert.equal(await page.locator('#detail-poster img').count(),0);assert.equal(await page.locator('#detail-overview').isVisible(),false);
  assert.equal(await page.locator('#detail-stars button').count(),5);assert.equal(await page.locator('#detail-rating-scope').count(),0);
- await page.locator('#detail-stars button').nth(3).click();await page.waitForFunction(()=>document.querySelectorAll('#detail-stars [aria-pressed=true]').length===4);
+ await page.locator('#detail-edit').click();await page.locator('#detail-stars button').nth(3).click();await page.waitForFunction(()=>document.querySelectorAll('#detail-stars [aria-pressed=true]').length===4);
+ await page.locator('#detail-editor').waitFor({state:'hidden'});await page.locator('#detail-edit').click();
  await page.locator('#detail-artwork').click();await page.locator('#detail-poster img').waitFor();assert.equal(await page.locator('#media-dialog').isVisible(),true);
+ await page.locator('#detail-edit').click();
  await page.locator('#detail-tmdb button').filter({hasText:'Rechercher TMDB'}).click();await page.locator('#detail-tmdb .tmdb-candidates button').click();await page.waitForFunction(()=>$('detail-title').textContent==='Choix TMDB');assert.equal(await page.locator('#media-dialog').isVisible(),true);
  await page.mouse.click(3,3);assert.equal(await page.locator('#media-dialog').isVisible(),false);
  await page.evaluate(()=>scrollTo(0,1200));await page.waitForFunction(()=>scrollY>1000);const before=await page.evaluate(()=>scrollY);await page.evaluate(()=>openMedia('video-40'));await page.mouse.click(3,3);assert.equal(await page.evaluate(()=>scrollY),before);
@@ -50,8 +52,8 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),path
  await page.evaluate(()=>{document.querySelector('.matching-row .tmdb-candidates button').click();void openMedia('video-0');});await page.waitForFunction(()=>window.calls.filter(c=>c.action==='tmdb_select').length===2);
  await page.evaluate(()=>{window.delaySync=false;window.releaseSync();});await page.waitForFunction(()=>$('detail-title').textContent==='Choix TMDB'&&!syncPromise);await page.mouse.click(3,3);
  await page.evaluate(()=>window.catalogPickCollection('video-9','film'));await page.locator('#playlist-targets button').filter({hasText:'Ma liste'}).click();await page.waitForFunction(()=>!$('playlist-target-dialog').open);await page.evaluate(()=>openCollections('playlist'));await page.waitForFunction(()=>$('collections-list').textContent.includes('1 vidéos'));
- await page.evaluate(()=>openSeries('tmdb:tv:10'));await page.locator('#series-common .poster img').waitFor();await page.locator('#series-common button').filter({hasText:'Importer une image'}).click();await page.waitForFunction(()=>document.querySelector('#series-common .poster img')&&window.fixtureItems.filter(m=>m.category==='serie').every(m=>m.poster_custom));
- await page.locator('.series-season summary').click();await page.locator('.season-provider button').filter({hasText:'Importer une image'}).click();
+ await page.evaluate(()=>openSeries('tmdb:tv:10'));await page.locator('#series-common .poster img').waitFor();await page.locator('#series-edit').click();await page.locator('#series-tools > section button').filter({hasText:'Importer une image'}).click();await page.waitForFunction(()=>document.querySelector('#series-common .poster img')&&window.fixtureItems.filter(m=>m.category==='serie').every(m=>m.poster_custom));
+ await page.locator('#series-edit').click();await page.locator('#series-tools .season-provider summary').click();await page.locator('.season-provider button').filter({hasText:'Importer une image'}).click();
  try{await page.locator('.series-season[open] > .series-poster').scrollIntoViewIfNeeded();await page.waitForFunction(()=>document.querySelector('.series-season[open] > .series-poster img'));}catch(error){console.error('SEASON_FIXTURE_STATE',await page.evaluate(()=>({open:document.querySelector('.series-season')?.open,metadata:seriesView?.season_metadata,tmdb:seriesView?.tmdb_id,calls:window.calls.slice(-8),message:$('message').textContent})));throw error;}assert.equal(await page.locator('#collection-title').textContent(),'Doctor Who');
  assert.deepEqual(errors,[]);console.log('PASS synthetic library UX: poster controls, five stars, detail reset, in-place artwork/matching, backdrop, scroll preservation, usable search during delayed sync.');
  }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -85,7 +85,7 @@ test('each season owns an episode grid, sorted cards and the original series pla
   assert.deepEqual(calls, [{ mediaId: 'first', kind: 'series', collectionId: 'opaque-key' }]);
 });
 
-test('series synopsis, counts and rating share the header copy; TMDB and edit controls are separate', async () => {
+test('series counts are in the header and edit controls for the series and seasons are collapsed', async () => {
   const f = seriesFixture([episode('s1', 1, 1)]);
   await f.execute('openSeries("Fixture")');
   const header = f.get('series-common');
@@ -93,11 +93,16 @@ test('series synopsis, counts and rating share the header copy; TMDB and edit co
   assert.ok(hasClass(header.children[0], 'series-poster'));
   const copy = header.children[1];
   assert.equal(copy.className, 'series-overview-copy');
-  assert.ok(copy.children.some(item => item.textContent === 'Informations communes à compléter'));
+  assert.equal(copy.children.length, 1, 'omit absent metadata and placeholder copy');
   assert.ok(copy.children.some(item => item.textContent === '1 saisons · 1 épisodes · 1 épisodes non vus'));
-  assert.ok(copy.children.some(item => item.className === 'rating-stars' && item.children.length === 5));
+  assert.equal(copy.children.some(item => item.className === 'rating-stars'), false);
   assert.equal(f.get('collection-counts').hidden, true);
   const tools = f.get('series-tools');
+  assert.equal(tools.hidden, true);
+  assert.ok(tools.children.some(item => item.className === 'rating-stars' && item.children.length === 5));
+  const seasonTools = tools.children.find(item => hasClass(item, 'season-provider'));
+  assert.equal(seasonTools.tagName, 'DETAILS');
+  assert.ok(!seasonTools.open);
   assert.ok(tools.children.some(item => item.tagName === 'SECTION'));
   assert.ok(tools.children.some(item => item.tagName === 'FORM'));
   assert.equal(header.children.some(item => item.tagName === 'FORM'), false);

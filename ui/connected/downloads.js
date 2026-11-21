@@ -42,7 +42,7 @@
   configuration.id = "download-settings";
   configuration.append(node("h2", label("Téléchargements")));
   $("admin-panel").querySelector(".admin-grid").append(configuration);
-  let items = [], runningMedia = null, ticket = 0, currentScope = "", busy = false;
+  let items = [], runningMedia = null, ticket = 0, currentScope = "", busy = false, activeFeedback = null;
   const switches = [header, configuration].map(container => {
     const wrap = node("label", undefined, "download-preference");
     const input = node("input");
@@ -174,7 +174,7 @@
         progress.max = job.bytes || 1;
         progress.value = job.transferred || 0;
         row.append(progress);
-        if (!status.textContent) status.textContent = job.media.title;
+        if (job.media.title) reportDownload(job.media.title + " · " + format(job.transferred) + " / " + format(job.bytes));
       } else if (!state.downloads_only) {
         row.append(control("Reprendre le téléchargement", () => void download(job.media, "video")));
       }
@@ -196,31 +196,65 @@
     }
   }
 
-  async function download(media, selection) {
+  function downloadFeedback() {
+    const feedback = node("p", "", "download-feedback");
+    feedback.hidden = true;
+    feedback.setAttribute("role", "status");
+    return feedback;
+  }
+
+  function reportDownload(text, feedback = activeFeedback) {
+    status.textContent = text;
+    if (feedback?.isConnected) {
+      feedback.textContent = text;
+      feedback.hidden = !text;
+    }
+  }
+
+  function showHttpsHelp(feedback) {
+    const text = label("Ouvre Chill Center en HTTPS pour télécharger.");
+    if (!feedback?.isConnected) feedback = status;
+    reportDownload(text, feedback);
+    const link = node("a", label("Ouvrir la page HTTPS"));
+    const url = new URL(window.location.origin);
+    url.protocol = "https:";
+    url.port = "8443";
+    link.href = url.href;
+    feedback.append(" ", link);
+  }
+
+  async function download(media, selection, feedback) {
+    if (web && !window.isSecureContext) { showHttpsHelp(feedback); return; }
     if (busy) return;
     busy = true;
     const key = scope();
     try {
       const plan = await command("plan", { media_id: media.id, scope: selection });
       if (key !== scope()) return;
-      if (!plan.items?.length) { status.textContent = label("Aucune vidéo disponible à télécharger."); return; }
+      if (!plan.items?.length) { reportDownload(label("Aucune vidéo disponible à télécharger."), feedback); return; }
       const total = plan.items.reduce((size, item) => size + item.bytes, 0);
       if (selection !== "video") {
         const summary = plan.items.length + " " + label("vidéos à télécharger") + " · " + format(total)
           + (plan.skipped ? " · " + plan.skipped + " " + label("indisponibles") : "");
         if (!window.confirm(summary)) return;
       }
+      activeFeedback = feedback;
       runningMedia = media.id;
       cancel.hidden = false;
-      status.textContent = label("Préparation du téléchargement…");
+      reportDownload(label("Préparation du téléchargement…"));
       await command("start", { media_id: media.id, scope: selection });
       await refresh();
-    } catch (error) { cancel.hidden = true; status.textContent = error.message || String(error); }
+    } catch (error) { cancel.hidden = true; reportDownload(error.message || String(error), feedback); }
     finally { busy = false; }
   }
 
-  window.offlineDownloadButton = (media, selection = "video", text = "Télécharger") =>
-    media && state.offline_downloads && !state.downloads_only ? control(text, () => void download(media, selection)) : null;
+  window.createDownloadFeedback = downloadFeedback;
+  window.offlineDownloadButton = (media, selection = "video", text = "Télécharger", feedback) => {
+    if (!media || !state.offline_downloads || state.downloads_only) return null;
+    const button = control(text, () => void download(media, selection, feedback));
+    button.disabled = selection === "video" && media.available === false;
+    return button;
+  };
   window.renderDownloads = visibility;
   window.refreshDownloads = refresh;
   window.downloadsContextChanged = () => {
@@ -230,6 +264,7 @@
       list.replaceChildren();
       jobs.replaceChildren();
       status.textContent = "";
+      activeFeedback = null;
       cancel.hidden = true;
       if (state.downloads_only) shellSection = "downloads";
       if (currentScope) void refresh();
@@ -240,7 +275,8 @@
   window.addEventListener("chill:downloads", () => void refresh());
   window.addEventListener("chill:download-result", ({ detail }) => {
     cancel.hidden = true;
-    status.textContent = detail?.errors?.join(" · ") || label("Téléchargements à jour.");
+    reportDownload(detail?.errors?.join(" · ") || label("Téléchargements à jour."));
+    activeFeedback = null;
     void refresh();
   });
   if (!web) void window.__TAURI__?.event?.listen?.("chill:downloads", () => void refresh());

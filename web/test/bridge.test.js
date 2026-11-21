@@ -33,6 +33,22 @@ const baseRoutes = {
 };
 const make = (routes = {}) => { const s = server({ ...baseRoutes, ...routes }); const b = createBridge({ fetch: s.fetch, storage: memory(), objectUrl: () => "blob:x", address: "pi:8443" }); return { ...s, b, ui: command => b.invoke("ui_command", { command }) }; };
 
+test("download reads and planning do not require or allocate a device identity", async () => {
+  const { fetch } = server({ ...baseRoutes, "GET /server": ok({ server_id: "srv", capabilities: ["catalog_pages", "playback_leases", "media_range", "offline_downloads"] }) });
+  const storage = memory(), calls = [];
+  const bridge = createBridge({ fetch, storage, downloads: { sync: async () => {}, command: (command, context, device) => calls.push({ command, context, device }) } });
+  await bridge.invoke("ui_command", { command: { action: "boot" } });
+  await bridge.invoke("ui_command", { command: { action: "select_profile", id: P } });
+  for (const command of [{ action: "list" }, { action: "plan", media_id: M, scope: "video" }]) {
+    await bridge.invoke("downloads_command", { command });
+  }
+  assert.equal(storage.getItem("chill.device_id"), null);
+  assert.deepEqual(calls.map(call => call.device), [undefined, undefined]);
+  await bridge.invoke("downloads_command", { command: { action: "start", media_id: M, scope: "video" } });
+  assert.match(storage.getItem("chill.device_id"), /^[0-9a-f-]{36}$/);
+  assert.equal(calls[2].device, storage.getItem("chill.device_id"));
+});
+
 test("json64 keeps uint64 exact and leaves strings alone", () => {
   const text = '{"media_revision":18446744073709551615,"t":"123456789012345678901","n":12,"f":1.5}';
   const v = Json64.parse(text);

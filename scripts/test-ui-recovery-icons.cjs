@@ -30,7 +30,7 @@ const assert=require('node:assert/strict'),path=require('node:path');
     throw Error('Unexpected fixture action '+c.action);
    }}};
   });
-  await page.goto('file://'+path.resolve(__dirname,'../ui/connected/index.html'));await page.evaluate(()=>window.chillReady);
+  await page.goto('file://'+path.resolve(__dirname,'../ui/connected/index.html'));await page.evaluate(async()=>{await window.chillReady;shellShow("catalog");await loadPage();});
   const search=page.locator('.global-search .search-icon');assert.equal(await search.count(),1,'Search must use a sized SVG, not a font-dependent glyph');
   for(const theme of ['light','dark'])for(const width of [760,1180,1600]){
    await page.setViewportSize({width,height:900});await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);

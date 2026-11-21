@@ -27,22 +27,29 @@ if(!evidence||!path.isAbsolute(evidence))throw Error("Set absolute CHILL_SERIES_
   await page.evaluate(()=>window.catalogOpenSeries("series-fixture"));
   assert.deepEqual(await page.locator(".series-season[open]").evaluateAll(items=>items.map(e=>e.dataset.season)),["2"]);
   assert.deepEqual(await page.locator('.series-season[data-season="2"] .collection-media-card').evaluateAll(items=>items.map(e=>e.dataset.mediaId)),["episode-2-1","episode-2-2","episode-2-3","episode-2-4"]);
+  assert.equal(await page.locator("#series-tools").isVisible(),false);
   fs.mkdirSync(evidence,{recursive:true});
   for(const width of [1440,760]){
    await page.setViewportSize({width,height:1000});
    const geometry=await page.evaluate(()=>{
     const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width};};
     const grid=document.querySelector('.series-season[open] .series-episodes');
-    return {poster:rect('#series-common>.series-poster'),copy:rect('.series-overview-copy'),members:rect('#collection-members'),tools:rect('#series-tools'),columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,cards:[...grid.children].map(e=>({x:e.getBoundingClientRect().x,y:e.getBoundingClientRect().y}))};
+    return {poster:rect('#series-common>.series-poster'),copy:rect('.series-overview-copy'),columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,cards:[...grid.children].map(e=>({x:e.getBoundingClientRect().x,y:e.getBoundingClientRect().y}))};
    });
    assert.ok(geometry.copy.x>=geometry.poster.right,"synopsis beside poster");
    assert.ok(Math.abs(geometry.copy.y-geometry.poster.y)<2);
-   assert.ok(geometry.tools.y>=geometry.members.bottom,"common tools after all seasons");
    assert.ok(geometry.columns>=2,"episodes have multiple columns even at native minimum width");
    assert.equal(geometry.cards[0].y,geometry.cards[1].y);assert.ok(geometry.cards[1].x>geometry.cards[0].x);
-   assert.equal(await page.locator(".series-overview-copy .rating-star").count(),5);
+   assert.equal(await page.locator(".series-overview-copy .rating-star").count(),0);
    await page.screenshot({path:path.join(evidence,`series-${width}.png`),fullPage:true});
   }
+  await page.locator("#series-edit").click();
+  assert.ok(await page.locator("#series-tools").isVisible());
+  assert.ok(await page.locator("#series-tools").evaluate(el=>document.querySelector("#collection-members").compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING));
+  assert.equal(await page.locator("#series-tools > .rating-stars .rating-star").count(),5);
+  assert.equal(await page.locator("#series-tools .season-provider[open]").count(),0);
+  await page.locator("#series-tools .section-head button").click();
+  assert.equal(await page.locator("#series-tools").isVisible(),false);
   await page.locator('.series-season[data-season="2"]>summary').click();
   assert.equal(await page.locator('.series-season[data-season="2"] .series-episodes').isVisible(),false);
   await page.evaluate(()=>window.catalogOpenSeries("series-fixture"));

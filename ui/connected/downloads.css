@@ -16,3 +16,6 @@
   object-fit: cover;
   border-radius: .3rem;
 }
+
+.download-feedback { margin: 8px 0; color: var(--muted); font-size: 13px; }
+.download-feedback a, .download-notice a { color: var(--accent); }

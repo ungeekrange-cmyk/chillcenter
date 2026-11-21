@@ -31,9 +31,9 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?path.join(proces
     throw Error("Unexpected fixture action: "+c.action);
    }}};
   });
-  await page.goto("file://"+path.resolve(__dirname,"../ui/connected/index.html"));await page.evaluate(()=>window.chillReady);
+  await page.goto("file://"+path.resolve(__dirname,"../ui/connected/index.html"));await page.evaluate(async()=>{await window.chillReady;shellShow("catalog");await loadPage();});
   await page.locator("#admin-toggle").click();await page.locator("#configuration-categories").waitFor();
-  assert.equal(await page.locator("#configuration-categories button").count(),10);
+  assert.equal(await page.locator('#configuration-categories button[data-category="downloads"]').count(),1);
   await page.locator('#configuration-categories button[data-category="playback"]').click();
   assert.equal(await page.locator("#tmdb-admin").isVisible(),false);assert.equal(await page.locator("#personal-settings").isVisible(),true);
   await page.locator("#configuration-search").fill("SOUS TITRES");assert.equal(await page.locator("#personal-settings").isVisible(),true);
@@ -45,7 +45,7 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?path.join(proces
   await page.locator("#library-add-location").click();await page.locator("#additional-library-locations input").last().fill("/fixture/documentaries");
   await page.locator("#library-form button").filter({hasText:"Enregistrer"}).click();
   assert.deepEqual(await page.evaluate(()=>window.commands.find(c=>c.action==="save_library").additional_video_roots),["/fixture/series","/fixture/documentaries"]);
-  await page.evaluate(()=>openMedia("source"));await page.locator("#detail-tmdb").getByRole("button",{name:"Rechercher TMDB",exact:true}).click();
+  await page.evaluate(()=>openMedia("source"));await page.locator("#detail-edit").click();await page.locator("#detail-tmdb").getByRole("button",{name:"Rechercher TMDB",exact:true}).click();
   assert.equal(await page.evaluate(()=>window.commands.find(c=>c.action==="tmdb_candidates").query),"","Unedited label uses automatic filename cleanup");
   await page.locator("#detail-tmdb .tmdb-candidates button").click();await page.waitForFunction(()=>Boolean(window.confirmAssociation));
   assert.match(await page.locator("#detail-tmdb .tmdb-association-status").textContent(),/Association en cours avec Chosen reference/);
@@ -58,9 +58,9 @@ const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES?path.join(proces
   await page.evaluate(()=>window.chillPlay("source"));assert.equal(await page.locator("#player-panel").isVisible(),false);
   assert.equal(await page.locator("body").evaluate(body=>body.classList.contains("player-open")),false);
   assert.equal(await page.evaluate(()=>catalogItems.find(media=>media.id==="source").available),false);assert.equal(await page.evaluate(()=>scrollY),scroll,"Missing launch preserves scroll");
-  await page.evaluate(()=>openMedia("source"));assert.equal(await page.locator("#detail-play").isDisabled(),true);assert.equal(await page.locator("#detail-locate").isVisible(),true);
+  await page.evaluate(()=>openMedia("source"));assert.equal(await page.locator("#detail-play").isDisabled(),true);assert.equal(await page.locator("#detail-locate").isVisible(),false);await page.locator("#detail-edit").click();assert.equal(await page.locator("#detail-locate").isVisible(),true);
   await page.locator("#detail-locate").click();assert.equal(await page.locator("#library-settings").isVisible(),true);
   assert.deepEqual(errors,[]);
-  console.log("PASS connected configuration + matching: 10 categories, global normalized search, full-width cards, multiple locations, immediate TMDB feedback/stale guard, missing-file rollback/tag/scroll/recovery. Synthetic bridge; no provider/server/video.");
+  console.log("PASS connected configuration + matching: downloads category, global normalized search, full-width cards, multiple locations, immediate TMDB feedback/stale guard, missing-file rollback/tag/scroll/recovery. Synthetic bridge; no provider/server/video.");
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

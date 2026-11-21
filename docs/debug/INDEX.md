@@ -245,3 +245,5 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 - [BUG-0137](BUG-0137-stale-release-source-manifest.md) — manifeste racine périmé dans les sources de release ; publication bloquée puis reconstruction des artefacts depuis le manifeste corrigé.
 
 - [BUG0140](BUG-0140-home-legacy-resume.md) — film commencé exclu de l’Accueil faute de durée mesurée ; reprise héritée incluse et navigation En cours retirée, correctif local non publié.
+
+- [BUG0148](BUG-0148-detail-download-actions.md) — Télécharger sous le résumé et échec silencieux en HTTP ; actions visibles et volet Modifier fermé par défaut.

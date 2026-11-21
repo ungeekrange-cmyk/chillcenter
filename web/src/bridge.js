@@ -578,10 +578,14 @@
         const context = offlineContext();
         if (!context) throw invalid("Choisissez un profil.");
         if (["plan", "start"].includes(args.command.action) && (conn.offline || !conn.downloads)) throw invalid("Le serveur ne propose pas de téléchargement.");
-        let device = storage.getItem("chill.device_id");
-        if (!device || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(device)) {
-          device = root.crypto.randomUUID();
-          storage.setItem("chill.device_id", device);
+        let device;
+        if (args.command.action === "start") {
+          if (typeof root.crypto?.randomUUID !== "function") throw invalid("Ouvre Chill Center en HTTPS pour télécharger.");
+          device = storage.getItem("chill.device_id");
+          if (!device || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(device)) {
+            device = root.crypto.randomUUID();
+            storage.setItem("chill.device_id", device);
+          }
         }
         return env.downloads.command(args.command, context, device);
       }
