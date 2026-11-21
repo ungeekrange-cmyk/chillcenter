@@ -490,6 +490,7 @@ struct Connected {
     address: String,
     id: String,
     transport: Transport,
+    offline_downloads: bool,
     profiles: Value,
     active: Option<String>,
     notice: Option<String>,
@@ -1349,11 +1350,7 @@ impl UiClient {
         if active.is_some() {
             self.ensure_catalog(true)?;
         }
-        let offline_downloads = self
-            .settings
-            .offline_download_identity
-            .as_ref()
-            .is_some_and(|known| known.server == id);
+        let offline_downloads = self.connected.as_ref().is_some_and(|conn| conn.offline_downloads);
         if offline_downloads {
             let snapshot = OfflineIdentity {
                 server: id.clone(),
@@ -1517,10 +1514,10 @@ impl UiClient {
             .get(&id)
             .filter(|p| has_profile(&profiles, p))
             .cloned();
-        if identity["capabilities"]
+        let offline_downloads = identity["capabilities"]
             .as_array()
-            .is_some_and(|values| values.iter().any(|value| value == "offline_downloads"))
-        {
+            .is_some_and(|values| values.iter().any(|value| value == "offline_downloads"));
+        if offline_downloads {
             self.settings.offline_download_identity = Some(OfflineIdentity {
                 server: id.clone(),
                 address: address.clone(),
@@ -1533,6 +1530,7 @@ impl UiClient {
             address,
             id,
             transport,
+            offline_downloads,
             profiles,
             active,
             notice: renewal_notice(
@@ -3040,6 +3038,7 @@ mod tests {
             address: "https://127.0.0.1:9".into(),
             id: server.clone(),
             transport,
+            offline_downloads: false,
             profiles: json!([{ "id":profile,"name":"Test","revision":1}]),
             active: Some(profile.clone()),
             notice: None,
@@ -3330,6 +3329,7 @@ mod tests {
             address: "https://127.0.0.1:9".into(),
             id: server,
             transport,
+            offline_downloads: false,
             profiles: json!([]),
             active: Some(profile.clone()),
             notice: None,
@@ -3543,6 +3543,7 @@ mod tests {
             address: "https://127.0.0.1:1/".into(),
             id: "server".into(),
             transport,
+            offline_downloads: false,
             profiles: json!([{"id":a,"name":"A","revision":1},{"id":b,"name":"B","revision":1}]),
             active: Some(a.clone()),
             notice: None,

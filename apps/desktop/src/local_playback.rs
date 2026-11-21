@@ -466,12 +466,17 @@ struct Evidence {
 }
 impl Evidence {
     fn sample(&mut self, snapshot: &NativeSnapshot, now: Instant) -> bool {
-        let Some(current) = observation(snapshot, false) else {
+        if snapshot.error.is_some() {
             *self = Self::default();
             return false;
+        }
+        // libmpv can clear time-pos one poll before emitting its EOF event.
+        // Keep the last observation across a missing value, with the usual
+        // time and seek limits still applied when the next value arrives.
+        let Some(current) = observation(snapshot, false).filter(|_| snapshot.loaded) else {
+            return false;
         };
-        if snapshot.error.is_some() || !snapshot.loaded || !chill_domain::valid_speed(current.speed)
-        {
+        if !chill_domain::valid_speed(current.speed) {
             *self = Self::default();
             return false;
         }
@@ -497,7 +502,9 @@ impl Evidence {
                     .saturating_sub(last.position_ms.max(start)) as f64;
                 self.credit_ms += elapsed.min(tail / current.speed);
                 if self.before_tail {
-                    self.tail_motion_ms += tail.min(elapsed * current.speed);
+                    // A bounded observation measures actual playhead movement.
+                    // Per-sample clock rounding must not accumulate as lost coverage.
+                    self.tail_motion_ms += tail;
                 }
             } else if !(0. ..=300.).contains(&distance) || elapsed > 2500. {
                 *self = Self::default();

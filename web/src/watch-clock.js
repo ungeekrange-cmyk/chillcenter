@@ -53,7 +53,7 @@
           elapsed > 0 && elapsed <= 2500 && distance >= 0 && distance <= elapsed * speed / 1000 + 0.3) {
         const tail = Math.max(0, position - Math.max(start, this.previous.position));
         this.credit += Math.min(elapsed / 1000, tail / speed);
-        if (this.fromStart) this.contiguous += Math.min(tail, elapsed * speed / 1000);
+        if (this.fromStart) this.contiguous += tail;
       } else if (this.previous && (distance > 0.3 || distance < 0 || elapsed > 2500)) {
         this.reset();
         if (active && position <= start) this.fromStart = true;

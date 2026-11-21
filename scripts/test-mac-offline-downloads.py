@@ -70,9 +70,10 @@ with tempfile.TemporaryDirectory(prefix="offline-mac-fixture-") as work:
                                env=dict(env, CHILL_UI_QA_MODE="offline_reopen"),
                                stdout=log, stderr=subprocess.STDOUT)
         try:
-            deadline = time.monotonic() + 45
+            deadline = time.monotonic() + 28
             downloads = desktop / "downloads"
             index = downloads / "index.sqlite3"
+            entry = copies = None
             while time.monotonic() < deadline:
                 trace = report.read_text()
                 if app.poll() is not None:
@@ -87,7 +88,8 @@ with tempfile.TemporaryDirectory(prefix="offline-mac-fixture-") as work:
                         break
                 time.sleep(.2)
             else:
-                sys.exit(trace or "offline app timed out")
+                progress = json.loads(entry[0]) if entry else None
+                sys.exit(trace + f"\nOffline EOF timed out, progress={progress}, copies={copies}")
         finally:
             app.terminate()
             app.wait(timeout=10)
