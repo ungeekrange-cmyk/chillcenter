@@ -39,3 +39,17 @@ Sur des vidéos synthétiques, Chromium et le client natif Mac ont relu une
 copie avec sous-titres après arrêt du serveur et effacé le fichier à la fin.
 Le serveur ARM64 conserve un minimum glibc 2.28. Les scénarios mobiles
 physiques restent à exécuter.
+
+## Déploiement Pi / Pi rollout
+
+Le client web 0.7.13 (build `091d25f29fff`) a été installé via le helper signé.
+Les 94 ressources vérifiées sur HTTPS correspondent au ZIP publié. L’index
+servi sur le port 80 correspond également au paquet. L’installation normale
+du serveur a accepté le manifeste 0.7.9, puis a échoué à la sauvegarde avant
+basculement. Le serveur 0.7.8 a repris le service. La récupération root signée
+est décrite dans [BUG0146](../debug/BUG-0146-updater-offline-backup-sandbox.md).
+
+The signed helper installed web 0.7.13. The 94 HTTPS resources checked and
+the port 80 index matched the published ZIP. The standard server installation
+accepted the 0.7.9 receipt, then failed during backup before switching slots.
+Server 0.7.8 resumed service pending signed root recovery.
