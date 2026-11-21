@@ -13,7 +13,7 @@ const ui = join(root, "ui/connected");
 const themes = join(root, "themes/default");
 const src = join(root, "web/src");
 const out = resolve(process.argv[2] || join(root, "web/dist"));
-const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "audio-core.js", "audio-register.js", "subtitles.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "catalog-query.js", "catalog-store.js", "catalog-sync.js", "artwork-cache.js", "bridge.js", "register-sw.js"];
+const webScripts = ["json64.js", "watch-clock.js", "engines.js", "mp4.js", "audio-core.js", "audio-register.js", "subtitles.js", "mkv.js", "avi.js", "soft-video.js", "mpeg4-register.js", "range-reader.js", "mse-engine.js", "player-web.js", "catalog-query.js", "catalog-store.js", "catalog-sync.js", "artwork-cache.js", "offline-downloads.js", "bridge.js", "register-sw.js"];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -22,7 +22,7 @@ cpSync(ui, out, {
   filter: path => !/(\/qa\.js|-qa\.js|\.test\.js)$/.test(path) && !path.endsWith("/tests"),
 });
 cpSync(themes, join(out, "themes"), { recursive: true });
-for (const name of [...webScripts, "pwa-icons", "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name), { recursive: true });
+for (const name of [...webScripts, "offline-writer.js", "pwa-icons", "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name), { recursive: true });
 // MPEG-4 (Xvid/DivX) WebAssembly decoder: built by web/decoder/mpeg4, loaded by a Worker only when needed.
 mkdirSync(join(out, "vendor/mpeg4"), { recursive: true });
 const vendor = join(root, "web/vendor/mpeg4");
@@ -79,6 +79,7 @@ writeFileSync(join(out, "index.html"), stamped);
 // workers are lazy. Neither belongs to the atomic app-shell installation.
 // Match the versioned URLs requested by index.html, never cache media or API.
 const shell = ["./", ...files.filter(f => !f.startsWith("themes/") && !f.startsWith("vendor/") && /\.(?:js|css|svg|png|webmanifest)$/.test(f)).map(f => `${f}?v=${id}`)];
-writeFileSync(join(out, "sw.js"), readFileSync(join(src, "sw.js"), "utf8").replace("__BUILD__", id).replace("__SHELL__", JSON.stringify(shell)));
+const codecs = files.filter(f => f.startsWith("vendor/") && /\.(?:js|wasm)$/.test(f)).map(f => f + "?v=" + id);
+writeFileSync(join(out, "sw.js"), readFileSync(join(src, "sw.js"), "utf8").replace("__BUILD__", id).replace("__SHELL__", JSON.stringify(shell)).replace("__CODECS__", JSON.stringify(codecs)));
 writeFileSync(join(out, "build.json"), JSON.stringify({ version: versions.web, build: id, source: "ui/connected + web/src + themes/default", files: files.length + 1 }, null, 2) + "\n");
 console.log(`web: ${files.length + 1} fichiers, build ${id} -> ${out}`);

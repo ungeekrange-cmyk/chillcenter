@@ -5,7 +5,8 @@
 
 use chill_client::Transport;
 use chill_player::{
-    HttpMediaFactory, OpenGlFramebuffer, OpenGlRenderer, PlaybackStream, Player, PlayerError,
+    CancellationToken, HttpMediaFactory, MediaFactory, MediaSource, OpenGlFramebuffer,
+    OpenGlRenderer, PlaybackStream, Player, PlayerError,
     PlayerEvent, PlayerOptions, Track,
 };
 use objc2::rc::Retained;
@@ -23,6 +24,9 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::ffi::{CStr, c_int, c_uint, c_void};
 use std::ptr::{self, NonNull};
+use std::fs::File;
+use std::os::unix::fs::FileExt;
+use std::sync::Arc;
 use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 use tauri::{Runtime, WebviewWindow};
@@ -105,6 +109,7 @@ pub enum NativeAction {
     LeaseDeadline {
         remaining_ms: u64,
     },
+    LocalWithoutServer,
     Pause {
         paused: bool,
     },
@@ -195,7 +200,7 @@ pub async fn load<R: Runtime>(
     on_main(window, move |view| {
         PLAYER.with(|slot| {
             let existing = slot.borrow().clone();
-            if let Some(state) = existing {
+            if let Some(state) = existing.filter(|state| state.borrow().factory.is_some()) {
                 let mut state = state.borrow_mut();
                 state.reload(
                     transport,
@@ -209,7 +214,11 @@ pub async fn load<R: Runtime>(
                 )?;
                 state.snapshot()
             } else {
-                let mut state = SurfacePlayer::new(view, transport, playback, lease, cache)?;
+                remove_surface(slot);
+                let media_id = playback.media_id.clone();
+                let factory = HttpMediaFactory::new(transport);
+                factory.set_playback(playback);
+                let mut state = SurfacePlayer::new(view, media_id, SurfaceSource::Remote(factory, lease), cache)?;
                 state
                     .player
                     .load(&format!("chill-media://{}", state.media_id))?;
@@ -228,6 +237,72 @@ pub async fn load<R: Runtime>(
     .await
 }
 
+struct LocalFile {
+    file: File,
+    size: u64,
+}
+impl MediaSource for LocalFile {
+    fn read_at(&mut self, offset: u64, buffer: &mut [u8], cancellation: &CancellationToken) -> Result<usize, PlayerError> {
+        if cancellation.is_cancelled() {
+            return Err(PlayerError::Stream("Lecture locale annulée.".into()));
+        }
+        self.file.read_at(buffer, offset).map_err(|error| PlayerError::Stream(error.to_string()))
+    }
+    fn size(&self) -> Option<u64> { Some(self.size) }
+}
+struct LocalFactory {
+    file: LocalFile,
+    uri: String,
+}
+impl MediaFactory for LocalFactory {
+    fn open(&self, uri: &str) -> Result<Box<dyn MediaSource>, PlayerError> {
+        if uri != self.uri { return Err(PlayerError::NoActivePlayback); }
+        let file = self.file.file.try_clone().map_err(|e| PlayerError::Stream(e.to_string()))?;
+        Ok(Box::new(LocalFile { file, size: self.file.size }))
+    }
+}
+enum SurfaceSource {
+    Remote(HttpMediaFactory, LeaseDeadline),
+    Local(LocalFactory, Option<LeaseDeadline>),
+}
+fn remove_surface(slot: &RefCell<Option<Rc<RefCell<SurfacePlayer>>>>) {
+    if let Some(surface) = slot.borrow_mut().take() {
+        let state = surface.borrow();
+        state.context.makeCurrentContext();
+        state.view.removeFromSuperview();
+    }
+}
+
+pub async fn load_local<R: Runtime>(
+    window: &WebviewWindow<R>,
+    media_id: String,
+    file: File,
+    bytes: u64,
+    resume_seconds: Option<f64>,
+    preferences: chill_domain::Preferences,
+    deadline: Option<LeaseDeadline>,
+    cache: chill_client::playback_cache::PlaybackCache,
+) -> Result<NativeSnapshot, NativePlayerError> {
+    on_main(window, move |view| {
+        PLAYER.with(|slot| {
+            remove_surface(slot);
+            let uri = format!("chill-local://{media_id}");
+            let source = SurfaceSource::Local(LocalFactory { file: LocalFile { file, size: bytes }, uri: uri.clone() }, deadline);
+            let mut state = SurfacePlayer::new(view, media_id, source, cache)?;
+            state.player.load(&uri)?;
+            state.pending = Some(PendingLoad {
+                resume_seconds,
+                audio_language: Some(preferences.audio_language),
+                subtitle_language: Some(preferences.subtitle_language),
+                speed: 1.,
+            });
+            let state = Rc::new(RefCell::new(state));
+            *slot.borrow_mut() = Some(state.clone());
+            state.borrow_mut().snapshot()
+        })
+    }).await
+}
+
 pub async fn action<R: Runtime>(
     window: &WebviewWindow<R>,
     action: NativeAction,
@@ -238,8 +313,10 @@ pub async fn action<R: Runtime>(
                 .borrow()
                 .clone()
                 .ok_or_else(|| NativePlayerError::Surface("aucun lecteur chargé".into()))?;
-            let mut state = state.borrow_mut();
-            state.apply(action)
+            let close_local = matches!(&action, NativeAction::Close) && state.borrow().factory.is_none();
+            let result = state.borrow_mut().apply(action);
+            if close_local { remove_surface(slot); }
+            result
         })
     })
     .await
@@ -380,7 +457,7 @@ where
 struct SurfacePlayer {
     wake: crate::playback_wake::PlaybackWake,
     player: Player,
-    factory: HttpMediaFactory,
+    factory: Option<HttpMediaFactory>,
     renderer: OpenGlRenderer,
     view: Retained<NSOpenGLView>,
     overlay: Retained<NSView>,
@@ -397,15 +474,13 @@ struct SurfacePlayer {
     pending: Option<PendingLoad>,
     speed: f64,
     volume: u8,
-    deadline_instant: Instant,
-    deadline_wall: SystemTime,
+    deadline: Option<(Instant, SystemTime)>,
 }
 impl SurfacePlayer {
     fn new(
         parent: *mut c_void,
-        transport: Transport,
-        playback: PlaybackStream,
-        lease: LeaseDeadline,
+        media_id: String,
+        source: SurfaceSource,
         cache: chill_client::playback_cache::PlaybackCache,
     ) -> Result<Self, NativePlayerError> {
         let parent = unsafe { &*(parent as *mut NSView) };
@@ -442,11 +517,17 @@ impl SurfacePlayer {
         let mut player = Player::new(options)?;
         // Never decode/play before the server-confirmed heartbeat allows the bridge to unpause.
         player.pause(true)?;
-        let factory = HttpMediaFactory::new(transport);
-        factory.set_playback(playback.clone());
-        player.register_stream("chill-media", std::sync::Arc::new(factory.clone()))?;
+        let (factory, lease) = match source {
+            SurfaceSource::Remote(factory, lease) => {
+                player.register_stream("chill-media", Arc::new(factory.clone()))?;
+                (Some(factory), Some(lease))
+            }
+            SurfaceSource::Local(factory, lease) => {
+                player.register_stream("chill-local", Arc::new(factory))?;
+                (None, lease)
+            }
+        };
         let renderer = player.create_opengl_renderer(gl_proc)?;
-        let now = SystemTime::now();
         Ok(Self {
             wake: crate::playback_wake::PlaybackWake::default(),
             player,
@@ -457,7 +538,7 @@ impl SurfacePlayer {
             context,
             framebuffer: Framebuffer::new(1, 1)?,
             drawable_size: (1, 1),
-            media_id: playback.media_id,
+            media_id,
             paused: true,
             ended: false,
             error: None,
@@ -467,8 +548,7 @@ impl SurfacePlayer {
             pending: None,
             speed: 1.,
             volume: 100,
-            deadline_instant: Instant::now() + lease.remaining,
-            deadline_wall: now + lease.remaining,
+            deadline: lease.map(|value| (Instant::now() + value.remaining, SystemTime::now() + value.remaining)),
         })
     }
     #[allow(clippy::too_many_arguments)]
@@ -489,9 +569,10 @@ impl SurfacePlayer {
         self.player.pause(true)?;
         self.paused = true;
         self.player.set_cache_limits(cache)?;
-        self.factory.clear_playback();
-        self.factory.set_transport(transport);
-        self.factory.set_playback(playback.clone());
+        let factory = self.factory.as_ref().ok_or(PlayerError::NoActivePlayback)?;
+        factory.clear_playback();
+        factory.set_transport(transport);
+        factory.set_playback(playback.clone());
         self.media_id = playback.media_id;
         self.ended = false;
         self.error = None;
@@ -509,8 +590,7 @@ impl SurfacePlayer {
             subtitle_language,
             speed,
         });
-        self.deadline_instant = Instant::now() + lease.remaining;
-        self.deadline_wall = SystemTime::now() + lease.remaining;
+        self.deadline = Some((Instant::now() + lease.remaining, SystemTime::now() + lease.remaining));
         self.player
             .load(&format!("chill-media://{}", self.media_id))?;
         Ok(())
@@ -522,8 +602,12 @@ impl SurfacePlayer {
             NativeAction::Poll => self.poll_and_render()?,
             NativeAction::LeaseDeadline { remaining_ms } => {
                 let d = Duration::from_millis(remaining_ms);
-                self.deadline_instant = Instant::now() + d;
-                self.deadline_wall = SystemTime::now() + d
+                self.deadline = Some((Instant::now() + d, SystemTime::now() + d));
+            }
+            NativeAction::LocalWithoutServer => {
+                if self.factory.is_some() { return Err(PlayerError::NoActivePlayback.into()); }
+                self.deadline = None;
+                if self.error.as_deref() == Some("bail expiré") { self.error = None; }
             }
             NativeAction::Pause { paused } => {
                 if paused {
@@ -614,12 +698,7 @@ impl SurfacePlayer {
         Ok(())
     }
     fn expired(&self) -> bool {
-        deadline_has_passed(
-            Instant::now(),
-            SystemTime::now(),
-            self.deadline_instant,
-            self.deadline_wall,
-        )
+        self.deadline.is_some_and(|(deadline, wall)| deadline_has_passed(Instant::now(), SystemTime::now(), deadline, wall))
     }
     fn expire_if_needed(&mut self) -> Result<(), NativePlayerError> {
         if self.expired() && !self.paused {

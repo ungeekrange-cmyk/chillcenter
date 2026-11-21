@@ -343,6 +343,23 @@ impl Transport {
         )
         .await
     }
+    pub async fn report_progress_revision(
+        &self,
+        profile: &str,
+        body: &Progress,
+    ) -> Result<(Option<String>, bool), ClientError> {
+        let response: serde_json::Value = self
+            .request_json(
+                Method::POST,
+                &profile_path(profile, "progress")?,
+                Some(body),
+            )
+            .await?;
+        Ok((
+            response["progress_revision"].as_str().map(str::to_owned),
+            response["watched"] == true,
+        ))
+    }
     pub async fn release_playback(
         &self,
         profile: &str,

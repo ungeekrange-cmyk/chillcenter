@@ -35,6 +35,35 @@
     acknowledge(event, receivedAtMs) { this.acknowledged = { event, at: receivedAtMs }; }
   }
 
-  const api = { WatchClock, validSpeed, finalTenthStart, SPEEDS };
+  // Local evidence is used for deletion only within this playback. Samples
+  // must advance with the media clock and span the tail of short videos.
+  class OfflineWatch {
+    constructor() { this.reset(); }
+    reset() { this.previous = null; this.credit = 0; this.contiguous = 0; this.fromStart = false; }
+    sample(snapshot, now, seek = false) {
+      if (!snapshot.loaded || snapshot.error || snapshot.seeking || seek) { this.reset(); return false; }
+      const { duration, position, speed, ended, paused, buffering } = snapshot;
+      if (!(duration > 0) || !Number.isFinite(position) || !validSpeed(speed)) return false;
+      const elapsed = this.previous ? now - this.previous.now : 0;
+      const distance = this.previous ? position - this.previous.position : 0;
+      const start = finalTenthStart(Math.round(duration * 1000)) / 1000;
+      const active = !paused && !buffering;
+      if (active && position <= start) this.fromStart = true;
+      if (this.previous?.active && (active || ended) && this.previous.speed === speed &&
+          elapsed > 0 && elapsed <= 2500 && distance >= 0 && distance <= elapsed * speed / 1000 + 0.3) {
+        const tail = Math.max(0, position - Math.max(start, this.previous.position));
+        this.credit += Math.min(elapsed / 1000, tail / speed);
+        if (this.fromStart) this.contiguous += Math.min(tail, elapsed * speed / 1000);
+      } else if (this.previous && (distance > 0.3 || distance < 0 || elapsed > 2500)) {
+        this.reset();
+        if (active && position <= start) this.fromStart = true;
+      }
+      this.previous = { now, position, speed, active };
+      return Boolean(ended) && (duration < 100
+        ? this.fromStart && this.contiguous >= Math.max(0.001, duration - start - 0.1)
+        : this.credit >= 10);
+    }
+  }
+  const api = { WatchClock, OfflineWatch, validSpeed, finalTenthStart, SPEEDS };
   if (typeof module !== "undefined") module.exports = api; else root.ChillWatchClock = api;
 })(typeof window !== "undefined" ? window : globalThis);

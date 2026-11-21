@@ -143,5 +143,36 @@ Object.assign(chillEnglish,{
  "Mise à jour détectée ; détails indisponibles. Réactualisez.": "Update detected; details are unavailable. Refresh."
  ,"Accueil":"Home","Reprendre":"Continue watching","Ajouts récents":"Recently added","Pour vous":"For you","L’accueil nécessite une mise à jour du serveur. La recherche et les catégories restent disponibles.":"Home requires a server update. Search and categories remain available.","Saison ":"Season ","Le navigateur ne permet pas de maintenir l’écran éveillé. Vérifiez l’accès HTTPS et le mode économie d’énergie.":"Your browser cannot keep the screen awake. Check HTTPS access and power-saving mode."
 });
+Object.assign(chillEnglish,{
+ "Téléchargements":"Downloads",
+ "Télécharger":"Download",
+ "Télécharger la saison":"Download season",
+ "Télécharger la série":"Download series",
+ "Supprimer après visionnage":"Delete after watching",
+ "Conserver cette vidéo":"Keep this video",
+ "Autoriser la suppression automatique":"Allow automatic deletion",
+ "Ouvrir dans le Finder":"Open in Finder",
+ "Annuler le téléchargement":"Cancel download",
+ "Reprendre le téléchargement":"Resume download",
+ "Supprimer le téléchargement":"Delete download",
+ "Supprimer le téléchargement de ":"Delete the download of ",
+ "Supprimer les téléchargements du groupe":"Delete downloads in this group",
+ "Supprimer les ":"Delete ",
+ " téléchargements sélectionnés":" selected downloads",
+ "Fichier local inaccessible.":"Local file unavailable.",
+ "Certains sous-titres externes sont indisponibles.":"Some external subtitles are unavailable.",
+ "Réessayer les sous-titres":"Retry subtitles",
+ "Suppression à réessayer.":"Deletion failed. You can retry it here.",
+ "Aucun téléchargement sur cet appareil.":"No downloads on this device.",
+ "Aucune vidéo disponible à télécharger.":"No videos are available to download.",
+ "Préparation du téléchargement…":"Preparing the download…",
+ "Téléchargements à jour.":"Downloads are up to date.",
+ "estimation du navigateur":"browser estimate",
+ "libres sur":"free out of",
+ "vidéos à télécharger":"videos to download",
+ "indisponibles":"unavailable",
+ "Saison inconnue":"Unknown season",
+ "Serveur indisponible. Vos téléchargements restent accessibles.":"Server unavailable. Your downloads are still accessible."
+});
 if(typeof module!=="undefined")module.exports=chillEnglish;
 if(typeof globalThis!=="undefined")globalThis.chillEnglish=chillEnglish;

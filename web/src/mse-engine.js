@@ -54,14 +54,22 @@
       return { forward: Math.min(90, Math.max(8, forward * 1048576 / bps)), back: Math.min(60, back * 1048576 / bps) };
     }
 
-    async open({ mediaId, lease, startAt, speed, subtitleLanguage, profileId }) {
+    async open({ mediaId, lease, startAt, speed, subtitleLanguage, profileId, local }) {
       const MS = this.d.MediaSource;
       if (!MS) throw fail("Ce navigateur ne sait pas lire de vidéo par MediaSource.");
       // The player can leave (stop, another video) while this runs: after every await, check that this engine is still wanted, so that a
       // slow open never replaces the `<video>` of the engine that took over the shared host element (review 9, C-4).
       const alive = () => { if (this.closed) throw fail("Ouverture annulée."); };
       alive();
-      this.reader = new RangeReader({ mediaId, lease, fetch: this.d.fetch });
+      this.local = local;
+      this.reader = local ? {
+        size: local.file.size,
+        async open() { this.head = await this.read(0, Math.min(65535, this.size - 1)); },
+        async read(start, end) {
+          if (start < 0 || start >= this.size || end < start) throw fail("Plage vidéo locale invalide.");
+          return new Uint8Array(await local.file.slice(start, Math.min(end + 1, this.size)).arrayBuffer());
+        },
+      } : new RangeReader({ mediaId, lease, fetch: this.d.fetch });
       await this.reader.open(); alive();
       const kind = sniffContainer(this.reader.head);
       if (kind === "unknown") throw fail("Format de fichier non reconnu.");
@@ -141,7 +149,10 @@
       await this.pump(3);
       this.started = true;
       // Sidecar discovery is lease-scoped and must not delay first playback.
-      if (profileId) {
+      if (local) {
+        this.external = local.subtitles;
+        this.selectPreferredExternal();
+      } else if (profileId) {
         this.subtitleBase = `/api/2026-10-14/profiles/${encodeURIComponent(profileId)}/media/${encodeURIComponent(mediaId)}/subtitles`;
         this.subtitleQuery = new URLSearchParams({ session: lease.session_id, generation: String(lease.generation) }).toString();
         this.loadExternalSubtitles();
@@ -372,11 +383,14 @@
         const data = await response.json();
         if (this.closed) return;
         this.external = (data.items || []).slice(0, 64).filter(t => /^sub-[a-f0-9]+$/.test(t.id) && /\.(srt|vtt|ass|ssa)$/i.test(t.title || ""));
-        const preferred = this.external.filter(t => !t.unavailable && !t.ambiguous && this.captionLanguage && (t.language || "").toLowerCase().startsWith(this.captionLanguage.slice(0, 2)));
-        if (!this.subtitleManual && !this.activeSubtitle && preferred.length === 1) await this.selectExternalSubtitle(preferred[0].id);
+        await this.selectPreferredExternal();
       } catch (e) {
         if (!this.closed && e.name !== "AbortError") this.captionNotice = language(this.d.document) === "fr" ? "La recherche de sous-titres externes a échoué." : "External subtitle discovery failed.";
       }
+    }
+    selectPreferredExternal() {
+      const preferred = this.external.filter(t => !t.unavailable && !t.ambiguous && this.captionLanguage && (t.language || "").toLowerCase().startsWith(this.captionLanguage.slice(0, 2)));
+      if (!this.subtitleManual && !this.activeSubtitle && preferred.length === 1) return this.selectExternalSubtitle(preferred[0].id);
     }
     async selectExternalSubtitle(id) {
       const track = this.external.find(t => t.id === id && !t.unavailable);
@@ -386,10 +400,14 @@
       this.activeSubtitle = null; this.activeExternal = track; this.captionNotice = null;
       this.src.setSubtitle?.(null); this.captions.select(null);
       try {
-        const response = await this.d.fetch(`${this.subtitleBase}/${encodeURIComponent(id)}?${this.subtitleQuery}`, { credentials: "same-origin", cache: "no-store", signal: this.subtitleFetch.signal });
-        if (!response.ok) throw fail("Sous-titres externes indisponibles.");
-        if (Number(response.headers.get("content-length")) > 16 * 1024 * 1024) throw fail("Sous-titres trop volumineux.");
-        const text = await response.text();
+        let text;
+        if (this.local) text = await this.local.readSubtitle(id);
+        else {
+          const response = await this.d.fetch(`${this.subtitleBase}/${encodeURIComponent(id)}?${this.subtitleQuery}`, { credentials: "same-origin", cache: "no-store", signal: this.subtitleFetch.signal });
+          if (!response.ok) throw fail("Sous-titres externes indisponibles.");
+          if (Number(response.headers.get("content-length")) > 16 * 1024 * 1024) throw fail("Sous-titres trop volumineux.");
+          text = await response.text();
+        }
         if (this.closed || epoch !== this.captionEpoch) return;
         const records = Text.parseFile(text, track.title.split(".").at(-1));
         if (!records.length) throw fail("Ce fichier ne contient aucun sous-titre lisible.");

@@ -3,7 +3,7 @@ var uiText=globalThis.chillI18n?.t||((text)=>text);
 let shellSection="home",shellSearchTimer=null;
 const categoryNames={"":uiText("Toute la collection"),film:uiText("Films"),serie:uiText("Séries"),spectacle:uiText("Spectacles"),documentaire:uiText("Documentaires")};
 window.renderShell=()=>{
- const connected=state.stage==="connected",active=connected&&Boolean(state.profile_id);
+ const connected=state.stage==="connected",active=connected&&Boolean(state.profile_id)&&!state.downloads_only;
  $("advice-toggle").hidden=!active;document.querySelector(".global-search").hidden=!active;
  document.querySelectorAll("[data-category],#show-sagas,#show-playlists").forEach(button=>button.disabled=!active);
  $("connected-address").textContent=state.address||"";
@@ -16,6 +16,7 @@ window.renderShell=()=>{
  if(shellSection!=="admin")$("admin-panel").hidden=true;
  $("show-home").disabled=!active;$("show-home").classList.toggle("active",shellSection==="home");document.querySelectorAll("[data-category]").forEach(button=>button.classList.toggle("active",shellSection==="catalog"&&button.dataset.category===$("category").value));
  $("admin-toggle").classList.toggle("active",shellSection==="admin");$("advice-toggle").classList.toggle("active",shellSection==="advice");
+ window.renderDownloads?.();
  $("catalog-title").textContent=categoryNames[$("category").value]||uiText("Toute la collection");
 };
 function shellShow(section){if(!["collections","collection","picker"].includes(section))window.leaveCollectionPages?.();shellSection=section;window.recoveryContextChanged?.();window.renderShell();}

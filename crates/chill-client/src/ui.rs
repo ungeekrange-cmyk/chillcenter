@@ -437,6 +437,14 @@ struct Settings {
     appearance: crate::appearance::Appearance,
     playback_cache: crate::playback_cache::PlaybackCache,
     player_presentation: PlayerPresentation,
+    offline_download_identity: Option<OfflineIdentity>,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+struct OfflineIdentity {
+    server: String,
+    address: String,
+    profiles: Value,
 }
 
 /// Device-local interface language; never changes media, audio or API fields.
@@ -463,6 +471,7 @@ impl Default for PlayerPresentation {
 }
 
 /// Native-host-only snapshot. Never serialized into the webview.
+#[derive(Clone)]
 pub struct PlaybackConnection {
     pub transport: Transport,
     pub profile_id: String,
@@ -492,6 +501,7 @@ pub struct UiClient {
     runtime: tokio::runtime::Runtime,
     pending: Option<Pending>,
     connected: Option<Connected>,
+    downloads_only: bool,
     persist_requests: bool,
     catalog_cache: Option<crate::catalog_cache::LocalCatalog>,
     artwork_gate: Arc<tokio::sync::Semaphore>,
@@ -700,16 +710,35 @@ impl UiClient {
                 None,
                 false,
             ),
-            UiCommand::GroupWatched {media_id,watched,scope,expected_revision} => {
+            UiCommand::GroupWatched {
+                media_id,
+                watched,
+                scope,
+                expected_revision,
+            } => {
                 valid_id(&media_id)?;
-                if !["season","series"].contains(&scope.as_str()) {return Err(invalid("Portée invalide."));}
-                (HttpMethod::PUT,format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"),
-                 Some(json!({"watched":watched,"scope":scope,"expected_revision":expected_revision})),None,true)
+                if !["season", "series"].contains(&scope.as_str()) {
+                    return Err(invalid("Portée invalide."));
+                }
+                (
+                    HttpMethod::PUT,
+                    format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"),
+                    Some(
+                        json!({"watched":watched,"scope":scope,"expected_revision":expected_revision}),
+                    ),
+                    None,
+                    true,
+                )
             }
-            UiCommand::SetWatched {media_id,watched} => {
+            UiCommand::SetWatched { media_id, watched } => {
                 valid_id(&media_id)?;
-                (HttpMethod::PUT,format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"),
-                 Some(json!({"watched":watched})),None,true)
+                (
+                    HttpMethod::PUT,
+                    format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"),
+                    Some(json!({"watched":watched})),
+                    None,
+                    true,
+                )
             }
             UiCommand::CollectionArtworkCandidates { kind, id, query } => {
                 valid_artwork_collection(&kind, &id)?;
@@ -983,6 +1012,53 @@ impl UiClient {
             cache: self.settings.playback_cache,
         })
     }
+    /// Native host only. The webview cannot name another server or profile.
+    pub fn offline_download_scope(&self) -> Option<(String, String)> {
+        if !self.downloads_only {
+            return None;
+        }
+        let saved = self.settings.offline_download_identity.as_ref()?;
+        let active = self.settings.last_profiles.get(&saved.server)?;
+        has_profile(&saved.profiles, active).then(|| (saved.server.clone(), active.clone()))
+    }
+    pub fn download_cache_limits(&self) -> crate::playback_cache::PlaybackCache {
+        self.settings.playback_cache
+    }
+
+    fn restore_downloads(&mut self, notice: String) -> Option<Value> {
+        let saved = self.settings.offline_download_identity.as_ref()?;
+        if self.settings.last_address.as_ref() != Some(&saved.address) {
+            return None;
+        }
+        let active = self
+            .settings
+            .last_profiles
+            .get(&saved.server)
+            .filter(|id| has_profile(&saved.profiles, id))
+            .cloned()
+            .or_else(|| {
+                saved.profiles.as_array()?.first()?["id"]
+                    .as_str()
+                    .map(str::to_owned)
+            })?;
+        self.settings
+            .last_profiles
+            .insert(saved.server.clone(), active);
+        self.downloads_only = true;
+        self.downloads_view(Some(notice))
+    }
+    fn downloads_view(&self, notice: Option<String>) -> Option<Value> {
+        let (server, profile) = self.offline_download_scope()?;
+        let saved = self.settings.offline_download_identity.as_ref()?;
+        Some(json!({
+            "stage":"connected","server_id":server,"profile_id":profile,
+            "address":saved.address,"profiles":saved.profiles,"library":{"video_root":null},
+            "language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,
+            "playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation,
+            "downloads_only":true,"offline_downloads":true,"catalog_cache":{"offline":true},
+            "notice":notice
+        }))
+    }
     /// Short snapshot for independent settings requests, including before a
     /// profile is selected. The caller releases the UI mutex before network I/O.
     pub fn server_transport(&self) -> Result<Transport, UiError> {
@@ -1066,6 +1142,7 @@ impl UiClient {
             runtime,
             pending: None,
             connected: None,
+            downloads_only: false,
             persist_requests: true,
             catalog_cache: None,
             artwork_gate: Arc::new(tokio::sync::Semaphore::new(1)),
@@ -1199,6 +1276,9 @@ impl UiClient {
             .ok_or_else(|| invalid("Choisissez un profil."))
     }
     fn view(&mut self) -> Result<Value, UiError> {
+        if let Some(view) = self.downloads_view(None) {
+            return Ok(view);
+        }
         if self.connected.is_none() {
             return Ok(
                 json!({"stage":"server","address":self.settings.last_address,"servers":self.settings.servers.keys().collect::<Vec<_>>(),"language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation}),
@@ -1269,9 +1349,25 @@ impl UiClient {
         if active.is_some() {
             self.ensure_catalog(true)?;
         }
+        let offline_downloads = self
+            .settings
+            .offline_download_identity
+            .as_ref()
+            .is_some_and(|known| known.server == id);
+        if offline_downloads {
+            let snapshot = OfflineIdentity {
+                server: id.clone(),
+                address: address.clone(),
+                profiles: profiles.clone(),
+            };
+            if self.settings.offline_download_identity.as_ref() != Some(&snapshot) {
+                self.settings.offline_download_identity = Some(snapshot);
+                self.save()?;
+            }
+        }
         let cache_status=self.catalog_cache.as_ref().filter(|c|Some(&c.profile)==active.as_ref()).map(|c|json!({"revision":c.document.as_ref().map(|d|&d["revision"]),"offline":c.notice.is_some(),"notice":c.notice}));
         Ok(
-            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"catalog_cache":cache_status,"language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation,"notice":self.connected.as_ref().unwrap().notice}),
+            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"catalog_cache":cache_status,"offline_downloads":offline_downloads,"language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation,"notice":self.connected.as_ref().unwrap().notice}),
         )
     }
     fn theme(&self) -> &str {
@@ -1282,6 +1378,7 @@ impl UiClient {
         }
     }
     fn connect(&mut self, address: &str) -> Result<Value, UiError> {
+        self.downloads_only = false;
         if let Some(task) = self.prefetch.take() {
             task.abort();
         }
@@ -1420,6 +1517,16 @@ impl UiClient {
             .get(&id)
             .filter(|p| has_profile(&profiles, p))
             .cloned();
+        if identity["capabilities"]
+            .as_array()
+            .is_some_and(|values| values.iter().any(|value| value == "offline_downloads"))
+        {
+            self.settings.offline_download_identity = Some(OfflineIdentity {
+                server: id.clone(),
+                address: address.clone(),
+                profiles: profiles.clone(),
+            });
+        }
         self.settings.servers.insert(address.clone(), id.clone());
         self.settings.last_address = Some(address.clone());
         self.connected = Some(Connected {
@@ -2357,6 +2464,9 @@ impl UiClient {
                         Ok(view) => Ok(view),
                         Err(error) => {
                             self.connected = None;
+                            if let Some(view) = self.restore_downloads(error.message.clone()) {
+                                return Ok(view);
+                            }
                             let mut view = self.view()?;
                             view["notice"] = json!(error.message);
                             Ok(view)
@@ -2415,6 +2525,7 @@ impl UiClient {
                 result
             }
             UiCommand::Disconnect => {
+                self.downloads_only = false;
                 if let Some(task) = self.prefetch.take() {
                     task.abort();
                 }
@@ -2428,6 +2539,20 @@ impl UiClient {
             UiCommand::PlaybackProgress { .. } => Err(invalid("Progression gérée par l’hôte.")),
             UiCommand::SeasonArtwork { .. } => Err(invalid("Affiche gérée par le cache.")),
             UiCommand::SelectProfile { id } => {
+                if self.downloads_only {
+                    valid_id(&id)?;
+                    let snapshot = self
+                        .settings
+                        .offline_download_identity
+                        .as_ref()
+                        .filter(|entry| has_profile(&entry.profiles, &id))
+                        .ok_or_else(|| invalid("Profil hors connexion absent."))?;
+                    self.settings
+                        .last_profiles
+                        .insert(snapshot.server.clone(), id);
+                    self.save()?;
+                    return self.view();
+                }
                 valid_id(&id)?;
                 let conn = self
                     .connected
@@ -3217,14 +3342,42 @@ mod tests {
         assert_eq!(task.method, HttpMethod::GET);
         assert!(task.body.is_none());
         assert!(!task.mutation);
-        let media_id=uuid::Uuid::new_v4().to_string();
-        let group=client.prepare_provider_task(UiCommand::GroupWatched{media_id:media_id.clone(),watched:true,scope:"season".into(),expected_revision:17}).unwrap();
-        assert_eq!(group.path,format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched"));
-        assert_eq!(group.method,HttpMethod::PUT);assert!(group.mutation);
-        assert_eq!(group.body,Some(json!({"watched":true,"scope":"season","expected_revision":17})));
-        assert!(client.prepare_provider_task(UiCommand::GroupWatched{media_id,watched:true,scope:"all".into(),expected_revision:17}).is_err());
+        let media_id = uuid::Uuid::new_v4().to_string();
+        let group = client
+            .prepare_provider_task(UiCommand::GroupWatched {
+                media_id: media_id.clone(),
+                watched: true,
+                scope: "season".into(),
+                expected_revision: 17,
+            })
+            .unwrap();
+        assert_eq!(
+            group.path,
+            format!("/api/2026-10-14/profiles/{profile}/media/{media_id}/watched")
+        );
+        assert_eq!(group.method, HttpMethod::PUT);
+        assert!(group.mutation);
+        assert_eq!(
+            group.body,
+            Some(json!({"watched":true,"scope":"season","expected_revision":17}))
+        );
+        assert!(
+            client
+                .prepare_provider_task(UiCommand::GroupWatched {
+                    media_id,
+                    watched: true,
+                    scope: "all".into(),
+                    expected_revision: 17
+                })
+                .is_err()
+        );
         client.connected.as_mut().unwrap().active = Some(uuid::Uuid::new_v4().to_string());
-        assert_eq!(client.commit_provider_task(group,json!({"saved":true})).unwrap(),json!({"discarded":true}));
+        assert_eq!(
+            client
+                .commit_provider_task(group, json!({"saved":true}))
+                .unwrap(),
+            json!({"discarded":true})
+        );
         let result = client
             .commit_provider_task(
                 task,

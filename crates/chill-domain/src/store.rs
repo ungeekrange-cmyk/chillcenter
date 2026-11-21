@@ -138,6 +138,22 @@ pub struct SyncSnapshot {
     pub captured_revision: (u64, u64),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OfflineProgressApply {
+    Applied { revision: String },
+    Conflict,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfflineProgress {
+    pub event_id: String,
+    pub base_revision: String,
+    pub position_ms: u64,
+    pub duration_ms: u64,
+    pub watched: bool,
+}
+
 pub struct Store {
     pub(crate) catalogue: Database,
     pub(crate) personal: Connection,
@@ -296,6 +312,27 @@ impl Store {
         CREATE TRIGGER IF NOT EXISTS cc_sync_member_i AFTER INSERT ON cc_playlist_members BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
         CREATE TRIGGER IF NOT EXISTS cc_sync_member_u AFTER UPDATE ON cc_playlist_members BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=NEW.playlist_id); END;
         CREATE TRIGGER IF NOT EXISTS cc_sync_member_d AFTER DELETE ON cc_playlist_members BEGIN UPDATE cc_sync_personal_epoch SET revision=revision+1 WHERE profile_id=(SELECT profile_id FROM cc_playlists WHERE id=OLD.playlist_id); END;").map_err(db_error)?;
+        // Offline clients compare this narrow per-media token before applying a
+        // locally recorded resume. Any ordinary state write clears its last
+        // offline idempotency key in the same SQLite transaction.
+        personal.execute_batch("CREATE TABLE IF NOT EXISTS cc_download_progress_revision(
+            profile_id TEXT NOT NULL REFERENCES cc_profiles(id) ON DELETE CASCADE,
+            stable_media_id TEXT NOT NULL REFERENCES cc_media_identity(stable_id) ON DELETE CASCADE,
+            revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0),
+            last_event_id TEXT,
+            PRIMARY KEY(profile_id,stable_media_id)
+        );
+        CREATE TRIGGER IF NOT EXISTS cc_download_progress_state_i AFTER INSERT ON cc_profile_state BEGIN
+            INSERT INTO cc_download_progress_revision(profile_id,stable_media_id,revision,last_event_id) VALUES(NEW.profile_id,NEW.stable_media_id,1,NULL)
+            ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET revision=revision+1,last_event_id=NULL;
+        END;
+        CREATE TRIGGER IF NOT EXISTS cc_download_progress_state_u AFTER UPDATE ON cc_profile_state BEGIN
+            INSERT INTO cc_download_progress_revision(profile_id,stable_media_id,revision,last_event_id) VALUES(NEW.profile_id,NEW.stable_media_id,1,NULL)
+            ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET revision=revision+1,last_event_id=NULL;
+        END;
+        CREATE TRIGGER IF NOT EXISTS cc_download_progress_state_d AFTER DELETE ON cc_profile_state BEGIN
+            DELETE FROM cc_download_progress_revision WHERE profile_id=OLD.profile_id AND stable_media_id=OLD.stable_media_id;
+        END;").map_err(db_error)?;
         // AI plans have two independent stale tokens.  Keep their maintenance in
         // SQLite so mutations from every Store connection are visible atomically.
         personal.execute_batch(
@@ -841,6 +878,98 @@ impl Store {
         self.require_profile(profile_id)?;
         self.legacy_id(stable_id)?;
         state(&self.personal, profile_id, stable_id)
+    }
+
+    pub fn offline_progress_revision(
+        &self,
+        profile_id: &str,
+        stable_id: &str,
+    ) -> Result<String, String> {
+        self.require_profile(profile_id)?;
+        self.legacy_id(stable_id)?;
+        let revision: Option<i64> = self.personal.query_row(
+            "SELECT revision FROM cc_download_progress_revision WHERE profile_id=?1 AND stable_media_id=?2",
+            params![profile_id, stable_id],
+            |row| row.get(0),
+        ).optional().map_err(db_error)?;
+        Ok(revision.unwrap_or(0).to_string())
+    }
+
+    /// Applies client-recorded offline state without awarding lease-derived
+    /// watch credit. The caller owns any active-lease exclusion.
+    pub fn apply_offline_progress(
+        &mut self,
+        profile_id: &str,
+        stable_id: &str,
+        progress: &OfflineProgress,
+    ) -> Result<OfflineProgressApply, String> {
+        let event_id = progress.event_id.as_str();
+        let base_revision = progress.base_revision.as_str();
+        let OfflineProgress { position_ms, duration_ms, watched, .. } = *progress;
+        if Uuid::parse_str(event_id).is_err()
+            || base_revision.len() > 20
+            || base_revision
+                .parse::<u64>()
+                .ok()
+                .filter(|value| value.to_string() == base_revision)
+                .is_none()
+            || duration_ms == 0
+            || duration_ms > i64::MAX as u64
+            || position_ms > duration_ms
+        {
+            return Err("Progression hors connexion invalide.".into());
+        }
+        self.require_profile(profile_id)?;
+        self.legacy_id(stable_id)?;
+        self.media(profile_id, stable_id)?;
+        let tx = self.personal.unchecked_transaction().map_err(db_error)?;
+        let known: Option<(i64, Option<String>)> = tx.query_row(
+            "SELECT revision,last_event_id FROM cc_download_progress_revision WHERE profile_id=?1 AND stable_media_id=?2",
+            params![profile_id, stable_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional().map_err(db_error)?;
+        let revision = known.as_ref().map(|value| value.0 as u64).unwrap_or(0);
+        if known.as_ref().and_then(|value| value.1.as_deref()) == Some(event_id) {
+            return Ok(OfflineProgressApply::Applied {
+                revision: revision.to_string(),
+            });
+        }
+        if revision.to_string() != base_revision {
+            return Ok(OfflineProgressApply::Conflict);
+        }
+        let before = state_in(&tx, profile_id, stable_id)?;
+        upsert_state(
+            &tx,
+            profile_id,
+            stable_id,
+            Some(position_ms),
+            None,
+            watched.then_some(true),
+            None,
+        )?;
+        if watched && !before.watched {
+            tx.execute(
+                "UPDATE cc_profile_state SET last_watched_at=?1 WHERE profile_id=?2 AND stable_media_id=?3",
+                params![chill_catalog::model::now(), profile_id, stable_id],
+            ).map_err(db_error)?;
+        }
+        tx.execute("INSERT INTO cc_resume_measurement(profile_id,stable_media_id,duration_ms) VALUES(?1,?2,?3)
+            ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET duration_ms=excluded.duration_ms",
+            params![profile_id, stable_id, duration_ms as i64],
+        ).map_err(db_error)?;
+        let next: i64 = tx.query_row(
+            "SELECT revision FROM cc_download_progress_revision WHERE profile_id=?1 AND stable_media_id=?2",
+            params![profile_id, stable_id],
+            |row| row.get(0),
+        ).map_err(db_error)?;
+        tx.execute(
+            "UPDATE cc_download_progress_revision SET last_event_id=?1 WHERE profile_id=?2 AND stable_media_id=?3",
+            params![event_id, profile_id, stable_id],
+        ).map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        Ok(OfflineProgressApply::Applied {
+            revision: next.to_string(),
+        })
     }
 
     /// Start a completed/watched video again without erasing its saved history.
@@ -3716,6 +3845,59 @@ mod tests {
         );
         assert!(s.playback_start_state("missing", &id).is_err());
         assert!(s.playback_start_state(&p.id, "missing").is_err());
+    }
+
+    #[test]
+    fn offline_progress_uses_per_media_cas_and_one_idempotency_token() {
+        let mut s = store();
+        let p = s.create_profile("Offline").unwrap();
+        let id = s.catalog(&p.id).unwrap()[0].id.clone();
+        assert_eq!(s.offline_progress_revision(&p.id, &id).unwrap(), "0");
+        let event = uuid::Uuid::new_v4().to_string();
+        let progress = |id: &str, revision: &str, position_ms, watched| OfflineProgress {
+            event_id: id.to_owned(),
+            base_revision: revision.to_owned(),
+            position_ms,
+            duration_ms: 10_000,
+            watched,
+        };
+        assert_eq!(
+            s.apply_offline_progress(&p.id, &id, &progress(&event, "0", 4_000, false))
+                .unwrap(),
+            OfflineProgressApply::Applied {
+                revision: "1".into()
+            }
+        );
+        assert_eq!(s.personal_state(&p.id, &id).unwrap().position_ms, 4_000);
+        assert_eq!(
+            s.apply_offline_progress(&p.id, &id, &progress(&event, "0", 9_000, true))
+                .unwrap(),
+            OfflineProgressApply::Applied {
+                revision: "1".into()
+            },
+            "a retry does not apply its changed payload"
+        );
+        s.set_watched(&p.id, &id, true).unwrap();
+        assert_eq!(
+            s.apply_offline_progress(&p.id, &id, &progress(&event, "1", 9_000, true))
+                .unwrap(),
+            OfflineProgressApply::Conflict,
+            "a newer online write clears the old idempotency token"
+        );
+        let online_revision = s.offline_progress_revision(&p.id, &id).unwrap();
+        let next_revision = (online_revision.parse::<u64>().unwrap() + 1).to_string();
+        assert_eq!(
+            s.apply_offline_progress(
+                &p.id,
+                &id,
+                &progress(&uuid::Uuid::new_v4().to_string(), &online_revision, 9_000, true),
+            )
+            .unwrap(),
+            OfflineProgressApply::Applied {
+                revision: next_revision
+            }
+        );
+        assert_eq!(s.personal_state(&p.id, &id).unwrap().final_watched_ms, 0);
     }
 
     #[test]

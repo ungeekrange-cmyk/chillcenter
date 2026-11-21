@@ -93,7 +93,7 @@
     }
     syncWakeLock() {
       const s = this.engine?.snapshot();
-      this.wake.setActive(Boolean(!this.pageHidden && this.d.document?.visibilityState !== "hidden" && this.lease && !this.serverPaused && !this.transfer && s?.loaded && !s.paused && !s.buffering && !s.seeking && !s.ended && !s.error && !s.play_blocked));
+      this.wake.setActive(Boolean(!this.pageHidden && this.d.document?.visibilityState !== "hidden" && (this.lease || this.local) && !this.serverPaused && !this.transfer && s?.loaded && !s.paused && !s.buffering && !s.seeking && !s.ended && !s.error && !s.play_blocked));
     }
     get deviceId() {
       let id = null;
@@ -107,6 +107,7 @@
       this.ctx = ctx;
       switch (c.action) {
         case "start": return this.start(c.media_id, c.context || { kind: "standalone", id: null });
+        case "start_local": return this.start(c.media_id, { kind: "standalone", id: null }, true);
         case "status": return this.status();
         case "confirm_transfer": return this.confirmTransfer();
         case "refuse_transfer": await this.stop(false); return this.closed();
@@ -130,24 +131,46 @@
     api(path) { return `/profiles/${this.ctx.profile}${path}`; }
     control() { const l = this.lease; return { session_id: l.session_id, generation: l.generation, media_id: l.media_id, media_revision: l.media_revision }; }
 
-    async start(mediaId, context) {
+    async start(mediaId, context, useLocal = false) {
       await this.stop(true);
       this.context = context; this.note = ""; this.ended = false; this.nextResolved = null;
-      this.info = await this.d.request("GET", this.api(`/media/${mediaId}/playback-info`));
       this.mediaId = mediaId;
+      if (useLocal) {
+        const storage = this.d.downloads;
+        const identity = { server: this.ctx.server, profile: this.ctx.profile };
+        this.local = {
+          ...await storage.acquire(identity, mediaId), identity, mediaId,
+          watch: new Clock.OfflineWatch(), revision: null, latestWrite: Promise.resolve(),
+        };
+        this.local.revision = this.local.progress?.base_revision || this.local.row.progress_revision;
+        this.info = { media: this.local.row.media, preferences: { ...this.local.row.preferences, autoplay_seconds: null }, speed: 1 };
+        if (this.ctx.offline) return this.begin({ personal: this.local.progress || this.local.row.personal });
+      }
       const target = { media_id: mediaId, device_id: this.deviceId, context };
       try {
-        const grant = await this.d.request("POST", this.api("/playback/acquire"), { body: target });
+        const signal = useLocal ? AbortSignal.timeout(3000) : undefined;
+        if (!useLocal) this.info = await this.d.request("GET", this.api("/media/" + mediaId + "/playback-info"));
+        const grant = await this.d.request("POST", this.api("/playback/acquire"), { body: target, signal });
         return this.begin(grant);
       } catch (e) {
-        if (e.status === 409 && e.code === "PLAYBACK_ACTIVE") {
-          const offer = await this.d.request("POST", this.api("/playback/transfer/propose"), { body: { target } });
-          this.transfer = { token: offer.token, confirmed: false, remaining_ms: offer.expires_in_ms, continuation: offer.active?.media_id === target.media_id };
-          return this.view();
+        try {
+          if (e.status === 409 && e.code === "PLAYBACK_ACTIVE") {
+            const offer = await this.d.request("POST", this.api("/playback/transfer/propose"), { body: { target } });
+            this.transfer = { token: offer.token, confirmed: false, remaining_ms: offer.expires_in_ms, continuation: offer.active?.media_id === target.media_id };
+            return this.view();
+          }
+          if (this.local && (e.code === "CONNECTION_FAILED" || e.name === "TypeError" || e.name === "TimeoutError")) {
+            return this.begin({ personal: this.local.progress || this.local.row.personal });
+          }
+          throw e;
+        } catch (error) {
+          this.local?.close();
+          this.local = null;
+          throw error;
         }
-        throw e;
       }
     }
+
     async confirmTransfer() {
       if (!this.transfer) return this.closed();
       await this.d.request("POST", this.api("/playback/transfer/confirm"), { body: { token: this.transfer.token } });
@@ -156,7 +179,7 @@
         const s = await this.d.request("GET", this.api("/playback/transfer/status"), { query: [["token", this.transfer.token]] });
         this.transfer.remaining_ms = s.remaining_ms;
         if (s.phase === "activated" && s.lease) { const t = this.transfer; this.transfer = null; return this.begin({ lease: s.lease, personal: s.personal || { position_ms: 0 } }, t); }
-        if (s.phase === "expired") { this.transfer = null; return this.closed("Le transfert a expiré."); }
+        if (s.phase === "expired") { await this.stop(false); return this.closed("Le transfert a expiré."); }
         return null;
       };
       this.transferTimer = this.d.setInterval(async () => { try { const r = await poll(); if (r) this.clearTransfer(); } catch { /* next tick */ } }, STATUS_MS);
@@ -179,7 +202,7 @@
       const engine = opening.engine;
       this.t0 = this.d.now();
       try {
-        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: grant.personal?.watched && !opening.continuation ? 0 : (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1, subtitleLanguage: this.info.preferences?.subtitle_language, profileId: this.ctx.profile });
+        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: grant.personal?.watched && !opening.continuation ? 0 : (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1, subtitleLanguage: this.info.preferences?.subtitle_language, profileId: this.ctx.profile, local: this.local });
       } catch (e) {
         if (opening.cancelled) return;
         this.openError = e.message || "Lecture impossible.";
@@ -198,7 +221,7 @@
         this.resume();
         this.timers.push(this.d.setInterval(() => this.heartbeat(), HEARTBEAT_MS));
         this.timers.push(this.d.setInterval(() => this.report(false, false), HEARTBEAT_MS));
-        this.openEvents();
+        if (this.lease) this.openEvents();
       } catch (e) { this.openError = e.message || "Lecture impossible."; await this.stop(true); }
     }
 
@@ -223,12 +246,21 @@
     async heartbeat() {
       if (!this.lease) return;
       try { this.lease = { ...this.lease, ...(await this.d.request("POST", this.api("/playback/heartbeat"), { body: this.control() })) }; }
-      catch (e) { if (e.status === 409 || e.code === "LEASE_INVALID") { this.serverPaused = true; this.engine?.pause(); this.wake.setActive(false); this.note = "Lecture interrompue : le bail n'est plus valide."; } }
+      catch (e) {
+        if (e.status === 409 || e.code === "LEASE_INVALID") {
+          this.serverPaused = true; this.engine?.pause(); this.wake.setActive(false);
+          this.note = "Lecture interrompue : le bail n'est plus valide.";
+        } else if (this.local && e.code === "CONNECTION_FAILED") {
+          this.lease = null;
+          this.events?.close();
+          this.events = null;
+        }
+      }
     }
     // A server-ordered pause is effective before the ACK/release network round
     // trip. Neither the regular Play control nor a fresh iOS gesture may undo it.
     resume() {
-      if (this.serverPaused || this.transfer || !this.engine || !this.lease) return false;
+      if (this.serverPaused || this.transfer || !this.engine || (!this.lease && !this.local)) return false;
       const result = this.engine.play();
       this.syncWakeLock();
       Promise.resolve(result).then(() => this.syncWakeLock(), () => this.syncWakeLock());
@@ -241,12 +273,44 @@
         speed: s.speed || 1, playing: !forcePaused && !s.paused && !s.ended, buffering: Boolean(s.buffering), seek: Boolean(seek),
       }, this.d.now());
     }
+    recordLocal(snapshot, completed = false) {
+      const local = this.local;
+      const { duration, position } = snapshot;
+      if (!local || !(duration > 0) || !Number.isFinite(position)) return Promise.resolve();
+      const event = { position_ms: Math.round(Math.min(duration, Math.max(0, position)) * 1000), duration_ms: Math.round(duration * 1000) };
+      const pending = !this.lease || (completed && !local.serverWatched);
+      const saved = local.latestWrite.catch(() => {}).then(() =>
+        this.d.downloads.saveProgress(local.identity, local.mediaId, event, completed, local.revision, pending, local.row));
+      local.latestWrite = saved;
+      return saved;
+    }
     async report(seek, forcePaused) {
-      if (!this.lease || !this.engine) return null;
+      if (!this.engine) return null;
+      const local = this.local;
+      if (local && this.ended && !forcePaused) return null;
+      if (local && seek) local.watch.reset();
+      if (!this.lease) {
+        if (local) await this.recordLocal(this.engine.snapshot()).catch(() => {});
+        return null;
+      }
       const event = this.observe(seek, forcePaused);
       if (!event) return null;
-      try { await this.d.request("POST", this.api("/playback/progress"), { body: event }); this.clock.acknowledge(event, this.d.now()); }
-      catch { this.clock.forgetCredit(); }
+      try {
+        const result = await this.d.request("POST", this.api("/playback/progress"), { body: event });
+        this.clock.acknowledge(event, this.d.now());
+        if (local && this.local === local) {
+          local.serverWatched = result?.watched === true;
+          if (result?.progress_revision) local.revision = result.progress_revision;
+        }
+      } catch (e) {
+        this.clock.forgetCredit();
+        if (local && this.local === local && e.code === "CONNECTION_FAILED") {
+          this.lease = null;
+          this.events?.close();
+          this.events = null;
+        }
+      }
+      if (local && this.local === local) await this.recordLocal(this.engine.snapshot()).catch(() => {});
       return event;
     }
     async seek(position) {
@@ -262,6 +326,8 @@
       if (!this.engine) return this.view();
       this.engine.setSpeed(speed);
       this.clock.forgetCredit();
+      this.local?.watch.reset();
+      if (!this.lease) return this.view();
       try { await this.d.request("POST", this.api("/playback/speed"), { body: { lease: this.control(), speed } }); } catch { /* local speed still applies */ }
       return this.view();
     }
@@ -273,8 +339,20 @@
       }
       const s = this.engine.snapshot();
       this.syncWakeLock();
+      const completed = this.local?.watch.sample(s, this.d.now());
       if (s.ended && !this.ended) {
         this.ended = true;
+        const local = this.local;
+        if (local) {
+          try {
+            await this.report(false, true);
+            if (this.local !== local) return this.view();
+            await this.recordLocal(s, completed);
+          } catch { /* Keep the copy when progress could not be saved. */ }
+          if (this.local !== local) return this.view();
+          await this.stop(false);
+          return this.closed();
+        }
         await this.report(false, true);
         await this.release();
         await this.resolveNext();
@@ -294,10 +372,10 @@
 
     async release() {
       this.wake.setActive(false);
-      if (!this.lease) return;
-      const lease = this.control();
+      const lease = this.lease && this.control();
       this.lease = null; this.timers.splice(0).forEach(t => this.d.clearInterval(t));
       this.events?.close(); this.events = null;
+      if (!lease) return;
       try { await this.d.request("POST", this.api("/playback/release"), { body: { lease, progress: null } }); } catch { /* lease expires */ }
     }
     async stop(report) {
@@ -305,9 +383,10 @@
       this.wake.setActive(false);
       this.clearTransfer(); this.transfer = null;
       if (this.opening) { this.opening.cancelled = true; try { this.opening.engine.close(); } catch { /* not opened yet */ } this.opening = null; }
-      if (this.engine && this.lease && report) await this.report(false, true);
+      if (this.engine && (this.lease || this.local) && report) await this.report(false, true);
       await this.release();
       this.engine?.close(); this.engine = null;
+      this.local?.close(); this.local = null;
     }
 
     view() {
@@ -319,7 +398,7 @@
       if (!this.engine && this.opening) {
         return {
           stage: "player", media_id: this.mediaId, title: this.info.media.title, note: this.note,
-          position: 0, duration: 0, active: Boolean(this.lease), context: this.context, next: null,
+          position: 0, duration: 0, active: Boolean(this.lease || this.local), context: this.context, next: null,
           autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null, external_subtitles: [],
           native: { loaded: false, paused: true, buffering: false, ended: false, error: null, notice: null, speed: this.info.speed || 1, volume: 100, tracks: [], fullscreen: Boolean(this.fullscreen), hardware_decoder: "no", decoder: null },
         };
@@ -328,7 +407,7 @@
       const s = this.engine.snapshot();
       return {
         stage: "player", media_id: this.mediaId, title: this.info.media.title, note: [this.note, this.wake.notice()].filter(Boolean).join(" "),
-        position: s.position || 0, duration: s.duration || 0, active: Boolean(this.lease), context: this.context,
+        position: s.position || 0, duration: s.duration || 0, active: Boolean(this.lease || this.local), context: this.context,
         next: this.nextResolved, autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null,
         external_subtitles: this.engine.externalSubtitles?.() || [],
         native: { loaded: s.loaded, paused: s.paused, buffering: s.buffering, ended: s.ended || this.ended, error: s.error || null, notice: s.notice || null, play_blocked: Boolean(s.play_blocked), speed: s.speed || 1, volume: s.volume ?? 100, tracks: s.tracks || [], fullscreen: Boolean(this.fullscreen), hardware_decoder: s.hardware_decoder || "no", decoder: s.decoder || null },
@@ -359,6 +438,7 @@
       command(c, ctx) {
         player = player || new WebPlayer({
           request: ctx.request.bind ? (m, p, o) => ctx.request(m, p, o) : ctx.request,
+          downloads: root.ChillWebDownloads,
           engineFactory: () => root.ChillEngines.create(document.getElementById("native-video")),
           storage: root.localStorage, now: () => performance.now(), setInterval: (f, t) => root.setInterval(f, t), clearInterval: t => root.clearInterval(t),
           EventSource: root.EventSource, uuid: () => uuidV4(root.crypto),

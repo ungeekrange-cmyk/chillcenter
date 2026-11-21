@@ -1,6 +1,6 @@
 # Téléchargements — scénarios Web et Mac
 
-21 novembre 2026 · Scénarios soumis à validation. Ils couvrent le
+21 novembre 2026 · Scénarios validés par l’utilisateur. Ils couvrent le
 [périmètre fonctionnel approuvé](../discovery/OFFLINE-DOWNLOADS.md),
 [l’architecture validée](../architecture/decisions/ADR-0046-offline-downloads.md)
 et [le réglage global](../architecture/decisions/ADR-0047-download-auto-delete-preference.md).
@@ -137,3 +137,22 @@ Démontrer DL-01 à DL-09 sur une bibliothèque de test. Vérifier un démarrage
 externe et la persistance du réglage global. Couvrir Safari sur iPhone,
 Chrome sur Android et un navigateur de bureau avec HTTPS reconnu. Ce
 document décrit les vérifications à réaliser avant livraison.
+
+## Rejouer les vérifications
+
+Les scénarios automatisés utilisent des vidéos synthétiques et des profils isolés.
+
+- `cargo test --locked -p chill-domain -p chill-server -p chill-client -p chillcenter-desktop offline`
+  vérifie les plages HTTPS et leur périmètre, les révisions de progression, la
+  persistance de l’index Mac et la détection de fichiers retirés.
+- `node scripts/build-web.mjs` puis `node scripts/test-web-offline-downloads.cjs`
+  exerce Chromium avec FFmpeg et Playwright. Le scénario ferme l’onglet,
+  rend le serveur indisponible, puis rouvre le client avec vidéo E‑AC‑3,
+  sous-titres et affiche locale. Il vérifie la suppression après lecture,
+  la reprise de la synchronisation et l’effacement externe.
+- `cargo build --locked -p chillcenter-desktop -p chill-server` puis
+  `python3 scripts/test-mac-offline-downloads.py` exerce Tauri et libmpv sur macOS,
+  avec FFmpeg. Le second lancement se fait après arrêt du serveur HTTPS de test.
+
+La validation sur Safari iPhone et Chrome Android reste à effectuer sur
+appareils physiques.

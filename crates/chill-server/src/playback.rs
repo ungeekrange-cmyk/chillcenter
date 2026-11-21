@@ -101,6 +101,11 @@ impl Default for PlaybackService {
     }
 }
 impl PlaybackService {
+    pub(crate) fn profile_lease_active(&self, profile: &str) -> bool {
+        self.book.lock().map_or(true, |book| {
+            book.entries.get(profile).is_some_and(|entry| Instant::now() < entry.deadline)
+        })
+    }
     /// Fingerprint workers must stop issuing reads while any live playback
     /// lease exists. Expired leases do not keep maintenance suspended.
     pub(crate) fn fingerprint_should_pause(&self) -> bool {
@@ -1294,7 +1299,7 @@ async fn progress(
     State(s): State<AppState>,
     Path(p): Path<String>,
     Json(e): Json<Progress>,
-) -> Result<Json<PersonalState>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     let budget = s
         .playback
         .progress_budget(&p, &e)?
@@ -1313,12 +1318,16 @@ async fn progress(
                 return Ok(Err(code));
             }
             let saved = save_progress(store, &service, &p, &e, now)?;
+            let e_media = e.media_id.clone();
             service
                 .book
                 .lock()
                 .map_err(|_| "INVALID_OPERATION")?
                 .record(&p, e, now);
-            Ok(Ok(saved))
+            let revision = store.offline_progress_revision(&p, &e_media)?;
+            let mut answer = serde_json::to_value(saved).map_err(|_| "INVALID_OPERATION")?;
+            answer["progress_revision"] = serde_json::Value::String(revision);
+            Ok(Ok(answer))
         })
         .await?;
     Ok(Json(result.map_err(failure)?))

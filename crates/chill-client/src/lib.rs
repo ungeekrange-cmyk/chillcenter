@@ -34,6 +34,45 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 pub const API_VERSION: &str = "2026-10-14";
 pub const API_PREFIX: &str = "/api/2026-10-14";
 
+/// One immutable media selection returned by the offline-download planner.
+/// `media` remains extensible so presentation fields can be added compatibly.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DownloadPlanItem {
+    pub media: serde_json::Value,
+    pub series_key: Option<String>,
+    pub bytes: u64,
+    pub version: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DownloadPlan {
+    pub items: Vec<DownloadPlanItem>,
+    pub skipped: u64,
+    pub next_offset: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DownloadSubtitle {
+    pub id: String,
+    pub title: String,
+    pub language: Option<String>,
+    pub bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DownloadSession {
+    pub token: String,
+    pub bytes: u64,
+    pub version: String,
+    pub subtitles: Vec<DownloadSubtitle>,
+    #[serde(default)]
+    pub preferences: serde_json::Value,
+    #[serde(default)]
+    pub personal: serde_json::Value,
+    #[serde(default)]
+    pub progress_revision: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error("adresse de serveur invalide: {0}")]
@@ -645,6 +684,220 @@ impl Transport {
         Ok(bytes)
     }
 
+    /// Plans an allowlisted offline copy through the same SPKI-pinned client as
+    /// catalogue and playback traffic. No caller-supplied path or header crosses
+    /// this boundary.
+    pub async fn download_plan(
+        &self,
+        profile_id: &str,
+        media_id: &str,
+        scope: &str,
+        offset: u64,
+    ) -> Result<DownloadPlan, ClientError> {
+        download_ids(profile_id, media_id)?;
+        if !matches!(scope, "video" | "season" | "series") {
+            return Err(ClientError::InvalidRequestPath(
+                "portée de téléchargement invalide".into(),
+            ));
+        }
+        self.json_with_options::<(), _>(
+            Method::GET,
+            &format!("{API_PREFIX}/profiles/{profile_id}/downloads/plan"),
+            None,
+            &[
+                ("media_id", media_id.to_owned()),
+                ("scope", scope.to_owned()),
+                ("offset", offset.to_string()),
+            ],
+            &[],
+        )
+        .await
+    }
+
+    pub async fn begin_download(
+        &self,
+        profile_id: &str,
+        media_id: &str,
+        version: &str,
+        device_id: &str,
+    ) -> Result<DownloadSession, ClientError> {
+        download_ids(profile_id, media_id)?;
+        if version.is_empty() || version.len() > 128 || uuid::Uuid::parse_str(device_id).is_err() {
+            return Err(ClientError::InvalidRequestPath(
+                "version ou appareil de téléchargement invalide".into(),
+            ));
+        }
+        self.request_json(
+            Method::POST,
+            &format!("{API_PREFIX}/profiles/{profile_id}/downloads/{media_id}/session"),
+            Some(&serde_json::json!({"version":version,"device_id":device_id})),
+        )
+        .await
+    }
+
+    /// Reads at most `buffer.len()` bytes from an authorised download. The
+    /// response must be a strict 206 with matching Content-Range and ETag.
+    pub fn read_download_range_blocking(
+        &self,
+        profile_id: &str,
+        media_id: &str,
+        token: &str,
+        start: u64,
+        buffer: &mut [u8],
+        etag: Option<&str>,
+    ) -> Result<RangeRead, ClientError> {
+        download_ids(profile_id, media_id)?;
+        download_token(token)?;
+        let read = self.read_range_with_headers(
+            &format!("{API_PREFIX}/profiles/{profile_id}/downloads/{media_id}/content"),
+            start,
+            buffer,
+            etag,
+            &[("X-Chill-Download", token.to_owned())],
+        )?;
+        if read.etag.is_none() {
+            return Err(ClientError::InvalidRangeResponse(
+                "le téléchargement ne fournit pas d'ETag".into(),
+            ));
+        }
+        Ok(read)
+    }
+
+    /// Downloads one server-announced sidecar into bounded memory. The fixed
+    /// 16 MiB ceiling matches the server contract.
+    pub async fn download_offline_subtitle(
+        &self,
+        profile_id: &str,
+        media_id: &str,
+        subtitle_id: &str,
+        token: &str,
+    ) -> Result<Vec<u8>, ClientError> {
+        download_ids(profile_id, media_id)?;
+        if uuid::Uuid::parse_str(subtitle_id).is_err() {
+            return Err(ClientError::InvalidRequestPath(
+                "sous-titre de téléchargement invalide".into(),
+            ));
+        }
+        download_token(token)?;
+        let bytes = self
+            .get_binary_with_headers(
+                &format!(
+                    "{API_PREFIX}/profiles/{profile_id}/downloads/{media_id}/subtitles/{subtitle_id}"
+                ),
+                &[("X-Chill-Download", token.to_owned())],
+                16 * 1024 * 1024,
+            )
+            .await?;
+        if bytes.contains(&0) || std::str::from_utf8(&bytes).is_err() {
+            return Err(ClientError::InvalidRangeResponse(
+                "sous-titre de téléchargement invalide".into(),
+            ));
+        }
+        Ok(bytes)
+    }
+
+    pub async fn cancel_download(
+        &self,
+        profile_id: &str,
+        media_id: &str,
+        token: &str,
+    ) -> Result<(), ClientError> {
+        download_ids(profile_id, media_id)?;
+        download_token(token)?;
+        let mut response = self
+            .asynchronous
+            .delete(self.endpoint.request_url(&format!(
+                "{API_PREFIX}/profiles/{profile_id}/downloads/{media_id}/session"
+            ))?)
+            .header("X-Chill-Download", token)
+            .send()
+            .await?;
+        let status = response.status();
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if body.len().saturating_add(chunk.len()) > 4096 {
+                return Err(ClientError::InvalidRangeResponse(
+                    "réponse d'annulation trop volumineuse".into(),
+                ));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        if !status.is_success() {
+            return Err(api_response_error(status, &body));
+        }
+        Ok(())
+    }
+
+    /// Reconciles one durable offline observation using the server's CAS and
+    /// idempotency contract. The caller owns journal cleanup only after this
+    /// request returns successfully.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn sync_download_progress(
+        &self,
+        profile_id: &str,
+        media_id: &str,
+        event_id: &str,
+        base_revision: &str,
+        position_ms: u64,
+        duration_ms: u64,
+        watched: bool,
+    ) -> Result<serde_json::Value, ClientError> {
+        download_ids(profile_id, media_id)?;
+        if uuid::Uuid::parse_str(event_id).is_err()
+            || base_revision.is_empty()
+            || base_revision.len() > 255
+        {
+            return Err(ClientError::InvalidRequestPath(
+                "progression hors connexion invalide".into(),
+            ));
+        }
+        self.request_json(
+            Method::PUT,
+            &format!("{API_PREFIX}/profiles/{profile_id}/downloads/{media_id}/progress"),
+            Some(&serde_json::json!({
+                "event_id":event_id,
+                "base_revision":base_revision,
+                "position_ms":position_ms,
+                "duration_ms":duration_ms,
+                "watched":watched,
+            })),
+        )
+        .await
+    }
+
+    async fn get_binary_with_headers(
+        &self,
+        path: &str,
+        headers: &[(&str, String)],
+        limit: usize,
+    ) -> Result<Vec<u8>, ClientError> {
+        let mut request = self.asynchronous.get(self.endpoint.request_url(path)?);
+        for (name, value) in headers {
+            request = request.header(*name, value);
+        }
+        let mut response = request.send().await?;
+        let status = response.status();
+        let cap = if status.is_success() { limit } else { 4096 };
+        if response.content_length().is_some_and(|n| n > cap as u64) {
+            return Err(ClientError::InvalidRangeResponse(
+                "Téléchargement trop volumineux".into(),
+            ));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if bytes.len().saturating_add(chunk.len()) > cap {
+                return Err(ClientError::InvalidRangeResponse(
+                    "Téléchargement trop volumineux".into(),
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        if !status.is_success() {
+            return Err(api_response_error(status, &bytes));
+        }
+        Ok(bytes)
+    }
+
     /// Native bridge only: fixed allowlisted callers supply the path; the pinned
     /// transport owns URL construction, timeout and response cap.
     pub async fn put_binary_json<T: DeserializeOwned>(
@@ -820,6 +1073,24 @@ fn is_opaque_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn download_ids(profile_id: &str, media_id: &str) -> Result<(), ClientError> {
+    if uuid::Uuid::parse_str(profile_id).is_err() || uuid::Uuid::parse_str(media_id).is_err() {
+        return Err(ClientError::InvalidRequestPath(
+            "profil ou média de téléchargement invalide".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn download_token(token: &str) -> Result<(), ClientError> {
+    if uuid::Uuid::parse_str(token).is_err() {
+        return Err(ClientError::InvalidRequestPath(
+            "jeton de téléchargement invalide".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

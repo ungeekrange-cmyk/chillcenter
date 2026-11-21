@@ -2,7 +2,7 @@
 var uiText=globalThis.chillI18n?.t||((text)=>text);
 const configurationCategories=[
  ["all",uiText("Tout")],["general",uiText("Général")],["server",uiText("Serveur")],["library",uiText("Bibliothèque")],
- ["profiles",uiText("Profils")],["playback",uiText("Lecture")],["appearance",uiText("Apparence")],
+ ["profiles",uiText("Profils")],["downloads",uiText("Téléchargements")],["playback",uiText("Lecture")],["appearance",uiText("Apparence")],
  ["metadata",uiText("Fiches et matching")],["ai",uiText("Intelligence artificielle")],["archives",uiText("Archives")]
 ];
 function configurationText(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();}
@@ -32,7 +32,7 @@ if(typeof window!=="undefined"&&typeof document!=="undefined")(()=>{
    const label=configurationCategories.find(([key])=>key===category)?.[1]||uiText("Général");
    // Values of inputs (notably provider secrets) are never search material.
    const text=[label,...[...card.querySelectorAll("h2,h3,label,button,summary")].map(element=>element.textContent)].join(" ");
-   card.hidden=!configurationMatches(selected,search.value,category,text)||(card.id==="personal-settings"&&!state.profile_id);
+   card.hidden=(Boolean(state.downloads_only)&&category!=="downloads")||!configurationMatches(selected,search.value,category,text)||(card.id==="personal-settings"&&!state.profile_id);
    if(!card.hidden)count++;
   }
   for(const option of navigation.children){option.setAttribute("aria-current",option.dataset.category===selected?"page":"false");option.classList.toggle("active",option.dataset.category===selected);}

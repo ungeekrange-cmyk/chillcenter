@@ -174,6 +174,7 @@ pub fn busy(state: &AppState) -> bool {
     MUTATIONS.load(Ordering::Acquire) != 0
         || checks::busy()
         || state.playback.fingerprint_should_pause()
+        || crate::api::downloads::busy()
         || state.scan.lock().map_or(true, |scan| scan.running)
         || state.tmdb_jobs.update_busy()
         || crate::fingerprint::update_busy()

@@ -194,6 +194,7 @@
     const get = (path, query) => request("GET", path, { query });
     async function syncCatalog() {
       const p = profile(), context = currentContext(), known = catalogRevisions.get(context);
+      if (conn?.downloads && !conn.offline) void env.downloads?.sync(offlineContext()).catch(() => {});
       try {
         const response = await get(`/profiles/${p}/catalog/revision`), revision = response?.revision;
         if (typeof revision !== "string" || !revision || revision.length > 255) throw fail("Révision du catalogue invalide.", "INVALID_RESPONSE");
@@ -218,22 +219,50 @@
       if (notice) view.notice = notice;
       return view;
     }
+    const offlineContext = () => conn?.active ? { server: conn.id, profile: conn.active } : null;
+    function offlineView(notice) {
+      return { ...disconnectedView(notice), stage: "connected", server_id: conn.id, profile_id: conn.active,
+        profiles: conn.profiles, library: { video_root: null }, preferences: null, downloads_only: true,
+        offline_downloads: true, catalog_cache: { offline: true } };
+    }
+    async function restoreDownloads(error) {
+      const saved = settings.offline_identity;
+      if (!env.downloads || !saved?.profiles?.length || error.code !== "CONNECTION_FAILED") return null;
+      const active = settings.last_profile[saved.id] || saved.profiles[0].id;
+      const playable = async candidate => {
+        const context = { server: saved.id, profile: candidate };
+        return (await env.downloads.list(context).catch(() => null))?.items?.length > 0;
+      };
+      let selected = null;
+      for (const candidate of [active, ...saved.profiles.map(p => p.id)]) {
+        if (await playable(candidate)) { selected = candidate; break; }
+      }
+      if (!selected) return null;
+      conn = { id: saved.id, active: selected, profiles: saved.profiles, offline: true, downloads: true };
+      return offlineView("Serveur indisponible. Vos téléchargements restent accessibles.");
+    }
     async function view() {
       if (!conn) return disconnectedView();
+      if (conn.offline) return offlineView();
       const profiles = await get("/profiles");
       if (conn.active && !profiles.some(p => p.id === conn.active)) conn.active = null;
       conn.profiles = profiles;
       const library = await get("/admin/library");
       const preferences = conn.active ? await get(`/profiles/${conn.active}/preferences`) : null;
-      return { stage: "connected", address: env.address || "", server_id: conn.id, profile_id: conn.active, profiles, library, preferences, language: settings.language, theme: theme(), appearance: settings.appearance, playback_cache: settings.playback_cache, player_presentation: settings.player_presentation, notice: conn.notice || null };
+      if (env.downloads && conn.downloads) {
+        settings.offline_identity = { id: conn.id, profiles };
+        save();
+        void env.downloads.sync(offlineContext()).catch(() => {});
+      }
+      return { stage: "connected", address: env.address || "", server_id: conn.id, profile_id: conn.active, profiles, library, preferences, offline_downloads: conn.downloads === true, language: settings.language, theme: theme(), appearance: settings.appearance, playback_cache: settings.playback_cache, player_presentation: settings.player_presentation, notice: conn.notice || null };
     }
     async function connect() {
       clearArtwork();
       conn = null;
-      const info = await get("/server");
+      const info = await request("GET", "/server", { signal: env.downloads ? AbortSignal.timeout(3500) : undefined });
       const missing = REQUIRED.filter(c => !(info.capabilities || []).includes(c));
       if (missing.length) throw fail("Ce serveur est trop ancien pour le client web (capacités manquantes : " + missing.join(", ") + ").", "SERVER_INCOMPATIBLE");
-      conn = { id: info.server_id, active: null, profiles: [], notice: null, tls: info.tls };
+      conn = { id: info.server_id, active: null, profiles: [], notice: null, tls: info.tls, downloads: (info.capabilities || []).includes("offline_downloads") };
       const last = settings.last_profile[info.server_id];
       const profiles = await get("/profiles");
       if (last && profiles.some(p => p.id === last)) conn.active = last;
@@ -362,14 +391,18 @@
           return context === currentContext() ? result : {discarded:true};
         }
         case "boot": case "connect": case "approve":
-          try { return await connect(); } catch (e) { conn = null; const v = disconnectedView(e.message); return c.action === "boot" ? v : Promise.reject(e); }
+          try { return await connect(); } catch (e) {
+            conn = null;
+            if (c.action === "boot") return (await restoreDownloads(e)) || disconnectedView(e.message);
+            throw e;
+          }
         case "disconnect": mirrorClose(); conn = null; for (const u of artwork.values()) env.revoke?.(u); artwork.clear(); return view();
-        case "refresh": scheduleSync(0); return view();   // answers at once; the check runs in the background and notifies the UI
+        case "refresh": if (conn?.offline) return uiRaw({ action: "boot" }); scheduleSync(0); return view();   // answers at once; the check runs in the background and notifies the UI
         case "select_profile": {
           validId(c.id);
           if (!conn || !conn.profiles.some(p => p.id === c.id)) throw invalid("Profil absent ; rechargez la liste.");
           const previous = conn.active; conn.active = c.id;
-          try { const v = await view(); settings.last_profile[conn.id] = c.id; save(); mirrorOpen(); return v; } catch (e) { conn.active = previous; throw e; }
+          try { const v = await view(); settings.last_profile[conn.id] = c.id; save(); if (!conn.offline) mirrorOpen(); return v; } catch (e) { conn.active = previous; throw e; }
         }
         case "create_profile": await request("POST", "/profiles", { body: { name: c.name, initial_preferences: c.initial_preferences ?? { audio_language: "en", subtitle_language: "en", autoplay_seconds: 20 } } }); return view();
         case "rename_profile": validId(c.id); await request("PUT", `/profiles/${c.id}`, { body: { name: c.name, expected_revision: c.expected_revision } }); return view();
@@ -541,7 +574,18 @@
       if (name === "ui_command") return ui(args.command);
       if (name === "artwork_command") return artworkCommand(args.target);
       if (name === "admin_command") return adminCommand(args.command);
-      if (name === "player_command") { if (!player) unsupported(); return player.command(args.command, conn && { profile: conn.active, request, base: BASE }); }
+      if (name === "downloads_command" && env.downloads) {
+        const context = offlineContext();
+        if (!context) throw invalid("Choisissez un profil.");
+        if (["plan", "start"].includes(args.command.action) && (conn.offline || !conn.downloads)) throw invalid("Le serveur ne propose pas de téléchargement.");
+        let device = storage.getItem("chill.device_id");
+        if (!device || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(device)) {
+          device = root.crypto.randomUUID();
+          storage.setItem("chill.device_id", device);
+        }
+        return env.downloads.command(args.command, context, device);
+      }
+      if (name === "player_command") { if (!player) unsupported(); return player.command(args.command, conn && { server: conn.id, profile: conn.active, offline: conn.offline === true, request, base: BASE }); }
       if (name === "qa_result") return null;
       return unsupported();
     }
@@ -554,7 +598,7 @@
     root.ChillBridge = api;
     if (!root.__TAURI__) {
       const bridge = createBridge({
-        fetch: (...a) => root.fetch(...a), storage: root.localStorage, address: root.location.host,
+        fetch: (...a) => root.fetch(...a), storage: root.localStorage, address: root.location.host, downloads: root.ChillWebDownloads,
         objectUrl: b => URL.createObjectURL(b), revoke: u => URL.revokeObjectURL(u),
         player: root.ChillWebPlayer || null,
         store: Store && root.indexedDB !== undefined ? Store.openBestBackend(root.indexedDB) : null,

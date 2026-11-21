@@ -29,7 +29,7 @@ async function until(check, message) {
   assert.match(index, /apple-touch-icon/); assert.match(index, /apple-mobile-web-app-capable/);
   assert.doesNotMatch(index, /pwa-install\.(?:js|css)/); assert(!fs.existsSync(path.join(root, "pwa-install.js"))); assert(!fs.existsSync(path.join(root, "pwa-install.css")));
   const worker = await fsp.readFile(path.join(root, "sw.js"), "utf8");
-  assert.match(worker, /navigate/); assert.doesNotMatch(worker, /"themes\//); assert.doesNotMatch(worker, /"vendor\//);
+  assert.match(worker, /navigate/); assert.doesNotMatch(worker, /"themes\//); assert.doesNotMatch(worker.match(/^const SHELL = .*$/m)[0], /"vendor\//);
   assert.match(index, /register-sw\.js\?v=/);
   const build = JSON.parse(await fsp.readFile(path.join(root, "build.json"), "utf8"));
   const favicon = `pwa-icons/icon-192.png?v=${build.build}`;

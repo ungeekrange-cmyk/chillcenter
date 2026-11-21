@@ -1,4 +1,5 @@
 //! Serialized native-host coordinator. JavaScript never supplies grants, URLs or paths.
+use crate::local_playback::{LocalLaunch, LocalPlayer};
 use crate::native_player::{self, LeaseDeadline, NativeAction, NativeRect, NativeSnapshot};
 use chill_client::{
     Transport,
@@ -31,6 +32,7 @@ pub enum PlayerCommand {
         #[serde(default)]
         context: Option<PlaybackContext>,
     },
+    StartLocal { media_id: String, rect: NativeRect },
     Status,
     ConfirmTransfer,
     RefuseTransfer,
@@ -128,10 +130,12 @@ struct PendingTransfer {
     confirmed: bool,
     last_poll: Instant,
     remaining_ms: u64,
+    local: Option<LocalLaunch>,
 }
 #[derive(Default)]
 pub struct PlayerHost {
     session: Option<Session>,
+    local: Option<LocalPlayer>,
     pending: Option<PendingTransfer>,
     last_error: Option<String>,
     pub rendering: Arc<AtomicBool>,
@@ -202,12 +206,64 @@ impl PlayerHost {
                     confirmed: false,
                     last_poll: Instant::now(),
                     remaining_ms: 0,
+                    local: None,
                 });
                 return self.view();
             }
             Err(e) => return Err(e.into()),
         };
         self.install(w, c, info, rect, context, grant, sent).await
+    }
+    pub async fn start_local(
+        &mut self,
+        window: &WebviewWindow,
+        launch: LocalLaunch,
+        connection: Option<PlaybackConnection>,
+        rect: NativeRect,
+    ) -> Result<Value, UiError> {
+        self.stop_session(window, false).await?;
+        let sent = Instant::now();
+        let offline_state = launch.copy.progress.as_ref().unwrap_or(&launch.copy.personal);
+        let mut position = (offline_state["watched"] != true)
+            .then(|| offline_state["position_ms"].as_u64().unwrap_or_default() as f64 / 1000.);
+        let mut accepted = None;
+        if let Some(connection) = connection {
+            let target = AcquirePlayback { device_id: connection.device_id.clone(), media_id: launch.media_id.clone(), context: Default::default() };
+            match tokio::time::timeout(
+                Duration::from_secs(3), connection.transport.acquire_playback(&connection.profile_id, &target),
+            ).await {
+                Ok(Ok(grant)) => {
+                    position = Some(grant.personal.position_ms as f64 / 1000.);
+                    accepted = Some((connection, grant.lease));
+                }
+                Ok(Err(chill_client::ClientError::Api { code, .. })) if code == "PLAYBACK_ACTIVE" => {
+                    let info = connection.transport.playback_info(&connection.profile_id, &launch.media_id).await?;
+                    let offer = connection.transport.propose_transfer(&connection.profile_id, &target).await?;
+                    self.pending = Some(PendingTransfer {
+                        connection, info, rect, context: Default::default(), offer,
+                        confirmed: false, last_poll: Instant::now(), remaining_ms: 0, local: Some(launch),
+                    });
+                    return self.view();
+                }
+                Ok(Err(chill_client::ClientError::Network(_) | chill_client::ClientError::Io(_))) | Err(_) => {}
+                Ok(Err(failure)) => return Err(failure.into()),
+            }
+        }
+        self.install_local(window, launch, rect, accepted, sent, position).await
+    }
+    async fn install_local(
+        &mut self,
+        window: &WebviewWindow,
+        launch: LocalLaunch,
+        rect: NativeRect,
+        accepted: Option<(PlaybackConnection, Lease)>,
+        sent: Instant,
+        position: Option<f64>,
+    ) -> Result<Value, UiError> {
+        let player = LocalPlayer::open(window, launch, rect, accepted, sent, position).await?;
+        self.rendering.store(true, Ordering::Release);
+        self.local = Some(player);
+        self.view()
     }
     // Captured transfer/grant inputs stay explicit; no implicit UI/global state.
     #[allow(clippy::too_many_arguments)]
@@ -302,6 +358,7 @@ impl PlayerHost {
                 json!({"stage":"transfer","title":p.info.media.title,"confirmed":p.confirmed,"remaining_ms":p.remaining_ms,"note":"Ce profil lit déjà une vidéo sur un autre appareil. Confirmez pour y interrompre la lecture et la reprendre ici."}),
             );
         }
+        if let Some(local) = &self.local { return Ok(local.view()); }
         Ok(match &self.session {
             None => json!({"stage":"closed","error":self.last_error}),
             Some(s) => {
@@ -327,6 +384,25 @@ impl PlayerHost {
                         self.last_error = Some(UiError::from(e).message);
                         self.pending = None;
                     }
+                }
+            }
+            return Ok(());
+        }
+        if let Some(local) = &mut self.local {
+            match local.tick(w).await {
+                Ok(Some(completed)) => {
+                    self.rendering.store(false, Ordering::Release);
+                    let player = self.local.take().expect("local player exists");
+                    if let Err(failure) = player.close(w, Some(completed)).await {
+                        self.last_error = Some(failure.message);
+                    }
+                }
+                Ok(None) => {}
+                Err(failure) => {
+                    self.rendering.store(false, Ordering::Release);
+                    let player = self.local.take().expect("local player exists");
+                    let _ = player.close(w, Some(false)).await;
+                    self.last_error = Some(failure.message);
                 }
             }
             return Ok(());
@@ -569,6 +645,13 @@ impl PlayerHost {
         w: &WebviewWindow,
         cmd: PlayerCommand,
     ) -> Result<Value, UiError> {
+        if self.local.is_some() {
+            if matches!(cmd, PlayerCommand::Stop) {
+                self.stop(w).await?;
+                return self.view();
+            }
+            return self.local.as_mut().expect("local player exists").command(w, cmd).await;
+        }
         if matches!(cmd, PlayerCommand::RefuseTransfer) {
             if self.pending.as_ref().is_some_and(|p| p.confirmed) {
                 return Err(error("Le transfert est déjà confirmé."));
@@ -872,6 +955,7 @@ impl PlayerHost {
         }
         self.rendering.store(false, Ordering::Release);
         self.last_error = None;
+        if let Some(local) = self.local.take() { local.close(w, None).await?; }
         if let Some(p) = self.pending.take()
             && p.confirmed
             && let Ok(status) = p
@@ -947,6 +1031,12 @@ impl PlayerHost {
                 let personal = status
                     .personal
                     .ok_or_else(|| error("Reprise de transfert absente."))?;
+                if let Some(launch) = p.local {
+                    return self.install_local(
+                        w, launch, p.rect, Some((p.connection, lease)), sent,
+                        Some(personal.position_ms as f64 / 1000.),
+                    ).await;
+                }
                 self.install(
                     w,
                     p.connection,

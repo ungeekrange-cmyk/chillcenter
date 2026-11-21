@@ -66,7 +66,7 @@ async function playerCall(command,quiet=false){
   catch(e){playerLastError=e;if(!quiet&&e.code!=="CLIENT_BUSY")message(e.code==="MEDIA_FILE_MISSING"?uiText("Le fichier n’est plus présent dans la bibliothèque. Cette vidéo est maintenant marquée indisponible."):e.message||String(e));return null;}
   finally{playerBusy=false;}
 }
-window.chillPlay=async (media_id,context=null)=>{
+window.chillPlay=async (media_id,context=null,local=false)=>{
   const epoch=++playerNavigationEpoch,scope=playbackScope();completedPlayback=null;
   // `player-open` temporarily removes the catalogue from layout.  Preserve
   // its position for a failed asynchronous acquisition, but never restore it
@@ -80,7 +80,7 @@ window.chillPlay=async (media_id,context=null)=>{
   $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
   $("player-panel").hidden=false;document.body.classList.add("player-open");$("player-note").textContent=uiText("Chargement de la vidéo…");
   showPlayerControls();
-  const started=await playerCall({action:"start",media_id,rect:videoRect(),context});
+  const started=await playerCall(local?{action:"start_local",media_id,rect:videoRect()}:{action:"start",media_id,rect:videoRect(),context});
   if(!started){const code=playerLastError?.code;await playerCall({action:"stop"},true);hidePlayer();
     const snapshot=playerStartScroll;playerStartScroll=null;
     if(snapshot&&snapshot.epoch===playerNavigationEpoch&&snapshot.scope===playbackScope())requestAnimationFrame(()=>window.scrollTo?.(snapshot.x,snapshot.y));
@@ -237,7 +237,7 @@ $("player-back").onclick=()=>playerCall({action:"jump",seconds:-10});$("player-f
 $("player-speed").onchange=()=>playerCall({action:"speed",speed:Number($("player-speed").value)});
 $("player-progress").onchange=()=>playerCall({action:"seek",position:Number($("player-progress").value)});
 $("player-audio").onchange=()=>playerCall({action:"audio",track_id:Number($("player-audio").value)});
-$("player-subtitle").onchange=()=>{const value=$("player-subtitle").value;playerCall(value.startsWith("sub-")?{action:"external_subtitle",id:value}:{action:"subtitle",track_id:value==="off"?null:Number(value)});};
+$("player-subtitle").onchange=()=>{const value=$("player-subtitle").value;playerCall((playerState.external_subtitles||[]).some(track=>track.id===value)?{action:"external_subtitle",id:value}:{action:"subtitle",track_id:value==="off"?null:Number(value)});};
 $("player-fullscreen").onclick=()=>togglePlayerFullscreen();
 if($("player-volume"))$("player-volume").onchange=()=>playerCall({action:"volume",volume:Number($("player-volume").value)});
 $("player-close").onclick=()=>returnFromPlayback();

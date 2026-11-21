@@ -3012,6 +3012,337 @@
         }
       ]
     },
+    "/profiles/{profile}/downloads/plan": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "offlineDownloadPlan_get",
+        "description": "HTTPS. Résout une vidéo, une saison ou une série en entrées paginées avec identifiants stables, versions et tailles.",
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "video",
+                "season",
+                "series"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Objet JSON items, skipped, next_offset. Chaque entrée contient media, version, bytes et series_key."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/profiles/{profile}/downloads/{media}/session": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "offlineDownloadSession_post",
+        "description": "HTTPS. Lie un transfert court au profil, à la vidéo, à la version et à l’appareil.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "version",
+                  "device_id"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "device_id": {
+                    "$ref": "#/components/schemas/Uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Objet JSON token, bytes, version, subtitles, preferences, personal et progress_revision."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "offlineDownloadSession_delete",
+        "description": "HTTPS. Annule ou clôt le transfert local de manière idempotente.",
+        "parameters": [
+          {
+            "name": "X-Chill-Download",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session libérée."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/profiles/{profile}/downloads/{media}/content": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "offlineDownloadContent_get",
+        "description": "HTTPS. Transmet une plage unique du fichier associé à la session.",
+        "parameters": [
+          {
+            "name": "X-Chill-Download",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "206": {
+            "description": "Octets de la plage demandée, avec Content-Range, Content-Length et ETag."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/profiles/{profile}/downloads/{media}/subtitles/{id}": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "offlineDownloadSubtitle_get",
+        "description": "HTTPS. Transmet un fichier externe annoncé pour la session.",
+        "parameters": [
+          {
+            "name": "X-Chill-Download",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Octets de la piste externe, dans la limite de 16 Mio."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/profiles/{profile}/downloads/{media}/progress": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ],
+      "put": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "offlineDownloadProgress_put",
+        "description": "HTTPS. Applique une progression locale si la révision concorde et qu’aucun bail de lecture ne s’y oppose. Un event_id répété avec succès ne réapplique pas la modification.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event_id",
+                  "base_revision",
+                  "position_ms",
+                  "duration_ms",
+                  "watched"
+                ],
+                "properties": {
+                  "event_id": {
+                    "$ref": "#/components/schemas/Uuid"
+                  },
+                  "base_revision": {
+                    "type": "string",
+                    "pattern": "^[0-9]{1,20}$"
+                  },
+                  "position_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "duration_ms": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Objet JSON contenant la nouvelle revision."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/profiles/{profile}/playback/acquire": {
       "post": {
         "tags": [

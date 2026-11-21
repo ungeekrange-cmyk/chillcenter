@@ -26,6 +26,7 @@ function render(){
   if(window.tmdbContextChanged)window.tmdbContextChanged();
   if(window.catalogProfileChanged)window.catalogProfileChanged();
   if(window.refreshAppearance)window.refreshAppearance();
+  window.downloadsContextChanged?.();
   if(window.renderShell)window.renderShell();
   void window.refreshProgress?.();
   if(window.refreshPlaybackCache)window.refreshPlaybackCache(state.playback_cache);
@@ -63,16 +64,17 @@ function render(){
   $("profile-avatar").textContent=activeName.trim().slice(0,1).toLocaleUpperCase()||"?";
   if(activeProfile)$("profile-menu").open=false;
   $("profile-empty").hidden=Boolean(state.profiles.length);
-  $("profile-panel").hidden=Boolean(state.profile_id);$("home-panel").hidden=!state.profile_id;$("catalog-panel").hidden=!state.profile_id;
+  $("profile-panel").hidden=Boolean(state.profile_id);$("home-panel").hidden=state.downloads_only||!state.profile_id;$("catalog-panel").hidden=state.downloads_only||!state.profile_id;
   if(!state.profile_id)$("media").replaceChildren();
   if(window.refreshLibraryLocations)window.refreshLibraryLocations(state.library);else $("video-root").value=state.library.video_root||"";$("personal-settings").hidden=!state.profile_id;
   if(!$("autoplay").querySelector('option[value="15"]'))$("autoplay").append(new Option(uiText("Après 15 secondes"),"15"));
   if(state.preferences){$("audio-language").value=state.preferences.audio_language;$("subtitle-language").value=state.preferences.subtitle_language;$("autoplay").value=state.preferences.autoplay_seconds===null?"off":String(state.preferences.autoplay_seconds);}
   else{$("audio-language").value="";$("subtitle-language").value="";}
+  window.downloadsContextChanged?.();
   if(window.renderShell)window.renderShell();window.refreshConfiguration?.();
 }
-async function connect(address){draftAddress=address;state={stage:"server",address,theme:state.theme,servers:state.servers||[]};render();const r=await run({action:"connect",address});if(r?.profile_id){await loadPage();void syncCatalog();}}
-async function selectProfile(id){if(!id)return;clearCatalogContext();offset=0;await run({action:"select_profile",id});await loadPage();void syncCatalog();}
+async function connect(address){draftAddress=address;state={stage:"server",address,theme:state.theme,servers:state.servers||[]};render();const r=await run({action:"connect",address});if(r?.profile_id&&!r.downloads_only){await loadPage();void syncCatalog();}}
+async function selectProfile(id){if(!id)return;clearCatalogContext();offset=0;await run({action:"select_profile",id});if(!state.downloads_only){await loadPage();void syncCatalog();}}
 function pager(){} // API batches remain internal; no page-navigation UI.
 function catalogCommand(filters,at,grouped){return {action:"catalog",offset:at,category:filters.category||null,q:filters.q||null,genre:filters.genre||null,year:filters.year===""?null:Number(filters.year),watched:filters.watched===""?null:filters.watched==="true",sort:filters.sort||null,grouped,available:filters.available===""?null:filters.available==="true"};}
 function catalogFilters(){return {category:$("category").value,q:$("search").value,genre:$("genre").value,year:$("year").value,watched:$("watched").value,sort:$("sort").value,available:$("available").value};}
@@ -182,12 +184,12 @@ async function loadPage(reuseFacetBase=false){
  return true;
 }
 $("connect-form").onsubmit=e=>{e.preventDefault();connect($("address").value);};
-$("approve-trust").onclick=async()=>{const r=await run({action:"approve",token:state.token});if(r?.profile_id){await loadPage();void syncCatalog();}};
+$("approve-trust").onclick=async()=>{const r=await run({action:"approve",token:state.token});if(r?.profile_id&&!r.downloads_only){await loadPage();void syncCatalog();}};
 $("reject-trust").onclick=()=>run({action:"disconnect"});
 $("server-switch").onclick=()=>run({action:"disconnect"});
 $("profile-switch").onchange=()=>selectProfile($("profile-switch").value);
 for(const id of ["create-first","create-admin","create-profile-menu"])$(id).onsubmit=async e=>{e.preventDefault();const name=e.currentTarget.elements.name.value;const r=await run({action:"create_profile",name});if(r){$(id).reset();$("profile-menu").open=false;}};
-$("admin-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("admin");const context=state.server_id+":"+state.profile_id,current=()=>context===state.server_id+":"+state.profile_id&&shellSection==="admin";$("admin-panel").hidden=false;void syncCatalog();await pollScan();if(!current())return;await unavailableAdmin();if(current())await window.refreshTmdbStatus?.();};
+$("admin-toggle").onclick=async()=>{if(!await stopPlayerForNavigation())return;shellShow("admin");const context=state.server_id+":"+state.profile_id,current=()=>context===state.server_id+":"+state.profile_id&&shellSection==="admin";$("admin-panel").hidden=false;if(state.downloads_only){window.configurationShow?.("downloads");return;}void syncCatalog();await pollScan();if(!current())return;await unavailableAdmin();if(current())await window.refreshTmdbStatus?.();};
 $("admin-close").onclick=()=>{$("admin-panel").hidden=true;clearTimeout(timer);};
 $("library-form").onsubmit=async e=>{e.preventDefault();let command;try{command=window.configurationLibraryCommand?.()||{action:"save_library",video_root:$("video-root").value.trim()||null,expected_revision:state.library.revision};}catch(error){message(error.message);return;}if(await run(command))message(uiText("Emplacements enregistrés sur le serveur."));};
 $("preferences-form").onsubmit=async e=>{e.preventDefault();if(await run({action:"save_preferences",audio_language:$("audio-language").value,subtitle_language:$("subtitle-language").value,autoplay_seconds:$("autoplay").value==="off"?null:Number($("autoplay").value)}))message(uiText("Préférences du profil enregistrées."));};
@@ -237,14 +239,15 @@ async function syncCatalog(){
  }catch(error){if(context===state.server_id+":"+state.profile_id){icon.title=uiText("Serveur indisponible — catalogue local conservé");}return {error};}finally{icon.classList.remove("syncing");icon.setAttribute("aria-label",icon.title);syncPromise=null;}})();return syncPromise;
 }
 async function syncAfterMutation(){if(syncPromise)await syncPromise;const result=await syncCatalog();if(typeof window!=="undefined"){void window.refreshProgress?.(true);window.refreshHomeAfterMutation?.();}return result;}
-window.addEventListener("focus",()=>{if(state.stage!=="connected"||!state.profile_id||busy)return;const now=Date.now();if(now-lastFocusRefresh<5000)return;lastFocusRefresh=now;void syncCatalog();});
+window.addEventListener("focus",()=>{if(state.downloads_only&&!busy){void run({action:"boot"});return;}if(state.stage!=="connected"||!state.profile_id||busy)return;const now=Date.now();if(now-lastFocusRefresh<5000)return;lastFocusRefresh=now;void syncCatalog();});
+window.addEventListener("online",()=>{if(busy)return;if(state.downloads_only)void run({action:"boot"});else if(state.stage==="connected"&&state.profile_id)void syncCatalog();});
 window.chillReady=(async()=>{
  // All deferred modules (artwork, shell, appearance...) must be installed before
  // a fast local-mirror boot can render cards. Otherwise the optional artwork
  // hook is absent and the initial images are never observed until a later redraw.
  if(document.readyState==="loading"||document.readyState==="interactive")await new Promise(resolve=>document.addEventListener("DOMContentLoaded",resolve,{once:true}));
  if(!window.__TAURI__){message(uiText("Ouvrez cette interface depuis l'application Chill Center, pas directement dans un navigateur."));return;}
- const r=await run({action:"boot"});if(r?.profile_id){await loadPage();void syncCatalog();}
+ const r=await run({action:"boot"});if(r?.profile_id&&!r.downloads_only){await loadPage();void syncCatalog();}
  if(typeof sessionStorage!=="undefined"&&sessionStorage.getItem("chillcenter-language-return")==="settings"){
   sessionStorage.removeItem("chillcenter-language-return");
   if(r?.stage==="connected")await $("admin-toggle").onclick();

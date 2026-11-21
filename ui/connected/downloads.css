@@ -1,0 +1,18 @@
+.downloads-panel { display: grid; gap: 16px; }
+.downloads-panel[hidden], #show-downloads[hidden], .download-notice button[hidden] { display: none; }
+.download-preference { display: inline-flex; align-items: center; gap: 8px; }
+.download-preference input { width: auto; }
+.downloads-list, .downloads-jobs { display: grid; gap: 10px; }
+.download-group, .download-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.download-group > * + * { margin-top: 10px; }
+.download-group summary { cursor: pointer; }
+.download-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.download-row strong { flex: 1 1 12rem; }
+.download-notice:has(p:empty) button[hidden], .download-notice p:empty { display: none; }
+
+.download-poster {
+  width: 2rem;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: .3rem;
+}

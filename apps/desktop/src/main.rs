@@ -7,6 +7,8 @@ mod admin_bridge;
 mod ai_bridge;
 mod artwork_bridge;
 mod discovery_bridge;
+mod local_playback;
+mod offline_downloads;
 mod native_player;
 mod playback_wake;
 mod player_bridge;
@@ -155,6 +157,7 @@ struct Bridge {
     discovery_slot: Arc<tokio::sync::Semaphore>,
     context_epoch: Arc<std::sync::atomic::AtomicU64>,
     player: Arc<tokio::sync::Mutex<PlayerHost>>,
+    downloads: Arc<offline_downloads::OfflineDownloads>,
     closing: Arc<std::sync::atomic::AtomicBool>,
     rendering: Arc<std::sync::atomic::AtomicBool>,
     administration: Arc<admin_bridge::AdminHost>,
@@ -468,6 +471,32 @@ async fn ai_command(
         _ => unreachable!(),
     }
 }
+fn downloads_context(client: &mut UiClient) -> Result<(offline_downloads::OfflineContext, Option<chill_client::ui::PlaybackConnection>), UiError> {
+    if let Some((server, profile)) = client.offline_download_scope() {
+        return Ok((offline_downloads::OfflineContext::offline(server, profile)?, None));
+    }
+    let online = client.playback_connection()?;
+    Ok((offline_downloads::OfflineContext::online(online.clone())?, Some(online)))
+}
+
+#[tauri::command]
+async fn downloads_command(
+    state: tauri::State<'_, Bridge>,
+    command: offline_downloads::DownloadCommand,
+) -> Result<Value, UiError> {
+    let bridge = state.inner().clone();
+    let epoch = bridge.context_epoch.load(std::sync::atomic::Ordering::Acquire);
+    let client = bridge.client.clone();
+    let context = tauri::async_runtime::spawn_blocking(move || {
+        let mut client = client.lock().map_err(|_| player_bridge::error("Client indisponible."))?;
+        downloads_context(&mut client).map(|(scope, _)| scope)
+    }).await.map_err(|_| player_bridge::error("Profil de téléchargement indisponible."))??;
+    if epoch != bridge.context_epoch.load(std::sync::atomic::Ordering::Acquire) {
+        return Err(player_bridge::error("Le profil ou le serveur a changé : relancez l’opération."));
+    }
+    bridge.downloads.command(context, command).await
+}
+
 #[tauri::command]
 async fn player_command(
     window: tauri::WebviewWindow,
@@ -479,7 +508,7 @@ async fn player_command(
     // Start/next stay serialized with profile changes to preserve their scope.
     let _permit = if matches!(
         &command,
-        PlayerCommand::Start { .. } | PlayerCommand::Next { .. }
+        PlayerCommand::Start { .. } | PlayerCommand::StartLocal { .. } | PlayerCommand::Next { .. }
     ) {
         Some(
             bridge
@@ -496,6 +525,20 @@ async fn player_command(
     } else {
         None
     };
+    if let PlayerCommand::StartLocal { media_id, rect } = command {
+        let client = bridge.client.clone();
+        let store = bridge.downloads.clone();
+        let (launch, connection) = tauri::async_runtime::spawn_blocking(move || {
+            let (scope, connection, cache) = {
+                let mut client = client.lock().map_err(|_| player_bridge::error("Client indisponible."))?;
+                let (scope, connection) = downloads_context(&mut client)?;
+                (scope, connection, client.download_cache_limits())
+            };
+            let copy = store.acquire(&scope, &media_id)?;
+            Ok::<_, UiError>((local_playback::LocalLaunch { store, scope, copy, media_id, cache }, connection))
+        }).await.map_err(|_| player_bridge::error("Lecture locale interrompue."))??;
+        return bridge.player.lock().await.start_local(&window, launch, connection, rect).await;
+    }
     if let PlayerCommand::Start {
         media_id,
         rect,
@@ -816,7 +859,10 @@ fn main() {
             ai_bridge::AiHost::open(directory.clone())
                 .map_err(|e| std::io::Error::other(e.message))?,
         );
+        let downloads = Arc::new(offline_downloads::OfflineDownloads::open(&directory)
+            .map_err(|error| std::io::Error::other(error.message))?);
         app.manage(Bridge {
+            downloads,
             client: Arc::new(Mutex::new(client)),
             slot: Arc::new(tokio::sync::Semaphore::new(1)),
             discovery_slot: Arc::new(tokio::sync::Semaphore::new(1)),
@@ -828,8 +874,18 @@ fn main() {
             assistant,
         });
         app.handle().plugin(tauri_plugin_dialog::init())?;
+        let discovery_script = include_str!("native_discovery.js");
+        #[cfg(debug_assertions)]
+        let discovery_script = if std::env::var("CHILL_UI_QA_MODE").is_ok_and(|mode| mode.starts_with("offline_"))
+            && std::env::var_os("CHILL_UI_QA_URL").is_some()
+        {
+            // The offline fixture is restricted to its disposable loopback server.
+            ""
+        } else {
+            discovery_script
+        };
         let window = tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
-            .initialization_script(include_str!("native_discovery.js"))
+            .initialization_script(discovery_script)
             .on_navigation(|url| {
                 (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                     || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost"))
@@ -857,6 +913,21 @@ fn main() {
                 if let Ok(mut player) = tick_bridge.player.try_lock() {
                     let _ = player.tick(&tick_window).await;
                 }
+            }
+        });
+        let sync_bridge = bridge.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut timer = tokio::time::interval(std::time::Duration::from_secs(20));
+            timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            while !sync_bridge.closing.load(std::sync::atomic::Ordering::Acquire) {
+                timer.tick().await;
+                let client = sync_bridge.client.clone();
+                let scope = tauri::async_runtime::spawn_blocking(move || {
+                    let mut client = client.try_lock().ok()?;
+                    let (scope, online) = downloads_context(&mut client).ok()?;
+                    online.map(|_| scope)
+                }).await.ok().flatten();
+                if let Some(scope) = scope { let _ = sync_bridge.downloads.sync(&scope).await; }
             }
         });
         let render_window = window.clone();
@@ -920,6 +991,7 @@ fn main() {
             ui_command,
             discovery_command,
             player_command,
+            downloads_command,
             artwork_command,
             admin_command,
             ai_command,
@@ -937,6 +1009,12 @@ fn main() {
                 std::env::var("CHILL_UI_QA_ROOT"),
             ) {
                 let mode = std::env::var("CHILL_UI_QA_MODE").unwrap_or_default();
+                if mode.starts_with("offline_") {
+                    static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                    if STARTED.swap(true, std::sync::atomic::Ordering::AcqRel) {
+                        return;
+                    }
+                }
                 if matches!(mode.as_str(),"player"|"next_series"|"detail_manual") && native_player::qa_prepare_visible_player(webview).is_err() {
                     let _ = webview.eval("window.__TAURI__.core.invoke('qa_result',{success:false,detail:'qa visible preparation failed'});");
                     return;
@@ -952,11 +1030,14 @@ fn main() {
                     include_str!("../../../ui/connected/formats-qa.js"),
                     include_str!("../../../ui/connected/identity-qa.js"),
                     include_str!("../../../ui/connected/shell-qa.js"),
-                    include_str!("../../../ui/connected/detail-manual-qa.js")].join("\n"),
+                    include_str!("../../../ui/connected/detail-manual-qa.js"),
+                    include_str!("../../../ui/connected/offline-qa.js")].join("\n"),
                     if mode == "player" || mode == "next_series" || mode.starts_with("transfer_") {
                         "window.chillPlayerQa"
                     } else {
-                        if mode.starts_with("identity_") {
+                        if mode.starts_with("offline_") {
+                            "window.chillOfflineQa"
+                        } else if mode.starts_with("identity_") {
                             "window.chillIdentityRoundtripQa"
                         } else if mode == "formats" {
                             "window.chillFormatsQa"
@@ -985,6 +1066,7 @@ fn main() {
         ui_command,
         discovery_command,
         player_command,
+        downloads_command,
         artwork_command,
         admin_command,
         ai_command,

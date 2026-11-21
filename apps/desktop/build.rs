@@ -39,6 +39,7 @@ fn main() {
             "ui_command",
             "discovery_command",
             "player_command",
+            "downloads_command",
             "artwork_command",
             "admin_command",
             "ai_command",

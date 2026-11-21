@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {configurationCategories,configurationMatches,configurationLibraryCommand}=require('./configuration');
-test('configuration offers one global view and at most nine dedicated categories',()=>{
- assert.ok(configurationCategories.length<=10);assert.equal(configurationCategories[0][0],'all');assert.equal(new Set(configurationCategories.map(([key])=>key)).size,configurationCategories.length);
+test('configuration offers one global view and a bounded set of dedicated categories including downloads',()=>{
+ assert.ok(configurationCategories.length<=11 && configurationCategories.some(([key])=>key==="downloads"));assert.equal(configurationCategories[0][0],'all');assert.equal(new Set(configurationCategories.map(([key])=>key)).size,configurationCategories.length);
 });
 test('global settings search normalizes accents/case and combines search terms',()=>{
  assert.equal(configurationMatches('all','BIBLIOTHEQUE local','library','Localisation de la bibliothèque'),true);
