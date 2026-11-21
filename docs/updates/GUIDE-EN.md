@@ -2,7 +2,7 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-Mac release `mac-v0.7.8` provides Mac0.7.8/build18; `server-v0.7.8` publishes server0.7.8 and `web-v0.7.11` publishes web0.7.11 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
+Mac release `mac-v0.7.8` provides Mac0.7.8/build18; `server-v0.7.8` publishes server0.7.8 and `web-v0.7.12` publishes web0.7.12 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
 
 ## Four components
 
@@ -62,7 +62,7 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives: v0.7.8 for Mac, server-v0.7.8 for the server, web-v0.7.11 for web, with themes0.7.1 in v0.7.3, not GitHub's automatically
+Use the complete distribution archives: v0.7.8 for Mac, server-v0.7.8 for the server, web-v0.7.12 for web, with themes0.7.1 in v0.7.3, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.
@@ -188,3 +188,7 @@ Published and installed on the Pi on20November2026. Native MKV text and lease-bo
 Server 0.7.8/sequence9 and web 0.7.11/sequence12 published and installed on the Pi on 20 November 2026. Fresh watched/completed playback starts from zero; partial resumes and ongoing transfers are preserved. Single untagged captions selected when preferred, Off respected. Existing Mac0.7.8 is compatible without a new Mac package. Reload web tabs. Identity, history, ratings and NAS are preserved.
 
 [Serveur / Server](../releases/REL-SERVER-0.7.8.md) · [Web](../releases/REL-WEB-0.7.11.md).
+
+## Web 0.7.12
+
+Web 0.7.12 displays the Chill Center browser tab icon and was installed on the Pi on 21 November 2026. Reload the page. [Notes](../releases/REL-WEB-0.7.12.md).

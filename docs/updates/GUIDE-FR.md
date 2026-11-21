@@ -2,7 +2,7 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La release Mac `mac-v0.7.8` fournit Mac0.7.8/build18 ; `server-v0.7.8` publie serveur0.7.8 et `web-v0.7.11` publie web0.7.11 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
+La release Mac `mac-v0.7.8` fournit Mac0.7.8/build18 ; `server-v0.7.8` publie serveur0.7.8 et `web-v0.7.12` publie web0.7.12 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
 
 ## Quatre composants
 
@@ -66,7 +66,7 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution : v0.7.8 pour Mac, server-v0.7.8 pour le serveur, web-v0.7.11 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
+Utiliser les archives complètes de distribution : v0.7.8 pour Mac, server-v0.7.8 pour le serveur, web-v0.7.12 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
@@ -200,3 +200,7 @@ Publié et installé sur le Pi le20novembre2026. Pistes texte MKV et fichiers SR
 Serveur 0.7.8/séquence9 et web 0.7.11/séquence12 publiés et installés sur le Pi le 20 novembre 2026. Lecture fraîche vue/terminée à zéro ; reprise partielle et transfert en cours conservés. Sous-titre unique sans langue sélectionné si souhaité, Off respecté. Mac 0.7.8 compatible sans nouveau paquet Mac. Recharger les onglets. Identité, historique, notes et NAS conservés.
 
 [Serveur / Server](../releases/REL-SERVER-0.7.8.md) · [Web](../releases/REL-WEB-0.7.11.md).
+
+## Web 0.7.12
+
+Web 0.7.12 affiche l’icône Chill Center dans l’onglet et a été installé sur le Pi le 21 novembre 2026. Rechargez la page. [Notes](../releases/REL-WEB-0.7.12.md).

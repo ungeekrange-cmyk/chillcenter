@@ -1,5 +1,14 @@
 # Contexte du projet
 
+## 21 novembre 2026 — Favicon web livrée
+
+Web 0.7.12, séquence 13, source `066d760b5abdc6a8ac4e09b642f1fc0897119692`, build `78633fd17533`,
+publié et installé via le helper du Pi. Les six assets publics signés
+et 90 ressources servies ont été vérifiés.
+Chrome a chargé la favicon versionnée. Le serveur est en 0.7.8.
+[Notes web](releases/REL-WEB-0.7.12.md) · [BUG0147](debug/BUG-0147-web-tab-icon.md).
+
+
 ## 20 novembre 2026 — relance et Avatar livrés
 
 Source `c0b01291b3bf1ca6bb8f97ffdb60be401f9315ba` fusionnée main. Serveur0.7.8/séquence9 et web0.7.11/séquence12

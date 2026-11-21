@@ -4,13 +4,15 @@
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive.
 
-**Versions publiées : Mac 0.7.8 · serveur 0.7.8 · web 0.7.11 · thèmes 0.7.1.**
+**Versions publiées : Mac 0.7.8 · serveur 0.7.8 · web 0.7.12 · thèmes 0.7.1.**
+Web 0.7.12 affiche l’icône Chill Center dans l’onglet. Mise à jour installée sur le Pi le 21 novembre 2026. Rechargez la page. [Notes web FR/EN](docs/releases/REL-WEB-0.7.12.md).
+
 Les mises à jour **serveur 0.7.8 et web 0.7.11** relancent les vidéos vues/terminées depuis le début et sélectionnent la piste de sous-titres unique sans langue. Reprises partielles, transferts et historique conservés. Publiées et installées sur le Pi le 20 novembre 2026 ; Mac 0.7.8 compatible, recharger les onglets web. [Notes serveur FR/EN](docs/releases/REL-SERVER-0.7.8.md) · [Notes web FR/EN](docs/releases/REL-WEB-0.7.11.md).
 
 [Changements 0.7.8 FR/EN](docs/releases/REL-0.7.8.md) : Reprendre affiche la
 progression réelle et les épisodes vus sur le total de la saison. La coche
 retire le film ou la saison affichée après sauvegarde, avec fondu et glissement.
-Ces fonctions restent disponibles dans le client web 0.7.11.
+Ces fonctions restent disponibles dans le client web 0.7.12.
 
 ### Paquets actuellement publiés
 
@@ -29,7 +31,7 @@ décrivent leur calendrier et priorité.
 | --- | --- |
 | Mac Apple Silicon 0.7.8, build 18 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.8/Chill-Center-0.7.8-macos-arm64.dmg), macOS 15+ |
 | Serveur Linux ARM64 0.7.8 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.8/Chill-Center-server-0.7.8-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
-| Client web 0.7.11 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.11/Chill-Center-web-0.7.11-install.zip), serveur 0.7.8 pour Accueil et les jaquettes TMDB |
+| Client web 0.7.12 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.12/Chill-Center-web-0.7.12-install.zip), serveur 0.7.8 pour Accueil et les jaquettes TMDB |
 | Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
