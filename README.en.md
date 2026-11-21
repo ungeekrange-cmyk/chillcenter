@@ -6,21 +6,17 @@ Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client.
 
-**Published versions: Mac 0.7.8 · server 0.7.8 · web 0.7.12 · themes 0.7.1.**
-Web 0.7.12 displays the Chill Center icon in the browser tab. Installed on the Pi on 21 November 2026. Reload the page. [Web notes FR/EN](docs/releases/REL-WEB-0.7.12.md).
-
-**Server 0.7.8 and web 0.7.11** restart watched/completed videos and select the single untagged subtitle when captions are preferred. Partial resumes, transfers and history are preserved. Published and installed on the Pi on 20 November 2026; Mac 0.7.8 remains compatible. Reload web tabs. [Server notes FR/EN](docs/releases/REL-SERVER-0.7.8.md) · [Web notes FR/EN](docs/releases/REL-WEB-0.7.11.md).
-
-[0.7.8 changes, FR/EN](docs/releases/REL-0.7.8.md): Continue watching shows real
-progress and watched/total season episodes. The checkbox removes the film or
-displayed season after saving, with a fade and leftward reflow.
-These features remain available in web client 0.7.12.
+**Published versions · Mac 0.7.9 · server 0.7.9 · web 0.7.13 · themes 0.7.1.**
+Download a movie, episode, season or series before leaving. Play local copies
+with subtitles while the server is unavailable. The web client requires trusted
+HTTPS. Delete after watching defaults to on and can be changed in **Downloads**
+or **Settings**. [FR/EN notes](docs/releases/REL-0.7.9.md).
 
 ### Currently published packages
 
-**[Download the Apple Silicon Mac app v0.7.8 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.8/Chill-Center-0.7.8-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.8)
+**[Download the Apple Silicon Mac app v0.7.9 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.9/Chill-Center-0.7.9-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.9)
 
-[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.8/Chill-Center-0.7.8-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
+[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.9/Chill-Center-0.7.9-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
 
 Mac, server, web and themes are independently versioned in
 [versions.json](versions.json). Installed versions and update policies appear
@@ -30,13 +26,13 @@ can update at 02:00 local time, outside playback and active jobs.
 
 | Component and published version | Package and instructions |
 | --- | --- |
-| Apple Silicon Mac 0.7.8, build 18 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.8/Chill-Center-0.7.8-macos-arm64.dmg), macOS 15+ |
-| ARM64 Linux server 0.7.8 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.8/Chill-Center-server-0.7.8-linux-aarch64.tar.gz), 64-bit systemd host |
-| Web client 0.7.12 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.12/Chill-Center-web-0.7.12-install.zip), server 0.7.8 for Home and TMDB collection artwork |
+| Apple Silicon Mac 0.7.9, build 19 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.9/Chill-Center-0.7.9-macos-arm64.dmg), macOS 15+ |
+| ARM64 Linux server 0.7.9 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.9/Chill-Center-server-0.7.9-linux-aarch64.tar.gz), 64-bit systemd host |
+| Web client 0.7.13 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.13/Chill-Center-web-0.7.13-install.zip), server 0.7.9 and trusted HTTPS for downloads |
 | Independent themes 0.7.1 | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
 
 Read the [verification/installation guide](docs/updates/GUIDE-EN.md) and
-[release notes and limits](docs/releases/REL-0.7.8.md). Signed manifests are
+[release notes and limits](docs/releases/REL-0.7.9.md). Signed manifests are
 published in each component's release. Publication does not update an existing
 server directly; its update policy may detect it. v0.6 and previous packages
 remain available. Do not run the initial installer on an existing installation:
@@ -66,7 +62,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 ### Mac client
 
 - **Apple Silicon (ARM64)** Mac; no Intel package is published.
-- The **0.7.8 DMG requires macOS 15 Sequoia or newer**, covering macOS
+- The **0.7.9 DMG requires macOS 15 Sequoia or newer**, covering macOS
   15, 26 and 27, with pinned Sequoia dependencies checked before signing.
   The 51 Mach-O minima, signature and DMG mount were verified.
   Physical macOS 15/26 execution has not yet been tested.
@@ -78,7 +74,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 
 ### Linux server
 
-- Published package **0.7.8 targets Linux ARM64/AArch64, a 64-bit system with
+- Published package **0.7.9 targets Linux ARM64/AArch64, a 64-bit system with
   glibc 2.28 or newer for the binaries**. Raspberry Pi 3 B/B+ running 64-bit Linux
   is the target; a 32-bit ARM OS or Alpine/musl cannot use this package.
   The verified real configuration is Debian 13; another compatible distribution
