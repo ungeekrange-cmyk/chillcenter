@@ -1,6 +1,8 @@
 # Index des décisions techniques
 
-[ADR0046](ADR-0046-offline-downloads.md) : architecture proposée pour les téléchargements web et Mac et la lecture hors connexion.
+[ADR0047](ADR-0047-download-auto-delete-preference.md) : réglage global de suppression automatique dans Téléchargements et Configuration.
+
+[ADR0046](ADR-0046-offline-downloads.md) : architecture approuvée pour les téléchargements web et Mac et la lecture hors connexion.
 
 [ADR0045](ADR-0045-playback-start-state.md) : état initial de lecture distinct de l’historique durable et de la continuation transférée.
 

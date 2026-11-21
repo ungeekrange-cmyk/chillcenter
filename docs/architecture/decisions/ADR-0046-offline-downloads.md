@@ -1,6 +1,7 @@
 # ADR-0046 — Téléchargements et lecture hors connexion
 
-21 novembre 2026 · Architecture proposée, en attente de validation.
+21 novembre 2026 · Architecture approuvée par l’utilisateur pour le web et le Mac.
+La portée du réglage de suppression est précisée dans [l’ADR-0047](ADR-0047-download-auto-delete-preference.md).
 Le [périmètre fonctionnel](../../discovery/OFFLINE-DOWNLOADS.md) est approuvé,
 avec **Supprimer après visionnage** activé par défaut. Cette décision complète
 les ADR du client web et du lecteur natif et prolonge F-03, F-06 à F-08 et F-22.
@@ -150,8 +151,8 @@ mesurée pendant un bail actif. La mise à jour conditionnelle est soumise aux
 mêmes contrôles de profil et de média que les écritures existantes. Les conflits se résolvent par révision, indépendamment de
 l’horloge de l’appareil.
 
-**Supprimer après visionnage** est activé par défaut pour chaque nouvelle copie.
-L’utilisateur peut désactiver l’option par vidéo. Une lecture confirmée jusqu’à
+La politique **Supprimer après visionnage** et l’exception par vidéo suivent
+[l’ADR-0047](ADR-0047-download-auto-delete-preference.md). Une lecture confirmée jusqu’à
 la fin applique la règle de visionnage réel du dernier dixième et la règle
 existante des vidéos courtes. Un média déjà vu au téléchargement, un saut à
 la fin ou un marquage manuel n’est pas un déclencheur. La progression et la

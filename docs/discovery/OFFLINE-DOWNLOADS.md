@@ -2,7 +2,7 @@
 
 Périmètre fonctionnel approuvé le 21 novembre 2026 pour le client web et
 l’application Mac. L’utilisateur a confirmé : « Oui je valide, y compris
-la suppression après visionnage activée par défaut. » Complète le [périmètre existant](SCOPE.md).
+la suppression après visionnage activée par défaut. » Ce document complète le [périmètre existant](SCOPE.md).
 
 | Situation | Comportement attendu |
 | --- | --- |
@@ -12,7 +12,7 @@ la suppression après visionnage activée par défaut. » Complète le [périmè
 | Un fichier local a été supprimé en dehors de Chill Center | L’entrée disparaît lorsque la rubrique est ouverte ou quand l’appareil y revient. La taille du groupe et le total sont recalculés. Si le dernier épisode d’une série manque, la série disparaît de la rubrique. La rubrique disparaît quand il ne reste aucune copie. |
 | L’utilisateur consulte l’espace de stockage | Chaque vidéo affiche sa taille. Les saisons et séries affichent la somme des épisodes enregistrés. La rubrique affiche le total des téléchargements et les capacités libre et totale du volume sur Mac, ou du stockage alloué au site sur le web, avec la mention « estimation du navigateur ». |
 | Un téléchargement est interrompu ou le stockage est plein | Un message distingue le fichier incomplet d’une copie prête à lire. Les vidéos déjà enregistrées restent utilisables et la rubrique comptabilise les copies terminées. |
-| L’utilisateur veut faire de la place | La rubrique offre une suppression manuelle par vidéo, saison ou série. L’option **Supprimer après visionnage** s’applique à la copie locale sélectionnée et est activée par défaut. L’utilisateur peut la désactiver par vidéo. Elle agit après une fin de lecture réellement visionnée. Un saut en fin ou un marquage manuel comme vu ne déclenche pas la suppression. |
+| L’utilisateur veut faire de la place | La rubrique offre une suppression manuelle par vidéo, saison ou série. L’option **Supprimer après visionnage** est activée par défaut. Un réglage global commun à Téléchargements et Configuration s’applique aux copies locales du profil sur ce client, avec une exception pour garder une vidéo. Elle agit après une fin de lecture réellement visionnée. Un saut en fin ou un marquage manuel comme vu ne déclenche pas la suppression. |
 
 Chaque navigateur et chaque Mac conserve ses propres copies. La suppression
 libère ces copies locales et préserve les sources de la vidéothèque.
@@ -29,4 +29,6 @@ dans ce navigateur disparaissent. La disponibilité doit être contrôlée sur l
 navigateur et le certificat réellement utilisés avant de déclarer ce parcours
 utilisable sur le Pi.
 
-[Architecture web et Mac proposée](../architecture/decisions/ADR-0046-offline-downloads.md).
+[Architecture web et Mac approuvée](../architecture/decisions/ADR-0046-offline-downloads.md).
+
+[Scénarios d’utilisation](../stories/OFFLINE-DOWNLOADS.md).
