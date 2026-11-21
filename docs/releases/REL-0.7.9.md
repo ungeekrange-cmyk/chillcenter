@@ -44,12 +44,27 @@ physiques restent à exécuter.
 
 Le client web 0.7.13 (build `091d25f29fff`) a été installé via le helper signé.
 Les 94 ressources vérifiées sur HTTPS correspondent au ZIP publié. L’index
-servi sur le port 80 correspond également au paquet. L’installation normale
-du serveur a accepté le manifeste 0.7.9, puis a échoué à la sauvegarde avant
-basculement. Le serveur 0.7.8 a repris le service. La récupération root signée
-est décrite dans [BUG0146](../debug/BUG-0146-updater-offline-backup-sandbox.md).
+servi sur le port 80 correspond également au paquet.
+
+Le serveur 0.7.9 est actif dans le slot `0.7.9-10`. Après un échec du
+helper en mode normal, la récupération root signée a terminé la sauvegarde
+hors ligne et redémarré le service. L’empreinte du processus correspond
+au manifeste public. L’API HTTPS épinglée annonce les téléchargements et
+a préparé un téléchargement en lecture seule.
+[Procédure de récupération](../debug/BUG-0146-updater-offline-backup-sandbox.md).
 
 The signed helper installed web 0.7.13. The 94 HTTPS resources checked and
-the port 80 index matched the published ZIP. The standard server installation
-accepted the 0.7.9 receipt, then failed during backup before switching slots.
-Server 0.7.8 resumed service pending signed root recovery.
+the port 80 index matched the public ZIP. Signed root recovery installed
+server 0.7.9 in slot `0.7.9-10` after a successful offline backup. The running
+binary matches the public manifest. The pinned HTTPS API advertised offline
+downloads and returned a download plan.
+
+## Nettoyage local / Local cleanup
+
+Le cache de compilation et les copies de travail Mac et web autorisés ont
+été supprimés. Le volume disposait de 15 202 844 672 octets libres de plus
+après l’opération. Les paquets signés et le bundle de retour arrière sont
+disponibles dans le dossier de livraison.
+
+The approved build cache and temporary Mac and web copies were removed.
+The measured increase in free space was 15,202,844,672 bytes.

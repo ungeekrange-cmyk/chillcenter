@@ -1,5 +1,14 @@
 # Contexte du projet
 
+## 21 novembre 2026 — Téléchargements hors connexion livrés
+
+Mac 0.7.9 (build 19), serveur 0.7.9 et web 0.7.13 publiés depuis
+`8e03e97bf67299b386c244c7ddccc926c55d111e`. Mac installé et relancé. Pi
+installé et vérifié, avec sauvegarde hors ligne puis récupération signée
+du serveur. Plan de téléchargement HTTPS testé, 94 ressources web vérifiées.
+Le nettoyage local autorisé a libéré 15,2 Go mesurés.
+[Notes de livraison](releases/REL-0.7.9.md).
+
 ## 21 novembre 2026 — Favicon web livrée
 
 Web 0.7.12, séquence 13, source `066d760b5abdc6a8ac4e09b642f1fc0897119692`, build `78633fd17533`,
