@@ -1,6 +1,6 @@
 # Journal des bugs, observations et risques
 
-[BUG0147](BUG-0147-web-tab-icon.md) — favicon déclarée et vérifiée dans le build web local.
+[BUG0147](BUG-0147-web-tab-icon.md) — favicon publiée dans web 0.7.12 et vérifiée sur le Pi.
 
 [BUG0146](BUG-0146-updater-offline-backup-sandbox.md) : sauvegarde serveur bloquée dans le sandbox ; récupération root officielle réussie, correction durable restante.
 
