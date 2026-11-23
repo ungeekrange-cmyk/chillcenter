@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { assertPublicText } from './build-public-site.mjs';
 
-const published = {mac:'0.7.9',server:'0.7.9',web:'0.7.13',themes:'0.7.1'};
+const published = {mac:'0.7.10',server:'0.7.10',web:'0.7.14',themes:'0.7.1'};
 const root = fileURLToPath(new URL('../', import.meta.url));
 const pairs = [
   ['README.md', 'README.en.md'],
@@ -34,7 +34,7 @@ const unique = values => [...new Set(values)].sort();
 
 test('README distinguishes source versions from immutable published download packages', async () => {
   const versions = JSON.parse(await read('versions.json'));
-  // Public receipts verified against GitHub Mac 0.7.9, server 0.7.9 and web 0.7.13;
+  // Public receipts verified against GitHub Mac 0.7.10, server 0.7.10 and web 0.7.14;
   // unchanged themes stay at 0.7.1, not inferred from a source bump.
   // Keep independent component versions; unchanged themes stay at 0.7.1.
   const packages = [
