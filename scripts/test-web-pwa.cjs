@@ -6,7 +6,7 @@ const { chromium } = require(process.env.CHILL_PREVIEW_NODE_MODULES ? path.join(
 const root = path.resolve(__dirname, "../web/dist");
 const chrome = process.env.CHILL_CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-function type(file) { return ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml", ".wasm": "application/wasm" })[path.extname(file)] || "application/octet-stream"; }
+function type(file) { return ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".webmanifest": "application/manifest+json", ".png": "image/png", ".ico": "image/x-icon", ".svg": "image/svg+xml", ".wasm": "application/wasm" })[path.extname(file)] || "application/octet-stream"; }
 function pngSize(bytes) { assert.equal(bytes.toString("ascii", 1, 4), "PNG"); return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }; }
 function listen(server) { return new Promise(resolve => server.listen(0, "127.0.0.1", resolve)); }
 function close(server) { return new Promise(resolve => server.close(resolve)); }
@@ -35,6 +35,13 @@ async function until(check, message) {
   const favicon = `pwa-icons/icon-192.png?v=${build.build}`;
   assert(index.includes(`<link rel="icon" type="image/png" sizes="192x192" href="${favicon}">`));
   assert(worker.includes(JSON.stringify(favicon)), "the shell caches the declared favicon URL");
+  const appleIcon = `/apple-touch-icon.png?v=${build.build}`;
+  assert(index.includes(`<link rel="apple-touch-icon" sizes="180x180" href="${appleIcon}">`));
+  assert(worker.includes(JSON.stringify(appleIcon)));
+  assert.deepEqual(pngSize(await fsp.readFile(path.join(root, "apple-touch-icon.png"))), { width: 180, height: 180 });
+  const ico = await fsp.readFile(path.join(root, "favicon.ico"));
+  assert.equal(ico.readUInt16LE(2), 1);
+  assert.deepEqual(pngSize(ico.subarray(ico.readUInt32LE(18))), { width: 192, height: 192 });
 
   let marker = "first";
   const server = http.createServer(async (req, res) => {
@@ -61,13 +68,24 @@ async function until(check, message) {
     await until(() => page.evaluate(async () => (await navigator.serviceWorker.ready).active && true), "service worker was not ready in 20s");
     await page.reload({ waitUntil: "domcontentloaded" });
     await until(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), "service worker did not control page");
-    const iconSize = await page.locator('link[rel="icon"]').evaluate(link => new Promise((resolve, reject) => {
+    const iconSize = await page.locator('link[rel="icon"][type="image/png"]').evaluate(link => new Promise((resolve, reject) => {
       const image = new Image();
       image.onload = () => resolve([image.naturalWidth, image.naturalHeight]);
       image.onerror = () => reject(new Error("The declared favicon could not be loaded"));
       image.src = link.href;
     }));
     assert.deepEqual(iconSize, [192, 192]);
+    for (const [selector, width] of [['link[rel="apple-touch-icon"]', 180], ['link[rel="icon"][href^="/favicon.ico"]', 192]]) {
+      const measured = await page.locator(selector).evaluate(async link => {
+        const image = new Image();
+        image.src = link.href;
+        await image.decode();
+        return image.naturalWidth;
+      });
+      assert.equal(measured, width);
+    }
+    assert.equal((await page.request.get(origin + "/apple-touch-icon.png")).status(), 200);
+    assert.equal((await page.request.get(origin + "/favicon.ico")).status(), 200);
     const appManifest = await cdp.send("Page.getAppManifest");
     assert(appManifest.manifest || appManifest.url, "CDP did not expose app manifest");
     const installability = await cdp.send("Page.getInstallabilityErrors");

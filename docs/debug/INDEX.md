@@ -247,3 +247,5 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 - [BUG0140](BUG-0140-home-legacy-resume.md) — film commencé exclu de l’Accueil faute de durée mesurée ; reprise héritée incluse et navigation En cours retirée, correctif local non publié.
 
 - [BUG0148](BUG-0148-detail-download-actions.md) — Télécharger sous le résumé et échec silencieux en HTTP ; actions visibles et volet Modifier fermé par défaut.
+
+- [BUG-0149](BUG-0149-mobile-shortcut-icon.md) — ressources d’icône à la racine pour les raccourcis mobiles.

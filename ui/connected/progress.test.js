@@ -1,6 +1,6 @@
 "use strict";
 const {test}=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
-const {percent,started,parse}=require("./progress.js");
+const {percent,started,parse,seriesPlayback}=require("./progress.js");
 const id="11111111-1111-4111-8111-111111111111",row=(position=5000,duration=100000)=>({media_id:id,position_ms:position,duration_ms:duration,watched:false});
 test("Progress badges require measured time and exclude watched videos",()=>{
  assert.equal(percent(row(42900)),42.9);assert.equal(started(row(0)),false);
@@ -82,4 +82,19 @@ test("a post-playback refresh waits for an older read then obtains one fresh obs
  assert.equal(f.calls.length,1);pending.shift()({revision:"old",items:[]});await first;await Promise.resolve();
  assert.equal(f.calls.length,2);pending.shift()({revision:"new",items:[row(42000)]});await Promise.all([after,coalesced]);
  const poster=f.element();f.sandbox.renderMediaProgress(poster,{id,watched:false});assert.equal(poster.children[0].attrs["aria-valuenow"],"42");
+});
+
+
+test("series playback resumes a started episode, advances after watched, and can replay",()=>{
+ const episode=(id,watched=false,available=true)=>({id,watched,available});
+ const items=[episode("one",true),episode("two"),episode("three"),episode("four",false,false)];
+ const measured=new Map([["three",row(5000)],["four",row(50000)]]);
+ const entry=item=>measured.get(item.id);
+ assert.equal(seriesPlayback(items,entry).id,"three");
+ measured.set("three",{...row(5000),watched:true});
+ assert.equal(seriesPlayback(items,entry).id,"two");
+ items[1].watched=true;
+ assert.equal(seriesPlayback(items,entry).id,"one");
+ assert.equal(seriesPlayback([items[3]],entry),undefined);
+ assert.equal(seriesPlayback([episode("one"),episode("two",true),episode("three")],()=>undefined).id,"three");
 });

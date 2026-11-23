@@ -65,7 +65,7 @@ async function noOverflow(page,label){
  const errors=[];
  try{
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
-  const page=await context.newPage();page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));
+  const page=await context.newPage();page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.stack||e.message));
   await routeFixture(page,path.resolve(__dirname,'../web/dist'));
   await page.goto(origin);await page.evaluate(()=>window.chillReady);
   await page.waitForSelector('#home-rails .recommendation-card');
@@ -96,14 +96,20 @@ async function noOverflow(page,label){
   }
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.locator('#show-in-progress,[data-mobile-progress]').count(),0,'Continue watching is available from Home only');
-  assert.equal(await page.locator('#media .media-card.catalog-open .poster-actions:visible').count(),0,'catalogue poster actions stay off the mobile posters');
   await page.waitForFunction(()=>typeof window.catalogOpenMedia==='function');
   await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(80);
   // Choose an already visible card: scrolling an offscreen virtual row would
   // deliberately replace that node before the click is delivered.
   const firstVisibleId=await page.evaluate(()=>[...document.querySelectorAll('#media .media-card.catalog-open')].find(el=>{const r=el.getBoundingClientRect();return !el.querySelector('.series-counts')&&r.top>80&&r.bottom<760;})?.dataset.mediaId);
   assert(firstVisibleId,'a catalogue card is visible for its ordinary detail click');
-  await page.locator(`#media [data-media-id="${firstVisibleId}"] h2`).click();
+  await page.evaluate(()=>{window.playRequests=[];window.originalPlay=window.chillPlay;window.chillPlay=(...args)=>window.playRequests.push(args);});
+  const card=page.locator(`#media [data-media-id="${firstVisibleId}"]`);
+  const play=card.locator('.play-video');
+  assert.equal(await play.evaluate(el=>getComputedStyle(el.parentElement).opacity),'1');
+  await play.click();
+  assert.deepEqual(await page.evaluate(()=>{window.chillPlay=window.originalPlay;return window.playRequests;}),[[firstVisibleId,null]]);
+  assert.equal(await page.locator('#media-dialog[open]').count(),0);
+  await card.locator('h2').click();
   await page.waitForSelector('#media-dialog[open]');await page.locator('#media-dialog .dialog-close').click();
   const profileBox=await page.locator('#profile-menu').boundingBox();assert(profileBox&&profileBox.x+profileBox.width>=370,'profile stays in the upper right');
   await page.locator('#mobile-search-toggle').click();assert.equal(await page.locator('.global-search').isVisible(),true);
@@ -153,17 +159,16 @@ async function noOverflow(page,label){
   assert.equal(await page.locator('.global-search').isVisible(),false);
   await page.evaluate(()=>{window.catalogFacets.clear();return loadPage();});
   await page.locator('#media .media-card h2').first().click();await page.waitForSelector('.series-episodes .media-card');
-  await page.waitForSelector('.mobile-season-details');
-  assert.equal(await page.locator('.mobile-season-details').first().getAttribute('open'),null);
-  assert.equal(await page.locator('.mobile-season-details .season-provider').first().isVisible(),false);
-  assert.equal(await page.locator('.mobile-series-details').getAttribute('open'),null);
-  assert.equal(await page.evaluate(()=>{const season=document.querySelector('.series-season');return [...season.children].indexOf(season.querySelector('.series-episodes'))<[...season.children].indexOf(season.querySelector('.mobile-season-details'));}),true);
-  await page.locator('.mobile-season-details > summary').first().click();
-  assert.equal(await page.locator('.mobile-season-details .season-provider').first().isVisible(),true);
-  await page.setViewportSize({width:1280,height:950});await page.waitForFunction(()=>!document.querySelector('.mobile-season-details'));
-  assert.equal(await page.locator('.season-provider').first().isVisible(),true);
+  await page.waitForSelector('#series-playback button');
+  assert.match(await page.locator('#series-playback-episode').textContent(), /1/);
+  assert.equal(await page.locator('#series-tools').isVisible(),false);
+  assert.equal(await page.locator('.series-season .season-provider').count(),0);
+  await page.locator('#series-edit').click();
+  assert.equal(await page.locator('#series-tools .season-provider').first().isVisible(),true);
+  await page.setViewportSize({width:1280,height:950});
+  assert.equal(await page.locator('#series-tools .season-provider').first().isVisible(),true);
   assert.equal(await page.locator('#mobile-search-toggle').isVisible(),false);
-  await page.setViewportSize({width:390,height:844});await page.waitForSelector('.mobile-season-details');
+  await page.setViewportSize({width:390,height:844});
   await page.locator('#mobile-search-toggle').click();assert.equal(await page.locator('.global-search').isVisible(),true);
   await page.locator('[data-mobile-more]').click();await page.locator('[data-mobile-sagas]').click();
   assert.equal(await page.locator('.global-search').isVisible(),false);

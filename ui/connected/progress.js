@@ -6,6 +6,15 @@
   return Math.min(100,entry.position_ms/entry.duration_ms*100);
  }
  function started(entry,watched=false){const value=percent(entry);return !watched&&!entry?.watched&&value!==null&&value>0;}
+ function seriesPlayback(episodes, entryFor){
+  const watched=episode=>entryFor(episode)?.watched??episode.watched;
+  const availableUnseen=episode=>episode.available&&!watched(episode);
+  const resume=episodes.findLast(episode=>availableUnseen(episode)&&started(entryFor(episode)));
+  if(resume)return resume;
+  const lastWatched=episodes.findLastIndex(watched);
+  return episodes.slice(lastWatched+1).find(availableUnseen)
+    ||episodes.find(availableUnseen)||episodes.find(episode=>episode.available);
+ }
  function parse(payload){
   if(!payload||typeof payload.revision!=="string"||payload.revision.length>255)throw Error("Invalid progress response");
   if(payload.unchanged===true)return null;
@@ -17,7 +26,7 @@
   }
   return result;
  }
- if(typeof module!=="undefined")module.exports={percent,started,parse};
+ if(typeof module!=="undefined")module.exports={percent,started,parse,seriesPlayback};
  if(typeof document==="undefined")return;
  let scope="",revision=null,entries=new Map(),pending=null,unsupported=false,lastCheck=0;
  const context=()=>typeof state!=="undefined"&&state.stage==="connected"&&state.server_id&&state.profile_id?state.server_id+":"+state.profile_id:"";
@@ -29,6 +38,7 @@
   return key;
  }
  function entryFor(media){activeContext();return entries.get(media.id)||root.homeProgressFor?.(media.id);}
+ root.seriesPlaybackTarget=episodes=>seriesPlayback(episodes,entryFor);
  root.dropProgressProfile=id=>{try{localStorage.removeItem(cacheKey(state.server_id+":"+id));}catch{}};
  root.renderMediaProgress=(poster,media)=>{
   const previous=poster.querySelector?.(".media-progress");previous?.remove();
@@ -45,6 +55,7 @@
   const entry=entryFor(media);label.hidden=!started(entry,media.watched);label.textContent=label.hidden?"":uiText("Lecture en cours · {0} %",Math.floor(percent(entry)));
  };
  function redraw(){
+  root.refreshSeriesPlayback?.();
   if(typeof shellSection!=="undefined"&&shellSection==="home")void root.refreshHome?.(true);
   for(const poster of document.querySelectorAll(".poster[data-progress-media-id]"))root.renderMediaProgress(poster,{id:poster.dataset.progressMediaId,watched:poster.dataset.progressWatched==="true"});
   const label=$("detail-progress");if(label)root.renderDetailProgress({id:label.dataset.progressMediaId,watched:label.dataset.progressWatched==="true"});

@@ -245,11 +245,25 @@ impl Store {
                 if !started || !unfinished {
                     continue;
                 }
+                let last_watched = members
+                    .iter()
+                    .filter(|r| r.watched)
+                    .filter_map(|r| r.media.episode)
+                    .max();
                 if let Some(proxy) = members
                     .iter()
                     .copied()
                     .filter(|r| r.media.available && !r.watched)
-                    .max_by_key(|r| r.position)
+                    .min_by_key(|r| {
+                        (
+                            std::cmp::Reverse(r.position),
+                            r.media
+                                .episode
+                                .zip(last_watched)
+                                .is_some_and(|(episode, last)| episode <= last),
+                            r.media.episode.unwrap_or(i32::MAX),
+                        )
+                    })
                 {
                     let progress =
                         (proxy.position > 0 && proxy.duration.unwrap_or(0) > 0).then(|| {
@@ -687,8 +701,9 @@ mod tests {
         let mut s1e1 = episode("Show.S01E01.mkv", 1, 1, 10);
         s1e1.available = false; // It still counts as the started member.
         let s1e2 = episode("Show.S01E02.mkv", 1, 2, 99);
+        let s1e3 = episode("Show.S01E03.mkv", 1, 3, 40);
         let s2e1 = episode("Show.S02E01.mkv", 2, 1, 20);
-        store.snapshot(vec![s1e1, s1e2, s2e1]).unwrap();
+        store.snapshot(vec![s1e1, s1e2, s1e3, s2e1]).unwrap();
         let id = store
             .catalog(&profile)
             .unwrap()
@@ -700,6 +715,7 @@ mod tests {
         let home = store.home_catalog(&profile).unwrap();
         assert_eq!(home.continue_watching.len(), 1);
         assert_eq!(home.continue_watching[0].season, Some(1));
+        assert!(home.continue_watching[0].media.path.ends_with("Show.S01E02.mkv"));
         assert_eq!(home.continue_watching[0].media.title, "Show");
         assert!(home.continue_watching[0].media.season.is_none());
         assert_eq!(home.recently_added.len(), 1);

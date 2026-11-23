@@ -59,6 +59,17 @@ fn flat_series_order(members: &[Media]) -> Option<Vec<&Media>> {
     ordered.sort_by_key(|(number, _)| *number);
     Some(ordered.into_iter().map(|(_, media)| media).collect())
 }
+fn numbered_series_successor<'a>(current: &Media, members: &'a [Media]) -> Option<&'a Media> {
+    members
+        .iter()
+        .filter(|m| (m.season, m.episode) > (current.season, current.episode))
+        .min_by(|a, b| {
+            let season = |m: &Media| m.season.unwrap_or(i32::MAX);
+            let episode = |m: &Media| m.episode.unwrap_or(i32::MAX);
+            (season(a), episode(a), &a.title).cmp(&(season(b), episode(b), &b.title))
+        })
+}
+
 const MAX_IN_MEMORY_EXPORT_BYTES: usize = 1024 * 1024;
 pub const MAX_CATALOG_PAGE: usize = 100;
 pub const MAX_EXPORT_POSTER_BYTES: u64 = 8 * 1024 * 1024;
@@ -994,6 +1005,44 @@ impl Store {
         Ok(personal)
     }
 
+    /// Resolve the immediate predecessor without guessing from titles or dates.
+    fn series_predecessor(&self, legacy_id: &str) -> Result<Option<String>, String> {
+        let current = self.catalogue.get(legacy_id)?;
+        if current.category != "serie" {
+            return Ok(None);
+        }
+        let members = self.catalogue.series_members_for(&current)?;
+        let previous = if let (Some(season), Some(episode)) = (current.season, current.episode) {
+            let number = |m: &Media| m.season.zip(m.episode);
+            if members
+                .iter()
+                .filter(|m| number(m) == Some((season, episode)))
+                .count()
+                != 1
+            {
+                return Ok(None);
+            }
+            let previous = members
+                .iter()
+                .filter(|m| number(m).is_some_and(|n| n < (season, episode)))
+                .max_by_key(|m| number(m));
+            previous.filter(|candidate| {
+                members
+                    .iter()
+                    .filter(|m| number(m) == number(candidate))
+                    .count()
+                    == 1
+                    && numbered_series_successor(candidate, &members).is_some_and(|m| m.id == legacy_id)
+            })
+        } else {
+            flat_series_order(&members).and_then(|ordered| {
+                let index = ordered.iter().position(|m| m.id == legacy_id)?;
+                index.checked_sub(1).map(|previous| ordered[previous])
+            })
+        };
+        previous.map(|media| self.stable_id(&media.id)).transpose()
+    }
+
     /// Compact profile-only read, independent of catalogue delta revisions.
     /// Legacy resumes without a measured duration are intentionally omitted.
     pub fn playback_progress(
@@ -1128,10 +1177,7 @@ impl Store {
                         None
                     }
                 } else {
-                    let next = members
-                        .iter()
-                        .find(|m| (m.season, m.episode) > (current.season, current.episode))
-                        .map(|m| m.id.clone());
+                    let next = numbered_series_successor(&current, &members).map(|m| m.id.clone());
                     order_unknown = next.is_none()
                         && members
                             .iter()
@@ -1502,6 +1548,25 @@ impl Store {
         progress: &Progress,
         completed_short_tail: bool,
     ) -> Result<PersonalState, String> {
+        self.save_validated_progress_with_transition(
+            profile_id,
+            stable_id,
+            progress,
+            completed_short_tail,
+            false,
+        )
+    }
+
+    /// On the first actual playback sample, persist an eligible predecessor in
+    /// the same transaction as the new episode's progress.
+    pub fn save_validated_progress_with_transition(
+        &self,
+        profile_id: &str,
+        stable_id: &str,
+        progress: &Progress,
+        completed_short_tail: bool,
+        first_playback_sample: bool,
+    ) -> Result<PersonalState, String> {
         self.require_profile(profile_id)?;
         if progress.media_id != stable_id
             || progress.duration_ms == 0
@@ -1528,7 +1593,17 @@ impl Store {
         {
             return Err("Crédit de visionnage final invalide.".into());
         }
-        self.legacy_id(stable_id)?;
+        let legacy_id = self.legacy_id(stable_id)?;
+        let predecessor = if first_playback_sample
+            && progress.playing
+            && !progress.buffering
+            && !progress.seek
+            && progress.position_ms > 0
+        {
+            self.series_predecessor(&legacy_id)?
+        } else {
+            None
+        };
         let tx = self.personal.unchecked_transaction().map_err(db_error)?;
         let old = state_in(&tx, profile_id, stable_id)?;
         let previous: Option<(String, u64, u64)> = tx.query_row(
@@ -1572,6 +1647,32 @@ impl Store {
         tx.execute("INSERT INTO cc_resume_measurement(profile_id,stable_media_id,duration_ms) VALUES(?1,?2,?3)
             ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET duration_ms=excluded.duration_ms",
             params![profile_id,stable_id,progress.duration_ms as i64]).map_err(db_error)?;
+        if let Some(id) = predecessor {
+            let measured: Option<(i64, i64)> = tx
+                .query_row(
+                    "SELECT s.position_ms,d.duration_ms FROM cc_profile_state s
+                 JOIN cc_resume_measurement d USING(profile_id,stable_media_id)
+                 WHERE s.profile_id=?1 AND s.stable_media_id=?2 AND s.watched=0",
+                    params![profile_id, id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(db_error)?;
+            if measured.is_some_and(|(position, duration)| {
+                i128::from(position) * 10 > i128::from(duration) * 7
+            }) {
+                tx.execute(
+                    "UPDATE cc_profile_state SET watched=1 WHERE profile_id=?1 AND stable_media_id=?2",
+                    params![profile_id,id],
+                ).map_err(db_error)?;
+                tx.execute(
+                    "UPDATE cc_profile_state SET last_watched_at=?1
+                     WHERE profile_id=?2 AND stable_media_id=?3",
+                    params![chill_catalog::model::now(), profile_id, id],
+                )
+                .map_err(db_error)?;
+            }
+        }
         tx.commit().map_err(db_error)?;
         Ok(PersonalState {
             position_ms: progress.position_ms,
@@ -3571,6 +3672,97 @@ mod tests {
         assert!(next.new_season);
         assert!(next.available);
     }
+    #[test]
+    fn series_transition_marks_only_the_immediate_measured_predecessor_over_seventy_percent() {
+        let mut store = store();
+        let episodes = (1..=3).map(|episode| {
+            let file = format!("E{episode}.mp4");
+            let mut item = media(&file, &format!("/nas/Series/{file}"));
+            item.category = "serie".into();
+            item.series = Some("Transition".into());
+            item.season = Some(1);
+            item.episode = Some(episode);
+            item
+        });
+        store.snapshot(episodes.collect()).unwrap();
+        let profile = store.create_profile("Playback").unwrap().id;
+        let other = store.create_profile("Other").unwrap().id;
+        let episodes = store.series(&profile, "Transition").unwrap();
+        let [one, two, three] = episodes.as_slice() else {
+            panic!("expected three episodes");
+        };
+        let sample = |media: &Media, position_ms, sequence| Progress {
+            session_id: media.id.clone(),
+            generation: 1,
+            media_id: media.id.clone(),
+            media_revision: 1,
+            sequence,
+            position_ms,
+            duration_ms: 100_000,
+            speed: 1.0,
+            final_elapsed_ms: 0,
+            playing: true,
+            buffering: false,
+            seek: false,
+        };
+        store
+            .save_validated_progress(&profile, &one.id, &sample(one, 70_000, 1))
+            .unwrap();
+        store
+            .save_validated_progress_with_transition(
+                &profile,
+                &two.id,
+                &sample(two, 100, 1),
+                false,
+                true,
+            )
+            .unwrap();
+        assert!(!store.personal_state(&profile, &one.id).unwrap().watched);
+
+        store
+            .save_validated_progress(&profile, &one.id, &sample(one, 70_001, 2))
+            .unwrap();
+        store
+            .save_validated_progress(&other, &one.id, &sample(one, 75_000, 1))
+            .unwrap();
+        store
+            .save_validated_progress_with_transition(
+                &profile,
+                &three.id,
+                &sample(three, 100, 1),
+                false,
+                true,
+            )
+            .unwrap();
+        assert!(!store.personal_state(&profile, &one.id).unwrap().watched);
+        let mut seeking = sample(two, 100, 2);
+        seeking.seek = true;
+        store
+            .save_validated_progress_with_transition(&profile, &two.id, &seeking, false, true)
+            .unwrap();
+        assert!(!store.personal_state(&profile, &one.id).unwrap().watched);
+
+        store
+            .save_validated_progress_with_transition(
+                &profile,
+                &two.id,
+                &sample(two, 200, 3),
+                false,
+                true,
+            )
+            .unwrap();
+        let previous = store.personal_state(&profile, &one.id).unwrap();
+        assert!(previous.watched);
+        assert_eq!(previous.position_ms, 70_001);
+        assert_eq!(previous.final_watched_ms, 0);
+        assert!(!store.personal_state(&other, &one.id).unwrap().watched);
+        let last_watched_at: Option<i64> = store.personal.query_row(
+            "SELECT last_watched_at FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2",
+            params![profile,one.id], |row| row.get(0),
+        ).unwrap();
+        assert!(last_watched_at.is_some());
+    }
+
     #[test]
     fn next_flat_numbered_series_uses_source_ordinals_without_rewriting_metadata() {
         let mut s = store();

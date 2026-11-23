@@ -9,7 +9,7 @@
   // These web-only labels are deliberately not added to shared locales.  The
   // normal catalogue remains authoritative; this small fallback covers only
   // labels the desktop client never renders.
-  const webEnglish = { "Docs": "Documentaries", "Plus": "More", "Navigation mobile": "Mobile navigation", "Plus de rubriques": "More sections", "Rechercher et filtrer": "Search and filter", "Fermer la recherche": "Close search", "Plus d’informations sur la saison": "More information about this season", "Plus d’informations sur la série": "More information about this series" };
+  const webEnglish = { "Docs": "Documentaries", "Plus": "More", "Navigation mobile": "Mobile navigation", "Plus de rubriques": "More sections", "Rechercher et filtrer": "Search and filter", "Fermer la recherche": "Close search" };
   const t = text => {
     const translated = root.chillI18n?.t?.(text) || text;
     return translated === text && root.chillI18n?.language === "en" ? (webEnglish[text] || text) : translated;
@@ -72,41 +72,6 @@
     const toggle = byId("mobile-search-toggle"); toggle?.setAttribute("aria-expanded", String(open));
     if (open) root.setTimeout(() => byId("search")?.focus(), 0); else focus?.focus?.();
   }
-  function arrangeSeriesDetails() {
-    if (!isPhone()) return restoreSeriesDetails();
-    const members = byId("collection-members"); if (!members) return;
-    for (const season of members.querySelectorAll(".series-season")) {
-      const existing = season.querySelector(":scope > .mobile-season-details");
-      if (existing) {
-        for (const node of Array.from(season.children)) if (node !== existing && node.tagName !== "SUMMARY" && !node.classList.contains("series-episodes")) existing.append(node);
-        continue;
-      }
-      const grid = season.querySelector(":scope > .series-episodes"); if (!grid) continue;
-      const extra = doc.createElement("details"); extra.className = "mobile-season-details";
-      const summary = doc.createElement("summary"); summary.textContent = t("Plus d’informations sur la saison"); extra.append(summary);
-      for (const node of Array.from(season.children)) if (node !== grid && node.tagName !== "SUMMARY") extra.append(node);
-      season.append(extra);
-    }
-    const tools = byId("series-tools");
-    if (tools && !tools.querySelector(":scope > .mobile-series-details")) {
-      const extra = doc.createElement("details"); extra.className = "mobile-series-details";
-      const summary = doc.createElement("summary"); summary.textContent = t("Plus d’informations sur la série"); extra.append(summary);
-      for (const node of Array.from(tools.childNodes)) if (node !== extra) extra.append(node);
-      tools.append(extra);
-    }
-  }
-  function restoreSeriesDetails() {
-    const members = byId("collection-members");
-    for (const extra of members?.querySelectorAll?.(".mobile-season-details") || []) {
-      const season = extra.parentElement, grid = season?.querySelector(":scope > .series-episodes");
-      for (const node of Array.from(extra.children)) if (node.tagName !== "SUMMARY") {
-        if (node.classList?.contains("series-poster")) season.append(node); else season.insertBefore(node, grid);
-      }
-      extra.remove();
-    }
-    const tools = byId("series-tools"), extra = tools?.querySelector(":scope > .mobile-series-details");
-    if (extra) { for (const node of Array.from(extra.childNodes)) if (node.tagName !== "SUMMARY") tools.insertBefore(node, extra); extra.remove(); }
-  }
   function syncShell() {
     const nav = byId("mobile-nav"); if (!nav) return;
     const category = byId("category")?.value || "";
@@ -154,7 +119,7 @@
       wrapped.__mobileWrapped = true; root.renderShell = wrapped;
     }
     root.addEventListener("resize", () => { root.restoreCatalogLayout?.(); syncShell(); }, { passive: true });
-    mobileQuery?.addEventListener?.("change", () => { closeSheet(); setDiscoveryOpen(false); root.restoreCatalogLayout?.(); arrangeSeriesDetails(); syncShell(); });
+    mobileQuery?.addEventListener?.("change", () => { closeSheet(); setDiscoveryOpen(false); root.restoreCatalogLayout?.(); syncShell(); });
     // player.js toggles this class without re-rendering the shell. Observe it
     // so a resize during playback cannot leave the bottom navigation hidden
     // when the player subsequently closes.
@@ -162,12 +127,10 @@
       if (doc.body.classList.contains("player-open")) closeSheet();
       syncShell();
     }).observe(doc.body, { attributes: true, attributeFilter: ["class"] });
-    let seriesQueued = false;
-    new MutationObserver(() => { if (!seriesQueued) { seriesQueued = true; root.queueMicrotask(() => { seriesQueued = false; arrangeSeriesDetails(); }); } }).observe(byId("collection-panel"), { childList: true, subtree: true });
     doc.addEventListener("keydown", event => { if (event.key === "Escape" && doc.body.classList.contains("mobile-discovery-open")) { event.preventDefault(); setDiscoveryOpen(false, byId("mobile-search-toggle")); } });
     root.chillReady?.then(() => { root.restoreCatalogLayout?.(); syncShell(); });
     syncShell();
   }
-  root.ChillMobileUi = { isPhone, install, syncShell, arrangeSeriesDetails };
+  root.ChillMobileUi = { isPhone, install, syncShell };
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", install, { once: true }); else install();
 })(window, document);

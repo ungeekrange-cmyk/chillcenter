@@ -36,3 +36,6 @@ dialog{width:min(850px,90vw);max-height:85vh;overflow:auto;background:var(--pane
   #media-dialog .detail-copy { order: -1; }
   #media-dialog .detail-layout > .poster { width: min(135px, 45%); }
 }
+
+.series-playback{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+.series-playback-episode{color:var(--muted);overflow-wrap:anywhere}

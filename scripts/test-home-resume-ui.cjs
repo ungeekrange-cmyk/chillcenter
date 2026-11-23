@@ -53,6 +53,13 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
    assert.equal(await page.locator('.home-progress').count(),3,'artwork loading preserves every progress overlay');
    assert.match(await cards.nth(0).textContent(),/33 %/);assert.match(await cards.nth(2).textContent(),/4 \/ 150 épisodes vus · 3 %/);
    assert.equal(await page.locator('#show-in-progress').count(),0);
+   await page.evaluate(()=>{window.fixturePlayback=[];window.chillPlay=(...args)=>window.fixturePlayback.push(args);});
+   await cards.nth(0).locator('.home-play').click();
+   await cards.nth(2).locator('.home-play').click();
+   assert.deepEqual(await page.evaluate(()=>window.fixturePlayback),[
+    [ids[0],null],[ids[2],{kind:'series',id:'tmdb:tv:12'}]
+   ]);
+   assert.equal(await page.locator('#media-dialog[open]').count(),0);
    if(process.env.CHILL_HOME_QA_DIR)await page.screenshot({path:path.join(process.env.CHILL_HOME_QA_DIR,`home-initial-${width}-${reducedMotion}.png`),fullPage:true});
    const first=await cards.nth(0).boundingBox(),second=page.locator(`.home-resume-card:has([data-home-media-id="${ids[1]}"])`);
    const before=await second.boundingBox();await cards.nth(0).locator('.home-watched').click();
@@ -61,7 +68,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
    assert.equal(writes.length,1);releaseWrite();
    await page.waitForFunction(()=>document.querySelectorAll('.home-resume-card').length===2);
    await page.waitForFunction(()=>[...document.querySelectorAll('.home-resume-card')].every(c=>c.getAnimations().every(a=>a.playState!=='running')));
-   const after=await second.boundingBox();
+   const after=await page.waitForFunction(id=>{
+    const card=[...document.querySelectorAll('.home-resume-card')].find(el=>el.dataset.homeMediaId===id);
+    const box=card?.getBoundingClientRect();
+    return box?.width>0?box.toJSON():false;
+   },ids[1]).then(handle=>handle.jsonValue());
    if(!after || !before || !first) {
     console.error('Home layout diagnostic',width,await page.evaluate(()=>({section:shellSection,homeHidden:document.getElementById('home-panel').hidden,cards:[...document.querySelectorAll('.home-resume-card')].map(c=>({text:c.textContent,rect:c.getBoundingClientRect().toJSON(),display:getComputedStyle(c).display})),errors:document.getElementById('home-status').textContent})));
     if(process.env.CHILL_HOME_QA_DIR)await page.screenshot({path:path.join(process.env.CHILL_HOME_QA_DIR,'home-layout-failure.png'),fullPage:true});

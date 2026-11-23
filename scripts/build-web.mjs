@@ -23,6 +23,19 @@ cpSync(ui, out, {
 });
 cpSync(themes, join(out, "themes"), { recursive: true });
 for (const name of [...webScripts, "offline-writer.js", "pwa-icons", "web-sync-ui.js", "web.css", "mobile-ui.js", "mobile-playback.js", "mobile.css", "manifest.webmanifest"]) cpSync(join(src, name), join(out, name), { recursive: true });
+// Mobile home-screen shortcuts may look at root icons without installing the manifest.
+cpSync(join(src, "pwa-icons/apple-touch-icon.png"), join(out, "apple-touch-icon.png"));
+const shortcutPng = readFileSync(join(src, "pwa-icons/icon-192.png"));
+const ico = Buffer.alloc(22);
+ico.writeUInt16LE(1, 2); // icon file
+ico.writeUInt16LE(1, 4); // one image
+ico[6] = shortcutPng.readUInt32BE(16);
+ico[7] = shortcutPng.readUInt32BE(20);
+ico.writeUInt16LE(1, 10); // colour planes
+ico.writeUInt16LE(32, 12); // bits per pixel
+ico.writeUInt32LE(shortcutPng.length, 14);
+ico.writeUInt32LE(ico.length, 18);
+writeFileSync(join(out, "favicon.ico"), Buffer.concat([ico, shortcutPng]));
 // MPEG-4 (Xvid/DivX) WebAssembly decoder: built by web/decoder/mpeg4, loaded by a Worker only when needed.
 mkdirSync(join(out, "vendor/mpeg4"), { recursive: true });
 const vendor = join(root, "web/vendor/mpeg4");
@@ -49,8 +62,8 @@ patch("appearance.js", "sur ce Mac uniquement", "sur cet appareil uniquement");
 patch("updates.js", "__WEB_VERSION__", versions.web);
 
 let html = readFileSync(join(out, "index.html"), "utf8");
-const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css"><link rel="icon" type="image/png" sizes="192x192" href="pwa-icons/icon-192.png">`
-  + `<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Chill Center"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="pwa-icons/apple-touch-icon.png">`
+const head = `<meta name="theme-color" content="#10151c"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="web.css"><link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" sizes="192x192" href="pwa-icons/icon-192.png">`
+  + `<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Chill Center"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">`
   + webScripts.map(name => `<script src="${name}"></script>`).join("");
 if (!html.includes("<title>")) throw new Error("index.html sans <title>");
 // These adapters run after the shared desktop scripts. Responsive behavior is
@@ -73,12 +86,12 @@ for (const f of files) build.update(f).update(readFileSync(join(out, f)));
 const id = build.digest("hex").slice(0, 12);
 // Every local script, stylesheet, manifest and favicon URL carries ?v=<build id>. The server resolves retained release slots by that build id and caches static files for
 // an hour; the id makes a new build a new URL, so a browser never mixes old and new files after an update (no Service Worker over plain HTTP).
-const stamped = readFileSync(join(out, "index.html"), "utf8").replace(/(src|href)="(pwa-icons\/icon-192\.png|[^":?#]+\.(?:js|css|webmanifest))"/g, (_, attr, url) => `${attr}="${url}?v=${id}"`);
+const stamped = readFileSync(join(out, "index.html"), "utf8").replace(/(src|href)="(\/?(?:pwa-icons\/icon-192\.png|apple-touch-icon\.png|favicon\.ico)|[^":?#]+\.(?:js|css|webmanifest))"/g, (_, attr, url) => `${attr}="${url}?v=${id}"`);
 writeFileSync(join(out, "index.html"), stamped);
 // Independent themes can omit bundled fallback decorations, and large codec
 // workers are lazy. Neither belongs to the atomic app-shell installation.
 // Match the versioned URLs requested by index.html, never cache media or API.
-const shell = ["./", ...files.filter(f => !f.startsWith("themes/") && !f.startsWith("vendor/") && /\.(?:js|css|svg|png|webmanifest)$/.test(f)).map(f => `${f}?v=${id}`)];
+const shell = ["./", ...files.filter(f => !f.startsWith("themes/") && !f.startsWith("vendor/") && /\.(?:js|css|svg|png|ico|webmanifest)$/.test(f)).map(f => `${["apple-touch-icon.png", "favicon.ico"].includes(f) ? "/" : ""}${f}?v=${id}`)];
 const codecs = files.filter(f => f.startsWith("vendor/") && /\.(?:js|wasm)$/.test(f)).map(f => f + "?v=" + id);
 writeFileSync(join(out, "sw.js"), readFileSync(join(src, "sw.js"), "utf8").replace("__BUILD__", id).replace("__SHELL__", JSON.stringify(shell)).replace("__CODECS__", JSON.stringify(codecs)));
 writeFileSync(join(out, "build.json"), JSON.stringify({ version: versions.web, build: id, source: "ui/connected + web/src + themes/default", files: files.length + 1 }, null, 2) + "\n");

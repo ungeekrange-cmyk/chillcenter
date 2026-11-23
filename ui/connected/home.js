@@ -117,7 +117,17 @@
       const label = uiText(title), byId = new Map(list.map(item => [item.media.id, item]));
       const rail = window.catalogRecommendationRail?.(list.map(item => ({ ...item.media, series_key: item.series_key, matches: item.matches || [] })), {
         label, previousLabel: uiText("Éléments précédents — {0}", label), nextLabel: uiText("Éléments suivants — {0}", label),
-        decorateCard: field === "continue_watching" ? (card, media) => resumeCard(card, byId.get(media.id), key, data.watch_revision) : undefined,
+        decorateCard(card, media) {
+          const resuming=field==="continue_watching";
+          const wrapper=resuming?resumeCard(card,byId.get(media.id),key,data.watch_revision):node("article",undefined,"home-action-card");
+          if(!resuming)wrapper.append(card);
+          const play=window.catalogDirectPlaybackButton?.(media,{
+            seriesKey:media.series_key,resumeEpisode:resuming,className:"home-play",
+            current:()=>context()===key&&visible()&&wrapper.isConnected
+          });
+          if(play)wrapper.append(play);
+          return wrapper;
+        },
         beforeOpen(item) {
           if (context() !== key || !visible()) return false;
           if (item.series_key) {

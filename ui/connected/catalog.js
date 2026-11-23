@@ -4,7 +4,7 @@ var uiText=globalThis.chillI18n?.t||((text)=>text);
 // filesystem paths from media metadata are evaluated by this interface.
 let catalogProfile=typeof state==="undefined"?null:state.server_id+":"+state.profile_id,collectionView=null,collectionKind="playlist",detailView=null,seriesView=null;
 let collectionFilter="",collectionDetails=new Map(),collectionLoaded=0,collectionCards=new Map(),collectionCardsOrder=[];
-let collectionEpoch=0,collectionContext="",detailGeneration=0,detailId=null;
+let collectionEpoch=0,collectionContext="",detailGeneration=0,detailId=null,directPlaybackEpoch=0;
 function detailCurrent(generation,context,id){return generation===detailGeneration&&context===collectionScope()&&detailId===id&&$("media-dialog").open;}
 function invalidateDetail(){detailGeneration++;detailId=null;detailView=null;window.recoveryContextChanged?.();}
 $("media-dialog").addEventListener("close",()=>{if(!$("media-dialog").open){retireArtwork($("detail-poster"));retireRecommendationRail($("related-media"));invalidateDetail();window.restoreCatalogLayout?.();}});
@@ -45,6 +45,60 @@ window.catalogEnhanceCard=(card,m)=>{
   if(m.poster)observeArtwork(card.querySelector(".poster-image"),m.id);
 };
 window.catalogOpenMedia=openMedia;window.catalogOpenSeries=openSeries;
+function seriesEpisodesInOrder(episodes){
+  return [...episodes].sort((a,b)=>(a.season??Infinity)-(b.season??Infinity)||(a.episode??Infinity)-(b.episode??Infinity)||a.title.localeCompare(b.title,"fr"));
+}
+function seriesPlaybackTarget(episodes){
+  if(window.seriesPlaybackTarget)return window.seriesPlaybackTarget(episodes);
+  return episodes.find(m=>m.available&&!m.watched)||episodes.find(m=>m.available);
+}
+async function playSeriesFromCard(key,intent){
+  const scope=collectionScope(),section=shellSection,epoch=collectionEpoch,detail=detailGeneration;
+  const current=()=>scope===collectionScope()&&section===shellSection&&epoch===collectionEpoch&&detail===detailGeneration&&intent===directPlaybackEpoch;
+  const result=await libraryRead({action:"series",name:key},current);if(!result)return;
+  await window.refreshProgress?.(true);if(!current())return;
+  const target=seriesPlaybackTarget(seriesEpisodesInOrder(result.episodes));
+  if(target)await window.chillPlay(target.id,{kind:"series",id:key});
+  else message(uiText("Aucun épisode disponible."));
+}
+function directPlaybackButton(item,{seriesKey=null,resumeEpisode=false,className="play-video",current=()=>true}={}){
+  const play=button("▶",async event=>{
+    event?.stopPropagation();
+    if(!current()||play.disabled)return;
+    play.disabled=true;
+    const intent=++directPlaybackEpoch;
+    try{
+      if(seriesKey&&!resumeEpisode)await playSeriesFromCard(seriesKey,intent);
+      else await window.chillPlay(item.id,seriesKey?{kind:"series",id:seriesKey}:null);
+    }finally{play.disabled=false;}
+  },className);
+  play.setAttribute("aria-label",uiText("Lire ")+item.title);
+  play.disabled=(!seriesKey||resumeEpisode)&&item.available===false;
+  return play;
+}
+window.catalogDirectPlaybackButton=directPlaybackButton;
+function renderSeriesPlayback(episodes,key){
+  const actions=$("series-actions"),previous=actions.querySelectorAll(".series-playback")[0];
+  const controls=previous||node("div",undefined,"series-playback");
+  controls.id="series-playback";
+  const target=seriesPlaybackTarget(episodes);
+  if(!target){controls.remove();return;}
+  if(controls.dataset.mediaId!==target.id){
+    const play=button(uiText("Lire"),()=>window.chillPlay(target.id,{kind:"series",id:key}),"primary");
+    const number=target.season==null?null:uiText("Saison ")+target.season;
+    const episode=target.episode==null?null:uiText("Épisode {0}",target.episode);
+    const title=target.title===episode?null:target.title;
+    const label=node("span",[number,episode,title].filter(Boolean).join(" · "),"series-playback-episode");
+    play.setAttribute("aria-describedby","series-playback-episode");label.id="series-playback-episode";
+    controls.replaceChildren(play,label);controls.dataset.mediaId=target.id;
+  }
+  if(!previous)actions.prepend(controls);
+}
+window.refreshSeriesPlayback=()=>{
+  if(typeof shellSection!=="undefined"&&shellSection==="collection"&&collectionKind==="series"&&seriesView){
+    renderSeriesPlayback(seriesEpisodesInOrder(seriesView.episodes),collectionView.id);
+  }
+};
 function detailPlaybackContext(mediaId){return shellSection==="collection"&&collectionView?.media_ids.includes(mediaId)?{kind:collectionKind,id:collectionView.id}:null;}
 window.catalogReturnFromPlayback=async(playback,current)=>{
   if(!current())return;
@@ -251,6 +305,7 @@ async function openSeries(name,preferredSeason=undefined){
   const previous=shellSection==="collection"&&collectionKind==="series"?seriesView:null,previousScroll=globalThis.scrollY||0,openSeasons=new Set(Array.from($("collection-members").querySelectorAll?.(".series-season[open]")||[],section=>section.dataset.season));
   const epoch=++collectionEpoch,context=collectionScope();
   const result=await libraryRead({action:"series",name},()=>collectionCurrent(epoch,context));if(!result)return;
+  await window.refreshProgress?.();if(!collectionCurrent(epoch,context))return;
   seriesView=result;collectionKind="series";collectionView={id:name,name:result.metadata?.name||result.episodes[0]?.series||result.name||name,media_ids:result.episodes.map(m=>m.id),episodes:result.episodes};
   collectionFilter="";collectionDetails=new Map();collectionLoaded=0;ensureCollectionFilter("series");
   $("collection-title").textContent=collectionView.name;$("collection-counts").textContent=new Set(result.episodes.map(m=>m.season)).size+uiText(" saisons · ")+result.episodes.length+uiText(" épisodes · ")+result.counters.unwatched+uiText(" épisodes non vus");$("collection-counts").hidden=true;
@@ -268,10 +323,11 @@ async function openSeries(name,preferredSeason=undefined){
   edit.id="series-edit";edit.setAttribute("aria-controls","series-tools");edit.setAttribute("aria-expanded","false");
   $("series-actions").append(edit);$("series-actions").hidden=false;
 
-  const ordered=[...result.episodes].sort((a,b)=>(a.season===null?Infinity:a.season)-(b.season===null?Infinity:b.season)||(a.episode===null?Infinity:a.episode)-(b.episode===null?Infinity:b.episode)||a.title.localeCompare(b.title,"fr"));
+  const ordered=seriesEpisodesInOrder(result.episodes);
+  renderSeriesPlayback(ordered,name);
   const same=previous?.episodes?.some(old=>result.episodes.some(item=>item.id===old.id));
   // Choose from the sorted per-profile episodes only on entry; refreshes preserve manual folds.
-  const firstSeason=preferredSeason!==undefined?preferredSeason:(ordered.find(episode=>!episode.watched)||ordered[0])?.season;
+  const firstSeason=preferredSeason!==undefined?preferredSeason:(seriesPlaybackTarget(ordered)||ordered[0])?.season;
   let season=undefined,section=null,episodeGrid=null;
   for(const m of ordered){
    if(m.season!==season){
@@ -505,7 +561,7 @@ for(const id of ["picker-category","picker-watched"])$(id).onchange=()=>{clearTi
 let collectionFrame=null;
 function scheduleCollectionWindow(){if(collectionFrame)return;collectionFrame=requestAnimationFrame(()=>{collectionFrame=null;renderCollectionMembers();});}
 window.addEventListener("scroll",scheduleCollectionWindow,{passive:true});
-window.addEventListener("resize",()=>{scheduleCollectionWindow();if(shellSection==="picker")renderPicker();});
+window.addEventListener("resize",()=>{scheduleCollectionWindow();if(typeof shellSection!=="undefined"&&shellSection==="picker")renderPicker();});
 $("show-playlists").onclick=()=>openCollections();$("show-sagas").onclick=()=>openCollections("saga");
 for(const id of ["media-dialog","playlist-target-dialog"]){const m=node("p",undefined,"dialog-message");m.setAttribute("role","status");m.setAttribute("aria-live","polite");$(id).prepend(m);$(id).querySelector(".dialog-close").onclick=()=>$(id).close();}
 let artworkQueue=[],artworkLoading=false,artworkGeneration=0;

@@ -47,9 +47,9 @@ test("web-only labels have an English fallback and More is selected for the libr
   assert.match(source, /category === ""/);
   assert.match(source, /aria-current/);
 });
-test("mobile catalogue posters are unobscured and the header keeps profile at right", () => {
+test("mobile catalogue exposes compact playback controls and keeps profile at right", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
-  assert.match(css, /\.media-card\.catalog-open \.poster-actions\{display:none\}/);
+  assert.match(css, /\.media-card\.catalog-open \.poster-actions\{opacity:1;background:none\}/);
   assert.doesNotMatch(css, /\.media-card \.poster-actions\{inset:0;display:block/);
   assert.match(css, /grid-template-columns:44px minmax\(0,1fr\) 44px 44px max-content/);
   assert.match(css, /\.profile-menu\{grid-column:5/);
@@ -97,12 +97,6 @@ test("closing discovery survives a desktop transition and never hides picker fil
   assert.match(css, /#filter-form\{display:none/);
   assert.doesNotMatch(css, /\.filters\{display:none/);
 });
-test("series tools are reparented into mobile details without recreating their listeners", () => {
-  assert.match(source, /mobile-season-details/);
-  assert.match(source, /mobile-series-details/);
-  assert.match(source, /restoreSeriesDetails/);
-  assert.match(source, /new MutationObserver\(\(\) => \{ if \(!seriesQueued\)/);
-});
 test("landscape phone navigation becomes a compact left rail", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
   assert.match(css, /orientation:landscape/);
@@ -115,10 +109,4 @@ test("portrait header assigns distinct columns to sync, search and profile", () 
   assert.match(css, /#sync-indicator\{grid-column:3/);
   assert.match(css, /\.mobile-search-toggle\{display:grid;grid-column:4/);
   assert.match(css, /\.profile-menu\{grid-column:5/);
-});
-test("late season artwork joins mobile details and desktop restore preserves poster order", () => {
-  assert.match(source, /const existing = season\.querySelector/);
-  assert.match(source, /existing\.append\(node\)/);
-  assert.match(source, /node\.classList\?\.contains\("series-poster"\)/);
-  assert.match(source, /season\.append\(node\)/);
 });

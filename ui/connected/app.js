@@ -87,23 +87,24 @@ function discardCatalogCards(){for(const card of catalogCards.values())window.re
 function clearCatalogContext(){catalogGeneration++;catalogItems=[];catalogCounters={};catalogWindowKey="";invalidateFacetBase();window.catalogFacets?.clear();discardCatalogCards();$("media").replaceChildren();$("media").style.height="";window.resetArtwork?.();}
 function catalogCard(m){
  const groupedSeries=m.category==="serie";
+ const seriesKey=groupedSeries?(catalogCounters[m.id]?.series_key||(m.tmdb_id?"tmdb:tv:"+m.tmdb_id:"media:"+m.id)):null;
  const card=node("article",undefined,"media-card catalog-open"),poster=node("div",m.title.slice(0,1).toUpperCase(),"poster"),info=node("div",undefined,"info");
  card.dataset.mediaId=m.id;card.tabIndex=0;const visual=node("div",m.title.slice(0,1).toUpperCase(),"poster-image");poster.replaceChildren(visual);
  info.append(node("h2",m.title),node("p",[m.year,(m.genres||[]).slice(0,2).join(", ")].filter(Boolean).join(" · ")));
  if(m.rating){const stars=node("p","★".repeat(m.rating),"poster-rating");stars.setAttribute("aria-label",uiText("Ma note : ")+m.rating+uiText(" sur 5"));info.append(stars);}
  const actions=node("div",undefined,"poster-actions"),watched=node("button",m.watched?"✓":"○","poster-watched");
  watched.setAttribute("aria-label",m.watched?uiText("Marquer non vu"):uiText("Marquer vu"));watched.setAttribute("aria-pressed",String(m.watched));
+ const play=window.catalogDirectPlaybackButton?.(m,{seriesKey});if(play)actions.append(play);
  if(!groupedSeries){
   watched.onclick=async()=>{if(await run({action:"set_watched",media_id:m.id,watched:!m.watched},false))await loadPage();};
-  const play=node("button","▶","play-video");play.setAttribute("aria-label",uiText("Lire ")+m.title);play.disabled=!m.available;play.onclick=()=>window.chillPlay(m.id,m.category==="serie"?{kind:"series",id:m.tmdb_id?"tmdb:tv:"+m.tmdb_id:"media:"+m.id}:null);
   const add=node("button","+","poster-add");add.setAttribute("aria-label",uiText("Ajouter à une liste de lecture ou une saga"));add.onclick=()=>window.catalogPickCollection?.(m.id,m.category);
-  actions.append(play,watched,add);
+  actions.append(watched,add);
  }else{
   const counters=catalogCounters[m.id];
   info.append(node("p",counters?counters.seasons+uiText(" saisons · ")+counters.episodes+uiText(" épisodes · ")+counters.unwatched+uiText(" non vus"):m.watched?uiText("Tous les épisodes sont vus"):uiText("Des épisodes restent à voir"),"series-counts"));
  }
  poster.append(actions);if(!m.available)info.append(node("p",uiText("Indisponible"),"unavailable-badge"));
- card.append(poster,info);if(!groupedSeries)window.renderMediaProgress?.(poster,m);const open=()=>groupedSeries?window.catalogOpenSeries?.(catalogCounters[m.id]?.series_key||(m.tmdb_id?"tmdb:tv:"+m.tmdb_id:"media:"+m.id)):window.catalogOpenMedia?.(m.id);
+ card.append(poster,info);if(!groupedSeries)window.renderMediaProgress?.(poster,m);const open=()=>groupedSeries?window.catalogOpenSeries?.(seriesKey):window.catalogOpenMedia?.(m.id);
  card.onclick=event=>{if(!event.target.closest("button,select,summary,details"))open();};
  card.onkeydown=event=>{if((event.key==="Enter"||event.key===" ")&&!event.target.closest("button,select,summary,details")){event.preventDefault();open();}};
  window.catalogEnhanceCard?.(card,m);return card;

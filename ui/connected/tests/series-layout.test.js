@@ -113,3 +113,20 @@ test('Home can explicitly open a started season0 even when another season has un
 test('Home can explicitly open an unknown started season while a known season is untouched',async()=>{
  const f=seriesFixture([episode('unknown',null,1),episode('known',1,1)]);await f.execute('openSeries("Fixture",null)');assert.deepEqual(f.openSeasons(),['null']);
 });
+
+
+test('the series button names and plays the same episode, and a catalogue action launches it directly', async () => {
+  const f = seriesFixture([episode('unseen', 2, 1), episode('resume', 2, 2)]);
+  const launches = [];
+  f.sandbox.window.seriesPlaybackTarget = episodes => episodes.find(item => item.id === 'resume');
+  f.sandbox.window.chillPlay = (id, context) => launches.push([id, context.kind, context.id]);
+  await f.execute('openSeries("Fixture")');
+  const controls = f.get('series-actions').children[0];
+  assert.equal(controls.children[0].textContent, 'Lire');
+  assert.equal(controls.children[1].textContent, 'Saison 2 · Épisode 2 · resume');
+  await controls.children[0].onclick();
+  f.sandbox.shellSection = 'catalog';
+  await f.execute('directPlaybackButton({title:"Fixture",available:true},{seriesKey:"Fixture"}).onclick()');
+  assert.deepEqual(launches, [['resume', 'series', 'Fixture'], ['resume', 'series', 'Fixture']]);
+  assert.equal(f.sandbox.shellSection, 'catalog');
+});

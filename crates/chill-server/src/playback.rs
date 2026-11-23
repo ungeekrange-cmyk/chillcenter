@@ -131,6 +131,7 @@ struct Entry {
     deadline: Instant,
     sequence: u64,
     sample: Option<(Progress, Instant)>,
+    observed_playback: bool,
     short_tail_coverage_ms: Option<f64>,
     pending: Option<PendingTransfer>,
 }
@@ -191,12 +192,22 @@ fn save_progress(
     event: &Progress,
     now: Instant,
 ) -> Result<PersonalState, String> {
-    let complete = service
-        .book
-        .lock()
-        .map_err(|_| "INVALID_OPERATION")?
-        .completed_short_tail(profile, event, now);
-    store.save_validated_progress_with_short_tail(profile, &event.media_id, event, complete)
+    let (complete, first_playback) = {
+        let book = service.book.lock().map_err(|_| "INVALID_OPERATION")?;
+        (
+            book.completed_short_tail(profile, event, now),
+            book.entries
+                .get(profile)
+                .is_some_and(|entry| !entry.observed_playback),
+        )
+    };
+    store.save_validated_progress_with_transition(
+        profile,
+        &event.media_id,
+        event,
+        complete,
+        first_playback,
+    )
 }
 #[allow(dead_code)]
 #[derive(Clone)]
@@ -284,6 +295,7 @@ impl LeaseBook {
                 deadline: now + LEASE_TIME,
                 sequence: 0,
                 sample: None,
+                observed_playback: false,
                 short_tail_coverage_ms: None,
                 pending: None,
             },
@@ -387,6 +399,8 @@ impl LeaseBook {
         if let Some(e) = self.entries.get_mut(p) {
             e.short_tail_coverage_ms = short_tail_coverage(e, &event, now);
             e.sequence = event.sequence;
+            e.observed_playback |=
+                event.playing && !event.buffering && !event.seek && event.position_ms > 0;
             e.sample = Some((event, now));
         }
     }
