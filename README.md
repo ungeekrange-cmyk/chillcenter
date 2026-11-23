@@ -4,7 +4,7 @@
 
 Votre vidéothèque, sur votre réseau : un serveur Linux léger et un client macOS Apple Silicon, principalement écrits en Rust, ainsi qu’un client web responsive.
 
-**Versions publiées · Mac 0.7.10 · serveur 0.7.10 · web 0.7.14 · thèmes 0.7.1.**
+**Versions publiées · Mac 0.7.10 · serveur 0.7.11 · web 0.7.14 · thèmes 0.7.1.**
 Reprenez une série depuis sa fiche ou lancez la lecture directement depuis les cartes. Le client web fournit le logo des raccourcis iPhone et Android.
 Téléchargez un film, un épisode, une saison ou une série avant de partir. Les
 copies se lisent avec leurs sous-titres quand le serveur est indisponible.
@@ -28,8 +28,8 @@ décrivent leur calendrier et priorité.
 | Composant et version publiée | Paquet et instructions |
 | --- | --- |
 | Mac Apple Silicon 0.7.10, build 20 | [Installateur DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.10/Chill-Center-0.7.10-macos-arm64.dmg), macOS 15+ |
-| Serveur Linux ARM64 0.7.10 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.10/Chill-Center-server-0.7.10-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
-| Client web 0.7.14 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.14/Chill-Center-web-0.7.14-install.zip), serveur 0.7.10 et HTTPS reconnu pour les téléchargements |
+| Serveur Linux ARM64 0.7.11 | [Archive avec installateurs](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.11/Chill-Center-server-0.7.11-linux-aarch64.tar.gz), hôte 64 bits avec systemd |
+| Client web 0.7.14 | [Paquet avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.14/Chill-Center-web-0.7.14-install.zip), serveur 0.7.11 et HTTPS reconnu pour les téléchargements |
 | Thèmes indépendants 0.7.1 | [Pack avec installateur](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), rendu 2 requis |
 
 Lire les [instructions de vérification et d’installation](docs/updates/GUIDE-FR.md)
@@ -73,7 +73,7 @@ Le serveur fournit les médias en HTTPS depuis le stockage configuré. **Aucun t
 
 ### Serveur Linux
 
-- Le paquet publié **0.7.10 cible Linux ARM64/AArch64, système 64 bits avec
+- Le paquet publié **0.7.11 cible Linux ARM64/AArch64, système 64 bits avec
   glibc 2.28 minimum pour les binaires**. Raspberry Pi 3 B/B+ avec Linux 64 bits
   est la cible ; un OS ARM 32 bits ou Alpine/musl ne convient pas à ce paquet.
   La configuration réelle vérifiée est Debian 13 ; une autre distribution

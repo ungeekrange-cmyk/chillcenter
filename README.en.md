@@ -6,7 +6,7 @@ Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client.
 
-**Published versions · Mac 0.7.10 · server 0.7.10 · web 0.7.14 · themes 0.7.1.**
+**Published versions · Mac 0.7.10 · server 0.7.11 · web 0.7.14 · themes 0.7.1.**
 Resume a series from its details or play straight from a card. The web client provides icons for iPhone and Android shortcuts.
 Download a movie, episode, season or series before leaving. Play local copies
 with subtitles while the server is unavailable. The web client requires trusted
@@ -28,8 +28,8 @@ can update at 02:00 local time, outside playback and active jobs.
 | Component and published version | Package and instructions |
 | --- | --- |
 | Apple Silicon Mac 0.7.10, build 20 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.10/Chill-Center-0.7.10-macos-arm64.dmg), macOS 15+ |
-| ARM64 Linux server 0.7.10 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.10/Chill-Center-server-0.7.10-linux-aarch64.tar.gz), 64-bit systemd host |
-| Web client 0.7.14 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.14/Chill-Center-web-0.7.14-install.zip), server 0.7.10 and trusted HTTPS for downloads |
+| ARM64 Linux server 0.7.11 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.11/Chill-Center-server-0.7.11-linux-aarch64.tar.gz), 64-bit systemd host |
+| Web client 0.7.14 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.14/Chill-Center-web-0.7.14-install.zip), server 0.7.11 and trusted HTTPS for downloads |
 | Independent themes 0.7.1 | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
 
 Read the [verification/installation guide](docs/updates/GUIDE-EN.md) and
@@ -75,7 +75,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 
 ### Linux server
 
-- Published package **0.7.10 targets Linux ARM64/AArch64, a 64-bit system with
+- Published package **0.7.11 targets Linux ARM64/AArch64, a 64-bit system with
   glibc 2.28 or newer for the binaries**. Raspberry Pi 3 B/B+ running 64-bit Linux
   is the target; a 32-bit ARM OS or Alpine/musl cannot use this package.
   The verified real configuration is Debian 13; another compatible distribution

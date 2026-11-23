@@ -17,3 +17,7 @@ Server **0.7.10**, web **0.7.14**, Mac **0.7.10** (build 20). Themes stay on **0
 [Paquets / Packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.10) · [macOS 0.7.10](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/mac-v0.7.10) · [Serveur / Server 0.7.10](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/server-v0.7.10) · [Web 0.7.14](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/web-v0.7.14).
 
 [Code source exact / Exact source](https://github.com/ungeekrange-cmyk/chillcenter/tree/a050af8d58d88b06ec615ff9259a1687ffde5499).
+
+## Mise à jour serveur / Server follow-up
+
+Le serveur 0.7.11 reprend cette livraison avec une nouvelle séquence signée. Server 0.7.11 carries these changes with a new signed sequence. [Serveur / Server 0.7.11](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/server-v0.7.11).
