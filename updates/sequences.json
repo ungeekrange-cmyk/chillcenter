@@ -1,15 +1,15 @@
 {
   "mac": {
-    "version": "0.7.9",
-    "sequence": 10
+    "version": "0.7.10",
+    "sequence": 11
   },
   "server": {
-    "version": "0.7.9",
-    "sequence": 10
+    "version": "0.7.10",
+    "sequence": 11
   },
   "web": {
-    "version": "0.7.13",
-    "sequence": 14
+    "version": "0.7.14",
+    "sequence": 15
   },
   "themes": {
     "version": "0.7.1",
