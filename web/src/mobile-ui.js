@@ -14,18 +14,21 @@
     const translated = root.chillI18n?.t?.(text) || text;
     return translated === text && root.chillI18n?.language === "en" ? (webEnglish[text] || text) : translated;
   };
-  const icon = path => `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="${path}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const icon = (path, strokeWidth = 2) => `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="${path}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const paths = {
-    home: "m3 10 9-7 9 7 M5 9v11h5v-6h4v6h5V9",
-    film: "M4 10h16v10H4z M4 10 3 5l16-3 1 5-16 3 M7 4l3 4m3-5 3 4",
-    series: "M7 4h13v13 M4 8h13v12H4z M9 12l4 2-4 2z",
-    documentary: "M12 6c-3-2-6-3-9-2v14c3-1 6 0 9 2 3-2 6-3 9-2V4c-3-1-6 0-9 2zm0 0v14 M6 8l3 1m6 0 3-1 M6 12l3 1m6 0 3-1",
-    show: "M3 4h18 M4 4v15m16-15v15 M10 4c0 5-2 8-6 9 2 0 4 2 4 6m6-15c0 5 2 8 6 9-2 0-4 2-4 6 M3 20h18",
-    download: "M12 3v12m-4-4 4 4 4-4 M4 16v4h16v-4",
+    home: "M3.5 10.5 11.2 4a1.25 1.25 0 0 1 1.6 0l7.7 6.5 M5.8 8.6v9.6a1.3 1.3 0 0 0 1.3 1.3H10v-4.2a2 2 0 0 1 4 0v4.2h2.9a1.3 1.3 0 0 0 1.3-1.3V8.6",
+    film: "M4.5 10.2H19a1.25 1.25 0 0 1 1.25 1.25v6.5A1.25 1.25 0 0 1 19 19.2H5.75a1.25 1.25 0 0 1-1.25-1.25V10.2Zm0 0-.9-3.7a1 1 0 0 1 .75-1.2L18.5 2.9a1 1 0 0 1 1.15.8l.6 3.5L4.5 10.2Zm3-5.42L9.6 9.2m3.45-5.36 2.1 4.27 M7.6 15.45h5.8",
+    series: "M8.15 4.5h11.1a1.5 1.5 0 0 1 1.5 1.5v9.4 M5.25 7.8h11.1a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V9.3a1.5 1.5 0 0 1 1.5-1.5Zm4 3.1 4.6 2.65-4.6 2.65Z",
+    documentary: "M12 6.7C9.5 4.95 6.65 4.3 3.65 5.05v12.9c3-.75 5.85-.1 8.35 1.65 2.5-1.75 5.35-2.4 8.35-1.65V5.05c-3-.75-5.85-.1-8.35 1.65Zm0 0v12.9 M6.3 8.5c1.12.05 2.18.35 3.2.9m8.2-.9c-1.12.05-2.18.35-3.2.9 M6.3 12.2c1.12.05 2.18.35 3.2.9m8.2-.9c-1.12.05-2.18.35-3.2.9",
+    show: "M3.25 4.65h17.5 M4.7 4.65v14.7m14.6-14.7v14.7 M10 4.65c-.35 3.7-1.95 6.4-5.3 7.8 1.9 1.3 3 3.6 3.25 6.9 M14 4.65c.35 3.7 1.95 6.4 5.3 7.8-1.9 1.3-3 3.6-3.25 6.9 M3.25 19.35h17.5",
+    download: "M12 3.75v11.1m-4.05-4.1L12 14.85l4.05-4.1 M4.4 15.2v3.1a1.55 1.55 0 0 0 1.55 1.55h12.1a1.55 1.55 0 0 0 1.55-1.55v-3.1",
+    sagas: "m10.2 16.85-1.45 1.45a3.6 3.6 0 0 1-5.09-5.09l3.63-3.63a3.6 3.6 0 0 1 5.09 0 M13.8 7.15l1.45-1.45a3.6 3.6 0 0 1 5.09 5.09l-3.63 3.63a3.6 3.6 0 0 1-5.09 0 M9.5 14.5l5-5",
+    playlists: "M4.2 6.3h15.6 M4.2 11h9.7m-9.7 4.7h7.4 M15.5 12.65l5.05 3.15-5.05 3.15z",
     more: "M5 12h.01M12 12h.01M19 12h.01",
   };
-  const item = (attributes, label, path, shortLabel = label) =>
-    `<button type="button" ${attributes} aria-label="${t(label)}">${icon(path)}<span>${t(shortLabel)}</span></button>`;
+  const navigationStroke = { strokeWidth: 1.45 };
+  const item = (attributes, label, path, { shortLabel = label, strokeWidth = 2 } = {}) =>
+    `<button type="button" ${attributes} aria-label="${t(label)}">${icon(path, strokeWidth)}<span>${t(shortLabel)}</span></button>`;
 
   function forward(selector) {
     const source = doc.querySelector(selector);
@@ -58,10 +61,10 @@
     const nav = doc.createElement("nav");
     nav.id = "mobile-nav"; nav.className = "mobile-nav"; nav.setAttribute("aria-label", t("Navigation mobile"));
     nav.innerHTML =
-      item("data-mobile-home", "Accueil", paths.home)
-      + item('data-mobile-category="film"', "Films", paths.film)
-      + item('data-mobile-category="serie"', "Séries", paths.series)
-      + item("data-mobile-downloads hidden", "Téléchargements", paths.download, "Téléchargés")
+      item("data-mobile-home", "Accueil", paths.home, navigationStroke)
+      + item('data-mobile-category="film"', "Films", paths.film, navigationStroke)
+      + item('data-mobile-category="serie"', "Séries", paths.series, navigationStroke)
+      + item("data-mobile-downloads hidden", "Téléchargements", paths.download, { ...navigationStroke, shortLabel: "Téléchargés" })
       + item('data-mobile-more aria-haspopup="dialog" aria-controls="mobile-more-sheet"', "Plus", paths.more);
     doc.body.append(nav);
     nav.querySelector("[data-mobile-more]").addEventListener("click", () => byId("mobile-more-sheet")?.showModal());
@@ -69,11 +72,11 @@
     const sheet = doc.createElement("dialog");
     sheet.id = "mobile-more-sheet"; sheet.className = "mobile-more-sheet"; sheet.setAttribute("aria-label", t("Plus de rubriques"));
     sheet.innerHTML = `<div class="mobile-sheet-handle" aria-hidden="true"></div><div class="mobile-sheet-heading"><strong>${t("Bibliothèque")}</strong><button type="button" class="secondary" data-mobile-close aria-label="${t("Fermer")}">×</button></div><div class="mobile-sheet-actions">`
-      + item('data-mobile-category="documentaire"', "Documentaires", paths.documentary)
-      + item('data-mobile-category="spectacle"', "Spectacles", paths.show)
+      + item('data-mobile-category="documentaire"', "Documentaires", paths.documentary, navigationStroke)
+      + item('data-mobile-category="spectacle"', "Spectacles", paths.show, navigationStroke)
       + item('data-mobile-category=""', "Toute la collection", "M4 4h16v16H4z M12 4v16 M4 12h16")
-      + item("data-mobile-sagas", "Sagas", "M4 5h16v14H4z M8 5v14")
-      + item("data-mobile-playlists", "Listes de lecture", "M5 5h14M5 12h14M5 19h14")
+      + item("data-mobile-sagas", "Sagas", paths.sagas, navigationStroke)
+      + item("data-mobile-playlists", "Listes de lecture", paths.playlists, navigationStroke)
       + item("data-mobile-config", "Configuration", "M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4 M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0")
       + "</div>";
     doc.body.append(sheet);
