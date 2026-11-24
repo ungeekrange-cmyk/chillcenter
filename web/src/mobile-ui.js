@@ -14,21 +14,8 @@
     const translated = root.chillI18n?.t?.(text) || text;
     return translated === text && root.chillI18n?.language === "en" ? (webEnglish[text] || text) : translated;
   };
-  const icon = (path, strokeWidth = 2) => `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="${path}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  const paths = {
-    home: "M3.5 10.5 11.2 4a1.25 1.25 0 0 1 1.6 0l7.7 6.5 M5.8 8.6v9.6a1.3 1.3 0 0 0 1.3 1.3H10v-4.2a2 2 0 0 1 4 0v4.2h2.9a1.3 1.3 0 0 0 1.3-1.3V8.6",
-    film: "M4.5 10.2H19a1.25 1.25 0 0 1 1.25 1.25v6.5A1.25 1.25 0 0 1 19 19.2H5.75a1.25 1.25 0 0 1-1.25-1.25V10.2Zm0 0-.9-3.7a1 1 0 0 1 .75-1.2L18.5 2.9a1 1 0 0 1 1.15.8l.6 3.5L4.5 10.2Zm3-5.42L9.6 9.2m3.45-5.36 2.1 4.27 M7.6 15.45h5.8",
-    series: "M8.15 4.5h11.1a1.5 1.5 0 0 1 1.5 1.5v9.4 M5.25 7.8h11.1a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V9.3a1.5 1.5 0 0 1 1.5-1.5Zm4 3.1 4.6 2.65-4.6 2.65Z",
-    documentary: "M12 6.7C9.5 4.95 6.65 4.3 3.65 5.05v12.9c3-.75 5.85-.1 8.35 1.65 2.5-1.75 5.35-2.4 8.35-1.65V5.05c-3-.75-5.85-.1-8.35 1.65Zm0 0v12.9 M6.3 8.5c1.12.05 2.18.35 3.2.9m8.2-.9c-1.12.05-2.18.35-3.2.9 M6.3 12.2c1.12.05 2.18.35 3.2.9m8.2-.9c-1.12.05-2.18.35-3.2.9",
-    show: "M3.25 4.65h17.5 M4.7 4.65v14.7m14.6-14.7v14.7 M10 4.65c-.35 3.7-1.95 6.4-5.3 7.8 1.9 1.3 3 3.6 3.25 6.9 M14 4.65c.35 3.7 1.95 6.4 5.3 7.8-1.9 1.3-3 3.6-3.25 6.9 M3.25 19.35h17.5",
-    download: "M12 3.75v11.1m-4.05-4.1L12 14.85l4.05-4.1 M4.4 15.2v3.1a1.55 1.55 0 0 0 1.55 1.55h12.1a1.55 1.55 0 0 0 1.55-1.55v-3.1",
-    sagas: "M10.25 17.65a7.25 7.25 0 1 1 0-14.5 7.25 7.25 0 0 1 0 14.5Zm0 0h6.55a3.4 3.4 0 0 1 3.4 3.4 M9 6.85a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0 M12.55 10.4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0 M9 13.95a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0 M5.45 10.4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0",
-    playlists: "M4.2 6.3h15.6 M4.2 11h9.7m-9.7 4.7h7.4 M15.5 12.65l5.05 3.15-5.05 3.15z",
-    more: "M5 12h.01M12 12h.01M19 12h.01",
-  };
-  const navigationStroke = { strokeWidth: 1.45 };
-  const item = (attributes, label, path, { shortLabel = label, strokeWidth = 2 } = {}) =>
-    `<button type="button" ${attributes} aria-label="${t(label)}">${icon(path, strokeWidth)}<span>${t(shortLabel)}</span></button>`;
+  const item = (attributes, label, glyph, shortLabel = label) =>
+    `<button type="button" ${attributes} aria-label="${t(label)}"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false"><use href="#nav-glyph-${glyph}"/></svg><span>${t(shortLabel)}</span></button>`;
 
   function forward(selector) {
     const source = doc.querySelector(selector);
@@ -54,30 +41,30 @@
       const searchToggle = doc.createElement("button");
       searchToggle.id = "mobile-search-toggle"; searchToggle.type = "button"; searchToggle.className = "mobile-search-toggle";
       searchToggle.setAttribute("aria-label", t("Rechercher et filtrer")); searchToggle.setAttribute("aria-expanded", "false"); searchToggle.setAttribute("aria-controls", "search filter-form");
-      searchToggle.innerHTML = icon("m10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13m5 11 4 4");
+      searchToggle.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="m10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13m5 11 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
       searchToggle.addEventListener("click", () => setDiscoveryOpen(!doc.body.classList.contains("mobile-discovery-open"), searchToggle));
       topbar.append(searchToggle);
     }
     const nav = doc.createElement("nav");
     nav.id = "mobile-nav"; nav.className = "mobile-nav"; nav.setAttribute("aria-label", t("Navigation mobile"));
     nav.innerHTML =
-      item("data-mobile-home", "Accueil", paths.home, navigationStroke)
-      + item('data-mobile-category="film"', "Films", paths.film, navigationStroke)
-      + item('data-mobile-category="serie"', "Séries", paths.series, navigationStroke)
-      + item("data-mobile-downloads hidden", "Téléchargements", paths.download, { ...navigationStroke, shortLabel: "Téléchargés" })
-      + item('data-mobile-more aria-haspopup="dialog" aria-controls="mobile-more-sheet"', "Plus", paths.more);
+      item("data-mobile-home", "Accueil", "home")
+      + item('data-mobile-category="film"', "Films", "film")
+      + item('data-mobile-category="serie"', "Séries", "series")
+      + item("data-mobile-downloads hidden", "Téléchargements", "download", "Téléchargés")
+      + item('data-mobile-more aria-haspopup="dialog" aria-controls="mobile-more-sheet"', "Plus", "more");
     doc.body.append(nav);
     nav.querySelector("[data-mobile-more]").addEventListener("click", () => byId("mobile-more-sheet")?.showModal());
 
     const sheet = doc.createElement("dialog");
     sheet.id = "mobile-more-sheet"; sheet.className = "mobile-more-sheet"; sheet.setAttribute("aria-label", t("Plus de rubriques"));
     sheet.innerHTML = `<div class="mobile-sheet-handle" aria-hidden="true"></div><div class="mobile-sheet-heading"><strong>${t("Bibliothèque")}</strong><button type="button" class="secondary" data-mobile-close aria-label="${t("Fermer")}">×</button></div><div class="mobile-sheet-actions">`
-      + item('data-mobile-category="documentaire"', "Documentaires", paths.documentary, navigationStroke)
-      + item('data-mobile-category="spectacle"', "Spectacles", paths.show, navigationStroke)
-      + item('data-mobile-category=""', "Toute la collection", "M4 4h16v16H4z M12 4v16 M4 12h16")
-      + item("data-mobile-sagas", "Sagas", paths.sagas, navigationStroke)
-      + item("data-mobile-playlists", "Listes de lecture", paths.playlists, navigationStroke)
-      + item("data-mobile-config", "Configuration", byId("admin-toggle").querySelector("svg path").getAttribute("d"), navigationStroke)
+      + item('data-mobile-category="documentaire"', "Documentaires", "documentary")
+      + item('data-mobile-category="spectacle"', "Spectacles", "show")
+      + item('data-mobile-category=""', "Toute la collection", "library")
+      + item("data-mobile-sagas", "Sagas", "sagas")
+      + item("data-mobile-playlists", "Listes de lecture", "playlists")
+      + item("data-mobile-config", "Configuration", "settings")
       + "</div>";
     doc.body.append(sheet);
     for (const button of doc.querySelectorAll("[data-mobile-category]")) {
@@ -159,14 +146,7 @@
       if (doc.body.classList.contains("player-open")) closeSheet();
       syncShell();
     }).observe(doc.body, { attributes: true, attributeFilter: ["class"] });
-    const observeDownloads = () => {
-      const source = byId("show-downloads");
-      if (source) new MutationObserver(syncShell).observe(source, { attributes: true, attributeFilter: ["hidden"] });
-      syncShell();
-    };
-    // The shared downloads script is deferred at the end of the page.
-    if (byId("show-downloads")) observeDownloads();
-    else doc.addEventListener("DOMContentLoaded", observeDownloads, { once: true });
+    new MutationObserver(syncShell).observe(byId("show-downloads"), { attributes: true, attributeFilter: ["hidden"] });
     doc.addEventListener("keydown", event => { if (event.key === "Escape" && doc.body.classList.contains("mobile-discovery-open")) { event.preventDefault(); setDiscoveryOpen(false, byId("mobile-search-toggle")); } });
     root.chillReady?.then(() => { root.restoreCatalogLayout?.(); syncShell(); });
     syncShell();

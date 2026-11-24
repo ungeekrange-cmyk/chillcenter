@@ -4,6 +4,7 @@
 const {chromium}=require(process.env.CHILL_PREVIEW_NODE_MODULES ? process.env.CHILL_PREVIEW_NODE_MODULES+'/playwright' : 'playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path');
 const Query=require('../web/src/catalog-query.js');
+const themes=require('../themes/default/manifest.json');
 const origin='https://chillcenter.test',profile='11111111-1111-4111-8111-111111111111';
 const entries=Array.from({length:180},(_,i)=>({media:{
  id:`22222222-2222-4222-8222-${String(i).padStart(12,'0')}`,title:`Movie ${String(i).padStart(3,'0')}`,
@@ -214,8 +215,8 @@ async function noOverflow(page,label){
   await page.locator('[data-mobile-more]').click();await page.locator('[data-mobile-playlists]').click();
   await page.waitForFunction(()=>!document.getElementById('collections-panel').hidden);await noOverflow(page,'playlists');
   await page.locator('[data-mobile-more]').click();
-  assert.equal(await page.locator('[data-mobile-config] svg path').getAttribute('d'),
-   await page.locator('#admin-toggle svg path').getAttribute('d'),'mobile and sidebar share the settings icon');
+  assert.equal(await page.locator('[data-mobile-config] svg use').getAttribute('href'),
+   await page.locator('#admin-toggle svg use').getAttribute('href'),'mobile and sidebar share the settings icon');
   await page.locator('[data-mobile-config]').click();
   await page.waitForFunction(()=>!document.getElementById('admin-panel').hidden);await noOverflow(page,'configuration');
   assert.equal(await page.locator('#ai-settings').isVisible(),false);
@@ -225,6 +226,56 @@ async function noOverflow(page,label){
   for(const theme of ['light','dark']){
    await page.evaluate(value=>document.documentElement.dataset.theme=value,theme);await noOverflow(page,`${theme} settings`);
   }
+  const paletteCheck=await page.evaluate(async pack=>{
+   const pixel=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
+   function rgba(value) {
+    pixel.clearRect(0,0,1,1);
+    pixel.fillStyle=value;
+    pixel.fillRect(0,0,1,1);
+    return Array.from(pixel.getImageData(0,0,1,1).data);
+   }
+   function composite([r,g,b,a],below) {
+    return [r,g,b].map((component,i)=>component*a/255+below[i]*(1-a/255));
+   }
+   function light(rgb) {
+    return rgb.slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4)
+      .reduce((l,v,i)=>l+v*[.2126,.7152,.0722][i],0);
+   }
+   const root=document.documentElement;
+   const {theme:originalTheme,tone:originalTone}=root.dataset;
+   const buttons=[...document.querySelectorAll('.sidebar .nav-item,.mobile-nav button,.mobile-sheet-actions button')]
+     .filter(button=>button.querySelector('.nav-icon'));
+   let minimum={ratio:Infinity};
+   const colors=new Set();
+   for(const theme of [{id:'off'},...pack.themes]) for(const tone of ['light','dark']) {
+    root.dataset.theme=root.dataset.tone=tone;
+    ChillThemePack.apply(theme.id==='off'?null:{id:theme.id,variant:theme[tone]},{defaultLogo:pack.default_logo});
+    for(const button of buttons) {
+     const icon=button.querySelector('.nav-icon');
+     const surface=button.closest('.sidebar,.mobile-nav,.mobile-more-sheet');
+     const back=composite(rgba(getComputedStyle(surface).backgroundColor),rgba(getComputedStyle(document.body).backgroundColor));
+     const wasActive=button.classList.contains('active');
+     for(const active of [false,true]) {
+      button.classList.toggle('active',active);
+      const foreground=rgba(getComputedStyle(icon).color);
+      const background=composite(rgba(getComputedStyle(button).backgroundColor),back);
+      const pair=[light(foreground),light(background)].sort((a,b)=>a-b);
+      const ratio=(pair[1]+.05)/(pair[0]+.05);
+      if(ratio<minimum.ratio) minimum={ratio,theme:theme.id,tone,name:button.textContent.trim()};
+      if(active&&button.hasAttribute('data-mobile-home')) colors.add(foreground.join(','));
+     }
+     button.classList.toggle('active',wasActive);
+    }
+   }
+   root.dataset.theme=originalTheme;
+   root.dataset.tone=originalTone;
+   await refreshAppearance();
+   return {minimum,colors:colors.size};
+  },themes);
+  assert(paletteCheck.minimum.ratio>=3,JSON.stringify(paletteCheck.minimum));
+  assert(paletteCheck.colors>=8,'navigation glyph colors follow the active palette');
+  const visibleIcons=await page.locator('#mobile-nav button:visible .nav-icon').evaluateAll(icons=>icons.map(icon=>icon.getBBox().width));
+  assert(visibleIcons.length>=4&&visibleIcons.every(width=>width>10),'inline symbols actually render in the mobile navigation');
   await page.setViewportSize({width:1280,height:950});await page.waitForTimeout(100);
   assert.equal(await page.locator('.sidebar').isVisible(),true);assert.equal(await page.locator('#mobile-nav').isVisible(),false);assert.equal(await page.locator('#mobile-brand').isVisible(),false);
   await page.setViewportSize({width:390,height:844});
@@ -276,6 +327,6 @@ async function noOverflow(page,label){
   });
   assert.deepEqual(presentation.immediate,['request','after-call']);assert(presentation.fallback&&presentation.expired&&presentation.cleaned);
   assert.deepEqual(errors,[]);
-  console.log('PASS built mobile web: 320/390/430/736/844 layouts, 1280 desktop restore, bottom navigation in both orientations, conditional Downloads, secondary categories in Plus, profile/touch targets, virtual rows and preserved detail scroll, live genre/year filters, nonempty collections/configuration, EN/FR, themes, AI excluded; real Chromium fullscreen entry/exit, orientation denial mocked, no physical-device or live video claim.');
+  console.log('PASS built mobile web: 320/390/430/736/844 layouts, 1280 desktop restore, bottom navigation in both orientations, conditional Downloads, secondary categories in Plus, profile/touch targets, virtual rows and preserved detail scroll, live genre/year filters, nonempty collections/configuration, EN/FR, theme-aware navigation contrast, AI excluded; real Chromium fullscreen entry/exit, orientation denial mocked, no physical-device or live video claim.');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

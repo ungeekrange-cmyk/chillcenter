@@ -15,12 +15,10 @@
     return element;
   };
   const command = (action, fields = {}) => window.__TAURI__.core.invoke("downloads_command", { command: { action, ...fields } });
-  const tab = control("Téléchargements", async () => {
+  const tab = $("show-downloads");
+  tab.onclick = async () => {
     if (await stopPlayerForNavigation()) { shellShow("downloads"); await refresh(); }
-  });
-  tab.id = "show-downloads";
-  tab.hidden = true;
-  $("show-playlists").after(tab);
+  };
   const panel = node("section", undefined, "downloads-panel");
   panel.id = "downloads-panel";
   panel.hidden = true;
