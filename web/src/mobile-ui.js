@@ -9,22 +9,31 @@
   // These web-only labels are deliberately not added to shared locales.  The
   // normal catalogue remains authoritative; this small fallback covers only
   // labels the desktop client never renders.
-  const webEnglish = { "Docs": "Documentaries", "Plus": "More", "Navigation mobile": "Mobile navigation", "Plus de rubriques": "More sections", "Rechercher et filtrer": "Search and filter", "Fermer la recherche": "Close search" };
+  const webEnglish = { "Téléchargés": "Downloads", "Plus": "More", "Navigation mobile": "Mobile navigation", "Plus de rubriques": "More sections", "Rechercher et filtrer": "Search and filter", "Fermer la recherche": "Close search" };
   const t = text => {
     const translated = root.chillI18n?.t?.(text) || text;
     return translated === text && root.chillI18n?.language === "en" ? (webEnglish[text] || text) : translated;
   };
   const icon = path => `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="${path}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  const entries = [
-    ["film", "Films", "M4 5h16M4 12h16M4 19h16"],
-    ["serie", "Séries", "M5 4h14v16H5zM9 4v16M15 4v16"],
-    ["documentaire", "Docs", "M4 5h16v14H4zM8 5v14M16 5v14"],
-    ["spectacle", "Spectacles", "M4 5h16v14H4zM8 5l8 7M16 5l-8 7"],
-  ];
+  const paths = {
+    home: "m3 10 9-7 9 7 M5 9v11h5v-6h4v6h5V9",
+    film: "M4 10h16v10H4z M4 10 3 5l16-3 1 5-16 3 M7 4l3 4m3-5 3 4",
+    series: "M7 4h13v13 M4 8h13v12H4z M9 12l4 2-4 2z",
+    documentary: "M12 6c-3-2-6-3-9-2v14c3-1 6 0 9 2 3-2 6-3 9-2V4c-3-1-6 0-9 2zm0 0v14 M6 8l3 1m6 0 3-1 M6 12l3 1m6 0 3-1",
+    show: "M3 4h18 M4 4v15m16-15v15 M10 4c0 5-2 8-6 9 2 0 4 2 4 6m6-15c0 5 2 8 6 9-2 0-4 2-4 6 M3 20h18",
+    download: "M12 3v12m-4-4 4 4 4-4 M4 16v4h16v-4",
+    more: "M5 12h.01M12 12h.01M19 12h.01",
+  };
+  const item = (attributes, label, path, shortLabel = label) =>
+    `<button type="button" ${attributes} aria-label="${t(label)}">${icon(path)}<span>${t(shortLabel)}</span></button>`;
 
   function forward(selector) {
     const source = doc.querySelector(selector);
-    if (source && !source.disabled) { setDiscoveryOpen(false); source.click(); }
+    if (source && !source.hidden && !source.disabled) {
+      closeSheet();
+      setDiscoveryOpen(false);
+      source.click();
+    }
   }
   function closeSheet() { const sheet = byId("mobile-more-sheet"); if (sheet?.open) sheet.close(); }
   function addMobileShell() {
@@ -48,21 +57,34 @@
     }
     const nav = doc.createElement("nav");
     nav.id = "mobile-nav"; nav.className = "mobile-nav"; nav.setAttribute("aria-label", t("Navigation mobile"));
-    nav.innerHTML = entries.map(([category, label, path]) => `<button type="button" data-mobile-category="${category}" aria-label="${t(label)}">${icon(path)}<span>${t(label)}</span></button>`).join("") + `<button type="button" data-mobile-more aria-haspopup="dialog" aria-label="${t("Plus")}">${icon("M5 12h.01M12 12h.01M19 12h.01")}<span>${t("Plus")}</span></button>`;
+    nav.innerHTML =
+      item("data-mobile-home", "Accueil", paths.home)
+      + item('data-mobile-category="film"', "Films", paths.film)
+      + item('data-mobile-category="serie"', "Séries", paths.series)
+      + item("data-mobile-downloads hidden", "Téléchargements", paths.download, "Téléchargés")
+      + item('data-mobile-more aria-haspopup="dialog" aria-controls="mobile-more-sheet"', "Plus", paths.more);
     doc.body.append(nav);
-    for (const button of nav.querySelectorAll("[data-mobile-category]")) button.addEventListener("click", () => forward(`[data-category="${button.dataset.mobileCategory}"]`));
     nav.querySelector("[data-mobile-more]").addEventListener("click", () => byId("mobile-more-sheet")?.showModal());
 
     const sheet = doc.createElement("dialog");
     sheet.id = "mobile-more-sheet"; sheet.className = "mobile-more-sheet"; sheet.setAttribute("aria-label", t("Plus de rubriques"));
-    sheet.innerHTML = `<div class="mobile-sheet-handle" aria-hidden="true"></div><div class="mobile-sheet-heading"><strong>${t("Bibliothèque")}</strong><button type="button" class="secondary" data-mobile-close aria-label="${t("Fermer")}">×</button></div><div class="mobile-sheet-actions"><button type="button" data-mobile-home>${icon("M4 5h16M4 12h16M4 19h16")}<span>${t("Accueil")}</span></button><button type="button" data-mobile-sagas>${icon("M4 5h16v14H4zM8 5v14")}<span>${t("Sagas")}</span></button><button type="button" data-mobile-playlists>${icon("M5 5h14M5 12h14M5 19h14")}<span>${t("Listes de lecture")}</span></button><button type="button" data-mobile-config>${icon("M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4")}<span>${t("Configuration")}</span></button></div>`;
+    sheet.innerHTML = `<div class="mobile-sheet-handle" aria-hidden="true"></div><div class="mobile-sheet-heading"><strong>${t("Bibliothèque")}</strong><button type="button" class="secondary" data-mobile-close aria-label="${t("Fermer")}">×</button></div><div class="mobile-sheet-actions">`
+      + item('data-mobile-category="documentaire"', "Documentaires", paths.documentary)
+      + item('data-mobile-category="spectacle"', "Spectacles", paths.show)
+      + item('data-mobile-category=""', "Toute la collection", "M4 4h16v16H4z M12 4v16 M4 12h16")
+      + item("data-mobile-sagas", "Sagas", "M4 5h16v14H4z M8 5v14")
+      + item("data-mobile-playlists", "Listes de lecture", "M5 5h14M5 12h14M5 19h14")
+      + item("data-mobile-config", "Configuration", "M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4 M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0")
+      + "</div>";
     doc.body.append(sheet);
+    for (const button of doc.querySelectorAll("[data-mobile-category]")) {
+      button.addEventListener("click", () => forward(`[data-category="${button.dataset.mobileCategory}"]`));
+    }
+    for (const [name, target] of [["home","#show-home"],["downloads","#show-downloads"],["sagas","#show-sagas"],["playlists","#show-playlists"],["config","#admin-toggle"]]) {
+      doc.querySelector(`[data-mobile-${name}]`).addEventListener("click", () => forward(target));
+    }
     sheet.querySelector("[data-mobile-close]").addEventListener("click", closeSheet);
     sheet.addEventListener("click", event => { if (event.target === sheet) closeSheet(); });
-    sheet.querySelector("[data-mobile-home]").addEventListener("click", () => { closeSheet(); forward("#show-home"); });
-    sheet.querySelector("[data-mobile-sagas]").addEventListener("click", () => { closeSheet(); forward("#show-sagas"); });
-    sheet.querySelector("[data-mobile-playlists]").addEventListener("click", () => { closeSheet(); forward("#show-playlists"); });
-    sheet.querySelector("[data-mobile-config]").addEventListener("click", () => { closeSheet(); forward("#admin-toggle"); });
   }
   function setDiscoveryOpen(open, focus) {
     // Opening is meaningful only on a phone; closing must still clear stale
@@ -74,23 +96,30 @@
   }
   function syncShell() {
     const nav = byId("mobile-nav"); if (!nav) return;
-    const category = byId("category")?.value || "";
-    // `state` is a top-level lexical binding in the shared client, not a
-    // window property. Its navigation buttons already express whether a
-    // profile is active, without reaching across that boundary.
-    const sharedFilm = doc.querySelector('[data-category="film"]');
-    const active = Boolean(sharedFilm && !sharedFilm.disabled);
-    nav.hidden = !isPhone() || !active || doc.body.classList.contains("player-open");
+    const shown = id => byId(id)?.hidden === false;
+    const category = shown("catalog-panel") ? byId("category")?.value : null;
+    const active = doc.querySelector('[data-category="film"]')?.disabled === false;
+    const hasDownloads = shown("show-downloads");
+    nav.hidden = !isPhone() || (!active && !hasDownloads) || doc.body.classList.contains("player-open");
     const searchToggle = byId("mobile-search-toggle");
     if (searchToggle) searchToggle.hidden = !active;
-    for (const button of nav.querySelectorAll("[data-mobile-category]")) {
-      const selected = button.dataset.mobileCategory === category && !byId("catalog-panel")?.hidden;
-      button.classList.toggle("active", selected); button.setAttribute("aria-current", selected ? "page" : "false"); button.disabled = !active;
+
+    const detailsAreSeries = shown("collection-panel") && byId("collection-members")?.classList.contains("series-members");
+    const selected = shown("home-panel") ? "home"
+      : shown("downloads-panel") ? "downloads"
+      : detailsAreSeries || category === "serie" ? "series"
+      : category === "film" ? "films" : "more";
+    for (const [key, selector] of [
+      ["home","[data-mobile-home]"], ["films",'[data-mobile-category="film"]'],
+      ["series",'[data-mobile-category="serie"]'], ["downloads","[data-mobile-downloads]"],
+      ["more","[data-mobile-more]"],
+    ]) {
+      const button = nav.querySelector(selector);
+      const available = key === "downloads" ? hasDownloads : active;
+      button.hidden = !available;
+      button.classList.toggle("active", available && key === selected);
+      button.setAttribute("aria-current", available && key === selected ? "page" : "false");
     }
-    const more = nav.querySelector("[data-mobile-more]");
-    const nonCatalog = !byId("collections-panel")?.hidden || !byId("collection-panel")?.hidden || !byId("picker-panel")?.hidden || !byId("admin-panel")?.hidden;
-    const selectedMore = !byId("home-panel")?.hidden || Boolean(nonCatalog) || (category === "" && !byId("catalog-panel")?.hidden);
-    more?.classList.toggle("active", selectedMore); more?.setAttribute("aria-current", selectedMore ? "page" : "false"); more && (more.disabled = !active);
   }
   function installVirtualizer() {
     if (typeof root.catalogWindow !== "function" || root.__chillDesktopCatalogWindow) return;
@@ -127,6 +156,14 @@
       if (doc.body.classList.contains("player-open")) closeSheet();
       syncShell();
     }).observe(doc.body, { attributes: true, attributeFilter: ["class"] });
+    const observeDownloads = () => {
+      const source = byId("show-downloads");
+      if (source) new MutationObserver(syncShell).observe(source, { attributes: true, attributeFilter: ["hidden"] });
+      syncShell();
+    };
+    // The shared downloads script is deferred at the end of the page.
+    if (byId("show-downloads")) observeDownloads();
+    else doc.addEventListener("DOMContentLoaded", observeDownloads, { once: true });
     doc.addEventListener("keydown", event => { if (event.key === "Escape" && doc.body.classList.contains("mobile-discovery-open")) { event.preventDefault(); setDiscoveryOpen(false, byId("mobile-search-toggle")); } });
     root.chillReady?.then(() => { root.restoreCatalogLayout?.(); syncShell(); });
     syncShell();

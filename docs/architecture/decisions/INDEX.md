@@ -1,5 +1,7 @@
 # Index des décisions techniques
 
+[ADR-0049](ADR-0049-mobile-primary-navigation.md) — rubriques principales du client web mobile et accès conditionnel aux téléchargements.
+
 [ADR-0048](ADR-0048-series-playback-continuity.md) — cible de lecture des séries et état vu au lancement de l’épisode suivant.
 
 [ADR0047](ADR-0047-download-auto-delete-preference.md) : réglage global de suppression automatique dans Téléchargements et Configuration.

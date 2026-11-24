@@ -70,10 +70,42 @@ async function noOverflow(page,label){
   await page.goto(origin);await page.evaluate(()=>window.chillReady);
   await page.waitForSelector('#home-rails .recommendation-card');
   assert.equal(await page.locator('#home-rails .home-badge').count(),0,'legacy resume has no invented percentage');
+  const nav = page.locator('#mobile-nav');
+  assert.deepEqual(await nav.locator('button:visible').evaluateAll(rows=>rows.map(b=>b.getAttribute('aria-label'))),
+   ['Accueil','Films','Séries','Plus']);
+  assert.equal(await nav.locator('[data-mobile-home]').getAttribute('aria-current'),'page');
+  const downloadsInitial = await page.evaluate(async media=>{
+   const original=window.__TAURI__.core.invoke;
+   window.fixtureDownloadItems=[{media,local_bytes:1500}];
+   window.__TAURI__.core.invoke=(name,args)=>name==='downloads_command'&&args.command.action==='list'
+    ? Promise.resolve({items:window.fixtureDownloadItems,supported:true,total:1500}) : original(name,args);
+   await window.refreshDownloads?.();
+   return {refresh:typeof window.refreshDownloads,profile:Boolean(state.profile_id),sharedHidden:document.getElementById('show-downloads')?.hidden??null};
+  },entries[0].media);
+  assert.deepEqual(downloadsInitial,{refresh:'function',profile:true,sharedHidden:false},JSON.stringify(errors));
+  const downloads=nav.locator('[data-mobile-downloads]');
+  await downloads.waitFor({state:'visible'});
+  assert.deepEqual(await nav.locator('button:visible').evaluateAll(rows=>rows.map(b=>b.getAttribute('aria-label'))),
+   ['Accueil','Films','Séries','Téléchargements','Plus']);
+  await downloads.click();
+  await page.waitForSelector('#downloads-panel .download-row');
+  assert.equal(await downloads.getAttribute('aria-current'),'page');
+  await page.evaluate(()=>{window.fixtureDownloadItems=[];window.dispatchEvent(new Event('chill:downloads'));});
+  await downloads.waitFor({state:'hidden'});
+  await nav.locator('[data-mobile-home]').click();
+  await page.waitForSelector('#home-rails .recommendation-card');
+  assert.equal(await nav.locator('[data-mobile-home]').getAttribute('aria-current'),'page');
+  for (const category of ['documentaire','spectacle']) {
+   assert.equal(await nav.locator(`[data-mobile-category="${category}"]`).count(),0);
+   await nav.locator('[data-mobile-more]').click();
+   await page.locator(`#mobile-more-sheet [data-mobile-category="${category}"]`).click();
+   await page.waitForFunction(value=>document.getElementById('category').value===value&&!document.getElementById('catalog-panel').hidden,category);
+   assert.equal(await nav.locator('[data-mobile-more]').getAttribute('aria-current'),'page');
+  }
   await page.locator('[data-mobile-category=film]').click();
   await page.waitForSelector('.media-card');await page.waitForFunction(()=>!document.getElementById('mobile-nav').hidden);
   assert((await page.locator('meta[name=viewport]').getAttribute('content')).includes('viewport-fit=cover'));
-  assert.equal(await page.locator('#mobile-nav button').count(),5);
+  assert.equal(await nav.locator('button:visible').count(),4);
   assert.equal(await page.locator('.sidebar').isVisible(),false);
   assert.equal(await page.locator('#profile-name').isVisible(),true);
   assert.equal(await page.locator('.global-search').isVisible(),false);
@@ -91,8 +123,9 @@ async function noOverflow(page,label){
    const columns=await page.evaluate(()=>{const el=document.querySelector('#media .virtual-window');return {count:getComputedStyle(el).gridTemplateColumns.split(' ').length,inline:el.style.gridTemplateColumns,display:getComputedStyle(el).display,hidden:document.getElementById('catalog-panel').hidden,stage:state.stage};});
    assert.equal(columns.count,width<=360?2:3,`poster density at ${width}: ${JSON.stringify(columns)}`);
    const nav=await page.locator('#mobile-nav').boundingBox();
-   if(width>=736){assert.equal(nav.x,0);assert(nav.width<=76&&nav.y===0&&nav.height>=389,'landscape navigation is a left rail');}
-   else assert(Math.abs(nav.y+nav.height-844)<=1);
+   assert.equal(nav.x,0);
+   assert.equal(nav.width,width);
+   assert(Math.abs(nav.y+nav.height-(width>=736?390:844))<=1,'navigation stays at the bottom');
   }
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.locator('#show-in-progress,[data-mobile-progress]').count(),0,'Continue watching is available from Home only');
@@ -119,6 +152,7 @@ async function noOverflow(page,label){
   await page.locator('[data-mobile-category=film]').click();
   await page.waitForTimeout(320);
   for(const [selector,category,expected] of [['[data-mobile-category=film]','film',1],['[data-mobile-category=serie]','serie',0],['[data-mobile-category=documentaire]','documentaire',0]]){
+   if(category==='documentaire')await nav.locator('[data-mobile-more]').click();
    await page.locator(selector).click();
    await page.waitForFunction(([category,count])=>document.getElementById('category').value===category&&document.getElementById('search').value==='Movie 000'&&document.querySelectorAll('#media .media-card').length===count,[category,expected]);
   }
@@ -239,6 +273,6 @@ async function noOverflow(page,label){
   });
   assert.deepEqual(presentation.immediate,['request','after-call']);assert(presentation.fallback&&presentation.expired&&presentation.cleaned);
   assert.deepEqual(errors,[]);
-  console.log('PASS built mobile web: 320/390/430/736/844 layouts, 1280 desktop restore, fixed navigation/Plus, profile/touch targets, virtual rows and preserved detail scroll, live genre/year filters, nonempty collections/configuration, EN/FR, themes, AI excluded; real Chromium fullscreen entry/exit, orientation denial mocked, no physical-device or live video claim.');
+  console.log('PASS built mobile web: 320/390/430/736/844 layouts, 1280 desktop restore, bottom navigation in both orientations, conditional Downloads, secondary categories in Plus, profile/touch targets, virtual rows and preserved detail scroll, live genre/year filters, nonempty collections/configuration, EN/FR, themes, AI excluded; real Chromium fullscreen entry/exit, orientation denial mocked, no physical-device or live video claim.');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

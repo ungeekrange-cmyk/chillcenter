@@ -5,9 +5,9 @@ const source = readFileSync(resolve(__dirname, "../src/mobile-ui.js"), "utf8");
 test("mobile adapter forwards to shared navigation instead of duplicating shell selectors", () => {
   assert.match(source, /data-mobile-category/);
   assert.match(source, /forward\(`\[data-category=/);
-  assert.match(source, /forward\("#show-sagas"\)/);
-  assert.match(source, /forward\("#admin-toggle"\)/);
-  assert.match(source, /data-mobile-category=\"\$\{category\}\"/);
+  for (const target of ["#show-home", "#show-downloads", "#show-sagas", "#admin-toggle"]) {
+    assert.ok(source.includes(`"${target}"`));
+  }
 });
 test("mobile virtualizer computes three columns from its live available width", () => {
   assert.match(source, /width - \(columns - 1\) \* 18/);
@@ -32,8 +32,8 @@ test("bottom navigation is resynchronised after player class transitions", () =>
   assert.match(source, /attributeFilter: \["class"\]/);
   assert.match(source, /syncShell\(\);/);
 });
-test("mobile sheet keeps web AI absent and provides the four approved destinations", () => {
-  for (const label of ["Accueil", "Sagas", "Listes de lecture", "Configuration"]) assert.match(source, new RegExp(label));
+test("mobile sheet contains the secondary destinations", () => {
+  for (const label of ["Documentaires", "Spectacles", "Toute la collection", "Sagas", "Listes de lecture", "Configuration"]) assert.match(source, new RegExp(label));
   assert.doesNotMatch(source, /Demande de conseil/);
 });
 test("phone header retains the approved logo while the desktop sidebar is hidden", () => {
@@ -43,8 +43,8 @@ test("phone header retains the approved logo while the desktop sidebar is hidden
 });
 test("web-only labels have an English fallback and More is selected for the library root", () => {
   assert.match(source, /"Plus": "More"/);
-  assert.match(source, /"Docs": "Documentaries"/);
-  assert.match(source, /category === ""/);
+  assert.match(source, /"Téléchargés": "Downloads"/);
+  assert.match(source, /: category === "film" \? "films" : "more"/);
   assert.match(source, /aria-current/);
 });
 test("mobile catalogue exposes compact playback controls and keeps profile at right", () => {
@@ -81,14 +81,14 @@ test("content-first mobile search and filters are opened by an accessible small 
   assert.match(css, /\.app-topbar \.global-search\{display:none/);
   assert.match(css, /\.mobile-discovery-open #filter-form\{display:flex\}/);
 });
-test("web-only toggle is absent from desktop and landscape rail remains phone-scoped", () => {
+test("web-only toggle is absent from desktop and landscape layout remains phone-scoped", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
   assert.match(css, /\.mobile-brand,\.mobile-nav,\.mobile-search-toggle\{display:none\}/);
   assert.match(css, /orientation:landscape\) and \(max-height:500px\) and \(pointer:coarse\)/);
   assert.match(css, /text-overflow:ellipsis/);
 });
 test("every mobile forwarding destination closes discovery without clearing its values", () => {
-  assert.match(source, /if \(source && !source\.disabled\) \{ setDiscoveryOpen\(false\); source\.click\(\); \}/);
+  assert.match(source, /if \(source && !source\.hidden && !source\.disabled\) \{\s*closeSheet\(\);\s*setDiscoveryOpen\(false\);\s*source\.click\(\);/);
   assert.match(source, /searchToggle\.hidden = !active/);
 });
 test("closing discovery survives a desktop transition and never hides picker filters", () => {
@@ -97,11 +97,11 @@ test("closing discovery survives a desktop transition and never hides picker fil
   assert.match(css, /#filter-form\{display:none/);
   assert.doesNotMatch(css, /\.filters\{display:none/);
 });
-test("landscape phone navigation becomes a compact left rail", () => {
+test("landscape navigation stays at the bottom, with dynamic columns", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
   assert.match(css, /orientation:landscape/);
-  assert.match(css, /width:68px/);
-  assert.match(css, /grid-template-rows:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(css, /grid-auto-flow:column;grid-auto-columns:minmax\(0,1fr\)/);
+  assert.doesNotMatch(css, /\.mobile-nav\{top:0;bottom:0;left:0;right:auto/);
 });
 test("portrait header assigns distinct columns to sync, search and profile", () => {
   const css = readFileSync(resolve(__dirname, "../src/mobile.css"), "utf8");
