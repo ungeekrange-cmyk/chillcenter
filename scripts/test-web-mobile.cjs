@@ -213,7 +213,10 @@ async function noOverflow(page,label){
   assert.equal(collectionActions.opacity,'1');assert(collectionActions.buttons.every(b=>b.width>=44&&b.height>=44),'collection controls remain touch-sized without hover');
   await page.locator('[data-mobile-more]').click();await page.locator('[data-mobile-playlists]').click();
   await page.waitForFunction(()=>!document.getElementById('collections-panel').hidden);await noOverflow(page,'playlists');
-  await page.locator('[data-mobile-more]').click();await page.locator('[data-mobile-config]').click();
+  await page.locator('[data-mobile-more]').click();
+  assert.equal(await page.locator('[data-mobile-config] svg path').getAttribute('d'),
+   await page.locator('#admin-toggle svg path').getAttribute('d'),'mobile and sidebar share the settings icon');
+  await page.locator('[data-mobile-config]').click();
   await page.waitForFunction(()=>!document.getElementById('admin-panel').hidden);await noOverflow(page,'configuration');
   assert.equal(await page.locator('#ai-settings').isVisible(),false);
   await page.locator('#interface-language').selectOption('en');await page.waitForFunction(()=>document.documentElement.lang==='en');

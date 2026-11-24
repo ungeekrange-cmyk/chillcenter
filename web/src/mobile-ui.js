@@ -22,7 +22,7 @@
     documentary: "M12 6.7C9.5 4.95 6.65 4.3 3.65 5.05v12.9c3-.75 5.85-.1 8.35 1.65 2.5-1.75 5.35-2.4 8.35-1.65V5.05c-3-.75-5.85-.1-8.35 1.65Zm0 0v12.9 M6.3 8.5c1.12.05 2.18.35 3.2.9m8.2-.9c-1.12.05-2.18.35-3.2.9 M6.3 12.2c1.12.05 2.18.35 3.2.9m8.2-.9c-1.12.05-2.18.35-3.2.9",
     show: "M3.25 4.65h17.5 M4.7 4.65v14.7m14.6-14.7v14.7 M10 4.65c-.35 3.7-1.95 6.4-5.3 7.8 1.9 1.3 3 3.6 3.25 6.9 M14 4.65c.35 3.7 1.95 6.4 5.3 7.8-1.9 1.3-3 3.6-3.25 6.9 M3.25 19.35h17.5",
     download: "M12 3.75v11.1m-4.05-4.1L12 14.85l4.05-4.1 M4.4 15.2v3.1a1.55 1.55 0 0 0 1.55 1.55h12.1a1.55 1.55 0 0 0 1.55-1.55v-3.1",
-    sagas: "m10.2 16.85-1.45 1.45a3.6 3.6 0 0 1-5.09-5.09l3.63-3.63a3.6 3.6 0 0 1 5.09 0 M13.8 7.15l1.45-1.45a3.6 3.6 0 0 1 5.09 5.09l-3.63 3.63a3.6 3.6 0 0 1-5.09 0 M9.5 14.5l5-5",
+    sagas: "M10.25 17.65a7.25 7.25 0 1 1 0-14.5 7.25 7.25 0 0 1 0 14.5Zm0 0h6.55a3.4 3.4 0 0 1 3.4 3.4 M9 6.85a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0 M12.55 10.4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0 M9 13.95a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0 M5.45 10.4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0",
     playlists: "M4.2 6.3h15.6 M4.2 11h9.7m-9.7 4.7h7.4 M15.5 12.65l5.05 3.15-5.05 3.15z",
     more: "M5 12h.01M12 12h.01M19 12h.01",
   };
@@ -77,7 +77,7 @@
       + item('data-mobile-category=""', "Toute la collection", "M4 4h16v16H4z M12 4v16 M4 12h16")
       + item("data-mobile-sagas", "Sagas", paths.sagas, navigationStroke)
       + item("data-mobile-playlists", "Listes de lecture", paths.playlists, navigationStroke)
-      + item("data-mobile-config", "Configuration", "M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4 M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0")
+      + item("data-mobile-config", "Configuration", byId("admin-toggle").querySelector("svg path").getAttribute("d"), navigationStroke)
       + "</div>";
     doc.body.append(sheet);
     for (const button of doc.querySelectorAll("[data-mobile-category]")) {
