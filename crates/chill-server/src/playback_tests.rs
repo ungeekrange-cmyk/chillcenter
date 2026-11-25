@@ -86,6 +86,123 @@ async fn fixture() -> Fixture {
 }
 
 #[tokio::test]
+async fn duo_reserves_both_profiles_and_keeps_the_guests_furthest_position() {
+    let f = fixture().await;
+    let (owner, guest) = (&f.profiles[0], &f.profiles[1]);
+    let solo = grant(&f, 1, 0).await;
+    let acquire = format!("/api/2026-10-14/profiles/{owner}/playback/acquire");
+    let release = |profile: &str| format!("/api/2026-10-14/profiles/{profile}/playback/release");
+    let progress = format!("/api/2026-10-14/profiles/{owner}/playback/progress");
+    let participants = json!({"media_id": f.media[0], "device_id": uuid::Uuid::new_v4(), "guest_profile_id": guest});
+    let (occupied, body) = json_reply(&f.app, "POST", &acquire, participants.clone()).await;
+    assert_eq!(occupied, StatusCode::CONFLICT);
+    assert_eq!(body["code"], "DUO_PROFILE_BUSY");
+    let (saved, _) = json_reply(
+        &f.app,
+        "POST",
+        &release(guest),
+        json!({"lease":ctrl(&solo),"progress":event(&solo,1,32_000)}),
+    )
+    .await;
+    assert_eq!(saved, StatusCode::OK);
+    let (one, two) = tokio::join!(
+        json_reply(&f.app, "POST", &acquire, participants.clone()),
+        json_reply(&f.app, "POST", &acquire, participants),
+    );
+    let (winner, loser) = if one.0.is_success() {
+        (one, two)
+    } else {
+        (two, one)
+    };
+    assert_eq!(winner.0, StatusCode::OK);
+    assert_eq!(loser.0, StatusCode::CONFLICT);
+    let duo: PlaybackGrant = serde_json::from_value(winner.1).unwrap();
+    let states = || {
+        let (owner, guest, id) = (owner.clone(), guest.clone(), f.media[0].clone());
+        f.database.call(move |store| {
+            Ok((
+                store.personal_state(&owner, &id)?.position_ms,
+                store.personal_state(&guest, &id)?.position_ms,
+            ))
+        })
+    };
+    let early = serde_json::to_value(event(&duo, 1, 20_000)).unwrap();
+    assert_eq!(
+        json_reply(&f.app, "POST", &progress, early.clone()).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(states().await.unwrap(), (20_000, 32_000));
+    assert!(
+        !json_reply(&f.app, "POST", &progress, early)
+            .await
+            .0
+            .is_success()
+    );
+    assert_eq!(
+        json_reply(
+            &f.app,
+            "POST",
+            &release(owner),
+            json!({"lease": ctrl(&duo),"progress": event(&duo,2,38_000)})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(states().await.unwrap(), (38_000, 38_000));
+    let late = serde_json::to_value(event(&duo, 3, 45_000)).unwrap();
+    assert!(
+        !json_reply(&f.app, "POST", &progress, late)
+            .await
+            .0
+            .is_success()
+    );
+    assert_eq!(states().await.unwrap(), (38_000, 38_000));
+    let solo = grant(&f, 1, 1).await;
+    assert_eq!(&solo.lease.profile_id, guest);
+}
+
+#[tokio::test]
+async fn library_audit_saga_preview_rejects_a_changed_collection() {
+    let f = fixture().await;
+    let profile = f.profiles[0].clone();
+    let first = f.media[0].clone();
+    let second = f.media[1].clone();
+    let saga = f
+        .database
+        .call(move |store| {
+            let saga = store.create_saga("Audit")?;
+            store.saga_members_at_revision(&saga.id, &[first], saga.revision, true)
+        })
+        .await
+        .unwrap();
+    let path =
+        format!("/api/2026-10-14/admin/profiles/{profile}/library-audit?kind=single_title_sagas");
+    let (status, body) = json_reply(&f.app, "GET", &path, Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["last_scan"].as_i64().is_some());
+    assert_eq!(body["items"][0]["member"]["id"], f.media[0]);
+    assert_eq!(body["items"][0]["revision"], saga.revision);
+    let cleanup_id = saga.id.clone();
+    f.database
+        .call(move |store| {
+            store.saga_members_at_revision(&cleanup_id, &[second], saga.revision, true)
+        })
+        .await
+        .unwrap();
+    let (status, _) = json_reply(
+        &f.app,
+        "DELETE",
+        &format!("/api/2026-10-14/profiles/{profile}/sagas/{}", saga.id),
+        json!({"expected_revision":saga.revision}),
+    )
+    .await;
+    assert!(!status.is_success());
+    let (_, updated) = json_reply(&f.app, "GET", &path, Value::Null).await;
+    assert_eq!(updated["items"], json!([]));
+}
+
+#[tokio::test]
 async fn missing_indexed_leaf_marks_only_that_media_unavailable_and_never_grants_a_lease() {
     let f = fixture().await;
     let id = f.media[0].clone();
@@ -289,6 +406,7 @@ async fn json_reply(app: &Router, method: &str, path: &str, body: Value) -> (Sta
 }
 async fn grant(f: &Fixture, p: usize, m: usize) -> PlaybackGrant {
     let body = AcquirePlayback {
+        guest_profile_id: None,
         media_id: f.media[m].clone(),
         device_id: uuid::Uuid::new_v4().to_string(),
         context: Default::default(),
@@ -646,6 +764,7 @@ async fn transfer_endpoints_require_confirmation_then_ack_once() {
     );
     let proposal = TransferProposal {
         target: AcquirePlayback {
+            guest_profile_id: None,
             media_id: f.media[0].clone(),
             device_id: uuid::Uuid::new_v4().to_string(),
             context: Default::default(),
@@ -841,6 +960,7 @@ async fn transfer_to_a_different_watched_media_restarts_but_same_media_continues
         &format!("{base}/propose"),
         serde_json::to_value(TransferProposal {
             target: AcquirePlayback {
+                guest_profile_id: None,
                 media_id: f.media[1].clone(),
                 device_id: uuid::Uuid::new_v4().to_string(),
                 context: Default::default(),

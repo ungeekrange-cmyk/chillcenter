@@ -447,6 +447,7 @@ impl Store {
                 name: format!("Saison {season}"),
                 overview: String::new(),
                 poster: None,
+                episode_air_dates: Default::default(),
             });
         provider.poster = Some(poster);
         let tx = rusqlite::Transaction::new_unchecked(
@@ -970,6 +971,7 @@ mod tests {
             name: "Season 1".into(),
             overview: "Season synopsis".into(),
             poster: Some("/cache/season.jpg".into()),
+            episode_air_dates: Default::default(),
         };
         let (saved, episodes) = store
             .provider_apply_season(&profile, &id, &snapshot, &season)

@@ -59,6 +59,14 @@ pub struct ScanStatus {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/admin/scan", get(scan_status).post(start_scan))
+        .route(
+            "/profiles/{profile}/duo/recommendations",
+            post(duo_recommendations),
+        )
+        .route(
+            "/admin/profiles/{profile}/library-audit",
+            get(library_audit),
+        )
         .route("/profiles/{profile}/catalog", get(catalog))
         .route("/profiles/{profile}/home", get(home))
         .route(
@@ -635,6 +643,51 @@ async fn unavailable(
             .call(move |s| s.unavailable_page(q.offset, q.limit))
             .await?,
     ))
+}
+#[derive(Deserialize)]
+struct AuditQuery {
+    kind: chill_domain::library_audit::AuditKind,
+    #[serde(default)]
+    offset: usize,
+}
+
+async fn duo_recommendations(
+    State(state): State<AppState>,
+    Path(profile): Path<String>,
+    Json(query): Json<chill_domain::duo::DuoQuery>,
+) -> Result<Json<Value>, ApiError> {
+    if query.guest_profile_id == profile || Uuid::parse_str(&query.guest_profile_id).is_err() {
+        return Err(ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "DUO_PROFILE_INVALID",
+        ));
+    }
+    Ok(Json(
+        json!({"items":state.database.call(move |store| store.duo_recommendations(&profile, &query)).await?}),
+    ))
+}
+async fn library_audit(
+    State(state): State<AppState>,
+    Path(profile): Path<String>,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<Value>, ApiError> {
+    use chill_domain::library_audit::AuditKind;
+    let today = time::OffsetDateTime::now_utc().date().to_string();
+    let page = state.database.call(move |store| {
+        let mut page = match query.kind {
+            AuditKind::Unavailable => {
+                store.preferences(&profile)?;
+                let page = store.unavailable_page(query.offset, 48)?;
+                json!({"items": page.items, "has_more": page.has_more, "epoch": page.epoch, "last_scan": store.last_catalog_scan()})
+            }
+            kind => json!(store.library_audit(&profile, kind, query.offset, 24, &today)?),
+        };
+        let outcome = store.scan_outcome()?;
+        page["last_scan_failed"] = json!(outcome.last_scan_failed);
+        page["failed_root"] = json!(outcome.failed_root);
+        Ok(page)
+    }).await?;
+    Ok(Json(page))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1259,10 +1312,17 @@ async fn watched(
     state
         .database
         .call(move |store| {
-            if let Some(scope)=body.scope.as_deref().filter(|s|*s!="video") {
-                let expected=body.expected_revision.ok_or("Révision requise.".to_string())?;
-                let ids=store.set_group_watched(&profile,&media,body.watched,scope,expected)?;
-                if !body.watched {for id in ids {playback.reset_final(&profile,&id);}}
+            if let Some(scope) = body.scope.as_deref().filter(|s| *s != "video") {
+                let expected = body
+                    .expected_revision
+                    .ok_or("Révision requise.".to_string())?;
+                let ids =
+                    store.set_group_watched(&profile, &media, body.watched, scope, expected)?;
+                if !body.watched {
+                    for id in ids {
+                        playback.reset_final(&profile, &id);
+                    }
+                }
                 return Ok(());
             }
             store.set_watched(&profile, &media, body.watched)?;
@@ -1338,6 +1398,7 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
             }
         }
         let guard = ScanGuard(state.clone());
+        let mut attempted_root = None;
         let result = async {
             let exe = std::env::current_exe().map_err(|_| ())?;
             let (settings, roots) = roots;
@@ -1346,7 +1407,8 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
             let deadline = Instant::now() + Duration::from_secs(300);
             // Each root is scanned independently, then one SQLite snapshot is
             // published only after every root completed successfully.
-            for root in roots {
+            for (index, root) in roots.into_iter().enumerate() {
+                attempted_root = Some(index + 1);
                 let child = tokio::process::Command::new(&exe)
                     .arg("--scan-worker")
                     .arg(&root)
@@ -1373,6 +1435,7 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
                     serde_json::from_slice(&bytes).map_err(|_| ())?;
                 append_scanned_root(&settings, &root, found, &mut media, &mut serialized_bytes)?;
             }
+            attempted_root = None;
             media.sort_by(|a, b| a.id.cmp(&b.id));
             let count = media.len();
             // Catalogue merge/serialization does not occupy the interactive actor.
@@ -1388,6 +1451,18 @@ async fn start_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
             Ok(count)
         }
         .await;
+        let outcome = chill_domain::library_audit::ScanOutcome {
+            last_scan_failed: result.is_err(),
+            failed_root: attempted_root,
+        };
+        if state
+            .database
+            .call(move |store| store.record_scan_outcome(&outcome))
+            .await
+            .is_err()
+        {
+            eprintln!("Enregistrement du bilan du scan impossible.");
+        }
         if let Ok(mut status) = guard.0.scan.lock() {
             match result { Ok(count) => status.count = Some(count), Err(()) => status.last_error = Some("Scan impossible ou incomplet ; catalogue précédent conservé. Vérifiez le montage et les droits Linux.".into()) }
         }

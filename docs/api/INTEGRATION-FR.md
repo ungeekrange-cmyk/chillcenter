@@ -311,3 +311,25 @@ L’épisode référencé identifie la saison (null reste la saison inconnue), a
 marquage partiel. Le corps historique `{watched}` reste compatible. L’interface
 utilise uniquement `season` pour la coche des séries ; positions et notes restent
 conservées. [ADR0042](../architecture/decisions/ADR-0042-home-progress-controls.md).
+
+## Séances à deux, bilan, téléchargements de la suite et repères
+
+Les capacités `duo_playback`, `library_audit`, `download_ahead` et
+`playback_segments` sont annoncées séparément. Ignorer chaque action
+correspondante avec un serveur plus ancien. Les contrats restent additifs.
+
+- `POST /profiles/{profile}/duo/recommendations` classe au plus neuf titres.
+  Une acquisition de lecture peut inclure `guest_profile_id`. Les deux
+  profils sont réservés ensemble et la progression est enregistrée dans
+  une transaction commune. Un conflit `DUO_PROFILE_BUSY` permet de choisir
+  un autre profil.
+- `GET /admin/profiles/{profile}/library-audit` lit les signalements paginés
+  du catalogue. Les modifications gardent les confirmations et révisions
+  des opérations de catalogue existantes.
+- `GET /profiles/{profile}/downloads/ahead` renvoie la sélection bornée des
+  prochains épisodes. Les copies passent ensuite par les sessions de
+  téléchargement existantes.
+- `GET /profiles/{profile}/media/{media}/segments` renvoie les repères
+  applicables à la vidéo. Un `PUT` de cette ressource exige le périmètre
+  explicite, la version du fichier et la révision attendue des repères.
+  Les nouvelles copies hors connexion embarquent les repères résolus.

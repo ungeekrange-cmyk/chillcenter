@@ -254,7 +254,7 @@
         save();
         void env.downloads.sync(offlineContext()).catch(() => {});
       }
-      return { stage: "connected", address: env.address || "", server_id: conn.id, profile_id: conn.active, profiles, library, preferences, offline_downloads: conn.downloads === true, language: settings.language, theme: theme(), appearance: settings.appearance, playback_cache: settings.playback_cache, player_presentation: settings.player_presentation, notice: conn.notice || null };
+      return { stage: "connected", address: env.address || "", server_id: conn.id, profile_id: conn.active, profiles, library, preferences, offline_downloads: conn.downloads === true, capabilities: conn.capabilities || [], language: settings.language, theme: theme(), appearance: settings.appearance, playback_cache: settings.playback_cache, player_presentation: settings.player_presentation, notice: conn.notice || null };
     }
     async function connect() {
       clearArtwork();
@@ -262,7 +262,7 @@
       const info = await request("GET", "/server", { signal: env.downloads ? AbortSignal.timeout(3500) : undefined });
       const missing = REQUIRED.filter(c => !(info.capabilities || []).includes(c));
       if (missing.length) throw fail("Ce serveur est trop ancien pour le client web (capacités manquantes : " + missing.join(", ") + ").", "SERVER_INCOMPATIBLE");
-      conn = { id: info.server_id, active: null, profiles: [], notice: null, tls: info.tls, downloads: (info.capabilities || []).includes("offline_downloads") };
+      conn = { id: info.server_id, active: null, profiles: [], notice: null, tls: info.tls, capabilities: info.capabilities || [], downloads: (info.capabilities || []).includes("offline_downloads") };
       const last = settings.last_profile[info.server_id];
       const profiles = await get("/profiles");
       if (last && profiles.some(p => p.id === last)) conn.active = last;
@@ -518,6 +518,13 @@
         case "tmdb_select": validId(c.media_id); return request("POST", `/admin/profiles/${profile()}/media/${c.media_id}/tmdb`, { body: { expected_revision: c.expected_revision, tmdb_id: c.tmdb_id, kind: c.kind, scope: c.scope } });
         case "tmdb_refresh": validId(c.media_id); return request("POST", `/admin/profiles/${profile()}/media/${c.media_id}/tmdb/refresh`, { body: { expected_revision: c.expected_revision, scope: c.scope } });
         case "tmdb_restore_poster": validId(c.media_id); return request("POST", `/admin/profiles/${profile()}/media/${c.media_id}/tmdb/poster/restore`, { body: { expected_revision: c.expected_revision } });
+        case "duo_recommendations": return request("POST", personal("/duo/recommendations"), { body: c.query });
+        case "segments":
+          validId(c.media_id); return get(personal(`/media/${c.media_id}/segments`), c.scope ? [["scope", c.scope]] : []);
+        case "save_segments":
+          validId(c.media_id); return request("PUT", personal(`/media/${c.media_id}/segments`), { query: [["scope", c.scope]], body: { version: c.version, expected_revision: c.expected_revision, segments: c.segments } });
+        case "download_ahead": return get(personal("/downloads/ahead"), [["series", c.series], ["count", String(c.count)]]);
+        case "library_audit": return get(`/admin/profiles/${conn.active}/library-audit`, [["kind", c.kind], ["offset", String(c.offset || 0)]]);
         case "unavailable": return get("/admin/unavailable", [["offset", String(c.offset || 0)], ["limit", String(c.limit || 48)]]);
         case "forget_unavailable": validMediaIds(c.media_ids); return request("POST", "/admin/unavailable", { body: { media_ids: c.media_ids, expected_epoch: c.expected_epoch, confirmed: c.confirmed } });
         case "reassociation_proposals": return get("/admin/reassociations", [["offset", String(c.offset || 0)], ["limit", "48"]]);

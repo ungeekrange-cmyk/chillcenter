@@ -163,6 +163,8 @@ pub struct SeasonProvider {
     pub name: String,
     pub overview: String,
     pub poster: Option<String>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub episode_air_dates: std::collections::BTreeMap<i32, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

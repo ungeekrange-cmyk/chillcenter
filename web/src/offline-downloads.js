@@ -187,7 +187,7 @@
       } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
     }
 
-    async function one(context, item, job) {
+    async function one(context, item, job, budget) {
       const { media, version, bytes } = item;
       if (!VERSION.test(version || "") || !Number.isSafeInteger(bytes) || bytes <= 0) throw new Error("Taille ou version de téléchargement invalide.");
       const key = keyFor(context, media?.id), scope = safeContext(context);
@@ -211,6 +211,8 @@
           if (session.version !== version || session.bytes !== bytes) throw new Error("La vidéo a changé. Préparez un nouveau téléchargement.");
           const row = {
             ...item, key, fileKey, scope, ready: false, transferred: 0, keep: previous?.keep === true, subtitles: [],
+            automatic: budget !== undefined,
+            segments: Array.isArray(session.segments) ? session.segments.slice(0, 2) : [],
             preferences: session.preferences || null, personal: session.personal || null, progress_revision: session.progress_revision || null,
           };
           const update = async () => { if (!previous?.ready) await put("copies", row); notify(); };
@@ -223,6 +225,9 @@
           row.transferred = position;
           await update();
           const estimate = await storage.estimate?.().catch(() => null);
+          const free = Number.isFinite(estimate?.quota) && Number.isFinite(estimate?.usage)
+            ? Math.max(0, estimate.quota - estimate.usage) : Infinity;
+          const allowance = budget === undefined ? undefined : Math.min(budget, free + position);
           if (Number.isFinite(estimate?.quota) && Number.isFinite(estimate?.usage) && estimate.quota - estimate.usage < bytes - position) {
             throw new Error("L’espace disponible dans le navigateur est insuffisant.");
           }
@@ -242,7 +247,7 @@
             if (position === bytes || position % (8 * CHUNK) === 0) await update();
           }
           await stream.call("close");
-          let missing = 0;
+          let missing = 0, storedBytes = bytes;
           for (const subtitle of (session.subtitles || []).slice(0, 64)) {
             if (!UUID.test(subtitle.id) || !/\.(srt|vtt|ass|ssa)$/i.test(subtitle.title)) continue;
             try {
@@ -250,6 +255,8 @@
               if (!response.ok) throw new Error("Sous-titre indisponible.");
               const known = subtitle.bytes > 0 && subtitle.bytes <= MAX_SUBTITLE;
               const content = await boundedBytes(response, known ? subtitle.bytes : MAX_SUBTITLE, known);
+              if (allowance !== undefined && storedBytes + content.byteLength > allowance) { missing++; continue; }
+              storedBytes += content.byteLength;
               await stream.call("open", { key: fileKey, name: subtitle.id });
               await stream.call("truncate");
               await stream.call("write", { offset: 0, bytes: content.buffer }, [content.buffer]);
@@ -268,7 +275,7 @@
               const type = response.headers.get("content-type");
               if (response.ok && POSTER_TYPES.has(type)) {
                 const content = await boundedBytes(response, MAX_POSTER, false);
-                if (content.byteLength) {
+                if (content.byteLength && (allowance === undefined || storedBytes + content.byteLength <= allowance)) {
                   await stream.call("open", { key: fileKey, name: "poster" });
                   await stream.call("truncate");
                   await stream.call("write", { offset: 0, bytes: content.buffer }, [content.buffer]);
@@ -414,6 +421,11 @@
         switch (command.action) {
           case "plan": return plan(context, command.media_id, command.scope);
           case "settings": return { enabled: await preference(context) };
+          case "sync": return sync(context);
+          case "segments": {
+            const row = await get("copies", keyFor(context, command.media_id));
+            return { segments: row?.ready ? row.segments || [] : [] };
+          }
           case "artwork": {
             const key = keyFor(context, command.media_id);
             return locks.request(lockName(key), { mode: "shared" }, async () => {
@@ -446,6 +458,10 @@
             if (active?.scope === safeContext(context)) active.controller.abort();
             return {};
           case "start": {
+            const automaticLimit = command.automatic_limit;
+            if (automaticLimit != null && (!Number.isSafeInteger(automaticLimit) || automaticLimit <= 0 || automaticLimit > 1e12 || command.scope !== "video")) {
+              throw new Error("Plafond de téléchargement invalide.");
+            }
             if (!online()) throw new Error("Préparation hors ligne indisponible.");
             if (active) throw new Error("Un téléchargement est déjà en cours.");
             const controller = new AbortController();
@@ -461,7 +477,17 @@
                   for (const item of result.items) {
                     if (controller.signal.aborted) break;
                     job.id = item.media.id;
-                    try { await one(context, item, job); }
+                    try {
+                      let allowance;
+                      if (automaticLimit != null) {
+                        const { items } = await list(context);
+                        if (items.some(copy => copy.media.id === item.media.id)) continue;
+                        const used = items.filter(copy => copy.automatic).reduce((sum, copy) => sum + copy.local_bytes, 0);
+                        allowance = automaticLimit - used;
+                        if (item.bytes > allowance) throw new Error("Plafond ou espace libre insuffisant.");
+                      }
+                      await one(context, item, job, allowance);
+                    }
                     catch (error) { if (!controller.signal.aborted) errors.push(item.media.title + " — " + error.message); }
                   }
                 });

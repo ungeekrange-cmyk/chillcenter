@@ -254,6 +254,28 @@ pub enum UiCommand {
         media_id: String,
         expected_revision: u64,
     },
+    DuoRecommendations {
+        query: Value,
+    },
+    Segments {
+        media_id: String,
+        scope: Option<String>,
+    },
+    SaveSegments {
+        media_id: String,
+        scope: String,
+        version: String,
+        expected_revision: u64,
+        segments: Value,
+    },
+    DownloadAhead {
+        series: String,
+        count: usize,
+    },
+    LibraryAudit {
+        kind: String,
+        offset: usize,
+    },
     Unavailable {
         offset: usize,
         limit: usize,
@@ -491,6 +513,7 @@ struct Connected {
     id: String,
     transport: Transport,
     offline_downloads: bool,
+    capabilities: Vec<String>,
     profiles: Value,
     active: Option<String>,
     notice: Option<String>,
@@ -1350,7 +1373,10 @@ impl UiClient {
         if active.is_some() {
             self.ensure_catalog(true)?;
         }
-        let offline_downloads = self.connected.as_ref().is_some_and(|conn| conn.offline_downloads);
+        let offline_downloads = self
+            .connected
+            .as_ref()
+            .is_some_and(|conn| conn.offline_downloads);
         if offline_downloads {
             let snapshot = OfflineIdentity {
                 server: id.clone(),
@@ -1364,7 +1390,7 @@ impl UiClient {
         }
         let cache_status=self.catalog_cache.as_ref().filter(|c|Some(&c.profile)==active.as_ref()).map(|c|json!({"revision":c.document.as_ref().map(|d|&d["revision"]),"offline":c.notice.is_some(),"notice":c.notice}));
         Ok(
-            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"catalog_cache":cache_status,"offline_downloads":offline_downloads,"language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation,"notice":self.connected.as_ref().unwrap().notice}),
+            json!({"stage":"connected","address":address,"server_id":id,"profile_id":active,"profiles":profiles,"library":library,"preferences":preferences,"catalog_cache":cache_status,"offline_downloads":offline_downloads,"capabilities":self.connected.as_ref().unwrap().capabilities,"language":self.settings.language,"theme":self.theme(),"appearance":self.settings.appearance,"playback_cache":self.settings.playback_cache,"player_presentation":self.settings.player_presentation,"notice":self.connected.as_ref().unwrap().notice}),
         )
     }
     fn theme(&self) -> &str {
@@ -1514,9 +1540,15 @@ impl UiClient {
             .get(&id)
             .filter(|p| has_profile(&profiles, p))
             .cloned();
-        let offline_downloads = identity["capabilities"]
+        let capabilities: Vec<String> = identity["capabilities"]
             .as_array()
-            .is_some_and(|values| values.iter().any(|value| value == "offline_downloads"));
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect();
+        let offline_downloads = capabilities
+            .iter()
+            .any(|value| value == "offline_downloads");
         if offline_downloads {
             self.settings.offline_download_identity = Some(OfflineIdentity {
                 server: id.clone(),
@@ -1531,6 +1563,7 @@ impl UiClient {
             id,
             transport,
             offline_downloads,
+            capabilities,
             profiles,
             active,
             notice: renewal_notice(
@@ -1968,6 +2001,61 @@ impl UiClient {
                     ),
                     Some(&json!({"expected_revision":expected_revision})),
                     &[],
+                    &[],
+                )
+            }
+            UiCommand::DuoRecommendations { query } => {
+                let profile = self.profile()?;
+                self.request(
+                    HttpMethod::POST,
+                    &format!("/api/2026-10-14/profiles/{profile}/duo/recommendations"),
+                    Some(&query),
+                    &[],
+                    &[],
+                )
+            }
+            UiCommand::Segments { media_id, scope } => {
+                valid_id(&media_id)?;
+                let p = self.profile()?;
+                let query: Vec<_> = scope.into_iter().map(|value| ("scope", value)).collect();
+                self.request(
+                    HttpMethod::GET,
+                    &format!("/api/2026-10-14/profiles/{p}/media/{media_id}/segments"),
+                    None,
+                    &query,
+                    &[],
+                )
+            }
+            UiCommand::SaveSegments {
+                media_id,
+                scope,
+                version,
+                expected_revision,
+                segments,
+            } => {
+                valid_id(&media_id)?;
+                let p = self.profile()?;
+                self.request(HttpMethod::PUT, &format!("/api/2026-10-14/profiles/{p}/media/{media_id}/segments"),
+                    Some(&json!({ "version":version,"expected_revision":expected_revision,"segments":segments })),
+                    &[("scope",scope)], &[])
+            }
+            UiCommand::DownloadAhead { series, count } => {
+                let p = self.profile()?;
+                self.request(
+                    HttpMethod::GET,
+                    &format!("/api/2026-10-14/profiles/{p}/downloads/ahead"),
+                    None,
+                    &[("series", series), ("count", count.to_string())],
+                    &[],
+                )
+            }
+            UiCommand::LibraryAudit { kind, offset } => {
+                let p = self.profile()?;
+                self.request(
+                    HttpMethod::GET,
+                    &format!("/api/2026-10-14/admin/profiles/{p}/library-audit"),
+                    None,
+                    &[("kind", kind), ("offset", offset.to_string())],
                     &[],
                 )
             }
@@ -3039,6 +3127,7 @@ mod tests {
             id: server.clone(),
             transport,
             offline_downloads: false,
+            capabilities: Vec::new(),
             profiles: json!([{ "id":profile,"name":"Test","revision":1}]),
             active: Some(profile.clone()),
             notice: None,
@@ -3330,6 +3419,7 @@ mod tests {
             id: server,
             transport,
             offline_downloads: false,
+            capabilities: Vec::new(),
             profiles: json!([]),
             active: Some(profile.clone()),
             notice: None,
@@ -3544,6 +3634,7 @@ mod tests {
             id: "server".into(),
             transport,
             offline_downloads: false,
+            capabilities: Vec::new(),
             profiles: json!([{"id":a,"name":"A","revision":1},{"id":b,"name":"B","revision":1}]),
             active: Some(a.clone()),
             notice: None,

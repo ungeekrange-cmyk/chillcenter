@@ -25,6 +25,27 @@ const WATCHED_THRESHOLD_MS: u64 = 10_000;
 /// Legacy flat episode folders may use `001 Title.avi` without SxxExx metadata.
 /// Resolve their existing source order without inventing a season or mutating
 /// titles. Require one folder, explicit unique ordinals, and no numbered seasons.
+fn flat_series_ordinal(media: &Media) -> Option<u32> {
+    media
+        .episode
+        .filter(|number| *number > 0)
+        .map(|v| v as u32)
+        .or_else(|| {
+            let stem = Path::new(&media.path).file_stem()?.to_str()?;
+            let digits = stem.bytes().take_while(u8::is_ascii_digit).count();
+            if !(1..=4).contains(&digits) {
+                return None;
+            }
+            let rest = &stem[digits..];
+            if !rest.is_empty() && !rest.starts_with([' ', '-', '_', '.']) {
+                return None;
+            }
+            let number = stem[..digits].parse::<u32>().ok()?;
+            // A leading release year is not evidence of an episode ordinal.
+            (number > 0 && !(digits == 4 && (1800..=2099).contains(&number))).then_some(number)
+        })
+}
+
 fn flat_series_order(members: &[Media]) -> Option<Vec<&Media>> {
     let parent = Path::new(&members.first()?.path).parent()?;
     let mut numbers = HashSet::new();
@@ -33,24 +54,7 @@ fn flat_series_order(members: &[Media]) -> Option<Vec<&Media>> {
         if member.season.is_some() || Path::new(&member.path).parent()? != parent {
             return None;
         }
-        let number = member
-            .episode
-            .filter(|number| *number > 0)
-            .map(|v| v as u32)
-            .or_else(|| {
-                let stem = Path::new(&member.path).file_stem()?.to_str()?;
-                let digits = stem.bytes().take_while(u8::is_ascii_digit).count();
-                if !(1..=4).contains(&digits) {
-                    return None;
-                }
-                let rest = &stem[digits..];
-                if !rest.is_empty() && !rest.starts_with([' ', '-', '_', '.']) {
-                    return None;
-                }
-                let number = stem[..digits].parse::<u32>().ok()?;
-                // A leading release year is not evidence of an episode ordinal.
-                (number > 0 && !(digits == 4 && (1800..=2099).contains(&number))).then_some(number)
-            })?;
+        let number = flat_series_ordinal(member)?;
         if !numbers.insert(number) {
             return None;
         }
@@ -221,6 +225,9 @@ impl Store {
                 data TEXT NOT NULL,
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY(tv_id,season)
+             );
+             CREATE TABLE IF NOT EXISTS cc_playback_segments (
+                owner TEXT PRIMARY KEY, version TEXT NOT NULL, data TEXT NOT NULL, revision INTEGER NOT NULL
              );
              CREATE TABLE IF NOT EXISTS cc_media_fingerprint (
                 stable_id TEXT PRIMARY KEY REFERENCES cc_media_identity(stable_id) ON DELETE CASCADE,
@@ -1131,6 +1138,109 @@ impl Store {
         }
     }
 
+    pub fn download_ahead(
+        &mut self,
+        profile: &str,
+        series: &str,
+        count: usize,
+    ) -> Result<(Vec<String>, bool), String> {
+        if !(1..=2).contains(&count) {
+            return Err("Nombre d’épisodes invalide.".into());
+        }
+        let episodes = self.series(profile, series)?;
+        if episodes.is_empty() {
+            return Ok((Vec::new(), false));
+        }
+        let flat = flat_series_order(&episodes);
+        let ordered = if let Some(flat) = flat.as_ref() {
+            flat.clone()
+        } else {
+            let mut numbered: Vec<_> = episodes
+                .iter()
+                .filter(|media| {
+                    media.season.is_some_and(|season| season > 0)
+                        && media.episode.is_some_and(|episode| episode > 0)
+                })
+                .collect();
+            if numbered.is_empty() {
+                return Ok((Vec::new(), true));
+            }
+            numbered.sort_by_key(|media| (media.season, media.episode, &media.id));
+            numbered
+        };
+        let mut measured = self.personal.prepare(
+            "SELECT 1 FROM cc_profile_state s JOIN cc_resume_measurement d USING(profile_id, stable_media_id)
+             WHERE s.profile_id=?1 AND s.stable_media_id=?2 AND s.position_ms>0 AND s.watched=0"
+        ).map_err(db_error)?;
+        let mut start = None;
+        for (index, episode) in ordered
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(_, e)| e.available && !e.watched)
+        {
+            if measured
+                .exists(params![profile, episode.id])
+                .map_err(db_error)?
+            {
+                start = Some(index);
+                break;
+            }
+        }
+        let last_watched = ordered.iter().rposition(|episode| episode.watched);
+        let fallback = last_watched.map_or(0, |index| index + 1);
+        let mut selected = Vec::new();
+        let mut previous = if start.is_none() {
+            last_watched.map(|index| ordered[index])
+        } else {
+            None
+        };
+        for (index, &episode) in ordered.iter().enumerate().skip(start.unwrap_or(fallback)) {
+            if !episode.available {
+                return Ok((selected, true));
+            }
+            if flat.is_some() {
+                if let Some(last) = previous
+                    && flat_series_ordinal(last).and_then(|number| number.checked_add(1))
+                        != flat_series_ordinal(episode)
+                {
+                    return Ok((selected, true));
+                }
+            } else {
+                let ambiguous = ordered.get(index + 1).is_some_and(|next| {
+                    (next.season, next.episode) == (episode.season, episode.episode)
+                }) || index.checked_sub(1).is_some_and(|i| {
+                    (ordered[i].season, ordered[i].episode) == (episode.season, episode.episode)
+                });
+                let gap = match previous {
+                    Some(last) if last.season == episode.season => {
+                        last.episode.and_then(|number| number.checked_add(1)) != episode.episode
+                    }
+                    Some(last) => {
+                        last.season.and_then(|number| number.checked_add(1)) != episode.season
+                            || episode.episode != Some(1)
+                    }
+                    None => start.is_none() && episode.episode != Some(1),
+                };
+                if ambiguous || gap {
+                    return Ok((selected, true));
+                }
+            }
+            previous = Some(episode);
+            if !episode.watched {
+                selected.push(episode.id.clone());
+            }
+            if selected.len() == count {
+                return Ok((selected, false));
+            }
+        }
+        let unknown_tail = flat.is_none()
+            && episodes
+                .iter()
+                .any(|item| item.season.is_none() || item.episode.is_none());
+        Ok((selected, unknown_tail))
+    }
+
     pub fn next_video(
         &mut self,
         profile: &str,
@@ -1567,6 +1677,31 @@ impl Store {
         completed_short_tail: bool,
         first_playback_sample: bool,
     ) -> Result<PersonalState, String> {
+        self.save_validated_duo_progress(
+            profile_id,
+            stable_id,
+            progress,
+            completed_short_tail,
+            first_playback_sample,
+            None,
+        )
+    }
+
+    pub fn save_validated_duo_progress(
+        &self,
+        profile_id: &str,
+        stable_id: &str,
+        progress: &Progress,
+        completed_short_tail: bool,
+        first_playback_sample: bool,
+        guest: Option<&str>,
+    ) -> Result<PersonalState, String> {
+        if let Some(guest) = guest {
+            if guest == profile_id {
+                return Err("Deux profils distincts sont requis.".into());
+            }
+            self.require_profile(guest)?;
+        }
         self.require_profile(profile_id)?;
         if progress.media_id != stable_id
             || progress.duration_ms == 0
@@ -1605,81 +1740,18 @@ impl Store {
             None
         };
         let tx = self.personal.unchecked_transaction().map_err(db_error)?;
-        let old = state_in(&tx, profile_id, stable_id)?;
-        let previous: Option<(String, u64, u64)> = tx.query_row(
-            "SELECT last_session_id,last_generation,last_sequence FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2 AND last_session_id IS NOT NULL",
-            params![profile_id,stable_id], |r| Ok((r.get(0)?, r.get::<_,i64>(1)? as u64, r.get::<_,i64>(2)? as u64))
-        ).optional().map_err(db_error)?;
-        if previous.is_some_and(|(session, generation, sequence)| {
-            session == progress.session_id
-                && (generation != progress.generation || progress.sequence <= sequence)
-        }) {
-            return Err("Événement de lecture périmé ou rejoué.".into());
-        }
-        let final_watched_ms = old.final_watched_ms.saturating_add(if credit_eligible {
-            progress.final_elapsed_ms
-        } else {
-            0
-        });
-        let short_video = progress.duration_ms < 100_000;
-        let watched = old.watched
-            || if short_video {
-                completed_short_tail
-                    && progress.position_ms == progress.duration_ms
-                    && !progress.seek
-                    && !progress.buffering
-            } else {
-                final_watched_ms >= WATCHED_THRESHOLD_MS
-            };
-        upsert_state(
-            &tx,
-            profile_id,
-            stable_id,
-            Some(progress.position_ms),
-            Some(Some(final_watched_ms)),
-            Some(watched),
-            None,
-        )?;
-        if watched && !old.watched {
-            tx.execute("UPDATE cc_profile_state SET last_watched_at=?1 WHERE profile_id=?2 AND stable_media_id=?3", params![chill_catalog::model::now(),profile_id,stable_id]).map_err(db_error)?;
-        }
-        tx.execute("UPDATE cc_profile_state SET last_session_id=?1,last_generation=?2,last_sequence=?3 WHERE profile_id=?4 AND stable_media_id=?5",params![progress.session_id,progress.generation as i64,progress.sequence as i64,profile_id,stable_id]).map_err(db_error)?;
-        tx.execute("INSERT INTO cc_resume_measurement(profile_id,stable_media_id,duration_ms) VALUES(?1,?2,?3)
-            ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET duration_ms=excluded.duration_ms",
-            params![profile_id,stable_id,progress.duration_ms as i64]).map_err(db_error)?;
-        if let Some(id) = predecessor {
-            let measured: Option<(i64, i64)> = tx
-                .query_row(
-                    "SELECT s.position_ms,d.duration_ms FROM cc_profile_state s
-                 JOIN cc_resume_measurement d USING(profile_id,stable_media_id)
-                 WHERE s.profile_id=?1 AND s.stable_media_id=?2 AND s.watched=0",
-                    params![profile_id, id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()
-                .map_err(db_error)?;
-            if measured.is_some_and(|(position, duration)| {
-                i128::from(position) * 10 > i128::from(duration) * 7
-            }) {
-                tx.execute(
-                    "UPDATE cc_profile_state SET watched=1 WHERE profile_id=?1 AND stable_media_id=?2",
-                    params![profile_id,id],
-                ).map_err(db_error)?;
-                tx.execute(
-                    "UPDATE cc_profile_state SET last_watched_at=?1
-                     WHERE profile_id=?2 AND stable_media_id=?3",
-                    params![chill_catalog::model::now(), profile_id, id],
-                )
-                .map_err(db_error)?;
-            }
+        let proof = ValidatedProgress {
+            progress,
+            completed_short_tail,
+            credit_eligible,
+            predecessor: predecessor.as_deref(),
+        };
+        let owner_state = write_validated_progress(&tx, profile_id, stable_id, &proof, false)?;
+        if let Some(guest) = guest {
+            write_validated_progress(&tx, guest, stable_id, &proof, true)?;
         }
         tx.commit().map_err(db_error)?;
-        Ok(PersonalState {
-            position_ms: progress.position_ms,
-            final_watched_ms,
-            watched,
-            rating: old.rating,
-        })
+        Ok(owner_state)
     }
 
     pub fn collections(&mut self, profile_id: &str) -> Result<Vec<Collection>, String> {
@@ -3084,6 +3156,109 @@ fn write_json_array<W: std::io::Write, T>(
         .map_err(|_| "Export de staging inaccessible.".to_string())
 }
 
+struct ValidatedProgress<'a> {
+    progress: &'a Progress,
+    completed_short_tail: bool,
+    credit_eligible: bool,
+    predecessor: Option<&'a str>,
+}
+fn write_validated_progress(
+    tx: &rusqlite::Transaction<'_>,
+    profile_id: &str,
+    stable_id: &str,
+    proof: &ValidatedProgress<'_>,
+    keep_furthest: bool,
+) -> Result<PersonalState, String> {
+    let ValidatedProgress {
+        progress,
+        completed_short_tail,
+        credit_eligible,
+        predecessor,
+    } = *proof;
+    let old = state_in(tx, profile_id, stable_id)?;
+    let previous: Option<(String, u64, u64)> = tx.query_row(
+            "SELECT last_session_id,last_generation,last_sequence FROM cc_profile_state WHERE profile_id=?1 AND stable_media_id=?2 AND last_session_id IS NOT NULL",
+            params![profile_id,stable_id], |r| Ok((r.get(0)?, r.get::<_,i64>(1)? as u64, r.get::<_,i64>(2)? as u64))
+        ).optional().map_err(db_error)?;
+    if previous.is_some_and(|(session, generation, sequence)| {
+        session == progress.session_id
+            && (generation != progress.generation || progress.sequence <= sequence)
+    }) {
+        return Err("Événement de lecture périmé ou rejoué.".into());
+    }
+    let final_watched_ms = old.final_watched_ms.saturating_add(if credit_eligible {
+        progress.final_elapsed_ms
+    } else {
+        0
+    });
+    let short_video = progress.duration_ms < 100_000;
+    let watched = old.watched
+        || if short_video {
+            completed_short_tail
+                && progress.position_ms == progress.duration_ms
+                && !progress.seek
+                && !progress.buffering
+        } else {
+            final_watched_ms >= WATCHED_THRESHOLD_MS
+        };
+    let position = if keep_furthest {
+        old.position_ms.max(progress.position_ms)
+    } else {
+        progress.position_ms
+    };
+    upsert_state(
+        tx,
+        profile_id,
+        stable_id,
+        Some(position),
+        Some(Some(final_watched_ms)),
+        Some(watched),
+        None,
+    )?;
+    if watched && !old.watched {
+        tx.execute("UPDATE cc_profile_state SET last_watched_at=?1 WHERE profile_id=?2 AND stable_media_id=?3", params![chill_catalog::model::now(),profile_id,stable_id]).map_err(db_error)?;
+    }
+    tx.execute("UPDATE cc_profile_state SET last_session_id=?1,last_generation=?2,last_sequence=?3 WHERE profile_id=?4 AND stable_media_id=?5",params![progress.session_id,progress.generation as i64,progress.sequence as i64,profile_id,stable_id]).map_err(db_error)?;
+    if position == progress.position_ms {
+        tx.execute("INSERT INTO cc_resume_measurement(profile_id,stable_media_id,duration_ms) VALUES(?1,?2,?3)
+            ON CONFLICT(profile_id,stable_media_id) DO UPDATE SET duration_ms=excluded.duration_ms",
+            params![profile_id,stable_id,progress.duration_ms as i64]).map_err(db_error)?;
+    }
+    if let Some(id) = predecessor {
+        let measured: Option<(i64, i64)> = tx
+            .query_row(
+                "SELECT s.position_ms,d.duration_ms FROM cc_profile_state s
+                 JOIN cc_resume_measurement d USING(profile_id,stable_media_id)
+                 WHERE s.profile_id=?1 AND s.stable_media_id=?2 AND s.watched=0",
+                params![profile_id, id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(db_error)?;
+        if measured.is_some_and(|(position, duration)| {
+            i128::from(position) * 10 > i128::from(duration) * 7
+        }) {
+            tx.execute(
+                "UPDATE cc_profile_state SET watched=1 WHERE profile_id=?1 AND stable_media_id=?2",
+                params![profile_id, id],
+            )
+            .map_err(db_error)?;
+            tx.execute(
+                "UPDATE cc_profile_state SET last_watched_at=?1
+                     WHERE profile_id=?2 AND stable_media_id=?3",
+                params![chill_catalog::model::now(), profile_id, id],
+            )
+            .map_err(db_error)?;
+        }
+    }
+    Ok(PersonalState {
+        position_ms: position,
+        final_watched_ms,
+        watched,
+        rating: old.rating,
+    })
+}
+
 fn saga_export(connection: &Connection, store: &Store) -> Result<Vec<Collection>, String> {
     let mut collections = connection
         .prepare("SELECT id,name FROM collections WHERE kind='saga' ORDER BY name,id")
@@ -3125,6 +3300,114 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use tempfile::tempdir;
+    #[test]
+    fn episode_segments_are_versioned_and_reject_stale_edits() {
+        use crate::segments::{Segment, SegmentEdit, SegmentKind, SegmentScope};
+        let dir = tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("segments.sqlite")).unwrap();
+        let profile = store.create_profile("Viewer").unwrap();
+        let mut item = media("Show/S01E01.mkv", "/fixture/Show/S01E01.mkv");
+        item.category = "serie".into();
+        item.series = Some("Show".into());
+        item.season = Some(1);
+        item.episode = Some(1);
+        store.snapshot(vec![item]).unwrap();
+        let id = store.catalog(&profile.id).unwrap().remove(0).id;
+        let segment = Segment { kind: SegmentKind::Intro, start_ms: 5_000, end_ms: 10_000 };
+        let edit = |version: &str, expected_revision| SegmentEdit {
+            version: version.into(), expected_revision, segments: vec![segment.clone()],
+        };
+        store.save_manual_segments(&profile.id, &id, SegmentScope::Episode, edit("one", 0)).unwrap();
+        assert_eq!(store.manual_segments(&profile.id, &id, SegmentScope::Episode, "one").unwrap(), (vec![segment.clone()], 1));
+        assert_eq!(store.manual_segments(&profile.id, &id, SegmentScope::Episode, "two").unwrap(), (vec![], 1));
+        assert_eq!(store.save_manual_segments(&profile.id, &id, SegmentScope::Episode, edit("two", 0)).unwrap_err(), "PLAYBACK_SEGMENTS_CHANGED");
+        store.save_manual_segments(&profile.id, &id, SegmentScope::Episode, edit("two", 1)).unwrap();
+        assert_eq!(store.manual_segments(&profile.id, &id, SegmentScope::Episode, "two").unwrap(), (vec![segment], 2));
+    }
+
+    #[test]
+    fn ahead_respects_numbered_gaps_and_profile_watched_state() {
+        let dir = tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("ahead.sqlite")).unwrap();
+        let profile = store.create_profile("Viewer").unwrap();
+        let other = store.create_profile("Other").unwrap();
+        let episodes: Vec<_> = [1, 2, 4]
+            .into_iter()
+            .map(|number| {
+                let name = format!("Show/S01E{number:02}.mkv");
+                let mut episode = media(&name, &format!("/fixture/{name}"));
+                episode.category = "serie".into();
+                episode.series = Some("Show".into());
+                episode.tmdb_id = Some(123);
+                episode.season = Some(1);
+                episode.episode = Some(number);
+                episode
+            })
+            .collect();
+        store.snapshot(episodes).unwrap();
+        let series = "tmdb:tv:123";
+        let preview = store.series(&profile.id, series).unwrap();
+        let one = &preview[0].id;
+        let two = &preview[1].id;
+        assert_eq!(
+            store.download_ahead(&profile.id, series, 2).unwrap(),
+            (vec![one.clone(), two.clone()], false)
+        );
+        store.set_watched(&profile.id, one, true).unwrap();
+        assert_eq!(
+            store.download_ahead(&profile.id, series, 2).unwrap(),
+            (vec![two.clone()], true)
+        );
+        assert_eq!(
+            store.download_ahead(&other.id, series, 1).unwrap(),
+            (vec![one.clone()], false)
+        );
+    }
+
+    #[test]
+    fn duo_budget_deduplicates_series_and_excludes_jointly_watched_titles() {
+        let dir = tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("duo.sqlite")).unwrap();
+        let a = store.create_profile("Alice").unwrap();
+        let b = store.create_profile("Bob").unwrap();
+        let mut long = media("long.mp4", "/fixture/long.mp4");
+        long.runtime_minutes = Some(95);
+        let mut first = media("Show/S01E01.mkv", "/fixture/Show/S01E01.mkv");
+        first.category = "serie".into();
+        first.series = Some("Show".into());
+        first.tmdb_id = Some(42);
+        first.season = Some(1);
+        first.episode = Some(1);
+        first.runtime_minutes = Some(39);
+        let mut also = first.clone();
+        also.id = "Show/S01E02.mkv".into();
+        also.path = "/fixture/Show/S01E02.mkv".into();
+        also.episode = Some(2);
+        let mut short = media("short.mp4", "/fixture/short.mp4");
+        short.runtime_minutes = Some(20);
+        store.snapshot(vec![long, first, also, short]).unwrap();
+        let seen = store
+            .catalog(&a.id)
+            .unwrap()
+            .into_iter()
+            .find(|item| item.title == "short.mp4")
+            .unwrap();
+        for profile in [&a, &b] {
+            store.set_watched(&profile.id, &seen.id, true).unwrap();
+        }
+        let query = crate::duo::DuoQuery {
+            guest_profile_id: b.id,
+            minutes: Some(45),
+            format: None,
+            discovery: None,
+            mood: None,
+        };
+        let choices = store.duo_recommendations(&a.id, &query).unwrap();
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].minutes, Some(39));
+        assert_eq!(choices[0].media.episode, Some(1));
+    }
+
     #[test]
     fn snapshot_rejects_a_scanner_commit_between_rows_and_revision() {
         let dir = tempdir().unwrap();
@@ -3173,6 +3456,7 @@ mod tests {
             name: "Season 1".into(),
             overview: "Shared season synopsis".into(),
             poster: Some("/private/posters/season.jpg".into()),
+            episode_air_dates: Default::default(),
         };
         store
             .personal

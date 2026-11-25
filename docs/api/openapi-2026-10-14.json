@@ -45,6 +45,590 @@
     }
   ],
   "paths": {
+    "/admin/profiles/{profile}/library-audit": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "kind",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "enum": [
+              "duplicates",
+              "missing_episodes",
+              "unavailable",
+              "single_title_sagas"
+            ]
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "operationId": "libraryAudit",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "has_more",
+                    "last_scan",
+                    "last_scan_failed",
+                    "failed_root"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "media",
+                              "count"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "duplicate"
+                              },
+                              "media": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "id",
+                                    "title",
+                                    "relative_path"
+                                  ],
+                                  "properties": {
+                                    "id": {
+                                      "$ref": "#/components/schemas/Uuid"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    },
+                                    "relative_path": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "anchor_id",
+                              "series",
+                              "season",
+                              "from",
+                              "through"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "missing"
+                              },
+                              "anchor_id": {
+                                "$ref": "#/components/schemas/Uuid"
+                              },
+                              "series": {
+                                "type": "string"
+                              },
+                              "season": {
+                                "type": "integer"
+                              },
+                              "from": {
+                                "type": "integer"
+                              },
+                              "through": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "id",
+                              "name",
+                              "revision",
+                              "member"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "saga"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "revision": {
+                                "type": "integer"
+                              },
+                              "member": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "title",
+                                  "relative_path"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "$ref": "#/components/schemas/Uuid"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "relative_path": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "title",
+                              "relative_path",
+                              "revision"
+                            ],
+                            "properties": {
+                              "id": {
+                                "$ref": "#/components/schemas/Uuid"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "relative_path": {
+                                "type": "string"
+                              },
+                              "revision": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "last_scan": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "last_scan_failed": {
+                      "type": "boolean"
+                    },
+                    "failed_root": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "epoch": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/profiles/{profile}/downloads/ahead": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "series",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        {
+          "name": "count",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Downloads"
+        ],
+        "operationId": "downloadAhead",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ids",
+                    "interrupted"
+                  ],
+                  "properties": {
+                    "ids": {
+                      "type": "array",
+                      "maxItems": 2,
+                      "items": {
+                        "$ref": "#/components/schemas/Uuid"
+                      }
+                    },
+                    "interrupted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/profiles/{profile}/duo/recommendations": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "duoRecommendations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "maxItems": 9,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "media",
+                          "watched_by_one",
+                          "minutes",
+                          "reason",
+                          "position_ms"
+                        ],
+                        "properties": {
+                          "media": {
+                            "$ref": "#/components/schemas/Media"
+                          },
+                          "watched_by_one": {
+                            "type": "boolean"
+                          },
+                          "minutes": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "enum": [
+                              "mood",
+                              "shared_genres",
+                              "discovery"
+                            ]
+                          },
+                          "position_ms": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "guest_profile_id"
+                ],
+                "properties": {
+                  "guest_profile_id": {
+                    "$ref": "#/components/schemas/Uuid"
+                  },
+                  "format": {
+                    "enum": [
+                      "film",
+                      "series",
+                      null
+                    ]
+                  },
+                  "minutes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 10,
+                    "maximum": 360
+                  },
+                  "discovery": {
+                    "enum": [
+                      "familiar",
+                      "different",
+                      null
+                    ]
+                  },
+                  "mood": {
+                    "enum": [
+                      "light",
+                      "intimate",
+                      "spectacle",
+                      null
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/{profile}/media/{media}/segments": {
+      "parameters": [
+        {
+          "name": "profile",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        {
+          "name": "media",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "playbackSegments",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "segments",
+                    "duration_ms",
+                    "version"
+                  ],
+                  "properties": {
+                    "segments": {
+                      "type": "array",
+                      "maxItems": 2,
+                      "items": {
+                        "$ref": "#/components/schemas/PlaybackSegment"
+                      }
+                    },
+                    "duration_ms": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "manual": {
+                      "type": "array",
+                      "maxItems": 2,
+                      "items": {
+                        "$ref": "#/components/schemas/PlaybackSegment"
+                      }
+                    },
+                    "revision": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "episode",
+                "season"
+              ]
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Playback"
+        ],
+        "operationId": "savePlaybackSegments",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "saved"
+                  ],
+                  "properties": {
+                    "saved": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version",
+                  "expected_revision",
+                  "segments"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "string"
+                  },
+                  "expected_revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "segments": {
+                    "type": "array",
+                    "maxItems": 2,
+                    "items": {
+                      "$ref": "#/components/schemas/PlaybackSegment"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "episode",
+                "season"
+              ]
+            }
+          }
+        ]
+      }
+    },
     "/profiles/{profile}/home": {
       "parameters": [
         {
@@ -4915,6 +5499,31 @@
   },
   "components": {
     "schemas": {
+      "PlaybackSegment": {
+        "type": "object",
+        "required": [
+          "kind",
+          "start_ms",
+          "end_ms"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "intro",
+              "recap"
+            ]
+          },
+          "start_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400000
+          }
+        }
+      },
       "InstalledComponent": {"type": ["object", "null"], "properties": {"version": {"type": "string"}, "build": {"type": "string"}}, "additionalProperties": true},
       "InstalledComponents": {"type": "object", "required": ["server", "web", "themes", "api"], "properties": {"server": {"$ref": "#/components/schemas/InstalledComponent"}, "web": {"$ref": "#/components/schemas/InstalledComponent"}, "themes": {"$ref": "#/components/schemas/InstalledComponent"}, "api": {"type": "string", "const": "2026-10-14"}}, "additionalProperties": true},
       "UpdateOperation": {"type": "object", "required": ["id", "component", "kind", "status", "created_unix", "updated_unix", "attempts", "result_code", "automatic"], "properties": {"id": {"type": "string", "format": "uuid"}, "component": {"type": "string", "enum": ["mac", "server", "web", "themes"]}, "kind": {"type": "string", "enum": ["check", "install"]}, "status": {"type": "string", "enum": ["pending", "running", "succeeded", "failed", "deferred_busy"]}, "created_unix": {"type": "integer", "format": "int64"}, "updated_unix": {"type": "integer", "format": "int64"}, "attempts": {"type": "integer", "minimum": 0, "maximum": 255}, "result_code": {"type": ["string", "null"]}, "manifest_sha256": {"type": ["string", "null"]}, "automatic": {"type": "boolean"}}, "additionalProperties": true},
@@ -6805,6 +7414,10 @@
           "device_id"
         ],
         "properties": {
+          "guest_profile_id": {
+            "$ref": "#/components/schemas/Uuid",
+            "description": "Réserve aussi le profil invité pour une séance à deux. Disponible uniquement à l’acquisition."
+          },
           "media_id": {
             "$ref": "#/components/schemas/Uuid"
           },

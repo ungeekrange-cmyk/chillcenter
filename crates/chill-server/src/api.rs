@@ -176,6 +176,7 @@ fn api_routes() -> Router<AppState> {
         .merge(crate::export_jobs::routes())
         .merge(crate::catalog_api::routes())
         .merge(downloads::routes())
+        .merge(crate::segments_api::routes())
         .merge(crate::sync_api::routes())
         .merge(crate::identity_api::routes())
         .merge(crate::tmdb_api::routes())
@@ -341,7 +342,7 @@ async fn server(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "BUSY"))?
         .clone();
     Ok(Json(
-        json!({"server_id":certificate.server_id,"api_version":crate::api_version::VERSION,"supported_api_versions":[crate::api_version::VERSION],"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","multi_library_locations","catalog_pages","manual_personal_state","scan","playback_leases","media_range","offline_downloads","progress","tmdb_configuration","tmdb_jobs","ai_filters","openapi"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
+        json!({"server_id":certificate.server_id,"api_version":crate::api_version::VERSION,"supported_api_versions":[crate::api_version::VERSION],"version":env!("CARGO_PKG_VERSION"),"capabilities":["profiles","configurable_library","multi_library_locations","catalog_pages","manual_personal_state","scan","library_audit","playback_leases","media_range","offline_downloads","download_ahead","playback_segments","duo_playback","progress","tmdb_configuration","tmdb_jobs","ai_filters","openapi"],"tls":{"renew_at":certificate.renew_at,"expires_at":certificate.expires_at}}),
     ))
 }
 

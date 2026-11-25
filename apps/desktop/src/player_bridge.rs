@@ -31,6 +31,8 @@ pub enum PlayerCommand {
         rect: NativeRect,
         #[serde(default)]
         context: Option<PlaybackContext>,
+        #[serde(default)]
+        guest_profile_id: Option<String>,
     },
     StartLocal { media_id: String, rect: NativeRect },
     Status,
@@ -90,6 +92,7 @@ fn control(l: &Lease) -> PlaybackControl {
     }
 }
 struct Session {
+    guest_profile_id: Option<String>,
     transport: Transport,
     cache: chill_client::playback_cache::PlaybackCache,
     profile: String,
@@ -149,8 +152,10 @@ impl PlayerHost {
         media: String,
         rect: NativeRect,
         context: Option<PlaybackContext>,
+        guest_profile_id: Option<String>,
     ) -> Result<Value, UiError> {
         uuid_check(&media)?;
+        if let Some(guest) = &guest_profile_id { uuid_check(guest)?; }
         self.stop_session(w, false).await?;
         let info = c.transport.playback_info(&c.profile_id, &media).await?;
         if !info.media.available {
@@ -177,6 +182,7 @@ impl PlayerHost {
             .acquire_playback(
                 &c.profile_id,
                 &AcquirePlayback {
+                    guest_profile_id: guest_profile_id.clone(),
                     media_id: media,
                     device_id: c.device_id.clone(),
                     context: context.clone(),
@@ -191,6 +197,7 @@ impl PlayerHost {
                     .propose_transfer(
                         &c.profile_id,
                         &AcquirePlayback {
+                            guest_profile_id: None,
                             media_id: info.media.id.clone(),
                             device_id: c.device_id.clone(),
                             context: context.clone(),
@@ -212,7 +219,7 @@ impl PlayerHost {
             }
             Err(e) => return Err(e.into()),
         };
-        self.install(w, c, info, rect, context, grant, sent).await
+        self.install(w, c, info, rect, context, grant, sent, guest_profile_id).await
     }
     pub async fn start_local(
         &mut self,
@@ -228,7 +235,7 @@ impl PlayerHost {
             .then(|| offline_state["position_ms"].as_u64().unwrap_or_default() as f64 / 1000.);
         let mut accepted = None;
         if let Some(connection) = connection {
-            let target = AcquirePlayback { device_id: connection.device_id.clone(), media_id: launch.media_id.clone(), context: Default::default() };
+            let target = AcquirePlayback { guest_profile_id: None, device_id: connection.device_id.clone(), media_id: launch.media_id.clone(), context: Default::default() };
             match tokio::time::timeout(
                 Duration::from_secs(3), connection.transport.acquire_playback(&connection.profile_id, &target),
             ).await {
@@ -276,6 +283,7 @@ impl PlayerHost {
         context: PlaybackContext,
         grant: PlaybackGrant,
         sent: Instant,
+        guest_profile_id: Option<String>,
     ) -> Result<Value, UiError> {
         let remaining = conservative(grant.lease.remaining_ms, sent);
         let loaded = native_player::load(
@@ -325,6 +333,7 @@ impl PlayerHost {
                 .subscribe_controls(c.profile_id.clone(), grant.lease.clone()),
         );
         self.session = Some(Session {
+            guest_profile_id,
             transport: c.transport,
             cache: c.cache,
             profile: c.profile_id,
@@ -362,7 +371,7 @@ impl PlayerHost {
         Ok(match &self.session {
             None => json!({"stage":"closed","error":self.last_error}),
             Some(s) => {
-                json!({"stage":"player","media_id":s.info.media.id,"title":s.info.media.title,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some(),"context":s.context,"next":s.next,"autoplay_seconds":s.info.preferences.autoplay_seconds,"external_subtitles":s.external})
+                json!({"stage":"player","guest_profile_id":s.guest_profile_id,"media_id":s.info.media.id,"title":s.info.media.title,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some(),"context":s.context,"next":s.next,"autoplay_seconds":s.info.preferences.autoplay_seconds,"external_subtitles":s.external})
             }
         })
     }
@@ -709,7 +718,8 @@ impl PlayerHost {
             let context = s.context.clone();
             let rect = s.rect;
             let id = media.id.clone();
-            return self.start(w, c, id, rect, Some(context)).await;
+            let guest = s.guest_profile_id.clone();
+            return self.start(w, c, id, rect, Some(context), guest).await;
         }
         if matches!(cmd, PlayerCommand::Stop) {
             self.stop(w).await?;
@@ -747,6 +757,7 @@ impl PlayerHost {
                         .acquire_playback(
                             &s.profile,
                             &AcquirePlayback {
+                                guest_profile_id: s.guest_profile_id.clone(),
                                 media_id: s.info.media.id.clone(),
                                 device_id: s.device.clone(),
                                 context: s.context.clone(),
@@ -768,7 +779,7 @@ impl PlayerHost {
                             let media = s.info.media.id.clone();
                             let rect = s.rect;
                             let context = s.context.clone();
-                            return self.start(w, c, media, rect, Some(context)).await;
+                            return self.start(w, c, media, rect, Some(context), None).await;
                         }
                         Err(e) => return Err(e.into()),
                     };
@@ -851,6 +862,7 @@ impl PlayerHost {
                         .acquire_playback(
                             &s.profile,
                             &AcquirePlayback {
+                                guest_profile_id: s.guest_profile_id.clone(),
                                 media_id: s.info.media.id.clone(),
                                 device_id: s.device.clone(),
                                 context: s.context.clone(),
@@ -1045,6 +1057,7 @@ impl PlayerHost {
                     p.context,
                     PlaybackGrant { lease, personal },
                     sent,
+                    None,
                 )
                 .await
             }
@@ -1410,6 +1423,7 @@ async fn seek(s: &mut Session, w: &WebviewWindow, position: f64) -> Result<(), U
             .acquire_playback(
                 &s.profile,
                 &AcquirePlayback {
+                    guest_profile_id: s.guest_profile_id.clone(),
                     media_id: s.info.media.id.clone(),
                     device_id: s.device.clone(),
                     context: s.context.clone(),

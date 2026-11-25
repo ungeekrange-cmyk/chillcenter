@@ -106,7 +106,7 @@
     async command(c, ctx) {
       this.ctx = ctx;
       switch (c.action) {
-        case "start": return this.start(c.media_id, c.context || { kind: "standalone", id: null });
+        case "start": return this.start(c.media_id, c.context || { kind: "standalone", id: null }, false, c.guest_profile_id);
         case "start_local": return this.start(c.media_id, { kind: "standalone", id: null }, true);
         case "status": return this.status();
         case "confirm_transfer": return this.confirmTransfer();
@@ -131,8 +131,9 @@
     api(path) { return `/profiles/${this.ctx.profile}${path}`; }
     control() { const l = this.lease; return { session_id: l.session_id, generation: l.generation, media_id: l.media_id, media_revision: l.media_revision }; }
 
-    async start(mediaId, context, useLocal = false) {
+    async start(mediaId, context, useLocal = false, guest = null) {
       await this.stop(true);
+      this.guest = guest;
       this.context = context; this.note = ""; this.ended = false; this.nextResolved = null;
       this.mediaId = mediaId;
       if (useLocal) {
@@ -147,6 +148,7 @@
         if (this.ctx.offline) return this.begin({ personal: this.local.progress || this.local.row.personal });
       }
       const target = { media_id: mediaId, device_id: this.deviceId, context };
+      if (guest) target.guest_profile_id = guest;
       try {
         const signal = useLocal ? AbortSignal.timeout(3000) : undefined;
         if (!useLocal) this.info = await this.d.request("GET", this.api("/media/" + mediaId + "/playback-info"));
@@ -367,7 +369,7 @@
     async playNext(expectedId) {
       const next = this.nextResolved;
       if (!next || !next.media || next.media.id !== expectedId || !next.available) return this.closed("Vidéo suivante indisponible.");
-      return this.start(expectedId, this.context);
+      return this.start(expectedId, this.context, false, this.guest);
     }
 
     async release() {
@@ -397,7 +399,7 @@
       if (this.transfer) return { stage: "transfer", title: this.info?.media?.title || "", confirmed: this.transfer.confirmed, remaining_ms: this.transfer.remaining_ms, note: "Ce profil lit déjà une vidéo sur un autre appareil. Confirmez pour y interrompre la lecture et la reprendre ici." };
       if (!this.engine && this.opening) {
         return {
-          stage: "player", media_id: this.mediaId, title: this.info.media.title, note: this.note,
+          stage: "player", local: Boolean(this.local), guest_profile_id: this.guest, media_id: this.mediaId, title: this.info.media.title, note: this.note,
           position: 0, duration: 0, active: Boolean(this.lease || this.local), context: this.context, next: null,
           autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null, external_subtitles: [],
           native: { loaded: false, paused: true, buffering: false, ended: false, error: null, notice: null, speed: this.info.speed || 1, volume: 100, tracks: [], fullscreen: Boolean(this.fullscreen), hardware_decoder: "no", decoder: null },
@@ -406,7 +408,7 @@
       if (!this.engine) return this.closed();
       const s = this.engine.snapshot();
       return {
-        stage: "player", media_id: this.mediaId, title: this.info.media.title, note: [this.note, this.wake.notice()].filter(Boolean).join(" "),
+        stage: "player", local: Boolean(this.local), guest_profile_id: this.guest, media_id: this.mediaId, title: this.info.media.title, note: [this.note, this.wake.notice()].filter(Boolean).join(" "),
         position: s.position || 0, duration: s.duration || 0, active: Boolean(this.lease || this.local), context: this.context,
         next: this.nextResolved, autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null,
         external_subtitles: this.engine.externalSubtitles?.() || [],

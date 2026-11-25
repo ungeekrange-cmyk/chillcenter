@@ -71,6 +71,8 @@ pub struct DownloadSession {
     pub personal: serde_json::Value,
     #[serde(default)]
     pub progress_revision: Option<String>,
+    #[serde(default)]
+    pub segments: Vec<chill_domain::segments::Segment>,
 }
 
 #[derive(Debug, Error)]

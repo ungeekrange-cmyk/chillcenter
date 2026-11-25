@@ -54,9 +54,122 @@
     container.append(wrap);
     return input;
   });
+  const aheadReport = node("p", "", "muted");
+  aheadReport.setAttribute("role", "status");
+  const limits = [configuration, header].map(container => {
+    const wrap = node("label", label("Plafond automatique (Go)"));
+    const input = node("input");
+    input.type = "number";
+    input.min = "1";
+    input.max = "1000";
+    input.step = "1";
+    input.onchange = () => {
+      const value = Number(input.value);
+      if (!scope() || !Number.isInteger(value) || value < 1 || value > 1000) {
+        input.value = String(aheadLimit() / 1e9);
+        return;
+      }
+      localStorage.setItem(aheadPrefix() + "limit", String(value));
+      reflectLimit();
+      void refillAhead();
+    };
+    wrap.append(input);
+    container.append(wrap);
+    return wrap;
+  });
+  const aheadPrefix = () => "chillcenter-ahead:" + scope() + ":";
+  const aheadLimit = () => (Number(localStorage.getItem(aheadPrefix() + "limit")) || 10) * 1e9;
+  const aheadCapable = () => Boolean(scope() && state.capabilities?.includes("download_ahead") && (!web || window.isSecureContext));
+  function reflectLimit() {
+    for (const wrap of limits) {
+      wrap.hidden = !aheadCapable();
+      wrap.querySelector("input").value = String(aheadLimit() / 1e9);
+    }
+  }
+  function subscriptions() {
+    const prefix = aheadPrefix() + "series:";
+    const rows = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(prefix)) continue;
+      try {
+        const { count, title } = JSON.parse(localStorage.getItem(key));
+        if (count === 1 || count === 2) rows.push({ key, title, count, series: key.slice(prefix.length) });
+      } catch {}
+    }
+    return rows;
+  }
+  let refilling = false;
+  async function refillAhead() {
+    if (refilling || busy || !aheadCapable() || state.downloads_only) return;
+    const series = subscriptions();
+    if (!series.length) { aheadReport.textContent = ""; return; }
+    const key = scope(), current = () => key === scope() && aheadCapable() && !state.downloads_only;
+    refilling = true;
+    const notices = [];
+    try {
+      await command("sync");
+      if (!current()) return;
+      const local = await command("list");
+      if (!current() || !local?.supported || local.busy) return;
+      const copies = new Set(local.items.map(copy => copy.media.id));
+      const used = local.items.filter(copy => copy.automatic).reduce((total, copy) => total + copy.local_bytes, 0);
+      for (const rule of series) {
+        if (!current() || !localStorage.getItem(rule.key)) return;
+        const result = await invoke({ action: "download_ahead", series: rule.series, count: rule.count }).catch(() => null);
+        if (!current()) return;
+        if (!result) { notices.push(rule.title + " · " + label("Suite temporairement indisponible.")); continue; }
+        if (result.interrupted) notices.push(rule.title + " · " + label("La suite comporte un épisode manquant ou un ordre incertain."));
+        const id = result.ids.find(id => !copies.has(id));
+        if (!id) continue;
+        const plan = await command("plan", { media_id: id, scope: "video" });
+        if (!current() || !localStorage.getItem(rule.key)) return;
+        const next = plan.items?.[0];
+        if (!next) { notices.push(rule.title + " · " + label("Suite temporairement indisponible.")); continue; }
+        const partial = local.jobs?.find(job => job.media.id === id && job.bytes === next.bytes && job.version === next.version);
+        const remaining = Math.max(0, next.bytes - (partial?.transferred || 0));
+        if (next.bytes > aheadLimit() - used || remaining > (local.free ?? Infinity)) {
+          notices.push(rule.title + " · " + label("Plafond ou espace libre insuffisant."));
+          continue;
+        }
+        await command("start", { media_id: id, scope: "video", automatic_limit: aheadLimit() });
+        break;
+      }
+    } catch (error) {
+      if (current()) notices.push(error?.message || label("Suite temporairement indisponible."));
+    } finally {
+      refilling = false;
+      if (current()) aheadReport.textContent = notices.join(" · ");
+    }
+  }
+  window.downloadAheadControl = (series, title) => {
+    if (!aheadCapable() || state.downloads_only || typeof series !== "string" || !series) return null;
+    const key = aheadPrefix() + "series:" + series;
+    const select = node("select");
+    let stored = 0;
+    try { stored = JSON.parse(localStorage.getItem(key))?.count || 0; } catch {}
+    for (const [count, text] of [[0, "Désactivé"], [1, "1 épisode d’avance"], [2, "2 épisodes d’avance"]]) {
+      const option = node("option", label(text));
+      option.value = String(count);
+      select.append(option);
+    }
+    select.value = String(stored);
+    select.onchange = () => {
+      if (select.value === "0") localStorage.removeItem(key);
+      else localStorage.setItem(key, JSON.stringify({ count: Number(select.value), title }));
+      void refillAhead();
+    };
+    const wrap = node("label", label("Télécharger la suite"), "download-preference");
+    wrap.append(select);
+    return wrap;
+  };
   header.prepend(title);
   if (!web) header.append(control("Ouvrir dans le Finder", () => guarded(() => command("open_folder"))));
-  panel.append(header, storage, jobs, list);
+  panel.append(header, storage, aheadReport, jobs, list);
+  const configurationNotice = node("p", "", "muted");
+  configuration.append(configurationNotice);
+  new MutationObserver(() => { configurationNotice.textContent = aheadReport.textContent; })
+    .observe(aheadReport, { childList: true });
 
   async function guarded(work, recover) {
     try { return await work(); }
@@ -268,6 +381,8 @@
       if (currentScope) void refresh();
     }
     configuration.querySelector("label").hidden = !currentScope;
+    reflectLimit();
+    void refillAhead();
     visibility();
   };
   window.addEventListener("chill:downloads", () => void refresh());
@@ -276,11 +391,21 @@
     reportDownload(detail?.errors?.join(" · ") || label("Téléchargements à jour."));
     activeFeedback = null;
     void refresh();
+    if (!detail?.errors?.length) void refillAhead();
   });
   if (!web) void window.__TAURI__?.event?.listen?.("chill:downloads", () => void refresh());
   if (!web) void window.__TAURI__?.event?.listen?.("chill:download-result", ({ payload }) =>
     window.dispatchEvent(new CustomEvent("chill:download-result", { detail: payload })));
-  window.addEventListener("focus", () => void refresh());
+  window.addEventListener("focus", () => { void refresh(); void refillAhead(); });
+  window.addEventListener("online", () => void refillAhead());
+  window.addEventListener("chill:progress-changed", () => void refillAhead());
+  setInterval(() => {
+    if (state.downloads_only && scope() && subscriptions().length && !document.body.classList.contains("player-open")) {
+      void run({ action: "boot" });
+    } else {
+      void refillAhead();
+    }
+  }, 20000);
   setInterval(() => {
     if (scope() && (shellSection === "downloads" || !cancel.hidden)) void refresh();
   }, 3000);

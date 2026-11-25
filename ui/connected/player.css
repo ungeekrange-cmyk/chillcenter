@@ -59,3 +59,11 @@ body.player-fullscreen #player-next,body.player-fullscreen #player-transfer{widt
 .checkbox-setting input[type=checkbox]{width:auto;margin:0;accent-color:var(--accent)}
 @media(max-width:1000px){:root{--sidebar-width:205px}#player-overlay{padding:48px 18px 16px}.player-heading{padding:16px 18px 30px}.player-controls{gap:7px}.player-controls label{max-width:150px}.player-controls label select{max-width:128px}}
 @media(prefers-reduced-motion:reduce){#player-overlay,.player-heading{transition:none}}
+
+#player-skip-segment { position: absolute; inset-inline-end: max(18px, env(safe-area-inset-right)); bottom: max(30%, 100px); z-index: 4; }
+.segment-editor { margin-block: .65rem; }
+.segment-editor form:not([hidden]) { display: grid; gap: .5rem; }
+.segment-editor fieldset { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
+.segment-preview { position: relative; height: .5rem; background: var(--panel); border: 1px solid var(--line); border-radius: 1rem; overflow: hidden; }
+.segment-preview span { position: absolute; height: 100%; background: var(--accent); }
+.segment-preview span[data-kind="recap"] { opacity: .55; }

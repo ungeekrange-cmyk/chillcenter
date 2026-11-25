@@ -723,12 +723,33 @@ impl Tmdb {
             ),
             None => None,
         };
+        let episode_air_dates = details["episodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(1000)
+            .filter_map(|episode| {
+                let number = i32::try_from(episode["episode_number"].as_i64()?).ok()?;
+                let date = episode["air_date"].as_str()?;
+                let digits = date.as_bytes();
+                let valid_date = digits.len() == 10
+                    && digits.iter().enumerate().all(|(index, byte)| {
+                        if index == 4 || index == 7 {
+                            *byte == b'-'
+                        } else {
+                            byte.is_ascii_digit()
+                        }
+                    });
+                ((1..=1000).contains(&number) && valid_date).then(|| (number, date.to_owned()))
+            })
+            .collect();
         Ok(SeasonProvider {
             tv_id,
             season,
             name: name.into(),
             overview: text(&details, "overview").into(),
             poster,
+            episode_air_dates,
         })
     }
 }

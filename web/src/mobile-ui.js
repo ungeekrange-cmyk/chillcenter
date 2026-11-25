@@ -64,13 +64,14 @@
       + item('data-mobile-category=""', "Toute la collection", "library")
       + item("data-mobile-sagas", "Sagas", "sagas")
       + item("data-mobile-playlists", "Listes de lecture", "playlists")
+      + item("data-mobile-duo hidden", "Ce soir à deux", "advice")
       + item("data-mobile-config", "Configuration", "settings")
       + "</div>";
     doc.body.append(sheet);
     for (const button of doc.querySelectorAll("[data-mobile-category]")) {
       button.addEventListener("click", () => forward(`[data-category="${button.dataset.mobileCategory}"]`));
     }
-    for (const [name, target] of [["home","#show-home"],["downloads","#show-downloads"],["sagas","#show-sagas"],["playlists","#show-playlists"],["config","#admin-toggle"]]) {
+    for (const [name, target] of [["home","#show-home"],["downloads","#show-downloads"],["sagas","#show-sagas"],["playlists","#show-playlists"],["config","#admin-toggle"],["duo","#show-duo"]]) {
       doc.querySelector(`[data-mobile-${name}]`).addEventListener("click", () => forward(target));
     }
     sheet.querySelector("[data-mobile-close]").addEventListener("click", closeSheet);
@@ -90,6 +91,8 @@
     const category = shown("catalog-panel") ? byId("category")?.value : null;
     const active = doc.querySelector('[data-category="film"]')?.disabled === false;
     const hasDownloads = shown("show-downloads");
+    const duo = doc.querySelector("[data-mobile-duo]");
+    if (duo) duo.hidden = !shown("show-duo");
     nav.hidden = !isPhone() || (!active && !hasDownloads) || doc.body.classList.contains("player-open");
     const searchToggle = byId("mobile-search-toggle");
     if (searchToggle) searchToggle.hidden = !active;

@@ -528,3 +528,23 @@ episodes and one atomic transaction. Stale revision:409 without partial writes.
 The historical `{watched}` body stays compatible. The UI uses only `season` for
 series checkboxes; saved positions and ratings survive.
 [ADR0042](../architecture/decisions/ADR-0042-home-progress-controls.md).
+
+## Shared viewing, library review, next downloads and markers
+
+The server advertises `duo_playback`, `library_audit`, `download_ahead`
+and `playback_segments` independently. Hide the corresponding actions when
+connected to an older server. The API changes are additive.
+
+- `POST /profiles/{profile}/duo/recommendations` ranks up to nine titles.
+  Playback acquisition can include `guest_profile_id`. The server reserves
+  both profiles together and writes progress in one transaction.
+  A `DUO_PROFILE_BUSY` conflict lets the user choose another profile.
+- `GET /admin/profiles/{profile}/library-audit` reads paginated library
+  findings. Changes use the confirmations and revisions of existing
+  library operations.
+- `GET /profiles/{profile}/downloads/ahead` returns a bounded selection of
+  upcoming episodes. Copies then use the existing download sessions.
+- `GET /profiles/{profile}/media/{media}/segments` returns the applicable
+  markers. A `PUT` on this resource requires an explicit scope, the file
+  version and the expected marker revision. New offline copies include
+  the resolved markers.

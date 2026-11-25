@@ -127,7 +127,7 @@ impl LocalPlayer {
             json!({"id":track.id,"title":track.title,"language":track.language,"unavailable":false,"ambiguous":false})
         ).collect();
         json!({
-            "stage":"player","media_id":self.launch.media_id,"title":self.launch.copy.media["title"],
+            "stage":"player","local":true,"media_id":self.launch.media_id,"title":self.launch.copy.media["title"],
             "native":self.snapshot,"note":self.note,"active":!self.paused_by_server,
             "position":self.snapshot.position,"duration":self.snapshot.duration,
             "context":{"kind":"standalone","id":null},"next":null,"autoplay_seconds":null,

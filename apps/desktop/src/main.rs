@@ -543,6 +543,7 @@ async fn player_command(
         media_id,
         rect,
         context,
+        guest_profile_id,
     } = command
     {
         let client = bridge.client.clone();
@@ -558,7 +559,7 @@ async fn player_command(
             .player
             .lock()
             .await
-            .start(&window, connection, media_id, rect, context)
+            .start(&window, connection, media_id, rect, context, guest_profile_id)
             .await
     } else {
         let stops = matches!(&command, PlayerCommand::Stop);

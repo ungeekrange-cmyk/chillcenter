@@ -93,6 +93,7 @@ pub(crate) fn busy() -> bool {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/profiles/{profile}/downloads/plan", get(plan))
+        .route("/profiles/{profile}/downloads/ahead", get(ahead))
         .route(
             "/profiles/{profile}/downloads/{media}/session",
             post(session).delete(cancel),
@@ -225,7 +226,7 @@ async fn source(
     ))?;
     Ok((item, root, path, settings.revision))
 }
-fn sidecars(root: &PathBuf, video: &PathBuf) -> io::Result<Vec<Sidecar>> {
+fn sidecars(root: &std::path::Path, video: &std::path::Path) -> io::Result<Vec<Sidecar>> {
     let stem = video
         .file_stem()
         .and_then(|v| v.to_str())
@@ -269,6 +270,31 @@ fn sidecars(root: &PathBuf, video: &PathBuf) -> io::Result<Vec<Sidecar>> {
     found.sort_by(|a, b| a.title.cmp(&b.title));
     Ok(found)
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AheadQuery {
+    series: String,
+    count: usize,
+}
+async fn ahead(
+    Extension(scheme): Extension<Scheme>,
+    State(state): State<AppState>,
+    Path(profile): Path<String>,
+    Query(query): Query<AheadQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    https(scheme)?;
+    if query.series.is_empty() || query.series.len() > 500 || !(1..=2).contains(&query.count) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "DOWNLOAD_PLAN_INVALID"));
+    }
+    let (ids, interrupted) = state
+        .database
+        .call(move |store| store.download_ahead(&profile, &query.series, query.count))
+        .await?;
+    Ok(Json(
+        serde_json::json!({"ids":ids,"interrupted":interrupted}),
+    ))
+}
+
 async fn plan(
     Extension(scheme): Extension<Scheme>,
     State(state): State<AppState>,
@@ -354,8 +380,8 @@ async fn session(
             ))
         })
         .await?;
-    let (_, root, path, revision) = source(&state, profile.clone(), media.clone()).await?;
-    let (_, version) = open_version(root.clone(), path.clone()).await?;
+    let (item, root, path, revision) = source(&state, profile.clone(), media.clone()).await?;
+    let (file, version) = open_version(root.clone(), path.clone()).await?;
     if body.version != version.etag(revision) {
         return Err(ApiError(
             StatusCode::PRECONDITION_FAILED,
@@ -363,6 +389,19 @@ async fn session(
         ));
     }
     let sidecars = inspect_sidecars(root.clone(), path.clone()).await?;
+    let segments = match crate::segments_api::probe(&state, file, version.clone()).await {
+        Ok((chapters, duration)) => crate::segments_api::resolved(
+            &state,
+            profile.clone(),
+            item,
+            version.etag(0),
+            chapters,
+            duration,
+        )
+        .await
+        .unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
     let token = uuid::Uuid::new_v4().to_string();
     {
         let mut all = sessions()
@@ -395,7 +434,7 @@ async fn session(
             },
         );
     }
-    Ok(Json(session_reply(
+    let mut reply = session_reply(
         &token,
         &version,
         revision,
@@ -403,7 +442,9 @@ async fn session(
         preferences,
         personal,
         progress_revision,
-    )))
+    );
+    reply["segments"] = serde_json::json!(segments);
+    Ok(Json(reply))
 }
 fn session_reply(
     token: &str,

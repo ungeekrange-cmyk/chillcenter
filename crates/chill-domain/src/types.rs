@@ -79,6 +79,8 @@ pub struct Lease {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AcquirePlayback {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guest_profile_id: Option<String>,
     pub media_id: String,
     pub device_id: String,
     #[serde(default)]

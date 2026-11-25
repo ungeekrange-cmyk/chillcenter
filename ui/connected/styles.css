@@ -37,3 +37,14 @@ dialog[open] { overflow-y: auto; overscroll-behavior: contain; }
 .matching-row{display:grid;grid-template-columns:minmax(160px,1fr) minmax(220px,2fr);gap:24px;padding:20px 0;border-bottom:1px solid var(--line)}
 @media(hover:none){.poster-actions{opacity:1}}
 @media(prefers-reduced-motion:reduce){.poster-actions{transition:none}.sync-indicator.syncing .sync-glyph{animation:none}}
+
+.audit-issues { padding-inline-start: 1.25rem; overflow-wrap: anywhere; }
+.audit-issues > li { padding-block: .55rem; }
+.audit-media { display: flex; align-items: baseline; flex-wrap: wrap; gap: .4rem .65rem; margin-block: .3rem; }
+
+.duo-dialog { width: min(900px, 95vw); }
+.duo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 1rem; margin-block: 1rem; }
+.duo-grid > article, .duo-grid > section { display: grid; align-content: start; gap: .45rem; }
+.duo-poster { width: min(100%, 120px); aspect-ratio: 2 / 3; }
+.duo-grid h3, .duo-grid p { margin: 0; }
+.player-duo { color: white; }

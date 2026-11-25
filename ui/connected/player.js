@@ -63,10 +63,10 @@ async function playerCall(command,quiet=false){
     }
     playerLastError=null;playerState=next;renderPlayer();return next;
   }
-  catch(e){playerLastError=e;if(!quiet&&e.code!=="CLIENT_BUSY")message(e.code==="MEDIA_FILE_MISSING"?uiText("Le fichier n’est plus présent dans la bibliothèque. Cette vidéo est maintenant marquée indisponible."):e.message||String(e));return null;}
+  catch(e){playerLastError=e;if(!quiet&&e.code!=="CLIENT_BUSY")message(e.code==="DUO_PROFILE_BUSY"?uiText("Un des deux profils utilise déjà un lecteur."):e.code==="MEDIA_FILE_MISSING"?uiText("Le fichier n’est plus présent dans la bibliothèque. Cette vidéo est maintenant marquée indisponible."):e.message||String(e));return null;}
   finally{playerBusy=false;}
 }
-window.chillPlay=async (media_id,context=null,local=false)=>{
+window.chillPlay=async (media_id,context=null,local=false,guest_profile_id=null)=>{
   const epoch=++playerNavigationEpoch,scope=playbackScope();completedPlayback=null;
   // `player-open` temporarily removes the catalogue from layout.  Preserve
   // its position for a failed asynchronous acquisition, but never restore it
@@ -80,13 +80,14 @@ window.chillPlay=async (media_id,context=null,local=false)=>{
   $("player-transfer").hidden=true;$("native-video").hidden=false;document.querySelector(".player-controls").hidden=false;document.querySelector(".player-seek").hidden=false;
   $("player-panel").hidden=false;document.body.classList.add("player-open");$("player-note").textContent=uiText("Chargement de la vidéo…");
   showPlayerControls();
-  const started=await playerCall(local?{action:"start_local",media_id,rect:videoRect()}:{action:"start",media_id,rect:videoRect(),context});
-  if(!started){const code=playerLastError?.code;await playerCall({action:"stop"},true);hidePlayer();
+  const started=await playerCall(local?{action:"start_local",media_id,rect:videoRect()}:{action:"start",media_id,rect:videoRect(),context,...(guest_profile_id?{guest_profile_id}:{})});
+  if(!started){const failure=playerLastError,code=failure?.code;await playerCall({action:"stop"},true);playerLastError=failure;hidePlayer();
     const snapshot=playerStartScroll;playerStartScroll=null;
     if(snapshot&&snapshot.epoch===playerNavigationEpoch&&snapshot.scope===playbackScope())requestAnimationFrame(()=>window.scrollTo?.(snapshot.x,snapshot.y));
-    if(code==="MEDIA_FILE_MISSING"&&epoch===playerNavigationEpoch&&scope===playbackScope())window.catalogMediaUnavailable?.(media_id);return;}
+    if(code==="MEDIA_FILE_MISSING"&&epoch===playerNavigationEpoch&&scope===playbackScope())window.catalogMediaUnavailable?.(media_id);return false;}
   playerStartScroll=null;
   clearInterval(playerTimer);playerTimer=setInterval(()=>playerCall({action:"status"},true),500);
+  return true;
 };
 function stopNextTimer(){clearTimeout(nextTimer);nextTimer=null;nextDeadline=null;}
 function clearNext(){stopNextTimer();nextKey=null;nextCancelled=false;nextLaunching=null;$("player-next").hidden=true;}
@@ -191,6 +192,8 @@ function tracksSelect(id,tracks,selected,off){
   select.value=selected===undefined?(off?"off":select.firstChild?.value||""):String(selected);
 }
 function renderPlayer(){
+  window.renderPlayerSegments?.(playerState,playerNavigationEpoch);
+  window.renderDuoPlayback?.(playerState);
   if(playerState.stage==="transfer"){
     $("player-panel").hidden=false;document.body.classList.add("player-open");clearNext();clearPlayerBackdrop();
     $("player-title").textContent=playerState.title;$("player-note").textContent=playerState.note;

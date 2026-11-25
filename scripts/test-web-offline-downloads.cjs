@@ -16,7 +16,8 @@ const id = n => "00000000-0000-4000-8000-" + String(n).padStart(12, "0");
 const serverId = id(1), profile = id(2), mediaId = id(3), episode = id(4);
 const base = "/api/2026-10-14";
 const downloads = base + "/profiles/" + profile + "/downloads";
-const subtitleId = id(8);
+const subtitleId = id(8), guest = id(7);
+let duoQuery;
 const caption = Buffer.from("1\n00:00:00,000 --> 00:00:05,000\nOffline caption\n");
 const version = '"fixture-1"';
 const poster = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=", "base64");
@@ -52,15 +53,26 @@ const server = http.createServer(async (req, res) => {
     try { const data = await fs.readFile(file); res.setHeader("Content-Type", mime[path.extname(file)] || "application/octet-stream"); return res.end(data); }
     catch { return json(res, {}, 404); }
   }
-  if (p === base + "/server") return json(res, { server_id: serverId, capabilities: ["catalog_pages", "playback_leases", "media_range", "offline_downloads"] });
-  if (p === base + "/profiles") return json(res, [{ id: profile, name: "Offline fixture", revision: 1 }]);
+  if (p === base + "/server") return json(res, { server_id: serverId, capabilities: ["catalog_pages", "playback_leases", "media_range", "offline_downloads", "playback_segments", "download_ahead", "duo_playback", "library_audit"] });
+  if (p === base + "/profiles") return json(res, [{ id: profile, name: "Offline fixture", revision: 1 }, { id: guest, name: "Guest fixture", revision: 1 }]);
+  if (p.endsWith("/library-audit")) return json(res, { last_scan: 12345, last_scan_failed: false, failed_root: null,
+    items: url.searchParams.get("kind") === "single_title_sagas" ? [{
+      kind: "saga", id: "42", revision: 1, name: "Saga fixture", member: { id: mediaId, title: "Local movie" },
+    }] : [], has_more: false });
+  if (p.endsWith("/duo/recommendations")) {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    duoQuery = JSON.parse(Buffer.concat(chunks));
+    return json(res, { items: [{ media: items[0].media, minutes: 25, watched_by_one: false, reason: "discovery", position_ms: 0 }] });
+  }
   if (p === base + "/admin/library") return json(res, { video_root: null });
   if (p.endsWith("/media/" + mediaId + "/artwork")) {
     res.writeHead(200, { "Content-Type": "image/png", "Content-Length": poster.length });
     return res.end(poster);
   }
   if (p.endsWith("/preferences")) return json(res, { audio_language: "en", subtitle_language: "en" });
-  if (p.endsWith("/playback/acquire")) { attempts.leases++; return json(res, {}, 500); }
+  if (p.endsWith("/playback-info")) return json(res, { media: items[0].media, preferences: {}, speed: 1 });
+  if (p.endsWith("/playback/acquire")) { attempts.leases++; return json(res, { code: "DUO_PROFILE_BUSY" }, 409); }
   if (p === downloads + "/plan") return json(res, { items: items.filter(item => item.media.id === url.searchParams.get("media_id")), skipped: 0, next_offset: null });
   if (p.startsWith(downloads + "/")) {
     const [idValue, rest, subtitle] = p.slice(downloads.length + 1).split("/");
@@ -69,6 +81,7 @@ const server = http.createServer(async (req, res) => {
     if (rest === "session" && req.method === "POST") {
       return json(res, { version, bytes: item.bytes, token: id(9), preferences: { audio_language: "en", subtitle_language: "en" },
         personal: { watched: false, position_ms: 0 }, progress_revision: "0",
+        segments: idValue === mediaId ? [{ kind: "intro", start_ms: 200, end_ms: 1900 }] : [],
         subtitles: [{ id: subtitleId, title: "English.srt", language: "en", bytes: caption.length }] });
     }
     if (rest === "progress" && req.method === "PUT") { attempts.progress++; return json(res, { revision: "1" }); }
@@ -105,8 +118,15 @@ const server = http.createServer(async (req, res) => {
     await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 15000 });
     await page.waitForFunction(() => document.querySelector("#profile-name")?.textContent === "Offline fixture");
     const run = (action, fields) => page.evaluate(({ action, fields }) => window.__TAURI__.core.invoke("downloads_command", { command: { action, ...fields } }), { action, fields });
+    await page.evaluate(() => window.addEventListener("chill:download-result", ({ detail }) => {
+      if (detail?.errors?.length) document.body.dataset.downloadTestError = detail.errors.join(" ");
+    }, { once: true }));
+    await run("start", { media_id: episode, scope: "video", automatic_limit: 1 });
+    await page.waitForFunction(() => Boolean(document.body.dataset.downloadTestError));
+    assert.equal(attempts.bytes, 0, "storage cap rejects before downloading any video");
     for (const item of items) {
-      await run("start", { media_id: item.media.id, scope: "video" });
+      await run("start", { media_id: item.media.id, scope: "video",
+        ...(item.media.id === episode ? { automatic_limit: clip.length + caption.length + 1024 } : {}) });
       const until = Date.now() + 15000;
       for (;;) {
         const current = await run("list");
@@ -119,6 +139,7 @@ const server = http.createServer(async (req, res) => {
     const before = await run("list");
     assert.equal(before.items.length, 2);
     assert.equal(before.enabled, true);
+    assert.equal(before.items.find(item => item.media.id === episode).automatic, true);
     assert.equal(before.total, 2 * (clip.length + caption.length) + poster.length);
     await run("keep", { media_id: episode, enabled: true });
 
@@ -135,6 +156,11 @@ const server = http.createServer(async (req, res) => {
       const video = document.querySelector("#native-video video");
       return video?.currentTime > 0.5 && Array.from(video.textTracks).some(track => track.activeCues?.length);
     }, null, { timeout: 12000 });
+    const skip = offline.locator("#player-skip-segment");
+    await skip.waitFor({ state: "visible" });
+    assert.equal(await skip.textContent(), "Passer l’intro");
+    await skip.click();
+    await offline.waitForFunction(() => document.querySelector("#native-video video")?.currentTime >= 1.8);
     assert.equal(attempts.leases, 0);
     const deadline = Date.now() + 14000;
     let after;
@@ -153,7 +179,7 @@ const server = http.createServer(async (req, res) => {
     }
     await offline.locator("#show-downloads").click();
     await offline.locator("#downloads-panel input[type=checkbox]").uncheck();
-    await offline.waitForFunction(() => !document.querySelector("#download-settings input").checked);
+    await offline.waitForFunction(() => !document.querySelector("#download-settings input[type=checkbox]").checked);
     await offline.evaluate(async ({ serverId, profile, episode }) => {
       const root = await navigator.storage.getDirectory();
       const directory = await root.getDirectoryHandle("chillcenter-downloads");
@@ -164,7 +190,19 @@ const server = http.createServer(async (req, res) => {
     await offline.locator("#show-downloads").waitFor({ state: "hidden" });
     await offline.locator("#admin-toggle").click();
     await offline.locator("#download-settings").waitFor();
-    assert.equal(await offline.locator("#download-settings input").isChecked(), false);
-    console.log("PASS Chromium download, cold reopen offline, E-AC-3, sidecar and poster, auto-delete, progress sync, external removal, synchronized switches");
+    assert.equal(await offline.locator("#download-settings input[type=checkbox]").isChecked(), false);
+    await offline.locator("#library-audit select").selectOption("single_title_sagas");
+    await offline.locator("#library-audit").getByText("Saga fixture").waitFor();
+    await offline.locator("#show-duo").click();
+    await offline.getByRole("button", { name: "Surprends-moi", exact: true }).click();
+    await offline.getByRole("button", { name: "Film", exact: true }).click();
+    await offline.getByRole("button", { name: "Dans nos goûts", exact: true }).click();
+    await offline.getByRole("button", { name: "45 minutes", exact: true }).click();
+    await offline.getByRole("button", { name: "Regarder à deux", exact: true }).click();
+    assert.deepEqual(duoQuery, { format: "film", discovery: "familiar", minutes: 45, guest_profile_id: guest });
+    await offline.getByText("À deux · Offline fixture et Guest fixture").waitFor();
+    await offline.getByRole("button", { name: "Lancer la lecture", exact: true }).click();
+    await offline.locator("dialog[open]").getByText("Un des deux profils utilise déjà un lecteur.").waitFor();
+    console.log("PASS Chromium offline playback and intro skip, storage cap, automatic copy, progress sync, audit and duo conflict");
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

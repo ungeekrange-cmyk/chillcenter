@@ -56,6 +56,7 @@
  };
  function redraw(){
   root.refreshSeriesPlayback?.();
+  root.dispatchEvent?.(new Event("chill:progress-changed"));
   if(typeof shellSection!=="undefined"&&shellSection==="home")void root.refreshHome?.(true);
   for(const poster of document.querySelectorAll(".poster[data-progress-media-id]"))root.renderMediaProgress(poster,{id:poster.dataset.progressMediaId,watched:poster.dataset.progressWatched==="true"});
   const label=$("detail-progress");if(label)root.renderDetailProgress({id:label.dataset.progressMediaId,watched:label.dataset.progressWatched==="true"});

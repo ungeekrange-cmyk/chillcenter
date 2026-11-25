@@ -72,6 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .acquire_playback(
                 &ids[0],
                 &AcquirePlayback {
+                    guest_profile_id: None,
                     media_id: media.clone(),
                     device_id: "00000000-0000-4000-8000-000000000001".into(),
                     context: Default::default(),
@@ -195,6 +196,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .acquire_playback(
                 &profile,
                 &AcquirePlayback {
+                    guest_profile_id: None,
                     media_id: media.clone(),
                     device_id: "00000000-0000-4000-8000-000000000002".into(),
                     context: Default::default(),

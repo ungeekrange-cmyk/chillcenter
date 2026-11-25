@@ -119,6 +119,7 @@ async function openMedia(id){
   $("detail-download")?.remove();
   $("detail-download-notice").replaceChildren();
   $("detail-edit-error").hidden=true;
+  $("detail-segment-editor")?.remove();
   if(!same){
     $("detail-title").textContent=uiText("Chargement…");
     for(const key of ["detail-overview","detail-metadata","detail-availability","detail-path"])$(key).textContent="";
@@ -150,6 +151,8 @@ async function openMedia(id){
   $("detail-play").onclick=()=>{const context=detailPlaybackContext(m.id);$("media-dialog").close();window.chillPlay(m.id,context);};
   $("detail-artwork").disabled=false;$("detail-artwork").onclick=()=>importArtwork({kind:"media",media_id:m.id,expected_revision:result.revision},reload);
   renderTmdbPanel($("detail-tmdb"),m,"media",current,reload);
+  const segmentEditor=window.segmentEditor?.(m,"episode",current);
+  if(segmentEditor){segmentEditor.id="detail-segment-editor";$("detail-editor").append(segmentEditor);}
   $("detail-edit").disabled=false;
   renderRatingStars($("detail-stars"),m.rating,async rating=>{if(!current())return;if(await libraryRead({action:"group_rating",media_id:id,rating,scope:"video"},current))await reload();});
   populateDetailFields(m);
@@ -319,6 +322,8 @@ async function openSeries(name,preferredSeason=undefined){
     seriesDownload.id="series-download";$("series-actions").append(seriesDownload);
     if(seriesNotice)$("series-download-notice").append(seriesNotice);
   }
+  const ahead=window.downloadAheadControl?.(name,collectionView.name);
+  if(ahead)$("series-actions").append(ahead);
   const edit=button(uiText("Modifier"),()=>setSeriesEditor($("series-tools").hidden,true));
   edit.id="series-edit";edit.setAttribute("aria-controls","series-tools");edit.setAttribute("aria-expanded","false");
   $("series-actions").append(edit);$("series-actions").hidden=false;
@@ -343,7 +348,10 @@ async function openSeries(name,preferredSeason=undefined){
     editSeason.append(node("summary",season===null?uiText("Saison inconnue"):uiText("Saison ")+season));
     const provider=node("section");
     renderTmdbPanel(provider,m,"season",()=>collectionCurrent(epoch,context),async()=>{if(collectionCurrent(epoch,context)){const detail=await libraryRead({action:"media_detail",media_id:m.id},()=>collectionCurrent(epoch,context));if(detail)await openSeries(detail.media.tmdb_id?"tmdb:tv:"+detail.media.tmdb_id:name);await loadPage();}});
-    editSeason.append(provider);appendGroupRating(editSeason,episodes,"season");$("series-tools").append(editSeason);
+    editSeason.append(provider);
+    const segments=window.segmentEditor?.(episodes.find(episode=>episode.available),"season",()=>collectionCurrent(epoch,context));
+    if(segments)editSeason.append(segments);
+    appendGroupRating(editSeason,episodes,"season");$("series-tools").append(editSeason);
     // Native details contents need a real grid wrapper, not flex on the details element itself.
     episodeGrid=node("div",undefined,"collection-grid series-episodes");section.append(episodeGrid);
     $("collection-members").append(section);

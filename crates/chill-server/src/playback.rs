@@ -103,7 +103,9 @@ impl Default for PlaybackService {
 impl PlaybackService {
     pub(crate) fn profile_lease_active(&self, profile: &str) -> bool {
         self.book.lock().map_or(true, |book| {
-            book.entries.get(profile).is_some_and(|entry| Instant::now() < entry.deadline)
+            book.entries
+                .get(profile)
+                .is_some_and(|entry| Instant::now() < entry.deadline)
         })
     }
     /// Fingerprint workers must stop issuing reads while any live playback
@@ -126,6 +128,7 @@ pub(crate) struct StreamLease {
     pub version: FileVersion,
 }
 struct Entry {
+    guest: Option<String>,
     lease: Lease,
     stream: StreamLease,
     deadline: Instant,
@@ -192,21 +195,25 @@ fn save_progress(
     event: &Progress,
     now: Instant,
 ) -> Result<PersonalState, String> {
-    let (complete, first_playback) = {
+    let (complete, first_playback, guest) = {
         let book = service.book.lock().map_err(|_| "INVALID_OPERATION")?;
         (
             book.completed_short_tail(profile, event, now),
             book.entries
                 .get(profile)
                 .is_some_and(|entry| !entry.observed_playback),
+            book.entries
+                .get(profile)
+                .and_then(|entry| entry.guest.clone()),
         )
     };
-    store.save_validated_progress_with_transition(
+    store.save_validated_duo_progress(
         profile,
         &event.media_id,
         event,
         complete,
         first_playback,
+        guest.as_deref(),
     )
 }
 #[allow(dead_code)]
@@ -251,6 +258,12 @@ impl LeaseBook {
             completed: BTreeMap::new(),
         }
     }
+    fn owner_for(&self, profile: &str, now: Instant) -> Option<&str> {
+        self.entries.iter().find_map(|(owner, entry)| {
+            (now < entry.deadline && (owner == profile || entry.guest.as_deref() == Some(profile)))
+                .then_some(owner.as_str())
+        })
+    }
     fn acquire(
         &mut self,
         profile: String,
@@ -260,10 +273,27 @@ impl LeaseBook {
     ) -> Result<Lease, Failure> {
         self.entries.retain(|_, e| now < e.deadline);
         self.offers.retain(|_, offer| now < offer.expires);
-        if self.entries.contains_key(&profile) {
-            return Err("PLAYBACK_ACTIVE");
+        let guest = request.guest_profile_id;
+        if let Some(owner) = self.owner_for(&profile, now) {
+            return Err(
+                if owner != profile || guest.is_some() || self.entries[owner].guest.is_some() {
+                    "DUO_PROFILE_BUSY"
+                } else {
+                    "PLAYBACK_ACTIVE"
+                },
+            );
         }
-        if self.entries.len() >= MAX_ACTIVE_PROFILES {
+        if let Some(guest) = guest.as_deref()
+            && (guest == profile || self.owner_for(guest, now).is_some())
+        {
+            return Err("DUO_PROFILE_BUSY");
+        }
+        let active: usize = self
+            .entries
+            .values()
+            .map(|entry| 1 + usize::from(entry.guest.is_some()))
+            .sum();
+        if active + 1 + usize::from(guest.is_some()) > MAX_ACTIVE_PROFILES {
             return Err("PLAYBACK_CAPACITY");
         }
         self.generation = self
@@ -290,6 +320,7 @@ impl LeaseBook {
         self.entries.insert(
             profile,
             Entry {
+                guest,
                 lease: lease.clone(),
                 stream,
                 deadline: now + LEASE_TIME,
@@ -426,6 +457,9 @@ impl LeaseBook {
     ) -> Result<TransferOffer, Failure> {
         self.offers.retain(|_, offer| now < offer.expires);
         let active = self.entries.get(profile).ok_or("LEASE_INVALID")?;
+        if target.guest_profile_id.is_some() || active.guest.is_some() {
+            return Err("DUO_PROFILE_BUSY");
+        }
         if now >= active.deadline || active.pending.is_some() {
             return Err("PLAYBACK_ACTIVE");
         }
@@ -647,9 +681,8 @@ fn control(event: &Progress) -> PlaybackControl {
 fn failure(code: Failure) -> ApiError {
     ApiError(
         match code {
-            "PLAYBACK_ACTIVE" | "LEASE_INVALID" | "TRANSFER_PENDING" | "TRANSFER_INVALID" => {
-                StatusCode::CONFLICT
-            }
+            "PLAYBACK_ACTIVE" | "DUO_PROFILE_BUSY" | "LEASE_INVALID" | "TRANSFER_PENDING"
+            | "TRANSFER_INVALID" => StatusCode::CONFLICT,
             "PLAYBACK_CAPACITY" | "MEDIA_BUSY" => StatusCode::SERVICE_UNAVAILABLE,
             "MEDIA_CHANGED" => StatusCode::PRECONDITION_FAILED,
             _ => StatusCode::UNPROCESSABLE_ENTITY,
@@ -672,12 +705,14 @@ impl PlaybackService {
     }
     pub(crate) fn revoke_profile(&self, p: &str) {
         if let Ok(mut b) = self.book.lock() {
-            b.entries.remove(p);
+            let owner = b.owner_for(p, Instant::now()).map(str::to_owned);
+            b.entries.remove(owner.as_deref().unwrap_or(p));
         }
     }
     pub(crate) fn reset_final(&self, p: &str, m: &str) {
         if let Ok(mut b) = self.book.lock()
-            && let Some(e) = b.entries.get_mut(p)
+            && let Some(owner) = b.owner_for(p, Instant::now()).map(str::to_owned)
+            && let Some(e) = b.entries.get_mut(&owner)
             && e.lease.media_id == m
         {
             e.sample = None;
@@ -1195,6 +1230,10 @@ async fn acquire(
     if uuid::Uuid::parse_str(&profile).is_err()
         || uuid::Uuid::parse_str(&body.media_id).is_err()
         || uuid::Uuid::parse_str(&body.device_id).is_err()
+        || body
+            .guest_profile_id
+            .as_ref()
+            .is_some_and(|guest| guest == &profile || uuid::Uuid::parse_str(guest).is_err())
     {
         return Err(failure("PLAYBACK_REQUEST_INVALID"));
     }
@@ -1270,6 +1309,9 @@ async fn acquire(
                 return Ok(Err("MEDIA_CHANGED"));
             }
             let personal = store.playback_start_state(&profile, &body.media_id)?;
+            if let Some(guest) = &body.guest_profile_id {
+                store.preferences(guest)?;
+            }
             let mut book = service.book.lock().map_err(|_| "INVALID_OPERATION")?;
             let lease = book.acquire(
                 profile,
@@ -1442,6 +1484,7 @@ mod tests {
             LeaseBook::new(),
             Instant::now(),
             AcquirePlayback {
+                guest_profile_id: None,
                 media_id: uuid::Uuid::new_v4().to_string(),
                 device_id: uuid::Uuid::new_v4().to_string(),
                 context: Default::default(),

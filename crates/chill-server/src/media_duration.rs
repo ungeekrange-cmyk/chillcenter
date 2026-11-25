@@ -181,6 +181,142 @@ impl Reader<'_> {
         }
         None
     }
+    fn ebml_children(&mut self, parent: &Header) -> Option<Vec<Header>> {
+        let mut pos = parent.body;
+        let mut items = Vec::new();
+        while pos < parent.end {
+            let child = self.ebml(pos, parent.end, false)?;
+            pos = child.end;
+            items.push(child);
+        }
+        Some(items)
+    }
+
+    fn matroska_chapters(&mut self) -> Option<Vec<Chapter>> {
+        let mut pos = 0;
+        let segment = loop {
+            let entry = self.ebml(pos, self.size, true)?;
+            if entry.id == 0x18538067 {
+                break entry;
+            }
+            pos = entry.end;
+        };
+        pos = segment.body;
+        let chapters = loop {
+            let entry = self.ebml(pos, segment.end, false)?;
+            if entry.id == 0x1043a770 {
+                break entry;
+            }
+            pos = entry.end;
+        };
+        let edition = self
+            .ebml_children(&chapters)?
+            .into_iter()
+            .find(|item| item.id == 0x45b9)?;
+        let nodes = self.ebml_children(&edition)?;
+        // Editions with an external/ordered timeline cannot be mapped onto the source file.
+        for item in nodes
+            .iter()
+            .filter(|node| matches!(node.id, 0x45bd | 0x45dd))
+        {
+            if item.end - item.body != 1 || self.read(item.body, 1)?[0] != 0 {
+                return None;
+            }
+        }
+        let mut values = Vec::new();
+        for atom in nodes.into_iter().filter(|node| node.id == 0xb6).take(255) {
+            let mut start = None;
+            let mut end = None;
+            let mut kind = None;
+            for item in self.ebml_children(&atom)? {
+                let len = (item.end - item.body) as usize;
+                match item.id {
+                    0x91 | 0x92 if (1..=8).contains(&len) => {
+                        let ms = uint(&self.read(item.body, len)?) / 1_000_000;
+                        if item.id == 0x91 {
+                            start = Some(ms);
+                        } else {
+                            end = Some(ms);
+                        }
+                    }
+                    0x80 => {
+                        for name in self
+                            .ebml_children(&item)?
+                            .into_iter()
+                            .filter(|node| node.id == 0x85)
+                        {
+                            let len = name.end - name.body;
+                            if (1..=128).contains(&len)
+                                && let Some(label) =
+                                    segment_label(&self.read(name.body, len as usize)?)
+                            {
+                                kind = Some(label);
+                                break;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(start) = start {
+                values.push(Chapter { start, end, kind });
+            }
+        }
+        Some(values)
+    }
+
+    fn movie_chapters(&mut self) -> Option<Vec<Chapter>> {
+        fn child(
+            reader: &mut Reader<'_>,
+            mut start: u64,
+            end: u64,
+            kind: [u8; 4],
+        ) -> Option<Header> {
+            while start < end {
+                let atom = reader.atom(start, end)?;
+                if atom.id == u32::from_be_bytes(kind) as u64 {
+                    return Some(atom);
+                }
+                start = atom.end;
+            }
+            None
+        }
+        let movie = child(self, 0, self.size, *b"moov")?;
+        let user_data = child(self, movie.body, movie.end, *b"udta")?;
+        let atom = child(self, user_data.body, user_data.end, *b"chpl")?;
+        if atom.end - atom.body < 5 {
+            return None;
+        }
+        let version = self.read(atom.body, 1)?[0];
+        let pos = atom.body + if version == 0 { 4 } else { 8 };
+        if pos >= atom.end {
+            return None;
+        }
+        let count = self.read(pos, 1)?[0];
+        let mut pos = pos + 1;
+        let mut chapters = Vec::new();
+        for _ in 0..count {
+            if atom.end.checked_sub(pos)? < 9 {
+                return None;
+            }
+            let header = self.read(pos, 9)?;
+            let start = uint(&header[..8]) / 10_000;
+            let len = header[8] as usize;
+            pos += 9;
+            if atom.end.checked_sub(pos)? < len as u64 {
+                return None;
+            }
+            let kind = segment_label(&self.read(pos, len)?);
+            chapters.push(Chapter {
+                start,
+                end: None,
+                kind,
+            });
+            pos += len as u64;
+        }
+        Some(chapters)
+    }
+
     fn avi_chunks(
         &mut self,
         mut pos: u64,
@@ -260,6 +396,84 @@ pub(crate) fn duration_ms(file: &File) -> Option<u64> {
     }
 }
 
+struct Chapter {
+    start: u64,
+    end: Option<u64>,
+    kind: Option<chill_domain::segments::SegmentKind>,
+}
+fn segment_label(bytes: &[u8]) -> Option<chill_domain::segments::SegmentKind> {
+    use chill_domain::segments::SegmentKind::{Intro, Recap};
+    match std::str::from_utf8(bytes)
+        .ok()?
+        .trim()
+        .to_lowercase()
+        .as_str()
+    {
+        "intro" | "introduction" | "opening" | "opening credits" | "générique de début" => {
+            Some(Intro)
+        }
+        "recap"
+        | "récap"
+        | "previously on"
+        | "previously"
+        | "récapitulatif"
+        | "résumé de l’épisode précédent" => Some(Recap),
+        _ => None,
+    }
+}
+
+pub(crate) fn playback_segments(
+    file: &File,
+    duration: Option<u64>,
+) -> Vec<chill_domain::segments::Segment> {
+    use chill_domain::segments::{Segment, valid_segments};
+    let Some(size) = file.metadata().ok().map(|data| data.len()) else {
+        return Vec::new();
+    };
+    let mut reader = Reader {
+        file,
+        size,
+        bytes: 0,
+        steps: 0,
+        until: Instant::now() + Duration::from_millis(200),
+    };
+    let Some(header) = reader.read(0, 4) else {
+        return Vec::new();
+    };
+    let mut chapters = if header == b"\x1a\x45\xdf\xa3" {
+        reader.matroska_chapters()
+    } else {
+        reader.movie_chapters()
+    }
+    .unwrap_or_default();
+    chapters.sort_by_key(|chapter| chapter.start);
+    let mut values = Vec::new();
+    for (index, chapter) in chapters.iter().enumerate() {
+        let Some(kind) = chapter.kind else { continue };
+        let Some(end) = chapter
+            .end
+            .or_else(|| chapters.get(index + 1).map(|item| item.start))
+            .or(duration)
+        else {
+            continue;
+        };
+        if let Some(total) = duration
+            && end > total
+        {
+            continue;
+        }
+        values.push(Segment {
+            kind,
+            start_ms: chapter.start,
+            end_ms: end,
+        });
+        if !valid_segments(&values) {
+            values.pop();
+        }
+    }
+    values
+}
+
 pub(crate) fn probe_many(
     candidates: Vec<(String, std::path::PathBuf, std::path::PathBuf)>,
 ) -> std::collections::HashMap<String, u64> {
@@ -323,6 +537,45 @@ mod tests {
     fn atom(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
         [(body.len() as u32 + 8).to_be_bytes().as_slice(), kind, body].concat()
     }
+    #[test]
+    fn movie_named_segments_use_next_chapter_and_ignore_generic_titles() {
+        use chill_domain::segments::{Segment, SegmentKind};
+        let chapter = |ms: u64, name: &[u8]| {
+            [
+                (ms * 10_000).to_be_bytes().as_slice(),
+                &[name.len() as u8],
+                name,
+            ]
+            .concat()
+        };
+        let entries = [
+            vec![0, 0, 0, 0, 4],
+            chapter(5000, b"Recap"),
+            chapter(40_000, b"Chapter 1"),
+            chapter(72_000, b"Intro"),
+            chapter(124_000, b"Chapter 2"),
+        ]
+        .concat();
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(&atom(b"moov", &atom(b"udta", &atom(b"chpl", &entries))))
+            .unwrap();
+        assert_eq!(
+            playback_segments(&file, Some(200_000)),
+            [
+                Segment {
+                    kind: SegmentKind::Recap,
+                    start_ms: 5000,
+                    end_ms: 40_000
+                },
+                Segment {
+                    kind: SegmentKind::Intro,
+                    start_ms: 72_000,
+                    end_ms: 124_000
+                },
+            ]
+        );
+    }
+
     #[test]
     fn movie_versions_and_invalid_timescales() {
         for version in [0, 1] {

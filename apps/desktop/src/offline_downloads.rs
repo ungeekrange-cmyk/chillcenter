@@ -92,7 +92,11 @@ pub enum DownloadCommand {
     Start {
         media_id: String,
         scope: String,
+        #[serde(default)]
+        automatic_limit: Option<u64>,
     },
+    Sync,
+    Segments { media_id: String },
     Cancel {
         #[serde(default)]
         media_id: Option<String>,
@@ -127,6 +131,8 @@ struct CopyRecord {
     #[serde(default = "default_video_file")]
     file: String,
     keep: bool,
+    #[serde(default)]
+    automatic: bool,
     missing_subtitles: u64,
     #[serde(default)]
     poster: Option<u64>,
@@ -138,6 +144,8 @@ struct CopyRecord {
     preferences: Value,
     personal: Value,
     progress_revision: Option<String>,
+    #[serde(default)]
+    segments: Vec<chill_domain::segments::Segment>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct PartialRecord {
@@ -288,9 +296,18 @@ impl OfflineDownloads {
                 let items = plan_all(&context, &media_id, &scope).await?;
                 Ok(json!({"items":items.0,"skipped":items.1}))
             }
-            DownloadCommand::Start { media_id, scope } => {
+            DownloadCommand::Sync => self.sync(&context).await,
+            DownloadCommand::Segments { media_id } => {
+                let key = copy_key(&context, &media_id)?;
+                let segments = self.lock_index()?.copies.get(&key).map(|copy| copy.segments.clone()).unwrap_or_default();
+                Ok(json!({"segments":segments}))
+            }
+            DownloadCommand::Start { media_id, scope, automatic_limit } => {
                 valid_uuid(&media_id)?;
                 valid_scope(&scope)?;
+                if automatic_limit.is_some_and(|limit| scope != "video" || limit == 0 || limit > 1_000_000_000_000) {
+                    return Err(error("Plafond de téléchargement invalide.", "DOWNLOAD_INVALID"));
+                }
                 if context.transport.is_none() || context.device_id.is_none() {
                     return Err(error(
                         "Connectez le serveur pour télécharger.",
@@ -322,7 +339,7 @@ impl OfflineDownloads {
                 tokio::spawn(async move {
                     let _permit = host.queue.clone().acquire_owned().await.ok();
                     let result = host
-                        .run_queue(context.clone(), media_id, scope, cancelled)
+                        .run_queue(context.clone(), media_id, scope, cancelled, automatic_limit)
                         .await;
                     if let Err(problem) = result {
                         let scope = context.scope();
@@ -425,10 +442,10 @@ impl OfflineDownloads {
                         local = local.saturating_add(copy.poster.unwrap_or(0));
                     }
                     total = total.saturating_add(local);
-                    items.push(json!({"media":copy.media,"series_key":copy.series_key,"bytes":copy.bytes,"version":copy.version,"local_bytes":local,"keep":copy.keep,"missing_subtitles":copy.missing_subtitles,"has_poster":has_poster,"deletion_failed":copy.deletion_failed}));
+                    items.push(json!({"media":copy.media,"series_key":copy.series_key,"bytes":copy.bytes,"version":copy.version,"local_bytes":local,"automatic":copy.automatic,"keep":copy.keep,"missing_subtitles":copy.missing_subtitles,"has_poster":has_poster,"deletion_failed":copy.deletion_failed}));
                 }
                 Err(problem) if problem.code == "OFFLINE_MISSING" => stale.push(key.clone()),
-                Err(_) => items.push(json!({"media":copy.media,"series_key":copy.series_key,"bytes":copy.bytes,"version":copy.version,"local_bytes":copy.bytes,"keep":copy.keep,"missing_subtitles":copy.missing_subtitles,"access_error":true})),
+                Err(_) => items.push(json!({"media":copy.media,"series_key":copy.series_key,"bytes":copy.bytes,"version":copy.version,"local_bytes":copy.bytes,"automatic":copy.automatic,"keep":copy.keep,"missing_subtitles":copy.missing_subtitles,"access_error":true})),
             }
         }
         if !stale.is_empty() {
@@ -450,7 +467,7 @@ impl OfflineDownloads {
             .partials
             .values()
             .filter(|p| p.scope == scope)
-            .map(|p| json!({"media":p.media,"bytes":p.bytes,"transferred":p.transferred,"status":"interrupted"}))
+            .map(|p| json!({"media":p.media,"bytes":p.bytes,"version":p.version,"transferred":p.transferred,"status":"interrupted"}))
             .collect();
         if let Ok(current) = self.jobs.lock()
             && let Some(job) = current.get(&scope)
@@ -478,6 +495,7 @@ impl OfflineDownloads {
         media_id: String,
         scope: String,
         cancelled: Arc<AtomicBool>,
+        automatic_limit: Option<u64>,
     ) -> Result<(), UiError> {
         let (items, _) = plan_all(&context, &media_id, &scope).await?;
         if items.is_empty() {
@@ -494,7 +512,24 @@ impl OfflineDownloads {
             if cancelled.load(Ordering::Acquire) {
                 break;
             }
-            if let Err(problem) = self.download_one(&context, item, cancelled.clone()).await {
+            let allowance = if let Some(limit) = automatic_limit {
+                let snapshot = self.list(&context)?;
+                if snapshot["items"].as_array().into_iter().flatten().any(|copy| copy["media"]["id"] == item.media["id"]) {
+                    self.job(&context, &item.media, item.bytes, item.bytes, "complete")?;
+                    continue;
+                }
+                let used: u64 = snapshot["items"].as_array().into_iter().flatten()
+                    .filter(|copy| copy["automatic"] == true)
+                    .filter_map(|copy| copy["local_bytes"].as_u64()).fold(0, u64::saturating_add);
+                let available = limit.saturating_sub(used);
+                if item.bytes > available {
+                    return Err(error("Plafond ou espace libre insuffisant.", "DOWNLOAD_AHEAD_SPACE"));
+                }
+                Some(available)
+            } else {
+                None
+            };
+            if let Err(problem) = self.download_one(&context, item, cancelled.clone(), allowance).await {
                 if cancelled.load(Ordering::Acquire) {
                     break;
                 }
@@ -509,6 +544,7 @@ impl OfflineDownloads {
         context: &OfflineContext,
         item: DownloadPlanItem,
         cancelled: Arc<AtomicBool>,
+        automatic_allowance: Option<u64>,
     ) -> Result<(), UiError> {
         let media = media_id(&item.media)?.to_owned();
         valid_version(&item.version)?;
@@ -520,14 +556,12 @@ impl OfflineDownloads {
         let existing = self.lock_index()?.copies.get(&key).cloned();
         if let Some(copy) = existing.as_ref().filter(|copy| {
             copy.version == item.version && copy.bytes == item.bytes && copy.missing_subtitles == 0
-        }) {
-            if self
-                .media_directory(context, &media, false)
-                .and_then(|folder| regular_file(&folder.join(&copy.file), item.bytes))
-                .is_ok()
-            {
-                return Ok(());
-            }
+        }) && self
+            .media_directory(context, &media, false)
+            .and_then(|folder| regular_file(&folder.join(&copy.file), item.bytes))
+            .is_ok()
+        {
+            return Ok(());
         }
         let resume_allowed = self
             .lock_index()?
@@ -586,6 +620,13 @@ impl OfflineDownloads {
             if !resume_allowed || position > item.bytes {
                 file.set_len(0).map_err(local_io)?;
                 position = 0;
+            }
+            let automatic_allowance = automatic_allowance.map(|limit| {
+                let free = volume_capacity(&self.root).0.unwrap_or(u64::MAX);
+                limit.min(free.saturating_add(position))
+            });
+            if automatic_allowance.is_some_and(|limit| item.bytes > limit) {
+                return Err(error("Plafond ou espace libre insuffisant.", "DOWNLOAD_AHEAD_SPACE"));
             }
             file.seek(SeekFrom::Start(position)).map_err(local_io)?;
             self.save_partial(context, &key, &item, position)?;
@@ -647,7 +688,12 @@ impl OfflineDownloads {
 
             let mut subtitles = Vec::new();
             let mut missing = 0u64;
+            let mut stored_bytes = item.bytes;
             for subtitle in session.subtitles.iter().take(MAX_SUBTITLES) {
+                if automatic_allowance.is_some_and(|limit| stored_bytes.saturating_add(subtitle.bytes) > limit) {
+                    missing += 1;
+                    continue;
+                }
                 if subtitle.bytes > SUBTITLE_LIMIT || uuid::Uuid::parse_str(&subtitle.id).is_err() {
                     missing += 1;
                     continue;
@@ -664,6 +710,7 @@ impl OfflineDownloads {
                     Ok(bytes) if bytes.len() as u64 == subtitle.bytes => {
                         let name = format!("subtitle-{}", subtitle.id);
                         if atomic_bytes(&directory, &name, &bytes).is_ok() {
+                            stored_bytes = stored_bytes.saturating_add(subtitle.bytes);
                             subtitles.push(SubtitleRecord {
                                 id: subtitle.id.clone(),
                                 title: subtitle.title.clone(),
@@ -695,6 +742,7 @@ impl OfflineDownloads {
                     )
                     .await
                 && poster_mime(&bytes).is_some()
+                && automatic_allowance.is_none_or(|limit| stored_bytes.saturating_add(bytes.len() as u64) <= limit)
                 && atomic_bytes(&directory, "poster", &bytes).is_ok()
             {
                 poster = Some(bytes.len() as u64);
@@ -717,6 +765,7 @@ impl OfflineDownloads {
                     version: item.version,
                     file: video_name.clone(),
                     keep,
+                    automatic: automatic_allowance.is_some(),
                     missing_subtitles: missing,
                     poster,
                     delete_pending: false,
@@ -725,6 +774,7 @@ impl OfflineDownloads {
                     preferences: session.preferences.clone(),
                     personal: session.personal.clone(),
                     progress_revision: session.progress_revision.clone(),
+                    segments: session.segments.clone(),
                 },
             );
             index.partials.remove(&key);
@@ -1488,6 +1538,7 @@ mod tests {
                 version: "v1".into(),
                 file: "video-v1".into(),
                 keep: false,
+                automatic: false,
                 missing_subtitles: 0,
                 poster: None,
                 delete_pending: false,
@@ -1496,6 +1547,7 @@ mod tests {
                 preferences: json!({}),
                 personal: json!({}),
                 progress_revision: Some("r1".into()),
+                segments: Vec::new(),
             },
         );
         host.save_index(&index).unwrap();

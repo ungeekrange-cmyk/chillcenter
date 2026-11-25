@@ -17,6 +17,7 @@ window.renderShell=()=>{
  $("show-home").disabled=!active;$("show-home").classList.toggle("active",shellSection==="home");document.querySelectorAll("[data-category]").forEach(button=>button.classList.toggle("active",shellSection==="catalog"&&button.dataset.category===$("category").value));
  $("admin-toggle").classList.toggle("active",shellSection==="admin");$("advice-toggle").classList.toggle("active",shellSection==="advice");
  window.renderDownloads?.();
+ window.renderDuo?.();
  $("catalog-title").textContent=categoryNames[$("category").value]||uiText("Toute la collection");
 };
 function shellShow(section){if(!["collections","collection","picker"].includes(section))window.leaveCollectionPages?.();shellSection=section;window.recoveryContextChanged?.();window.renderShell();}
