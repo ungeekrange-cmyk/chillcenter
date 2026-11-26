@@ -2,7 +2,7 @@
 
 **Français** | [English](GUIDE-EN.md)
 
-La release Mac `mac-v0.7.11` fournit Mac0.7.11/build21 ; `server-v0.7.11` publie serveur0.7.11 et `web-v0.7.15` publie web0.7.15 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
+La release Mac `mac-v0.7.12` fournit Mac0.7.12/build22 ; `server-v0.7.12` publie serveur0.7.12 et `web-v0.7.16` publie web0.7.16 séparément. Les thèmes0.7.1 restent dans `v0.7.3`. La publication ne réalise aucune installation directe sur un serveur existant.
 
 ## Quatre composants
 
@@ -66,20 +66,20 @@ La clé publique de release est [release.pub](../../updates/release.pub), identi
 
 ### Télécharger et vérifier
 
-Utiliser les archives complètes de distribution : v0.7.11 pour Mac, server-v0.7.11 pour le serveur, web-v0.7.15 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
+Utiliser les archives complètes de distribution : v0.7.12 pour Mac, server-v0.7.12 pour le serveur, web-v0.7.16 pour le web, avec thèmes0.7.1 dans v0.7.3, pas le ZIP des sources
 généré automatiquement par GitHub. Télécharger le `.minisig` correspondant à
 chaque archive. Vérifier avec Minisign installé indépendamment et la clé
 publique fixée ci-dessous ; une clé contenue dans l'archive téléchargée ne
 suffit pas, à elle seule, à établir la confiance.
 
 ```sh
-minisign -Vm Chill-Center-server-0.7.11-linux-aarch64.tar.gz \
+minisign -Vm Chill-Center-server-0.7.12-linux-aarch64.tar.gz \
   -P 'RWT4AsJIC3n9GIPorIeouS7Ycc5ROkeCsMXypDtOGnikR2Jvm6cuxeQA'
-tar -xzf Chill-Center-server-0.7.11-linux-aarch64.tar.gz
+tar -xzf Chill-Center-server-0.7.12-linux-aarch64.tar.gz
 ```
 
 Même vérification pour le DMG Mac, le ZIP d'installation web et celui des thèmes
-en adaptant le nom. La distribution Mac 0.7.11 est réservée à Apple Silicon et
+en adaptant le nom. La distribution Mac 0.7.12 est réservée à Apple Silicon et
 **nécessite macOS 15 Sequoia minimum**. Les dépendances utilisent des entrées
 Sequoia figées, et les 51 minima Mach-O ont été vérifiés. Les essais physiques
 sur macOS 15/26 restent non réalisés ; les contrôles statiques ne les remplacent
@@ -100,7 +100,7 @@ L'archive serveur contient les deux binaires ARM64, le manifeste signé/la clé
 publique, `scripts/` et `deploy/updates/`. Conserver cette arborescence. Une
 installation Linux neuve requiert un OS ARM64 64 bits utilisant glibc, systemd,
 Python 3.10+, Minisign, curl, Bash, tar et les outils Linux standards.
-Les binaires 0.7.11 ont un minimum glibc 2.28 selon leur provenance ; ce seul
+Les binaires 0.7.12 ont un minimum glibc 2.28 selon leur provenance ; ce seul
 minimum ne garantit pas la compatibilité de l’OS et de ses unités systemd.
 Debian 13 est la configuration réelle vérifiée ; OS ARM32 et musl ne sont pas
 couverts par ce paquet. Prévoir les droits administrateur, une horloge synchronisée,
@@ -115,7 +115,7 @@ sudo ./scripts/install-server.sh \
   --server "$PWD/chill-server" --updater "$PWD/chill-update" \
   --release-pub "$PWD/release.pub" --manifest "$PWD/server-manifest.json" \
   --manifest-signature "$PWD/server-manifest.json.minisig" \
-  --version 0.7.11 --library /absolute/read-only-library \
+  --version 0.7.12 --library /absolute/read-only-library \
   --listen LAN_ADDRESS:8443 --tls-name LAN_DNS_OR_IP
 ```
 
@@ -155,10 +155,10 @@ Références : [contrat](CONTRACT.md), [ADR0029](../architecture/decisions/ADR-0
 
 ## Téléchargements hors connexion
 
-Mac 0.7.11 et web 0.7.15 peuvent enregistrer un film, un épisode, une saison
-ou une série depuis le serveur 0.7.11. Sur le web, ouvrez Chill Center en
+Mac 0.7.12 et web 0.7.16 peuvent enregistrer un film, un épisode, une saison
+ou une série depuis le serveur 0.7.12. Sur le web, ouvrez Chill Center en
 HTTPS reconnu. Rechargez la page après la mise à jour.
-[Notes de la version 0.7.11](../releases/REL-0.7.11.md).
+[Notes de la version 0.7.12](../releases/REL-0.7.12.md).
 
 ## Accueil, collections et lecteur
 
