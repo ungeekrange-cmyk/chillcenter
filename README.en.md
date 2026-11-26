@@ -6,20 +6,20 @@ Your video library, on your own network: a lightweight
 Linux server and a macOS Apple Silicon client, written primarily in Rust,
 plus a responsive web client.
 
-**Published versions · Mac 0.7.13 · server 0.7.12 · web 0.7.17 · themes 0.7.1.**
+**Published versions · Mac 0.7.14 · server 0.7.12 · web 0.7.18 · themes 0.7.1.**
 The mobile web navigation groups Home, Movies, TV shows and available downloads. The icons follow the active palette.
 Watch together tonight, library review, automatic next-episode downloads and intro/recap markers are available on the web and Mac.
-The next episode keeps your subtitle choice when a corresponding track is available.
+Your subtitle choice for a series is restored after reopening the app or tab.
 Download a movie, episode, season or series before leaving. Play local copies
 with subtitles while the server is unavailable. The web client requires trusted
 HTTPS. Delete after watching defaults to on and can be changed in **Downloads**
-or **Settings**. [FR/EN notes](docs/releases/REL-0.7.13.md).
+or **Settings**. [FR/EN notes](docs/releases/REL-0.7.14.md).
 
 ### Currently published packages
 
-**[Download the Apple Silicon Mac app v0.7.13 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.13/Chill-Center-0.7.13-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.13)
+**[Download the Apple Silicon Mac app v0.7.14 — DMG](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.14/Chill-Center-0.7.14-macos-arm64.dmg)** · [FR/EN notes and packages](https://github.com/ungeekrange-cmyk/chillcenter/releases/tag/v0.7.14)
 
-[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/mac-v0.7.13/Chill-Center-0.7.13-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
+[Mac corresponding sources and rebuild recipes](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/mac-v0.7.14/Chill-Center-0.7.14-corresponding-sources.tar.gz): player libraries include FFmpeg under **GPL-3.0-or-later**. Licenses, signatures and instructions accompany the release.
 
 Mac, server, web and themes are independently versioned in
 [versions.json](versions.json). Installed versions and update policies appear
@@ -29,13 +29,13 @@ can update at 02:00 local time, outside playback and active jobs.
 
 | Component and published version | Package and instructions |
 | --- | --- |
-| Apple Silicon Mac 0.7.13, build 23 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.13/Chill-Center-0.7.13-macos-arm64.dmg), macOS 15+ |
+| Apple Silicon Mac 0.7.14, build 24 | [DMG installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.14/Chill-Center-0.7.14-macos-arm64.dmg), macOS 15+ |
 | ARM64 Linux server 0.7.12 | [Archive with installers](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/server-v0.7.12/Chill-Center-server-0.7.12-linux-aarch64.tar.gz), 64-bit systemd host |
-| Web client 0.7.17 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.17/Chill-Center-web-0.7.17-install.zip), server 0.7.12 and trusted HTTPS for downloads |
+| Web client 0.7.18 | [Package with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/web-v0.7.18/Chill-Center-web-0.7.18-install.zip), server 0.7.12 and trusted HTTPS for downloads |
 | Independent themes 0.7.1 | [Pack with installer](https://github.com/ungeekrange-cmyk/chillcenter/releases/download/v0.7.3/Chill-Center-themes-0.7.1-install.zip), requires renderer 2 |
 
 Read the [verification/installation guide](docs/updates/GUIDE-EN.md) and
-[release notes and limits](docs/releases/REL-0.7.13.md). Signed manifests are
+[release notes and limits](docs/releases/REL-0.7.14.md). Signed manifests are
 published in each component's release. Publication does not update an existing
 server directly; its update policy may detect it. v0.6 and previous packages
 remain available. Do not run the initial installer on an existing installation:
@@ -65,7 +65,7 @@ users are a goal, not a throughput guarantee for every bitrate.
 ### Mac client
 
 - **Apple Silicon (ARM64)** Mac; no Intel package is published.
-- The **0.7.13 DMG requires macOS 15 Sequoia or newer**, covering macOS
+- The **0.7.14 DMG requires macOS 15 Sequoia or newer**, covering macOS
   15, 26 and 27, with pinned Sequoia dependencies checked before signing.
   The 51 Mach-O minima, signature and DMG mount were verified.
   Physical macOS 15/26 execution has not yet been tested.
