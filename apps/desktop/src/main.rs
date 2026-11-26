@@ -559,7 +559,7 @@ async fn player_command(
             .player
             .lock()
             .await
-            .start(&window, connection, media_id, rect, context, guest_profile_id)
+            .start(&window, connection, media_id, rect, context, guest_profile_id, None)
             .await
     } else {
         let stops = matches!(&command, PlayerCommand::Stop);

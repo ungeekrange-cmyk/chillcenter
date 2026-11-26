@@ -128,6 +128,7 @@ impl LocalPlayer {
         ).collect();
         json!({
             "stage":"player","local":true,"media_id":self.launch.media_id,"title":self.launch.copy.media["title"],
+            "series":self.launch.copy.media["series"],"season":self.launch.copy.media["season"],"episode":self.launch.copy.media["episode"],
             "native":self.snapshot,"note":self.note,"active":!self.paused_by_server,
             "position":self.snapshot.position,"duration":self.snapshot.duration,
             "context":{"kind":"standalone","id":null},"next":null,"autoplay_seconds":null,

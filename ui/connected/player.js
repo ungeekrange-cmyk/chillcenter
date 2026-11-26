@@ -24,6 +24,12 @@ function updatePlayerControls(){
   if(!panel.hidden&&!pinned&&remaining>0)playerIdleTimer=setTimeout(updatePlayerControls,remaining);
 }
 function showPlayerControls(){playerIdleAt=Date.now();updatePlayerControls();}
+function playerHeading(player,fullscreen){
+  const series=typeof player.series==="string"?player.series.trim():"";
+  if(!fullscreen||!series||player.stage!=="player")return player.title||"";
+  const numbered=Number.isInteger(player.season)&&player.season>=0&&Number.isInteger(player.episode)&&player.episode>=0;
+  return numbered?series+" - S"+String(player.season).padStart(2,"0")+"E"+String(player.episode).padStart(2,"0"):series;
+}
 function syncPlayerFullscreen(){
   let fullscreen=Boolean(playerState.native?.fullscreen);
   if(playerFullscreenRequest){
@@ -31,6 +37,7 @@ function syncPlayerFullscreen(){
     else fullscreen=playerFullscreenRequest.enabled;
   }
   document.body.classList.toggle("player-fullscreen",fullscreen);
+  if(playerState.stage==="player")$("player-title").textContent=playerHeading(playerState,fullscreen);
   $("player-fullscreen").setAttribute("aria-label",fullscreen?uiText("Quitter le plein écran"):uiText("Plein écran"));
   $("player-fullscreen").setAttribute("aria-pressed",String(fullscreen));
 }

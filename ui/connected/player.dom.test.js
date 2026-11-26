@@ -75,6 +75,15 @@ test('native fullscreen state drives viewport class and button accessibility',()
  assert.equal(h.sandbox.document.body.classList.contains('player-fullscreen'),true);assert.equal(h.get('player-fullscreen').attributes['aria-pressed'],'true');
  playing(h,{fullscreen:false});vm.runInContext('syncPlayerFullscreen();',h.sandbox);assert.equal(h.sandbox.document.body.classList.contains('player-fullscreen'),false);
 });
+test('fullscreen series headings use the indexed season and episode, even outside a series playback context',()=>{
+ const h=harness(null);playing(h,{fullscreen:true});
+ vm.runInContext('Object.assign(playerState,{title:"The Episode",series:"The Show",season:2,episode:7,context:{kind:"standalone"}});syncPlayerFullscreen();',h.sandbox);
+ assert.equal(h.get('player-title').textContent,'The Show - S02E07');
+ vm.runInContext('playerState.native.fullscreen=false;syncPlayerFullscreen();',h.sandbox);
+ assert.equal(h.get('player-title').textContent,'The Episode');
+ vm.runInContext('playerState.native.fullscreen=true;playerState.episode=null;syncPlayerFullscreen();',h.sandbox);
+ assert.equal(h.get('player-title').textContent,'The Show');
+});
 test('keyboard reveals controls but leaves focused native form controls and buttons to their own keys',async()=>{
  const h=harness(null);playing(h);await h.advance(2500);
  h.listeners.keydown({key:' ',code:'Space',target:{tagName:'BUTTON'},preventDefault(){throw Error('button key stolen');}});

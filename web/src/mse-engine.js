@@ -54,7 +54,7 @@
       return { forward: Math.min(90, Math.max(8, forward * 1048576 / bps)), back: Math.min(60, back * 1048576 / bps) };
     }
 
-    async open({ mediaId, lease, startAt, speed, subtitleLanguage, profileId, local }) {
+    async open({ mediaId, lease, startAt, speed, subtitleLanguage, subtitleChoice, profileId, local }) {
       const MS = this.d.MediaSource;
       if (!MS) throw fail("Ce navigateur ne sait pas lire de vidéo par MediaSource.");
       // The player can leave (stop, another video) while this runs: after every await, check that this engine is still wanted, so that a
@@ -88,7 +88,11 @@
       if (this.movie.duration > 0 && startAt >= this.movie.duration - 0.25) startAt = 0;
       this.subtitleTracks = this.movie.tracks.filter(t => t.kind === "subtitle" && t.textSupported);
       this.captionLanguage = String(subtitleLanguage || "").toLowerCase();
-      this.activeSubtitle = initialSubtitle(this.subtitleTracks, this.captionLanguage);
+      this.carriedSubtitle = subtitleChoice;
+      const carried = Text.matchTrack(this.subtitleTracks, subtitleChoice);
+      this.carriedEmbedded = Boolean(carried);
+      this.subtitleManual = Boolean(subtitleChoice?.off);
+      this.activeSubtitle = this.subtitleManual ? null : carried || initialSubtitle(this.subtitleTracks, this.captionLanguage);
       this.src.setSubtitle?.(this.activeSubtitle?.id ?? null);
       // MP3 is not accepted inside audio/mp4 everywhere (Chromium builds): fall back to a bare MPEG audio stream.
       for (const t of this.movie.tracks) {
@@ -389,6 +393,10 @@
       }
     }
     selectPreferredExternal() {
+      if (!this.subtitleManual && (this.carriedSubtitle?.external || !this.carriedEmbedded)) {
+        const carried = Text.matchTrack(this.external, this.carriedSubtitle);
+        if (carried) return this.selectExternalSubtitle(carried.id);
+      }
       const preferred = this.external.filter(t => !t.unavailable && !t.ambiguous && this.captionLanguage && (t.language || "").toLowerCase().startsWith(this.captionLanguage.slice(0, 2)));
       if (!this.subtitleManual && !this.activeSubtitle && preferred.length === 1) return this.selectExternalSubtitle(preferred[0].id);
     }

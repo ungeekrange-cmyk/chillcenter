@@ -251,3 +251,5 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 - [BUG-0149](BUG-0149-mobile-shortcut-icon.md) — ressources d’icône à la racine pour les raccourcis mobiles.
 
 - [BUG-0150](BUG-0150-concurrent-update-recovery.md) — concurrence entre la récupération planifiée et l’installation locale du serveur.
+
+- [BUG-0151](BUG-0151-episode-subtitles-and-player-heading.md) — continuité du choix des sous-titres et identification des épisodes en plein écran.

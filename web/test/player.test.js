@@ -81,6 +81,40 @@ test("end of video records progress, releases the lease, then resolves the next 
   solo.engine.s.ended = true; assert.equal((await solo.cmd({ action: "status" })).next.media, null);
 });
 
+test("a series episode opened directly derives its series context", async () => {
+  const h = harness();
+  const request = h.player.d.request;
+  h.player.d.request = async (method, path, options) => path.endsWith("/playback-info")
+    ? { ...info, media: { id: M, title: "Pilot", category: "serie", series: "Show", season: 1, episode: 1, tmdb_id: 123 } }
+    : request(method, path, options);
+  const view = await h.cmd({ action: "start", media_id: M });
+  assert.deepEqual(h.calls.find(c => c.path.endsWith("/acquire")).body.context, { kind: "series", id: "tmdb:tv:123" });
+  assert.deepEqual([view.series, view.season, view.episode], ["Show", 1, 1]);
+});
+
+for (const off of [true, false]) test("series transition retains " + (off ? "subtitles off" : "the chosen track with a new ID"), async () => {
+  const tracks = [
+    { id: 4, kind: "Subtitle", language: "en", title: "English" },
+    { id: 5, kind: "Subtitle", language: "fr", title: "French SDH" },
+  ];
+  const h = harness({ tracks });
+  await h.cmd({ action: "start", media_id: M, context: { kind: "series", id: "x" } });
+  await h.cmd({ action: "subtitle", track_id: off ? null : 5 });
+  h.player.nextResolved = { media: { id: N }, available: true };
+  const next = new FakeEngine([
+    { id: 5, kind: "Subtitle", language: "en", title: "English" },
+    { id: 7, kind: "Subtitle", language: "fra", title: "French" },
+    { id: 8, kind: "Subtitle", language: "fre", title: "French SDH" },
+  ]);
+  h.player.d.engineFactory = () => next;
+  await h.cmd({ action: "next", expected_id: N });
+  assert.deepEqual(next.log.at(-1), ["sub", off ? null : 8]);
+  const independent = new FakeEngine(tracks);
+  h.player.d.engineFactory = () => independent;
+  await h.cmd({ action: "start", media_id: M });
+  assert.deepEqual(independent.log.at(-1), ["sub", 4]);
+});
+
 test("a second device gets a transfer offer instead of a lease", async () => {
   const h = harness({ acquire: () => { throw Object.assign(new Error("x"), { status: 409, code: "PLAYBACK_ACTIVE" }); } });
   const orig = h.player.d.request;

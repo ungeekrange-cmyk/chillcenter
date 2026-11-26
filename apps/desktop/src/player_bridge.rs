@@ -91,6 +91,72 @@ fn control(l: &Lease) -> PlaybackControl {
         media_revision: l.media_revision,
     }
 }
+#[derive(Clone)]
+pub(crate) enum SubtitleChoice {
+    Off,
+    Track {
+        language: Option<String>,
+        title: Option<String>,
+        external: bool,
+    },
+}
+impl SubtitleChoice {
+    fn track(language: Option<String>, title: Option<String>, external: bool) -> Self {
+        Self::Track {
+            language,
+            title,
+            external,
+        }
+    }
+
+    fn match_track<'a, T>(
+        &self,
+        tracks: impl IntoIterator<Item = (&'a T, Option<&'a str>, Option<&'a str>)>,
+    ) -> Option<&'a T> {
+        let Self::Track {
+            language, title, ..
+        } = self
+        else {
+            return None;
+        };
+        let wanted = language
+            .as_deref()
+            .and_then(language_key)
+            .filter(|value| value != "und");
+        let title = title
+            .as_deref()
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty());
+        let tracks: Vec<_> = tracks
+            .into_iter()
+            .map(|(track, language, label)| {
+                (
+                    track,
+                    language
+                        .and_then(language_key)
+                        .filter(|value| value != "und"),
+                    label,
+                )
+            })
+            .collect();
+        let mut named = tracks.iter().filter(|(_, key, label)| {
+            (wanted.is_none() || key.is_none() || *key == wanted)
+                && title.as_ref().is_some_and(|expected| {
+                    label.is_some_and(|value| value.trim().to_lowercase() == *expected)
+                })
+        });
+        if let Some((track, _, _)) = named.next()
+            && named.next().is_none()
+        {
+            return Some(*track);
+        }
+        wanted.as_ref()?;
+        let mut same_language = tracks.iter().filter(|(_, key, _)| *key == wanted);
+        let (track, _, _) = same_language.next()?;
+        same_language.next().is_none().then_some(*track)
+    }
+}
+
 struct Session {
     guest_profile_id: Option<String>,
     transport: Transport,
@@ -113,6 +179,7 @@ struct Session {
     selected_external: Option<String>,
     audio_override: Option<i64>,
     subtitle_override: Option<Option<i64>>,
+    subtitle_choice: Option<SubtitleChoice>,
     subtitle_cache: Vec<(String, std::path::PathBuf)>,
     cache_dir: std::path::PathBuf,
     controls: Option<ControlSubscription>,
@@ -125,6 +192,7 @@ struct DiscoveredSubtitles {
     preferred: Option<(ExternalSubtitle, Result<Vec<u8>, UiError>)>,
 }
 struct PendingTransfer {
+    subtitle_choice: Option<SubtitleChoice>,
     connection: PlaybackConnection,
     info: PlaybackInfo,
     rect: NativeRect,
@@ -145,6 +213,7 @@ pub struct PlayerHost {
     pub cache_dir: std::path::PathBuf,
 }
 impl PlayerHost {
+    #[allow(clippy::too_many_arguments)]
     pub async fn start(
         &mut self,
         w: &WebviewWindow,
@@ -153,6 +222,7 @@ impl PlayerHost {
         rect: NativeRect,
         context: Option<PlaybackContext>,
         guest_profile_id: Option<String>,
+        subtitle_choice: Option<SubtitleChoice>,
     ) -> Result<Value, UiError> {
         uuid_check(&media)?;
         if let Some(guest) = &guest_profile_id { uuid_check(guest)?; }
@@ -205,6 +275,7 @@ impl PlayerHost {
                     )
                     .await?;
                 self.pending = Some(PendingTransfer {
+                    subtitle_choice,
                     connection: c,
                     info,
                     rect,
@@ -219,7 +290,7 @@ impl PlayerHost {
             }
             Err(e) => return Err(e.into()),
         };
-        self.install(w, c, info, rect, context, grant, sent, guest_profile_id).await
+        self.install(w, c, info, rect, context, grant, sent, guest_profile_id, subtitle_choice).await
     }
     pub async fn start_local(
         &mut self,
@@ -247,6 +318,7 @@ impl PlayerHost {
                     let info = connection.transport.playback_info(&connection.profile_id, &launch.media_id).await?;
                     let offer = connection.transport.propose_transfer(&connection.profile_id, &target).await?;
                     self.pending = Some(PendingTransfer {
+                        subtitle_choice: None,
                         connection, info, rect, context: Default::default(), offer,
                         confirmed: false, last_poll: Instant::now(), remaining_ms: 0, local: Some(launch),
                     });
@@ -284,15 +356,17 @@ impl PlayerHost {
         grant: PlaybackGrant,
         sent: Instant,
         guest_profile_id: Option<String>,
+        subtitle_choice: Option<SubtitleChoice>,
     ) -> Result<Value, UiError> {
         let remaining = conservative(grant.lease.remaining_ms, sent);
+        let subtitles_off = matches!(subtitle_choice, Some(SubtitleChoice::Off));
         let loaded = native_player::load(
             w,
             c.transport.clone(),
             stream(&grant.lease),
             Some(grant.personal.position_ms as f64 / 1000.0),
             Some(info.preferences.audio_language.clone()),
-            Some(info.preferences.subtitle_language.clone()),
+            Some(if subtitles_off { String::new() } else { info.preferences.subtitle_language.clone() }),
             info.speed,
             LeaseDeadline { remaining },
             c.cache,
@@ -353,7 +427,8 @@ impl PlayerHost {
             external: Vec::new(),
             selected_external: None,
             audio_override: None,
-            subtitle_override: None,
+            subtitle_override: subtitles_off.then_some(None),
+            subtitle_choice,
             subtitle_cache: Vec::new(),
             cache_dir: self.cache_dir.clone(),
             controls,
@@ -371,7 +446,7 @@ impl PlayerHost {
         Ok(match &self.session {
             None => json!({"stage":"closed","error":self.last_error}),
             Some(s) => {
-                json!({"stage":"player","guest_profile_id":s.guest_profile_id,"media_id":s.info.media.id,"title":s.info.media.title,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some(),"context":s.context,"next":s.next,"autoplay_seconds":s.info.preferences.autoplay_seconds,"external_subtitles":s.external})
+                json!({"stage":"player","guest_profile_id":s.guest_profile_id,"media_id":s.info.media.id,"title":s.info.media.title,"series":s.info.media.series,"season":s.info.media.season,"episode":s.info.media.episode,"native":s.snapshot,"note":s.note,"position":s.desired_position.or(s.snapshot.position),"duration":s.snapshot.duration,"active":s.lease.is_some(),"context":s.context,"next":s.next,"autoplay_seconds":s.info.preferences.autoplay_seconds,"external_subtitles":s.external})
             }
         })
     }
@@ -544,6 +619,20 @@ impl PlayerHost {
                 s.snapshot = native_player::action(w, NativeAction::Audio { track_id })
                     .await
                     .map_err(native_error)?;
+            }
+            let carried = if s.subtitle_override.is_none() {
+                s.subtitle_choice.as_ref().and_then(|choice| choice.match_track(
+                    s.snapshot.tracks.iter().filter(|track| track.kind == TrackKind::Subtitle && !track.external)
+                        .map(|track| (track, track.language.as_deref(), track.title.as_deref())),
+                )).map(|track| track.id)
+            } else { None };
+            if let Some(track_id) = carried {
+                if matches!(s.subtitle_choice, Some(SubtitleChoice::Track { external: true, .. })) {
+                    s.snapshot = native_player::action(w, NativeAction::Subtitle { track_id: Some(track_id) })
+                        .await.map_err(native_error)?;
+                } else {
+                    s.subtitle_override = Some(Some(track_id));
+                }
             }
             if let Some(track_id) = s.subtitle_override
                 && (track_id.is_none()
@@ -719,7 +808,12 @@ impl PlayerHost {
             let rect = s.rect;
             let id = media.id.clone();
             let guest = s.guest_profile_id.clone();
-            return self.start(w, c, id, rect, Some(context), guest).await;
+            let current = &s.info.media;
+            let same_series = context.kind == "series"
+                || (current.category == "serie" && media.category == "serie"
+                    && current.tmdb_id.is_some() && current.tmdb_id == media.tmdb_id);
+            let choice = if same_series { s.subtitle_choice.clone() } else { None };
+            return self.start(w, c, id, rect, Some(context), guest, choice).await;
         }
         if matches!(cmd, PlayerCommand::Stop) {
             self.stop(w).await?;
@@ -779,7 +873,8 @@ impl PlayerHost {
                             let media = s.info.media.id.clone();
                             let rect = s.rect;
                             let context = s.context.clone();
-                            return self.start(w, c, media, rect, Some(context), None).await;
+                            let choice = s.subtitle_choice.clone();
+                            return self.start(w, c, media, rect, Some(context), None, choice).await;
                         }
                         Err(e) => return Err(e.into()),
                     };
@@ -912,18 +1007,20 @@ impl PlayerHost {
                     task.abort();
                 }
                 s.selected_external = None;
-                if track_id.is_some_and(|id| {
-                    !s.snapshot
-                        .tracks
-                        .iter()
-                        .any(|t| t.id == id && t.kind == TrackKind::Subtitle)
-                }) {
-                    return Err(error("Sous-titre absent."));
-                }
+                let choice = match track_id {
+                    Some(id) => {
+                        let track = s.snapshot.tracks.iter()
+                            .find(|t| t.id == id && t.kind == TrackKind::Subtitle)
+                            .ok_or_else(|| error("Sous-titre absent."))?;
+                        SubtitleChoice::track(track.language.clone(), track.title.clone(), track.external)
+                    }
+                    None => SubtitleChoice::Off,
+                };
                 s.snapshot = native_player::action(w, NativeAction::Subtitle { track_id })
                     .await
                     .map_err(native_error)?;
                 s.subtitle_override = Some(track_id);
+                s.subtitle_choice = Some(choice);
             }
             PlayerCommand::Fullscreen { enabled } => {
                 w.set_fullscreen(
@@ -943,11 +1040,14 @@ impl PlayerHost {
                     .map_err(native_error)?;
             }
             PlayerCommand::ExternalSubtitle { id } => {
-                s.subtitle_override = None;
                 if !s.snapshot.loaded {
                     return Err(error("Attendez le chargement de la vidéo."));
                 }
                 queue_external(s, w, &id).await?;
+                s.subtitle_override = None;
+                if let Some(track) = s.external.iter().find(|t| t.id == id) {
+                    s.subtitle_choice = Some(SubtitleChoice::track(track.language.clone(), Some(track.title.clone()), true));
+                }
             }
             _ => return Err(error("Commande de lecture invalide.")),
         }
@@ -1058,6 +1158,7 @@ impl PlayerHost {
                     PlaybackGrant { lease, personal },
                     sent,
                     None,
+                    p.subtitle_choice,
                 )
                 .await
             }
@@ -1199,6 +1300,7 @@ fn discover_external(s: &mut Session) {
     let language = s.info.preferences.subtitle_language.clone();
     let selected_before = s.selected_external.clone();
     let manual = s.subtitle_override.is_some();
+    let choice = s.subtitle_choice.clone();
     let integrated = s.snapshot.tracks.iter().any(|t| {
         t.kind == TrackKind::Subtitle
             && t.language
@@ -1208,12 +1310,17 @@ fn discover_external(s: &mut Session) {
     s.external_task = Some(tokio::spawn(async move {
         let external = transport.external_subtitles(&profile, &lease).await?;
         let matches = matching_external(&external, &language);
+        let carried = choice.as_ref().and_then(|choice| choice.match_track(
+            external.iter().filter(|t| !t.unavailable)
+                .map(|track| (track, track.language.as_deref(), Some(track.title.as_str()))),
+        ));
         let chosen = if manual {
             None
         } else {
             selected_before
                 .as_ref()
                 .and_then(|id| external.iter().find(|t| &t.id == id && !t.unavailable))
+                .or(carried)
                 .or_else(|| (!integrated && matches.len() == 1).then(|| matches[0]))
         };
         let preferred = if let Some(candidate) = chosen {
@@ -1448,6 +1555,20 @@ async fn seek(s: &mut Session, w: &WebviewWindow, position: f64) -> Result<(), U
 #[cfg(test)]
 mod language_tests {
     use super::*;
+    #[test]
+    fn a_carried_subtitle_matches_by_language_and_label_instead_of_id() {
+        let choice = SubtitleChoice::track(Some("fr-FR".into()), Some("French SDH".into()), false);
+        let tracks = [
+            (&5, Some("eng"), Some("French SDH")),
+            (&7, Some("fra"), Some("French")),
+            (&8, Some("fre"), Some("French SDH")),
+        ];
+        assert_eq!(choice.match_track(tracks), Some(&8));
+        assert_eq!(choice.match_track([(&9, Some("fra"), Some("Renamed"))]), Some(&9));
+        assert_eq!(choice.match_track([(&5, Some("eng"), Some("French SDH"))]), None);
+        assert_eq!(SubtitleChoice::Off.match_track(tracks), None);
+    }
+
     #[test]
     fn supported_and_absent_preferences_have_one_shared_key() {
         for (a, b) in [

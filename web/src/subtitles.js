@@ -155,6 +155,25 @@
     }
   }
 
-  const api = { packet, parseFile, Captions };
+  function matchTrack(tracks, choice) {
+    if (!choice || choice.off) return null;
+    const aliases = { eng:"en", fra:"fr", fre:"fr", deu:"de", ger:"de", spa:"es", ita:"it", jpn:"ja", por:"pt", zho:"zh", chi:"zh", rus:"ru", nld:"nl", dut:"nl", kor:"ko" };
+    const language = value => {
+      const key = (value || "").trim().toLowerCase().split(/[-_]/)[0];
+      return key === "und" || !/^[a-z]{2,3}$/.test(key) ? "" : aliases[key] || key;
+    };
+    const title = value => (value || "").trim().toLowerCase();
+    const wanted = language(choice.language);
+    const available = tracks.filter(track => !track.unavailable);
+    const named = available.filter(track => {
+      const key = language(track.language);
+      return (!wanted || !key || key === wanted) && choice.title && title(track.name || track.title) === title(choice.title);
+    });
+    if (named.length === 1) return named[0];
+    const matches = wanted ? available.filter(track => language(track.language) === wanted) : [];
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  const api = { packet, parseFile, Captions, matchTrack };
   if (typeof module !== "undefined") module.exports = api; else root.ChillSubtitles = api;
 })(typeof window !== "undefined" ? window : globalThis);

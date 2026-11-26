@@ -4,6 +4,7 @@
 // an Engine (see engines/); nothing here touches the NAS or transcodes (ADR-0014).
 (function (root) {
   const Clock = typeof module !== "undefined" ? require("./watch-clock.js") : root.ChillWatchClock;
+  const Text = typeof module !== "undefined" ? require("./subtitles.js") : root.ChillSubtitles;
   const HEARTBEAT_MS = 5000;
   const STATUS_MS = 500;
   const FALLBACK_NOTE = "Piste anglaise absente : piste d'origine utilisée.";
@@ -106,7 +107,7 @@
     async command(c, ctx) {
       this.ctx = ctx;
       switch (c.action) {
-        case "start": return this.start(c.media_id, c.context || { kind: "standalone", id: null }, false, c.guest_profile_id);
+        case "start": return this.start(c.media_id, c.context, false, c.guest_profile_id);
         case "start_local": return this.start(c.media_id, { kind: "standalone", id: null }, true);
         case "status": return this.status();
         case "confirm_transfer": return this.confirmTransfer();
@@ -120,8 +121,22 @@
         case "jump": return this.seek((this.engine?.snapshot().position || 0) + c.seconds);
         case "speed": return this.setSpeed(c.speed);
         case "audio": await this.engine?.selectAudio(c.track_id); return this.view();
-        case "subtitle": await this.engine?.selectSubtitle(c.track_id); return this.view();
-        case "external_subtitle": await this.engine?.selectExternalSubtitle?.(c.id); return this.view();
+        case "subtitle": {
+          const track = this.engine?.snapshot().tracks?.find(t => t.kind === "Subtitle" && t.id === c.track_id);
+          if (this.engine && (c.track_id == null || track)) {
+            await this.engine.selectSubtitle(c.track_id ?? null);
+            this.subtitleChoice = track ? { language: track.language, title: track.title } : { off: true };
+          }
+          return this.view();
+        }
+        case "external_subtitle": {
+          const track = this.engine?.externalSubtitles?.().find(t => t.id === c.id && !t.unavailable);
+          if (track) {
+            await this.engine.selectExternalSubtitle(c.id);
+            this.subtitleChoice = { language: track.language, title: track.title, external: true };
+          }
+          return this.view();
+        }
         case "fullscreen": { const want = c.enabled ?? !this.fullscreen; const actual = await this.d.setFullscreen?.(want); this.fullscreen = typeof actual === "boolean" ? actual : want; return this.view(); }
         case "volume": this.engine?.setVolume(c.volume); return this.view();
         default: throw Object.assign(new Error("Commande de lecture inconnue."), { code: "PLAYER_ERROR" });
@@ -131,10 +146,11 @@
     api(path) { return `/profiles/${this.ctx.profile}${path}`; }
     control() { const l = this.lease; return { session_id: l.session_id, generation: l.generation, media_id: l.media_id, media_revision: l.media_revision }; }
 
-    async start(mediaId, context, useLocal = false, guest = null) {
+    async start(mediaId, context, useLocal = false, guest = null, subtitleChoice = null) {
       await this.stop(true);
       this.guest = guest;
-      this.context = context; this.note = ""; this.ended = false; this.nextResolved = null;
+      this.subtitleChoice = subtitleChoice;
+      this.context = context || { kind: "standalone", id: null }; this.note = ""; this.ended = false; this.nextResolved = null;
       this.mediaId = mediaId;
       if (useLocal) {
         const storage = this.d.downloads;
@@ -147,11 +163,17 @@
         this.info = { media: this.local.row.media, preferences: { ...this.local.row.preferences, autoplay_seconds: null }, speed: 1 };
         if (this.ctx.offline) return this.begin({ personal: this.local.progress || this.local.row.personal });
       }
-      const target = { media_id: mediaId, device_id: this.deviceId, context };
+      const target = { media_id: mediaId, device_id: this.deviceId, context: this.context };
       if (guest) target.guest_profile_id = guest;
       try {
         const signal = useLocal ? AbortSignal.timeout(3000) : undefined;
-        if (!useLocal) this.info = await this.d.request("GET", this.api("/media/" + mediaId + "/playback-info"));
+        if (!useLocal) {
+          this.info = await this.d.request("GET", this.api("/media/" + mediaId + "/playback-info"));
+          const media = this.info.media;
+          if (!context && media.category === "serie") {
+            this.context = target.context = { kind: "series", id: media.tmdb_id == null ? "media:" + media.id : "tmdb:tv:" + media.tmdb_id };
+          }
+        }
         const grant = await this.d.request("POST", this.api("/playback/acquire"), { body: target, signal });
         return this.begin(grant);
       } catch (e) {
@@ -204,7 +226,7 @@
       const engine = opening.engine;
       this.t0 = this.d.now();
       try {
-        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: grant.personal?.watched && !opening.continuation ? 0 : (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1, subtitleLanguage: this.info.preferences?.subtitle_language, profileId: this.ctx.profile, local: this.local });
+        await engine.open({ mediaId: this.mediaId, lease: this.lease, startAt: grant.personal?.watched && !opening.continuation ? 0 : (grant.personal?.position_ms || 0) / 1000, speed: this.info.speed || 1, subtitleLanguage: this.info.preferences?.subtitle_language, subtitleChoice: this.subtitleChoice, profileId: this.ctx.profile, local: this.local });
       } catch (e) {
         if (opening.cancelled) return;
         this.openError = e.message || "Lecture impossible.";
@@ -218,7 +240,10 @@
         const tracks = engine.snapshot().tracks || [];
         const audio = pickTrack(tracks, prefs.audio_language, "Audio"), sub = pickTrack(tracks, prefs.subtitle_language, "Subtitle");
         if (audio.id !== null) await engine.selectAudio(audio.id);
-        if (!engine.handlesSubtitlePreference) await engine.selectSubtitle(sub.id);
+        if (!engine.handlesSubtitlePreference) {
+          const carried = Text.matchTrack(tracks.filter(t => t.kind === "Subtitle"), this.subtitleChoice);
+          await engine.selectSubtitle(this.subtitleChoice?.off ? null : carried?.id ?? sub.id);
+        }
         if (audio.fallback) this.note = FALLBACK_NOTE;
         this.resume();
         this.timers.push(this.d.setInterval(() => this.heartbeat(), HEARTBEAT_MS));
@@ -369,7 +394,10 @@
     async playNext(expectedId) {
       const next = this.nextResolved;
       if (!next || !next.media || next.media.id !== expectedId || !next.available) return this.closed("Vidéo suivante indisponible.");
-      return this.start(expectedId, this.context, false, this.guest);
+      const current = this.info?.media, target = next.media;
+      const sameSeries = this.context.kind === "series" || (current?.category === "serie" && target.category === "serie"
+        && current.tmdb_id != null && current.tmdb_id === target.tmdb_id);
+      return this.start(expectedId, this.context, false, this.guest, sameSeries ? this.subtitleChoice : null);
     }
 
     async release() {
@@ -399,7 +427,7 @@
       if (this.transfer) return { stage: "transfer", title: this.info?.media?.title || "", confirmed: this.transfer.confirmed, remaining_ms: this.transfer.remaining_ms, note: "Ce profil lit déjà une vidéo sur un autre appareil. Confirmez pour y interrompre la lecture et la reprendre ici." };
       if (!this.engine && this.opening) {
         return {
-          stage: "player", local: Boolean(this.local), guest_profile_id: this.guest, media_id: this.mediaId, title: this.info.media.title, note: this.note,
+          stage: "player", local: Boolean(this.local), guest_profile_id: this.guest, media_id: this.mediaId, title: this.info.media.title, series: this.info.media.series, season: this.info.media.season, episode: this.info.media.episode, note: this.note,
           position: 0, duration: 0, active: Boolean(this.lease || this.local), context: this.context, next: null,
           autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null, external_subtitles: [],
           native: { loaded: false, paused: true, buffering: false, ended: false, error: null, notice: null, speed: this.info.speed || 1, volume: 100, tracks: [], fullscreen: Boolean(this.fullscreen), hardware_decoder: "no", decoder: null },
@@ -408,7 +436,7 @@
       if (!this.engine) return this.closed();
       const s = this.engine.snapshot();
       return {
-        stage: "player", local: Boolean(this.local), guest_profile_id: this.guest, media_id: this.mediaId, title: this.info.media.title, note: [this.note, this.wake.notice()].filter(Boolean).join(" "),
+        stage: "player", local: Boolean(this.local), guest_profile_id: this.guest, media_id: this.mediaId, title: this.info.media.title, series: this.info.media.series, season: this.info.media.season, episode: this.info.media.episode, note: [this.note, this.wake.notice()].filter(Boolean).join(" "),
         position: s.position || 0, duration: s.duration || 0, active: Boolean(this.lease || this.local), context: this.context,
         next: this.nextResolved, autoplay_seconds: this.info.preferences?.autoplay_seconds ?? null,
         external_subtitles: this.engine.externalSubtitles?.() || [],
