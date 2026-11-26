@@ -79,7 +79,7 @@ test('source component versions agree with crates, lockfile, Tauri, plist and re
   }
   for (const component of ['mac','server','web','themes']) {
     assert.equal(reservations[component].version,versions[component]);
-    assert.equal(reservations[component].sequence,({mac:13,server:13,web:17,themes:2})[component]);
+    assert.equal(reservations[component].sequence,({mac:14,server:13,web:18,themes:2})[component]);
   }
 });
 
