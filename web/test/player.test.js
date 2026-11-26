@@ -115,6 +115,37 @@ for (const off of [true, false]) test("series transition retains " + (off ? "sub
   assert.deepEqual(independent.log.at(-1), ["sub", 4]);
 });
 
+for (const off of [false, true]) test("opening an episode from its series remembers " + (off ? "subtitles off" : "an untagged choice"), async () => {
+  const h = harness({ tracks: [{ kind: "Subtitle", id: 3, language: "und" }] });
+  h.ctx.server = "household";
+  const request = h.player.d.request;
+  h.player.d.request = async (method, path, options) => {
+    if (!path.endsWith("/playback-info")) return request(method, path, options);
+    const id = path.split("/").at(-2);
+    return {
+      ...info, media: { id, title: id, category: "serie", tmdb_id: 123 },
+      preferences: { ...info.preferences, subtitle_language: off ? "en" : "off" },
+    };
+  };
+  await h.cmd({ action: "start", media_id: M });
+  await h.cmd({ action: "subtitle", track_id: off ? null : 3 });
+  await h.cmd({ action: "stop" });
+
+  const next = new FakeEngine([
+    { kind: "Subtitle", id: 8, language: "en" },
+    ...(off ? [] : [{ kind: "Subtitle", id: 9 }]),
+  ]);
+  h.player.d.engineFactory = () => next;
+  await h.cmd({ action: "start", media_id: N });
+  assert.deepEqual(next.log.at(-1), ["sub", off ? null : 9]);
+
+  const otherProfile = new FakeEngine([{ kind: "Subtitle", id: 8, language: "en" }]);
+  h.ctx.profile = "22222222-2222-4222-8222-222222222223";
+  h.player.d.engineFactory = () => otherProfile;
+  await h.cmd({ action: "start", media_id: N });
+  assert.deepEqual(otherProfile.log.at(-1), ["sub", off ? 8 : null]);
+});
+
 test("a second device gets a transfer offer instead of a lease", async () => {
   const h = harness({ acquire: () => { throw Object.assign(new Error("x"), { status: 409, code: "PLAYBACK_ACTIVE" }); } });
   const orig = h.player.d.request;

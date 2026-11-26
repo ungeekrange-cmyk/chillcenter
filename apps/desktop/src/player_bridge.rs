@@ -1,6 +1,7 @@
 //! Serialized native-host coordinator. JavaScript never supplies grants, URLs or paths.
 use crate::local_playback::{LocalLaunch, LocalPlayer};
 use crate::native_player::{self, LeaseDeadline, NativeAction, NativeRect, NativeSnapshot};
+use chill_catalog::model::Media;
 use chill_client::{
     Transport,
     playback::{
@@ -15,6 +16,7 @@ use chill_player::{PlaybackStream, TrackKind};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    collections::HashMap,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -150,15 +152,43 @@ impl SubtitleChoice {
         {
             return Some(*track);
         }
-        wanted.as_ref()?;
+        // Missing and undefined language tags can match when only one fits.
         let mut same_language = tracks.iter().filter(|(_, key, _)| *key == wanted);
         let (track, _, _) = same_language.next()?;
         same_language.next().is_none().then_some(*track)
     }
 }
 
+type SubtitleScope = (String, String, String);
+
+fn subtitle_scope(
+    connection: &PlaybackConnection,
+    media: &Media,
+    context: &PlaybackContext,
+) -> Option<SubtitleScope> {
+    if connection.server_id.is_empty() || media.category != "serie" {
+        return None;
+    }
+    let series = media
+        .tmdb_id
+        .map(|id| format!("tmdb:tv:{id}"))
+        .or_else(|| {
+            context
+                .id
+                .as_ref()
+                .filter(|id| context.kind == "series" && id.starts_with("media:"))
+                .cloned()
+        })?;
+    Some((
+        connection.server_id.clone(),
+        connection.profile_id.clone(),
+        series,
+    ))
+}
+
 struct Session {
     guest_profile_id: Option<String>,
+    server_id: String,
     transport: Transport,
     cache: chill_client::playback_cache::PlaybackCache,
     profile: String,
@@ -180,6 +210,7 @@ struct Session {
     audio_override: Option<i64>,
     subtitle_override: Option<Option<i64>>,
     subtitle_choice: Option<SubtitleChoice>,
+    subtitle_scope: Option<SubtitleScope>,
     subtitle_cache: Vec<(String, std::path::PathBuf)>,
     cache_dir: std::path::PathBuf,
     controls: Option<ControlSubscription>,
@@ -206,6 +237,7 @@ struct PendingTransfer {
 #[derive(Default)]
 pub struct PlayerHost {
     session: Option<Session>,
+    series_subtitles: HashMap<SubtitleScope, SubtitleChoice>,
     local: Option<LocalPlayer>,
     pending: Option<PendingTransfer>,
     last_error: Option<String>,
@@ -245,6 +277,10 @@ impl PlayerHost {
             } else {
                 Default::default()
             }
+        });
+        let subtitle_choice = subtitle_choice.or_else(|| {
+            let scope = subtitle_scope(&c, &info.media, &context)?;
+            self.series_subtitles.get(&scope).cloned()
         });
         let sent = Instant::now();
         let acquired = c
@@ -406,8 +442,10 @@ impl PlayerHost {
             c.transport
                 .subscribe_controls(c.profile_id.clone(), grant.lease.clone()),
         );
+        let subtitle_scope = subtitle_scope(&c, &info.media, &context);
         self.session = Some(Session {
             guest_profile_id,
+            server_id: c.server_id,
             transport: c.transport,
             cache: c.cache,
             profile: c.profile_id,
@@ -429,6 +467,7 @@ impl PlayerHost {
             audio_override: None,
             subtitle_override: subtitles_off.then_some(None),
             subtitle_choice,
+            subtitle_scope,
             subtitle_cache: Vec::new(),
             cache_dir: self.cache_dir.clone(),
             controls,
@@ -801,7 +840,7 @@ impl PlayerHost {
                 transport: s.transport.clone(),
                 profile_id: s.profile.clone(),
                 device_id: s.device.clone(),
-                server_id: String::new(),
+                server_id: s.server_id.clone(),
                 cache: s.cache,
             };
             let context = s.context.clone();
@@ -867,7 +906,7 @@ impl PlayerHost {
                                 transport: s.transport.clone(),
                                 profile_id: s.profile.clone(),
                                 device_id: s.device.clone(),
-                                server_id: String::new(),
+                                server_id: s.server_id.clone(),
                                 cache: s.cache,
                             };
                             let media = s.info.media.id.clone();
@@ -1020,6 +1059,9 @@ impl PlayerHost {
                     .await
                     .map_err(native_error)?;
                 s.subtitle_override = Some(track_id);
+                if let Some(scope) = &s.subtitle_scope {
+                    self.series_subtitles.insert(scope.clone(), choice.clone());
+                }
                 s.subtitle_choice = Some(choice);
             }
             PlayerCommand::Fullscreen { enabled } => {
@@ -1046,7 +1088,15 @@ impl PlayerHost {
                 queue_external(s, w, &id).await?;
                 s.subtitle_override = None;
                 if let Some(track) = s.external.iter().find(|t| t.id == id) {
-                    s.subtitle_choice = Some(SubtitleChoice::track(track.language.clone(), Some(track.title.clone()), true));
+                    let choice = SubtitleChoice::track(
+                        track.language.clone(),
+                        Some(track.title.clone()),
+                        true,
+                    );
+                    if let Some(scope) = &s.subtitle_scope {
+                        self.series_subtitles.insert(scope.clone(), choice.clone());
+                    }
+                    s.subtitle_choice = Some(choice);
                 }
             }
             _ => return Err(error("Commande de lecture invalide.")),
@@ -1567,6 +1617,16 @@ mod language_tests {
         assert_eq!(choice.match_track([(&9, Some("fra"), Some("Renamed"))]), Some(&9));
         assert_eq!(choice.match_track([(&5, Some("eng"), Some("French SDH"))]), None);
         assert_eq!(SubtitleChoice::Off.match_track(tracks), None);
+    }
+
+    #[test]
+    fn carries_a_unique_untagged_subtitle_without_guessing_its_language() {
+        let choice = SubtitleChoice::track(None, None, false);
+        let explicit_english = SubtitleChoice::track(Some("en".into()), None, false);
+        assert_eq!(choice.match_track([(&2, Some("und"), None)]), Some(&2));
+        assert_eq!(choice.match_track([(&2, None, None), (&3, Some("und"), None)]), None);
+        assert_eq!(choice.match_track([(&2, Some("fra"), None)]), None);
+        assert_eq!(explicit_english.match_track([(&2, Some("und"), None)]), None);
     }
 
     #[test]

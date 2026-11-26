@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { packet, parseFile, Captions } = require("../src/subtitles.js");
+const { packet, parseFile, Captions, matchTrack } = require("../src/subtitles.js");
 const bytes = value => new TextEncoder().encode(value);
 
 class Node {
@@ -62,4 +62,14 @@ test("invalid numeric entities remain literal text instead of becoming executabl
   const captions = new Captions({ video, document, VTTCue: Cue }); captions.select({ language: "fr" });
   captions.add([{ start: 0, end: 1, text: "&#99999999;<i>format</i>" }]);
   assert.equal(video.textTracks[0].cues[0].text, "&amp;#99999999;format"); captions.close();
+});
+
+test("a single untagged subtitle follows the previous episode's untagged choice", () => {
+  const choice = { language: "und", title: "Sous-titres" };
+  const track = { id: 9 };
+  assert.equal(matchTrack([track], choice), track);
+  assert.equal(matchTrack([track, { id: 10, language: "und" }], choice), null);
+  assert.equal(matchTrack([{ ...track, language: "fr" }], choice), null);
+  assert.equal(matchTrack([track], { language: "en" }), null);
+  assert.equal(matchTrack([track], { off: true }), null);
 });

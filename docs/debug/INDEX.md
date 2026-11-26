@@ -253,3 +253,5 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 - [BUG-0150](BUG-0150-concurrent-update-recovery.md) — concurrence entre la récupération planifiée et l’installation locale du serveur.
 
 - [BUG-0151](BUG-0151-episode-subtitles-and-player-heading.md) — continuité du choix des sous-titres et identification des épisodes en plein écran.
+
+- [BUG-0152](BUG-0152-untagged-subtitles-between-episodes.md) — reprise du choix des sous-titres sans langue et après retour dans la bibliothèque.

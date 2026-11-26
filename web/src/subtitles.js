@@ -170,7 +170,8 @@
       return (!wanted || !key || key === wanted) && choice.title && title(track.name || track.title) === title(choice.title);
     });
     if (named.length === 1) return named[0];
-    const matches = wanted ? available.filter(track => language(track.language) === wanted) : [];
+    // Missing and undefined language tags can match when only one fits.
+    const matches = available.filter(track => language(track.language) === wanted);
     return matches.length === 1 ? matches[0] : null;
   }
 

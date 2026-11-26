@@ -83,6 +83,7 @@
     constructor(deps) {
       this.d = deps; this.state = null; this.timers = []; this.events = null;
       this.clock = new Clock.WatchClock(); this.busy = false;
+      this.seriesSubtitles = new Map();
       this.wake = new ScreenWakeLock(deps.wakeLock, deps.now);
       const doc = deps.document, page = deps.page;
       doc?.addEventListener("visibilitychange", () => this.syncWakeLock());
@@ -125,7 +126,7 @@
           const track = this.engine?.snapshot().tracks?.find(t => t.kind === "Subtitle" && t.id === c.track_id);
           if (this.engine && (c.track_id == null || track)) {
             await this.engine.selectSubtitle(c.track_id ?? null);
-            this.subtitleChoice = track ? { language: track.language, title: track.title } : { off: true };
+            this.rememberSubtitle(track ? { language: track.language, title: track.title } : { off: true });
           }
           return this.view();
         }
@@ -133,7 +134,7 @@
           const track = this.engine?.externalSubtitles?.().find(t => t.id === c.id && !t.unavailable);
           if (track) {
             await this.engine.selectExternalSubtitle(c.id);
-            this.subtitleChoice = { language: track.language, title: track.title, external: true };
+            this.rememberSubtitle({ language: track.language, title: track.title, external: true });
           }
           return this.view();
         }
@@ -146,10 +147,23 @@
     api(path) { return `/profiles/${this.ctx.profile}${path}`; }
     control() { const l = this.lease; return { session_id: l.session_id, generation: l.generation, media_id: l.media_id, media_revision: l.media_revision }; }
 
+    rememberSubtitle(choice) {
+      this.subtitleChoice = choice;
+      if (this.subtitleScope) this.seriesSubtitles.set(this.subtitleScope, choice);
+    }
+
+    seriesSubtitleScope(media) {
+      if (!this.ctx.server || !this.ctx.profile || media.category !== "serie") return null;
+      const series = media.tmdb_id != null ? "tmdb:tv:" + media.tmdb_id
+        : this.context.kind === "series" && this.context.id?.startsWith("media:") ? this.context.id : null;
+      return series && JSON.stringify([this.ctx.server, this.ctx.profile, series]);
+    }
+
     async start(mediaId, context, useLocal = false, guest = null, subtitleChoice = null) {
       await this.stop(true);
       this.guest = guest;
       this.subtitleChoice = subtitleChoice;
+      this.subtitleScope = null;
       this.context = context || { kind: "standalone", id: null }; this.note = ""; this.ended = false; this.nextResolved = null;
       this.mediaId = mediaId;
       if (useLocal) {
@@ -173,6 +187,8 @@
           if (!context && media.category === "serie") {
             this.context = target.context = { kind: "series", id: media.tmdb_id == null ? "media:" + media.id : "tmdb:tv:" + media.tmdb_id };
           }
+          this.subtitleScope = this.seriesSubtitleScope(media);
+          this.subtitleChoice ??= this.seriesSubtitles.get(this.subtitleScope) ?? null;
         }
         const grant = await this.d.request("POST", this.api("/playback/acquire"), { body: target, signal });
         return this.begin(grant);
