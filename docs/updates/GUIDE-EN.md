@@ -2,7 +2,7 @@
 
 [Français](GUIDE-FR.md) | **English**
 
-Mac release `mac-v0.7.12` provides Mac0.7.12/build22; `server-v0.7.12` publishes server0.7.12 and `web-v0.7.16` publishes web0.7.16 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
+Mac release `mac-v0.7.13` provides Mac0.7.13/build23; `server-v0.7.12` publishes server0.7.12 and `web-v0.7.17` publishes web0.7.17 separately. Themes0.7.1 remain in `v0.7.3`. Publication performs no direct installation on an existing server.
 
 ## Four components
 
@@ -62,7 +62,7 @@ key is never distributed or stored in Git.
 
 ### Download and verify
 
-Use the complete distribution archives: v0.7.12 for Mac, server-v0.7.12 for the server, web-v0.7.16 for web, with themes0.7.1 in v0.7.3, not GitHub's automatically
+Use the complete distribution archives: v0.7.13 for Mac, server-v0.7.12 for the server, web-v0.7.17 for web, with themes0.7.1 in v0.7.3, not GitHub's automatically
 generated source ZIP. Download the matching `.minisig` alongside each archive.
 Verify with an independently installed Minisign and the pinned public key below;
 do not establish trust merely from a key inside the downloaded archive.
@@ -75,7 +75,7 @@ tar -xzf Chill-Center-server-0.7.12-linux-aarch64.tar.gz
 
 The same verification applies to the Mac DMG, web install ZIP and themes install
 ZIP using their respective filenames. The Mac distribution is Apple Silicon
-only and the 0.7.12 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
+only and the 0.7.13 DMG **requires macOS 15 Sequoia or newer**. Dependencies use
 pinned Sequoia inputs, and all 51 Mach-O minima were verified. Physical macOS
 15/26 execution has not yet been tested; static checks do not replace it.
 Historical: the 0.7.2 DMG required macOS 27+, despite its Rust 13.0 floor.
@@ -144,9 +144,9 @@ References: [contract](CONTRACT.md), [ADR0029](../architecture/decisions/ADR-002
 
 ## Offline downloads
 
-Mac 0.7.12 and web 0.7.16 can download a film, episode, season or series from
+Mac 0.7.13 and web 0.7.17 can download a film, episode, season or series from
 server 0.7.12. Use a trusted HTTPS address for web downloads. Reload the browser
-after updating. [Release 0.7.12 notes](../releases/REL-0.7.12.md).
+after updating. [Release 0.7.13 notes](../releases/REL-0.7.13.md).
 
 ## Home, collections and playback
 
