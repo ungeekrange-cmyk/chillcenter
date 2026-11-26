@@ -255,3 +255,5 @@ Statuts : OPEN, INVESTIGATING, ROOT_CAUSE_CONFIRMED, FIXED, VERIFIED, CLOSED. «
 - [BUG-0151](BUG-0151-episode-subtitles-and-player-heading.md) — continuité du choix des sous-titres et identification des épisodes en plein écran.
 
 - [BUG-0152](BUG-0152-untagged-subtitles-between-episodes.md) — reprise du choix des sous-titres sans langue et après retour dans la bibliothèque.
+
+- [BUG-0153](BUG-0153-subtitles-lost-after-close.md) — conservation du choix des sous-titres à la réouverture du lecteur.

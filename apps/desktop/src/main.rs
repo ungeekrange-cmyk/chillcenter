@@ -852,8 +852,7 @@ fn main() {
         let updates=Arc::new(update_bridge::UpdateHost::new(directory.clone()));
         app.manage(updates.clone());
         app.handle().plugin(update_bridge::plugin())?;
-        let mut player = PlayerHost::default();
-        player.cache_dir = directory.join("subtitle-cache");
+        let player = PlayerHost::new(&directory);
         let rendering = player.rendering.clone();
         updates.start_schedule(app.handle().clone(),rendering.clone());
         let assistant = Arc::new(

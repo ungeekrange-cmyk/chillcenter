@@ -15,7 +15,12 @@ class FakeEngine {
   selectAudio(id) { this.log.push(["audio", id]); } selectSubtitle(id) { this.log.push(["sub", id]); } externalSubtitles() { return []; }
   snapshot() { return { ...this.s }; } close() { this.closed = true; }
 }
-function harness({ acquire, tracks = [], context } = {}) {
+function memoryStorage() {
+  const values = new Map();
+  return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+}
+
+function harness({ acquire, tracks = [], storage = memoryStorage(), context } = {}) {
   const calls = [], engine = new FakeEngine(tracks), intervals = []; let t = 0;
   const request = async (method, path, o = {}) => {
     calls.push({ method, path, body: o.body });
@@ -25,7 +30,7 @@ function harness({ acquire, tracks = [], context } = {}) {
     if (path.endsWith("/playback/next")) return { media: { id: N, title: "Suite" }, new_season: false, available: true };
     return { saved: true };
   };
-  const player = new WebPlayer({ request, engineFactory: () => engine, storage: { getItem: () => "dev", setItem() {} }, now: () => t, setInterval: (f, ms) => { intervals.push(f); return intervals.length; }, clearInterval() {}, EventSource: null, uuid: () => "dev" });
+  const player = new WebPlayer({ request, engineFactory: () => engine, storage, now: () => t, setInterval: (f, ms) => { intervals.push(f); return intervals.length; }, clearInterval() {}, EventSource: null, uuid: () => "dev" });
   const ctx = { profile: P };
   // `start` answers before the file is open (BUG-0070). Existing tests want the settled state: wait for the open to end,
   // then answer like the UI would on its next `status` poll (a failed open surfaces there).
@@ -144,6 +149,52 @@ for (const off of [false, true]) test("opening an episode from its series rememb
   h.player.d.engineFactory = () => otherProfile;
   await h.cmd({ action: "start", media_id: N });
   assert.deepEqual(otherProfile.log.at(-1), ["sub", off ? 8 : null]);
+});
+
+test("a reopened tab restores each series' track or Off for the matching profile", async () => {
+  const storage = memoryStorage();
+  const tracks = [{ kind: "Subtitle", id: 4, language: "en" }, { kind: "Subtitle", id: 5, language: "fr" }];
+  function tab(tracks) {
+    const h = harness({ tracks, storage });
+    h.ctx.server = "household";
+    const request = h.player.d.request;
+    h.player.d.request = async (method, path, options) => {
+      if (!path.endsWith("/playback-info")) return request(method, path, options);
+      const id = path.split("/").at(-2);
+      return { ...info, media: { id, title: id, category: "serie", tmdb_id: id === N ? 431 : 123 } };
+    };
+    return h;
+  }
+  const opened = tab(tracks);
+  await opened.cmd({ action: "start", media_id: M });
+  await opened.cmd({ action: "subtitle", track_id: 5 });
+  await opened.cmd({ action: "start", media_id: N });
+  await opened.cmd({ action: "subtitle", track_id: null });
+  // No stop or unload handler runs before the next WebPlayer instance.
+  const reopened = tab([{ ...tracks[0], id: 7 }, { ...tracks[1], id: 8 }]);
+  await reopened.cmd({ action: "start", media_id: M });
+  assert.deepEqual(reopened.engine.log.at(-1), ["sub", 8]);
+  await reopened.cmd({ action: "start", media_id: N });
+  assert.deepEqual(reopened.engine.log.at(-1), ["sub", null]);
+  const other = tab(tracks);
+  other.ctx.profile = "22222222-2222-4222-8222-222222222223";
+  await other.cmd({ action: "start", media_id: N });
+  assert.deepEqual(other.engine.log.at(-1), ["sub", 4]);
+});
+
+test("subtitle choices still work during playback when browser storage refuses writes", async () => {
+  const storage = { getItem: () => null, setItem: () => { throw new Error("storage denied"); } };
+  const tracks = [{ kind: "Subtitle", id: 4, language: "en" }];
+  const h = harness({ tracks, storage });
+  h.ctx.server = "household";
+  const request = h.player.d.request;
+  h.player.d.request = async (method, path, options) => path.endsWith("/playback-info")
+    ? { ...info, media: { ...info.media, category: "serie", tmdb_id: 123 } }
+    : request(method, path, options);
+  await h.cmd({ action: "start", media_id: M });
+  await h.cmd({ action: "subtitle", track_id: null });
+  await h.cmd({ action: "start", media_id: N });
+  assert.deepEqual(h.engine.log.at(-1), ["sub", null]);
 });
 
 test("a second device gets a transfer offer instead of a lease", async () => {

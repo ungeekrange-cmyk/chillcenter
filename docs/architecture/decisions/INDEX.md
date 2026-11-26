@@ -144,3 +144,7 @@ suggestions locales depuis les derniers visionnages datés.
 [ADR0044](ADR-0044-web-native-subtitles.md), candidat implémenté,20novembre2026 :
 sous-titres texte MKV et fichiers externes sous bail, pistes vidéo natives,
 seek/choix de langue sûrs ; retrait du bouton Installer du client web.
+
+[ADR-0051](ADR-0051-persistent-series-subtitles.md), implémenté localement,
+26 novembre 2026. Le choix des sous-titres est conservé localement par série
+et profil après fermeture du client web ou Mac.

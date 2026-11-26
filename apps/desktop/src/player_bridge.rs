@@ -13,10 +13,14 @@ use chill_client::{
     watch_clock::{Observation, WatchClock},
 };
 use chill_player::{PlaybackStream, TrackKind};
-use serde::Deserialize;
+use rusqlite::{Connection, OpenFlags, params};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
+    fs,
+    os::unix::fs::PermissionsExt,
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -93,7 +97,8 @@ fn control(l: &Lease) -> PlaybackControl {
         media_revision: l.media_revision,
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum SubtitleChoice {
     Off,
     Track {
@@ -160,6 +165,79 @@ impl SubtitleChoice {
 }
 
 type SubtitleScope = (String, String, String);
+
+#[derive(Default)]
+struct SeriesSubtitlePreferences {
+    database: Option<Connection>,
+    unsaved: HashMap<SubtitleScope, SubtitleChoice>,
+}
+
+impl SeriesSubtitlePreferences {
+    fn open(directory: &Path) -> Self {
+        let Ok(directory) = directory.canonicalize() else {
+            return Self::default();
+        };
+        let path = directory.join("series-subtitles.sqlite3");
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_CREATE
+            | OpenFlags::SQLITE_OPEN_NOFOLLOW;
+        let database = Connection::open_with_flags(&path, flags).ok().and_then(|db| {
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).ok()?;
+            db.busy_timeout(Duration::from_millis(50)).ok()?;
+            db.execute_batch(
+                "PRAGMA synchronous=FULL;
+                 CREATE TABLE IF NOT EXISTS subtitle_preferences (
+                     server TEXT NOT NULL,
+                     profile TEXT NOT NULL,
+                     series TEXT NOT NULL,
+                     choice TEXT NOT NULL,
+                     PRIMARY KEY(server, profile, series)
+                 ) WITHOUT ROWID;",
+            )
+            .ok()?;
+            Some(db)
+        });
+        Self {
+            database,
+            unsaved: HashMap::new(),
+        }
+    }
+
+    fn choice(&self, scope: &SubtitleScope) -> Option<SubtitleChoice> {
+        if let Some(choice) = self.unsaved.get(scope) {
+            return Some(choice.clone());
+        }
+        let (server, profile, series) = scope;
+        let choice: String = self
+            .database
+            .as_ref()?
+            .query_row(
+                "SELECT choice FROM subtitle_preferences WHERE server=?1 AND profile=?2 AND series=?3",
+                params![server, profile, series],
+                |row| row.get(0),
+            )
+            .ok()?;
+        serde_json::from_str(&choice).ok()
+    }
+
+    fn remember(&mut self, scope: &SubtitleScope, choice: &SubtitleChoice) {
+        let (server, profile, series) = scope;
+        let written = self.database.as_ref().and_then(|db| {
+            let choice = serde_json::to_string(choice).ok()?;
+            db.execute(
+                "INSERT INTO subtitle_preferences(server, profile, series, choice) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(server, profile, series) DO UPDATE SET choice=excluded.choice",
+                params![server, profile, series, choice],
+            )
+            .ok()
+        });
+        if written.is_some() {
+            self.unsaved.remove(scope);
+        } else {
+            self.unsaved.insert(scope.clone(), choice.clone());
+        }
+    }
+}
 
 fn subtitle_scope(
     connection: &PlaybackConnection,
@@ -237,7 +315,7 @@ struct PendingTransfer {
 #[derive(Default)]
 pub struct PlayerHost {
     session: Option<Session>,
-    series_subtitles: HashMap<SubtitleScope, SubtitleChoice>,
+    series_subtitles: SeriesSubtitlePreferences,
     local: Option<LocalPlayer>,
     pending: Option<PendingTransfer>,
     last_error: Option<String>,
@@ -245,6 +323,14 @@ pub struct PlayerHost {
     pub cache_dir: std::path::PathBuf,
 }
 impl PlayerHost {
+    pub fn new(directory: &Path) -> Self {
+        Self {
+            series_subtitles: SeriesSubtitlePreferences::open(directory),
+            cache_dir: directory.join("subtitle-cache"),
+            ..Self::default()
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn start(
         &mut self,
@@ -280,7 +366,7 @@ impl PlayerHost {
         });
         let subtitle_choice = subtitle_choice.or_else(|| {
             let scope = subtitle_scope(&c, &info.media, &context)?;
-            self.series_subtitles.get(&scope).cloned()
+            self.series_subtitles.choice(&scope)
         });
         let sent = Instant::now();
         let acquired = c
@@ -1060,7 +1146,7 @@ impl PlayerHost {
                     .map_err(native_error)?;
                 s.subtitle_override = Some(track_id);
                 if let Some(scope) = &s.subtitle_scope {
-                    self.series_subtitles.insert(scope.clone(), choice.clone());
+                    self.series_subtitles.remember(scope, &choice);
                 }
                 s.subtitle_choice = Some(choice);
             }
@@ -1094,7 +1180,7 @@ impl PlayerHost {
                         true,
                     );
                     if let Some(scope) = &s.subtitle_scope {
-                        self.series_subtitles.insert(scope.clone(), choice.clone());
+                        self.series_subtitles.remember(scope, &choice);
                     }
                     s.subtitle_choice = Some(choice);
                 }
@@ -1605,6 +1691,32 @@ async fn seek(s: &mut Session, w: &WebviewWindow, position: f64) -> Result<(), U
 #[cfg(test)]
 mod language_tests {
     use super::*;
+    #[test]
+    fn series_subtitle_choices_survive_reopening_the_host() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = ("server".into(), "profile".into(), "tmdb:tv:12".into());
+        let second = ("server".into(), "profile".into(), "media:anchor".into());
+        let other_profile = ("server".into(), "other".into(), "tmdb:tv:12".into());
+        let other_server = ("other".into(), "profile".into(), "tmdb:tv:12".into());
+        let untagged = SubtitleChoice::track(None, None, false);
+        {
+            let mut player = PlayerHost::new(directory.path());
+            player.series_subtitles.remember(&first, &untagged);
+            player.series_subtitles.remember(&second, &SubtitleChoice::Off);
+        }
+        let mut player = PlayerHost::new(directory.path());
+        assert_eq!(player.series_subtitles.choice(&first), Some(untagged));
+        assert_eq!(player.series_subtitles.choice(&second), Some(SubtitleChoice::Off));
+        assert_eq!(player.series_subtitles.choice(&other_profile), None);
+        assert_eq!(player.series_subtitles.choice(&other_server), None);
+
+        let external = SubtitleChoice::track(Some("fr".into()), Some("Français".into()), true);
+        player.series_subtitles.remember(&second, &external);
+        let third = PlayerHost::new(directory.path());
+        assert_eq!(third.series_subtitles.choice(&second), Some(external));
+        assert_eq!(third.series_subtitles.choice(&first), Some(SubtitleChoice::track(None, None, false)));
+    }
+
     #[test]
     fn a_carried_subtitle_matches_by_language_and_label_instead_of_id() {
         let choice = SubtitleChoice::track(Some("fr-FR".into()), Some("French SDH".into()), false);

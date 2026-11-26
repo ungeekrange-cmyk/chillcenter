@@ -83,7 +83,7 @@
     constructor(deps) {
       this.d = deps; this.state = null; this.timers = []; this.events = null;
       this.clock = new Clock.WatchClock(); this.busy = false;
-      this.seriesSubtitles = new Map();
+      this.unsavedSubtitles = new Map();
       this.wake = new ScreenWakeLock(deps.wakeLock, deps.now);
       const doc = deps.document, page = deps.page;
       doc?.addEventListener("visibilitychange", () => this.syncWakeLock());
@@ -126,7 +126,7 @@
           const track = this.engine?.snapshot().tracks?.find(t => t.kind === "Subtitle" && t.id === c.track_id);
           if (this.engine && (c.track_id == null || track)) {
             await this.engine.selectSubtitle(c.track_id ?? null);
-            this.rememberSubtitle(track ? { language: track.language, title: track.title } : { off: true });
+            this.rememberSubtitle(track ? { language: track.language ?? null, title: track.title ?? null } : { off: true });
           }
           return this.view();
         }
@@ -134,7 +134,7 @@
           const track = this.engine?.externalSubtitles?.().find(t => t.id === c.id && !t.unavailable);
           if (track) {
             await this.engine.selectExternalSubtitle(c.id);
-            this.rememberSubtitle({ language: track.language, title: track.title, external: true });
+            this.rememberSubtitle({ language: track.language ?? null, title: track.title ?? null, external: true });
           }
           return this.view();
         }
@@ -149,14 +149,35 @@
 
     rememberSubtitle(choice) {
       this.subtitleChoice = choice;
-      if (this.subtitleScope) this.seriesSubtitles.set(this.subtitleScope, choice);
+      if (!this.subtitleScope) return;
+      try {
+        this.d.storage.setItem(this.subtitleScope, JSON.stringify(choice));
+        this.unsavedSubtitles.delete(this.subtitleScope);
+      } catch {
+        this.unsavedSubtitles.set(this.subtitleScope, choice);
+      }
+    }
+
+    savedSubtitle(scope) {
+      if (!scope) return null;
+      const unsaved = this.unsavedSubtitles.get(scope);
+      if (unsaved) return unsaved;
+      try {
+        const choice = JSON.parse(this.d.storage.getItem(scope));
+        if (choice?.off === true) return { off: true };
+        if (choice && (choice.language === null || typeof choice.language === "string")
+            && (choice.title === null || typeof choice.title === "string")) {
+          return { language: choice.language, title: choice.title, external: choice.external === true };
+        }
+      } catch { /* Storage may be unavailable or the saved value unreadable. */ }
+      return null;
     }
 
     seriesSubtitleScope(media) {
       if (!this.ctx.server || !this.ctx.profile || media.category !== "serie") return null;
       const series = media.tmdb_id != null ? "tmdb:tv:" + media.tmdb_id
         : this.context.kind === "series" && this.context.id?.startsWith("media:") ? this.context.id : null;
-      return series && JSON.stringify([this.ctx.server, this.ctx.profile, series]);
+      return series && "chill.series_subtitle.v1:" + JSON.stringify([this.ctx.server, this.ctx.profile, series]);
     }
 
     async start(mediaId, context, useLocal = false, guest = null, subtitleChoice = null) {
@@ -188,7 +209,7 @@
             this.context = target.context = { kind: "series", id: media.tmdb_id == null ? "media:" + media.id : "tmdb:tv:" + media.tmdb_id };
           }
           this.subtitleScope = this.seriesSubtitleScope(media);
-          this.subtitleChoice ??= this.seriesSubtitles.get(this.subtitleScope) ?? null;
+          this.subtitleChoice ??= this.savedSubtitle(this.subtitleScope);
         }
         const grant = await this.d.request("POST", this.api("/playback/acquire"), { body: target, signal });
         return this.begin(grant);
